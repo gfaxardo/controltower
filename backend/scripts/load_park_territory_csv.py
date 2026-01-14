@@ -1,9 +1,10 @@
 """
-Script para cargar datos territoriales (park_id, country, city) desde CSV a dim.dim_park.
+Script para cargar datos territoriales (park_id, country, city, default_line_of_business) desde CSV a dim.dim_park.
 
 Usa staging table ops.stg_park_territory y función ops.merge_park_territory_from_staging().
 
-Formato CSV esperado: park_id,country,city (header opcional)
+Formato CSV esperado: park_id,country,city,default_line_of_business (header opcional)
+Si default_line_of_business no está presente, se usará 'Auto Taxi' por defecto.
 
 Uso:
     python scripts/load_park_territory_csv.py --csv data.csv
@@ -30,7 +31,8 @@ def load_from_csv(file_path: str) -> List[Dict[str, str]]:
                 data.append({
                     'park_id': str(row_dict['park_id']).strip() if row_dict['park_id'] else '',
                     'country': row_dict.get('country', '').strip() if row_dict.get('country') else '',
-                    'city': row_dict.get('city', '').strip() if row_dict.get('city') else ''
+                    'city': row_dict.get('city', '').strip() if row_dict.get('city') else '',
+                    'default_line_of_business': row_dict.get('default_line_of_business', '').strip() if row_dict.get('default_line_of_business') else ''
                 })
     return data
 
@@ -79,7 +81,8 @@ def load_to_staging(data: List[Dict[str, str]], loaded_by: str = None, dry_run: 
         if dry_run:
             print(f"\n[DRY RUN] Se cargarían {len(data)} registros a ops.stg_park_territory")
             for item in data[:5]:  # Mostrar primeros 5
-                print(f"  park_id={item['park_id']}, country={item['country']}, city={item['city']}")
+                lob = item.get('default_line_of_business', '') or '(vacío)'
+                print(f"  park_id={item['park_id']}, country={item['country']}, city={item['city']}, lob={lob}")
             if len(data) > 5:
                 print(f"  ... y {len(data) - 5} más")
             return
@@ -90,9 +93,15 @@ def load_to_staging(data: List[Dict[str, str]], loaded_by: str = None, dry_run: 
         # Insertar datos
         for item in data:
             cursor.execute("""
-                INSERT INTO ops.stg_park_territory (park_id, country, city, loaded_by)
-                VALUES (%s, %s, %s, %s)
-            """, (item['park_id'], item['country'], item['city'], loaded_by))
+                INSERT INTO ops.stg_park_territory (park_id, country, city, default_line_of_business, loaded_by)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (
+                item['park_id'], 
+                item['country'], 
+                item['city'], 
+                item.get('default_line_of_business', '') if item.get('default_line_of_business') else None,
+                loaded_by
+            ))
         
         cursor.close()
         print(f"Cargados {len(data)} registros a ops.stg_park_territory")

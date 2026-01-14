@@ -27,6 +27,7 @@ def upgrade() -> None:
             park_id text NOT NULL,
             country text,
             city text,
+            default_line_of_business text,
             loaded_at timestamptz NOT NULL DEFAULT now(),
             loaded_by text
         )
@@ -58,7 +59,7 @@ def upgrade() -> None:
                 COALESCE(stg.country, '') as country,
                 COALESCE(stg.city, '') as city,
                 'Yego' as partner,
-                'Auto Taxi' as default_line_of_business,
+                COALESCE(NULLIF(trim(stg.default_line_of_business), ''), 'Auto Taxi') as default_line_of_business,
                 true as active
             FROM ops.stg_park_territory stg
             WHERE stg.park_id IS NOT NULL AND trim(stg.park_id) != ''
@@ -71,17 +72,25 @@ def upgrade() -> None:
             
             GET DIAGNOSTICS v_inserted = ROW_COUNT;
             
-            -- Actualizar parks existentes (solo si country o city cambian)
+            -- Actualizar parks existentes (solo si country, city o default_line_of_business cambian)
             UPDATE dim.dim_park dp
             SET 
                 country = COALESCE(stg.country, dp.country),
-                city = COALESCE(stg.city, dp.city)
+                city = COALESCE(stg.city, dp.city),
+                default_line_of_business = COALESCE(
+                    NULLIF(trim(stg.default_line_of_business), ''),
+                    dp.default_line_of_business
+                )
             FROM ops.stg_park_territory stg
             WHERE dp.park_id = stg.park_id
               AND stg.park_id IS NOT NULL AND trim(stg.park_id) != ''
               AND stg.country IS NOT NULL AND trim(stg.country) != ''
               AND stg.city IS NOT NULL AND trim(stg.city) != ''
-              AND (dp.country IS DISTINCT FROM stg.country OR dp.city IS DISTINCT FROM stg.city);
+              AND (
+                  dp.country IS DISTINCT FROM stg.country 
+                  OR dp.city IS DISTINCT FROM stg.city
+                  OR dp.default_line_of_business IS DISTINCT FROM NULLIF(trim(stg.default_line_of_business), '')
+              );
             
             GET DIAGNOSTICS v_updated = ROW_COUNT;
             
