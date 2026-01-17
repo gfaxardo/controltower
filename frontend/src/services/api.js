@@ -54,4 +54,14 @@ export const getIngestionStatus = async (datasetName = 'real_monthly_agg') => {
   return response.data
 }
 
+export const getPlanVsRealMonthly = async (filters = {}) => {
+  const response = await api.get('/ops/plan-vs-real/monthly', { params: filters })
+  return response.data
+}
+
+export const getPlanVsRealAlerts = async (filters = {}) => {
+  const response = await api.get('/ops/plan-vs-real/alerts', { params: filters })
+  return response.data
+}
+
 export default api

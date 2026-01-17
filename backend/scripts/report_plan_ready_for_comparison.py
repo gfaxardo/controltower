@@ -80,14 +80,28 @@ def generate_report(plan_version: str):
             
             validations = cursor.fetchall()
             
+            # Verificar si las validaciones se ejecutaron
+            cursor.execute(f"""
+                SELECT COUNT(*) 
+                FROM ops.plan_validation_results 
+                WHERE plan_version = %s
+            """, (plan_version,))
+            validation_count = cursor.fetchone()[0]
+            
             print("## 2. VALIDACIONES\n")
-            if validations:
+            if validation_count == 0:
+                print("⚠️ [INCOMPLETE] Las validaciones no se ejecutaron o no insertaron registros")
+                print("   Ejecuta: python scripts/validate_plan_post_ingestion.py {plan_version}\n")
+                validation_status = "INCOMPLETE"
+            elif validations:
                 print("| Tipo | Severidad | Cantidad | Filas Afectadas |")
                 print("|------|-----------|----------|-----------------|")
                 for row in validations:
                     print(f"| {row[0]} | {row[1]} | {row[2]} | {row[3]:,} |")
+                validation_status = None  # Se determinará después
             else:
                 print("✓ No se encontraron validaciones\n")
+                validation_status = None
             
             # 3. Verificar vistas
             print("\n## 3. VISTAS DISPONIBLES\n")
@@ -127,24 +141,56 @@ def generate_report(plan_version: str):
             print(f"- Warnings: {warnings}")
             print(f"- Info: {info}")
             
+            # Determinar estado final
+            if validation_status == "INCOMPLETE":
+                final_status = "INCOMPLETE"
+            elif errors > 0:
+                final_status = "FAIL"
+            elif warnings > 0:
+                final_status = "READY_WITH_WARNINGS"
+            else:
+                final_status = "READY_OK"
+            
             # 5. Confirmación final
             print("\n" + "="*80)
             print("CONFIRMACIÓN FINAL")
             print("="*80 + "\n")
             
-            is_ready = errors == 0
+            # Mostrar estado real
+            status_messages = {
+                "READY_OK": "✓ PLAN ESTÁ LISTO PARA COMPARACIÓN CON REAL",
+                "READY_WITH_WARNINGS": "⚠ PLAN ESTÁ LISTO PERO CON WARNINGS",
+                "FAIL": "✗ PLAN NO ESTÁ LISTO - TIENE ERRORES",
+                "INCOMPLETE": "⚠ VALIDACIONES NO COMPLETADAS"
+            }
             
-            if is_ready:
-                print("✓ PLAN ESTÁ LISTO PARA COMPARACIÓN CON REAL\n")
+            print(f"{status_messages.get(final_status, 'Estado desconocido')}\n")
+            
+            is_ready = final_status in ("READY_OK", "READY_WITH_WARNINGS")
+            
+            if final_status == "READY_OK":
                 print("El plan cumple con los requisitos:")
                 print("  - Tabla canónica creada (ops.plan_trips_monthly)")
                 print("  - Datos ingeridos correctamente")
                 print("  - Vistas disponibles para consulta")
-                if warnings > 0:
-                    print(f"  - ⚠ {warnings} warning(s) encontrado(s) (revisar pero no bloqueante)")
-                else:
-                    print("  - Sin warnings críticos")
-                print("  - Sin errores de validación\n")
+                print("  - Validaciones ejecutadas sin errores")
+                print("  - Sin warnings críticos\n")
+            elif final_status == "READY_WITH_WARNINGS":
+                print("El plan está listo pero tiene warnings:")
+                print("  - Tabla canónica creada (ops.plan_trips_monthly)")
+                print("  - Datos ingeridos correctamente")
+                print(f"  - ⚠ {warnings} warning(s) encontrado(s) (revisar)")
+                print(f"  - {info} mensaje(s) informativo(s)")
+                print("  - Sin errores bloqueantes\n")
+            elif final_status == "FAIL":
+                print("El plan tiene errores que deben resolverse:")
+                print(f"  - ✗ {errors} error(es) encontrado(s)")
+                print(f"  - ⚠ {warnings} warning(s) encontrado(s)")
+                print("  - Revisa ops.plan_validation_results para detalles\n")
+            elif final_status == "INCOMPLETE":
+                print("Las validaciones no se ejecutaron o no insertaron registros:")
+                print("  - Ejecuta: python scripts/validate_plan_post_ingestion.py <plan_version>")
+                print("  - Verifica que el agregado mensual esté actualizado\n")
                 
                 print("VISTAS DISPONIBLES PARA CONSULTA:")
                 print("  - ops.v_plan_trips_monthly")
@@ -163,7 +209,7 @@ def generate_report(plan_version: str):
             
             conn.commit()
             
-            return is_ready
+            return is_ready, final_status
             
         except Exception as e:
             conn.rollback()
@@ -181,5 +227,6 @@ if __name__ == "__main__":
         sys.exit(1)
     
     plan_version = sys.argv[1]
-    is_ready = generate_report(plan_version)
-    sys.exit(0 if is_ready else 1)
+    is_ready, status = generate_report(plan_version)
+    # Exit code: 0 = OK/WARNINGS, 1 = FAIL/INCOMPLETE
+    sys.exit(0 if status in ("READY_OK", "READY_WITH_WARNINGS") else 1)

@@ -1,0 +1,10 @@
+country,plan_city_raw,plan_city_norm,real_city_norm,notes
+CO,Barranquilla,barranquilla,,Encontrado en 48 filas del plan
+CO,Bogotá,bogotá,,Encontrado en 24 filas del plan
+CO,Bucaramanga,bucaramanga,,Encontrado en 24 filas del plan
+CO,Cali,cali,,Encontrado en 48 filas del plan
+CO,Cúcuta,cúcuta,,Encontrado en 24 filas del plan
+CO,Medellín,medellín,,Encontrado en 36 filas del plan
+PE,Arequipa,arequipa,,Encontrado en 24 filas del plan
+PE,Lima,lima,,Encontrado en 60 filas del plan
+PE,Trujillo,trujillo,,Encontrado en 24 filas del plan

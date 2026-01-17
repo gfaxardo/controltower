@@ -21,7 +21,11 @@ def validate_plan(plan_version: str):
     """Ejecuta validaciones post-ingesta."""
     init_db_pool()
     
-    sql_file = os.path.join(os.path.dirname(__file__), 'sql', 'validate_plan_trips_monthly.sql')
+    sql_file = os.path.join(os.path.dirname(__file__), 'sql', 'validate_plan_trips_monthly_optimized.sql')
+    
+    if not os.path.exists(sql_file):
+        # Fallback al archivo antiguo si el nuevo no existe
+        sql_file = os.path.join(os.path.dirname(__file__), 'sql', 'validate_plan_trips_monthly.sql')
     
     with open(sql_file, 'r', encoding='utf-8') as f:
         sql_content = f.read()
@@ -33,7 +37,43 @@ def validate_plan(plan_version: str):
             sql_content = sql_content.replace("{PLAN_VERSION_PLACEHOLDER}", plan_version)
             
             # Ejecutar validaciones
-            cursor.execute(sql_content)
+            # Ejecutar el SQL completo (puede tener múltiples statements)
+            try:
+                # Ejecutar cada statement por separado para mejor control de errores
+                statements = []
+                current_stmt = []
+                for line in sql_content.split('\n'):
+                    line = line.strip()
+                    if not line or line.startswith('--'):
+                        continue
+                    current_stmt.append(line)
+                    if line.endswith(';'):
+                        stmt = ' '.join(current_stmt)
+                        if stmt and not stmt.startswith('--'):
+                            statements.append(stmt)
+                        current_stmt = []
+                
+                # Ejecutar cada statement
+                executed_count = 0
+                for stmt in statements:
+                    stmt = stmt.strip()
+                    if stmt and not stmt.startswith('--'):
+                        try:
+                            cursor.execute(stmt)
+                            executed_count += 1
+                        except Exception as e:
+                            # Log error pero continuar con otras validaciones
+                            error_msg = str(e)
+                            if "does not exist" not in error_msg.lower() and "already exists" not in error_msg.lower():
+                                print(f"[WARN] Error en statement: {error_msg[:100]}")
+                            continue
+                
+                conn.commit()
+                
+            except Exception as e:
+                conn.rollback()
+                print(f"[WARN] Error ejecutando validaciones: {str(e)[:200]}")
+                # Continuar para mostrar lo que se pudo ejecutar
             
             # Obtener resumen
             cursor.execute(f"""

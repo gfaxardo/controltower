@@ -72,7 +72,7 @@ def ingest_plan_from_csv(csv_path: str, plan_version: str):
             with open(csv_path, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
                 
-                # Validar columnas
+                # Validar columnas (is_applicable es opcional)
                 expected_cols = ['country', 'city', 'lob_base', 'segment', 'year', 'month', 
                                 'trips_plan', 'active_drivers_plan', 'avg_ticket_plan']
                 missing_cols = [col for col in expected_cols if col not in reader.fieldnames]
@@ -103,6 +103,31 @@ def ingest_plan_from_csv(csv_path: str, plan_version: str):
                         park_id = None  # CSV no tiene park_id
                         lob_base = row.get('lob_base', '').strip() or None
                         
+                        # Verificar is_applicable (opcional, default TRUE)
+                        is_applicable_str = row.get('is_applicable', '').strip().upper()
+                        is_applicable = True  # default
+                        if is_applicable_str:
+                            is_applicable = is_applicable_str in ('TRUE', '1', 'YES', 'Y', 'T')
+                        
+                        # Si no es aplicable, saltar esta fila
+                        if not is_applicable:
+                            continue
+                        
+                        # Resolver city_norm usando plan_city_map
+                        plan_city_resolved_norm = None
+                        if country and city_norm:
+                            cursor.execute("""
+                                SELECT real_city_norm
+                                FROM ops.plan_city_map
+                                WHERE country = %s
+                                AND plan_city_norm = %s
+                                AND is_active = TRUE
+                                AND real_city_norm IS NOT NULL
+                            """, (country, city_norm))
+                            result = cursor.fetchone()
+                            if result:
+                                plan_city_resolved_norm = result[0]
+                        
                         # Mapear métricas (convertir float a int si es necesario)
                         trips_plan = row.get('trips_plan', '').strip()
                         projected_trips = int(float(trips_plan)) if trips_plan else None
@@ -113,13 +138,14 @@ def ingest_plan_from_csv(csv_path: str, plan_version: str):
                         avg_ticket_plan = row.get('avg_ticket_plan', '').strip()
                         projected_ticket = float(avg_ticket_plan) if avg_ticket_plan else None
                         
-                        # Insertar
+                        # Insertar (incluyendo plan_city_resolved_norm si existe)
                         cursor.execute("""
                             INSERT INTO ops.plan_trips_monthly (
                                 plan_version,
                                 country,
                                 city,
                                 city_norm,
+                                plan_city_resolved_norm,
                                 park_id,
                                 lob_base,
                                 segment,
@@ -127,7 +153,7 @@ def ingest_plan_from_csv(csv_path: str, plan_version: str):
                                 projected_trips,
                                 projected_drivers,
                                 projected_ticket
-                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                             ON CONFLICT (plan_version, COALESCE(country, ''), COALESCE(city, ''), 
                                         COALESCE(park_id, '__NA__'), COALESCE(lob_base, ''), 
                                         COALESCE(segment, ''), month) 
@@ -137,6 +163,7 @@ def ingest_plan_from_csv(csv_path: str, plan_version: str):
                             country,
                             city,
                             city_norm,
+                            plan_city_resolved_norm,
                             park_id,
                             lob_base,
                             segment,

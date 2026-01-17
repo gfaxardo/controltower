@@ -5,6 +5,10 @@ from app.services.territory_quality_service import (
     get_territory_kpis_weekly,
     get_unmapped_parks
 )
+from app.services.plan_vs_real_service import (
+    get_plan_vs_real_monthly,
+    get_alerts_monthly
+)
 from typing import Optional, Literal
 import logging
 
@@ -75,4 +79,62 @@ async def get_unmapped_parks_endpoint(
     except Exception as e:
         logger.error(f"Error al obtener parks unmapped: {e}")
         raise HTTPException(status_code=500, detail=f"Error al obtener parks unmapped: {str(e)}")
+
+@router.get("/plan-vs-real/monthly")
+async def get_plan_vs_real_monthly_endpoint(
+    country: Optional[str] = Query(None, description="Filtrar por país"),
+    city: Optional[str] = Query(None, description="Filtrar por ciudad (usa city_norm_real para matching)"),
+    lob_base: Optional[str] = Query(None, description="Filtrar por línea de negocio base"),
+    segment: Optional[str] = Query(None, description="Filtrar por segmento (b2b, b2c)"),
+    month: Optional[str] = Query(None, description="Filtrar por mes (formato: YYYY-MM o YYYY-MM-DD)")
+):
+    """
+    Obtiene comparación Plan vs Real mensual desde ops.v_plan_vs_real_monthly_latest.
+    Incluye FULL OUTER JOIN para no perder universo (plan_only, real_only, matched).
+    """
+    try:
+        data = get_plan_vs_real_monthly(
+            country=country,
+            city=city,
+            lob_base=lob_base,
+            segment=segment,
+            month=month
+        )
+        return {
+            "data": data,
+            "total_records": len(data)
+        }
+    except Exception as e:
+        logger.error(f"Error al obtener comparación Plan vs Real: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al obtener comparación Plan vs Real: {str(e)}")
+
+@router.get("/plan-vs-real/alerts")
+async def get_plan_vs_real_alerts_endpoint(
+    country: Optional[str] = Query(None, description="Filtrar por país"),
+    month: Optional[str] = Query(None, description="Filtrar por mes (formato: YYYY-MM o YYYY-MM-DD)"),
+    alert_level: Optional[str] = Query(None, description="Filtrar por nivel de alerta (CRITICO, MEDIO, OK)")
+):
+    """
+    Obtiene alertas Plan vs Real desde ops.v_plan_vs_real_alerts_monthly_latest.
+    Solo incluye registros matched (has_plan AND has_real).
+    Alertas ordenadas por severidad: CRITICO > MEDIO > OK.
+    """
+    try:
+        data = get_alerts_monthly(
+            country=country,
+            month=month,
+            alert_level=alert_level
+        )
+        return {
+            "data": data,
+            "total_alerts": len(data),
+            "by_level": {
+                "CRITICO": len([a for a in data if a.get("alert_level") == "CRITICO"]),
+                "MEDIO": len([a for a in data if a.get("alert_level") == "MEDIO"]),
+                "OK": len([a for a in data if a.get("alert_level") == "OK"])
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error al obtener alertas Plan vs Real: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al obtener alertas Plan vs Real: {str(e)}")
 
