@@ -9,6 +9,11 @@ from app.services.plan_vs_real_service import (
     get_plan_vs_real_monthly,
     get_alerts_monthly
 )
+from app.services.plan_real_split_service import (
+    get_real_monthly,
+    get_plan_monthly,
+    get_overlap_monthly
+)
 from typing import Optional, Literal
 import logging
 
@@ -138,3 +143,95 @@ async def get_plan_vs_real_alerts_endpoint(
         logger.error(f"Error al obtener alertas Plan vs Real: {e}")
         raise HTTPException(status_code=500, detail=f"Error al obtener alertas Plan vs Real: {str(e)}")
 
+@router.get("/real/monthly")
+async def get_real_monthly_endpoint(
+    country: Optional[str] = Query(None, description="Filtrar por país"),
+    city: Optional[str] = Query(None, description="Filtrar por ciudad"),
+    lob_base: Optional[str] = Query(None, description="Filtrar por línea de negocio base"),
+    segment: Optional[str] = Query(None, description="Filtrar por segmento (b2b, b2c)"),
+    year: int = Query(2025, description="Año del Real")
+):
+    """
+    Obtiene datos REAL mensuales agregados desde ops.mv_real_trips_monthly.
+    Retorna month, trips_real_completed, revenue_real_proxy, active_drivers_real, avg_ticket_real.
+    """
+    try:
+        data = get_real_monthly(
+            country=country,
+            city=city,
+            lob_base=lob_base,
+            segment=segment,
+            year=year
+        )
+        return {
+            "data": data,
+            "total_periods": len(data),
+            "year": year
+        }
+    except Exception as e:
+        logger.error(f"Error al obtener Real monthly: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al obtener Real monthly: {str(e)}")
+
+@router.get("/plan/monthly")
+async def get_plan_monthly_endpoint(
+    country: Optional[str] = Query(None, description="Filtrar por país"),
+    city: Optional[str] = Query(None, description="Filtrar por ciudad"),
+    lob_base: Optional[str] = Query(None, description="Filtrar por línea de negocio base"),
+    segment: Optional[str] = Query(None, description="Filtrar por segmento (b2b, b2c)"),
+    year: int = Query(2026, description="Año del Plan")
+):
+    """
+    Obtiene datos PLAN mensuales agregados desde ops.v_plan_trips_monthly_latest.
+    Retorna month, projected_trips, projected_revenue, projected_drivers, projected_ticket.
+    """
+    try:
+        data = get_plan_monthly(
+            country=country,
+            city=city,
+            lob_base=lob_base,
+            segment=segment,
+            year=year
+        )
+        return {
+            "data": data,
+            "total_periods": len(data),
+            "year": year
+        }
+    except Exception as e:
+        logger.error(f"Error al obtener Plan monthly: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al obtener Plan monthly: {str(e)}")
+
+@router.get("/compare/overlap-monthly")
+async def get_overlap_monthly_endpoint(
+    country: Optional[str] = Query(None, description="Filtrar por país"),
+    city: Optional[str] = Query(None, description="Filtrar por ciudad"),
+    lob_base: Optional[str] = Query(None, description="Filtrar por línea de negocio base"),
+    segment: Optional[str] = Query(None, description="Filtrar por segmento (b2b, b2c)"),
+    year: Optional[int] = Query(None, description="Año específico para overlap (opcional)")
+):
+    """
+    Obtiene comparación Plan vs Real SOLO para meses donde hay overlap temporal.
+    Retorna lista vacía si no hay overlap, sin error.
+    """
+    try:
+        data = get_overlap_monthly(
+            country=country,
+            city=city,
+            lob_base=lob_base,
+            segment=segment,
+            year=year
+        )
+        return {
+            "data": data,
+            "total_periods": len(data),
+            "has_overlap": len(data) > 0
+        }
+    except Exception as e:
+        logger.error(f"Error al obtener overlap monthly: {e}")
+        # Tolerante: retornar lista vacía en caso de error
+        return {
+            "data": [],
+            "total_periods": 0,
+            "has_overlap": False,
+            "error": str(e)
+        }

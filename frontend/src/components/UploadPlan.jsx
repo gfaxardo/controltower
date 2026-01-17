@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { uploadPlan } from '../services/api'
+import { uploadPlan, uploadPlanRuta27 } from '../services/api'
 
 function UploadPlan({ onUploadSuccess }) {
   const [file, setFile] = useState(null)
   const [uploading, setUploading] = useState(false)
   const [message, setMessage] = useState({ type: '', text: '' })
+  const [replaceAll, setReplaceAll] = useState(false)
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0]
@@ -19,6 +20,27 @@ function UploadPlan({ onUploadSuccess }) {
     }
   }
 
+  const detectFormat = async (file) => {
+    // Leer primera línea del CSV para detectar formato
+    if (file.name.endsWith('.csv')) {
+      return new Promise((resolve) => {
+        const reader = new FileReader()
+        reader.onload = (e) => {
+          const firstLine = e.target.result.split('\n')[0].toLowerCase()
+          // Formato Ruta 27: tiene year, month, trips_plan, active_drivers_plan
+          if (firstLine.includes('year') && firstLine.includes('month') && 
+              (firstLine.includes('trips_plan') || firstLine.includes('active_drivers_plan'))) {
+            resolve('ruta27')
+          } else {
+            resolve('simple')
+          }
+        }
+        reader.readAsText(file.slice(0, 1024)) // Solo leer primeros 1KB
+      })
+    }
+    return 'simple' // Excel siempre usa formato simple
+  }
+
   const handleUpload = async () => {
     if (!file) {
       setMessage({ type: 'error', text: 'Selecciona un archivo primero' })
@@ -29,21 +51,26 @@ function UploadPlan({ onUploadSuccess }) {
       setUploading(true)
       setMessage({ type: '', text: '' })
       
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/d1353b8d-83b3-4a07-af72-66d85f06aec4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'UploadPlan.jsx:handleUpload','message':'Inicio upload','data':{filename:file.name,size:file.size},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
-      // #endregion
+      // Detectar formato del archivo
+      const format = await detectFormat(file)
       
-      const result = await uploadPlan(file)
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/d1353b8d-83b3-4a07-af72-66d85f06aec4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'UploadPlan.jsx:handleUpload','message':'Respuesta recibida','data':{result:result},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
-      // #endregion
-      
-      const rowsLoaded = result.rows_loaded || result.rows_valid + result.rows_out_of_universe
-      setMessage({
-        type: 'success',
-        text: `Plan cargado exitosamente: ${rowsLoaded} filas cargadas, ${result.rows_valid} válidas, ${result.rows_out_of_universe} fuera de universo, ${result.missing_combos_count} combos faltantes`
-      })
+      let result
+      if (format === 'ruta27') {
+        // Usar endpoint Ruta 27
+        result = await uploadPlanRuta27(file, null, replaceAll)
+        setMessage({
+          type: 'success',
+          text: result.message || `Plan cargado exitosamente: ${result.rows_inserted} registros con versión ${result.plan_version}`
+        })
+      } else {
+        // Usar endpoint simple (formato long)
+        result = await uploadPlan(file)
+        const rowsLoaded = result.rows_loaded || result.rows_valid + result.rows_out_of_universe
+        setMessage({
+          type: 'success',
+          text: `Plan cargado exitosamente: ${rowsLoaded} filas cargadas, ${result.rows_valid} válidas, ${result.rows_out_of_universe} fuera de universo, ${result.missing_combos_count} combos faltantes`
+        })
+      }
       
       setFile(null)
       document.getElementById('file-input').value = ''
@@ -52,20 +79,12 @@ function UploadPlan({ onUploadSuccess }) {
         onUploadSuccess()
       }
     } catch (error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/d1353b8d-83b3-4a07-af72-66d85f06aec4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'UploadPlan.jsx:handleUpload','message':'Error capturado','data':{error:error.message,response:error.response?.data},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
-      // #endregion
-      
       setMessage({
         type: 'error',
         text: error.response?.data?.detail || 'Error al subir el archivo'
       })
     } finally {
       setUploading(false)
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/d1353b8d-83b3-4a07-af72-66d85f06aec4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'UploadPlan.jsx:handleUpload','message':'Fin finally','data':{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
-      // #endregion
     }
   }
 
@@ -73,7 +92,7 @@ function UploadPlan({ onUploadSuccess }) {
     <div className="bg-white p-6 rounded-lg shadow-md mb-6">
       <h3 className="text-lg font-semibold mb-4">Subir Plan (Plantilla Simple)</h3>
       
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center space-x-4 mb-4">
         <div className="flex-1">
           <input
             id="file-input"
@@ -98,6 +117,25 @@ function UploadPlan({ onUploadSuccess }) {
           {uploading ? 'Subiendo...' : 'Subir Plan (Plantilla Simple)'}
         </button>
       </div>
+      
+      {file && file.name.endsWith('.csv') && (
+        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={replaceAll}
+              onChange={(e) => setReplaceAll(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm text-yellow-800">
+              <strong>Reemplazar todos los planes anteriores</strong> (borra todo el historial antes de subir este plan)
+            </span>
+          </label>
+          <p className="text-xs text-yellow-700 mt-1 ml-6">
+            Por defecto, los planes se acumulan por versión. Marca esta opción solo si quieres empezar desde cero.
+          </p>
+        </div>
+      )}
       
       {message.text && (
         <div className={`mt-4 p-3 rounded-md ${

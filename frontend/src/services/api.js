@@ -19,6 +19,30 @@ export const uploadPlan = async (file) => {
   return response.data
 }
 
+export const uploadPlanRuta27 = async (file, planVersion = null, replaceAll = false) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  
+  let url = '/plan/upload_ruta27'
+  const params = []
+  if (planVersion) {
+    params.push(`plan_version=${encodeURIComponent(planVersion)}`)
+  }
+  if (replaceAll) {
+    params.push('replace_all=true')
+  }
+  if (params.length > 0) {
+    url += `?${params.join('&')}`
+  }
+  
+  const response = await api.post(url, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  })
+  return response.data
+}
+
 export const getCoreMonthlySummary = async (filters = {}) => {
   const response = await api.get('/core/summary/monthly', { params: filters })
   return response.data
@@ -61,6 +85,21 @@ export const getPlanVsRealMonthly = async (filters = {}) => {
 
 export const getPlanVsRealAlerts = async (filters = {}) => {
   const response = await api.get('/ops/plan-vs-real/alerts', { params: filters })
+  return response.data
+}
+
+export const getRealMonthlySplit = async (filters = {}) => {
+  const response = await api.get('/ops/real/monthly', { params: filters })
+  return response.data
+}
+
+export const getPlanMonthlySplit = async (filters = {}) => {
+  const response = await api.get('/ops/plan/monthly', { params: filters })
+  return response.data
+}
+
+export const getOverlapMonthly = async (filters = {}) => {
+  const response = await api.get('/ops/compare/overlap-monthly', { params: filters })
   return response.data
 }
 

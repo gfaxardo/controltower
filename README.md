@@ -86,37 +86,52 @@ El frontend estará disponible en `http://localhost:5173`
 
 ## 📊 Fuentes de Datos
 
-### REAL (Solo Lectura)
+### REAL (FASE 2A - Consolidado)
 
-El sistema consume datos REAL desde las siguientes tablas/vistas de PostgreSQL:
+**Fuente Canónica:** `public.trips_all`  
+**Agregado Mensual:** `ops.mv_real_trips_monthly` (Materialized View)
 
-- **bi.real_daily_enriched**: Datos reales diarios enriquecidos
-- **bi.real_monthly_agg**: Datos reales agregados mensualmente
-- **dim.dim_park**: Dimensión de parque (mapea park_id → city, country, line_of_business, park_name)
+El sistema consume datos REAL desde la vista materializada `ops.mv_real_trips_monthly`, que agrega mensualmente los viajes completados desde `public.trips_all`.
 
-**Columnas mapeadas:**
-- `trips` → `orders_completed` (en bi.real_monthly_agg y bi.real_daily_enriched)
-- `revenue` → columna de ingresos (inspeccionada automáticamente, puede no existir)
+**Filtro Canónico:**
+- `condicion = 'Completado'`
 
-**Nota:** El backend verifica automáticamente la estructura de estas tablas al iniciar y loggea las columnas encontradas. Si faltan columnas críticas, el sistema falla con mensajes claros en modo DEV.
+**Grano de Agregación:**
+- `(country, city, city_norm, lob_base, segment, month)`
 
-### Columnas Reales Detectadas
+**Clasificación de Métricas en ops.mv_real_trips_monthly:**
 
-El sistema inspecciona automáticamente las columnas reales al iniciar y documenta:
+#### 1. MÉTRICAS REAL (Canónicas)
+Directamente desde `public.trips_all`:
+- **`trips_real_completed`**: Conteo de viajes completados
+- **`active_drivers_real`**: Conteo de conductores activos únicos
+- **`avg_ticket_real`**: Promedio de `precio_yango_pro`
+- **`revenue_real_proxy`**: Suma de `precio_yango_pro` (proxy, no incluye comisiones reales)
 
-- **bi.real_monthly_agg:**
-  - Columna de trips: `orders_completed`
-  - Columna de revenue: Inspeccionada dinámicamente (puede no existir)
-  - Formato de period: Construido desde `year` + `month` (formato YYYY-MM)
+#### 2. MÉTRICAS DERIVADAS (Calculadas)
+Indicadores básicos derivados:
+- **`trips_per_driver`**: `trips_real_completed / active_drivers_real` (productividad)
 
-- **bi.real_daily_enriched:**
-  - Columna de trips: `orders_completed`
-  - Formato de fecha: Columna `date`
+#### 3. MÉTRICAS PROXY (Temporales - FASE 2B)
+Ganancia estimada simple (placeholder):
+- **`commission_rate_default`**: `0.03` (3% fijo - temporal)
+- **`profit_proxy`**: `revenue_real_proxy * commission_rate_default`
+- **`profit_per_trip_proxy`**: `profit_proxy / trips_real_completed`
 
-- **dim.dim_park:**
-  - Columnas dimensionales: `park_id`, `city`, `country`, `default_line_of_business`
+> **⚠️ Nota FASE 2A:** Las métricas PROXY son temporales y serán reemplazadas en FASE 2B con reglas dinámicas de comisión desde `canon.commission_rules`.
 
-Los resultados de la inspección se loggean al iniciar el servidor. Revisa los logs para ver la estructura completa de columnas detectadas.
+**Refresh de Materialized View:**
+```sql
+SELECT ops.refresh_real_trips_monthly();
+```
+
+**Dimensiones:**
+- **`dim.dim_park`**: Mapea `park_id` → `city`, `country`, `default_line_of_business`
+- **Segmentación:**
+  - `b2b` si `pago_corporativo IS NOT NULL AND pago_corporativo > 0`
+  - `b2c` en caso contrario
+
+**Documentación Completa:** Ver `backend/FASE_2A_CIERRE.md`
 
 ### PLAN
 

@@ -14,12 +14,24 @@ def get_real_monthly_data(
     metric: str = 'trips'
 ) -> List[Dict]:
     """
-    Obtiene datos reales mensuales desde bi.real_monthly_agg + dim.dim_park.
+    Obtiene datos reales mensuales desde ops.mv_real_trips_monthly (vista materializada basada en trips_all).
     Retorna lista de diccionarios en formato long.
+    
+    NOTA: Usa la vista materializada ops.mv_real_trips_monthly que se alimenta de public.trips_all
+    filtrando condicion='Completado'. Esta es la fuente canónica de datos ejecutados.
     """
-    column_name = get_real_column_name(metric)
-    if not column_name:
-        logger.warning(f"No se encontró columna para métrica {metric}")
+    # Mapeo de métricas a columnas en ops.mv_real_trips_monthly
+    metric_column_map = {
+        'trips': 'trips_real_completed',
+        'revenue': 'revenue_real_proxy',
+        'active_drivers': 'active_drivers_real',
+        'avg_ticket': 'avg_ticket_real',
+        'trips_per_driver': None  # Se calcula
+    }
+    
+    column_name = metric_column_map.get(metric)
+    if not column_name and metric != 'trips_per_driver':
+        logger.warning(f"No se encontró columna para métrica {metric} en ops.mv_real_trips_monthly")
         return []
     
     try:
@@ -30,36 +42,53 @@ def get_real_monthly_data(
             params = []
             
             if country:
-                where_conditions.append("COALESCE(d.country, '') = %s")
+                where_conditions.append("COALESCE(r.country, '') = %s")
                 params.append(country)
             
             if city:
-                where_conditions.append("COALESCE(d.city, '') = %s")
-                params.append(city)
+                # Normalizar ciudad para matching con city_norm
+                city_norm = city.lower().strip()
+                where_conditions.append("r.city_norm = %s")
+                params.append(city_norm)
             
             if line_of_business:
-                where_conditions.append("COALESCE(d.default_line_of_business, '') = %s")
+                where_conditions.append("COALESCE(r.lob_base, '') = %s")
                 params.append(line_of_business)
             
             if year:
-                where_conditions.append("r.year = %s")
+                where_conditions.append("EXTRACT(YEAR FROM r.month) = %s")
                 params.append(year)
             
             where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
             
+            # Construir query según métrica
+            if metric == 'trips_per_driver':
+                # Calcular trips_per_driver
+                value_expr = """
+                    CASE 
+                        WHEN SUM(r.active_drivers_real) > 0 
+                        THEN SUM(r.trips_real_completed)::NUMERIC / SUM(r.active_drivers_real)
+                        ELSE NULL
+                    END
+                """
+                group_by = "GROUP BY TO_CHAR(r.month, 'YYYY-MM'), r.country, r.city, r.lob_base"
+            else:
+                value_expr = f"COALESCE(SUM(r.{column_name}), 0)"
+                group_by = "GROUP BY TO_CHAR(r.month, 'YYYY-MM'), r.country, r.city, r.lob_base"
+            
             query = f"""
                 SELECT 
-                    TO_CHAR(TO_DATE(r.year::text || '-' || LPAD(r.month::text, 2, '0') || '-01', 'YYYY-MM-DD'), 'YYYY-MM') as period,
+                    TO_CHAR(r.month, 'YYYY-MM') as period,
                     'month' as period_type,
-                    COALESCE(d.country, NULL) as country,
-                    COALESCE(d.city, '') as city,
-                    COALESCE(d.default_line_of_business, '') as line_of_business,
+                    COALESCE(r.country, '') as country,
+                    COALESCE(r.city, '') as city,
+                    COALESCE(r.lob_base, '') as line_of_business,
                     %s as metric,
-                    COALESCE(r.{column_name}, 0) as value
-                FROM bi.real_monthly_agg r
-                LEFT JOIN dim.dim_park d ON r.park_id = d.park_id
+                    {value_expr} as value
+                FROM ops.mv_real_trips_monthly r
                 {where_clause}
-                ORDER BY r.year DESC, r.month DESC
+                {group_by}
+                ORDER BY period DESC, r.country, r.city, r.lob_base
             """
             
             params.insert(0, metric)
@@ -75,40 +104,43 @@ def get_real_monthly_data(
 
 def get_ops_universe_data(country: Optional[str] = None, city: Optional[str] = None) -> List[Dict]:
     """
-    Obtiene el universo operativo desde bi.real_monthly_agg + dim.dim_park.
+    Obtiene el universo operativo desde ops.mv_real_trips_monthly (vista materializada basada en trips_all).
     Retorna combinaciones con valores normalizados (_std) y formato humano.
     El universo se construye dinámicamente desde la query (puede crecer).
     Soporta filtros opcionales por country y city.
+    
+    NOTA: Usa ops.mv_real_trips_monthly que se alimenta de public.trips_all filtrando condicion='Completado'.
     """
     try:
         with get_db() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
             where_conditions = [
-                "r.year = 2025",
-                "COALESCE(r.orders_completed, 0) > 0",
-                "COALESCE(d.city, '') != ''",
-                "COALESCE(d.default_line_of_business, '') != ''"
+                "EXTRACT(YEAR FROM r.month) = 2025",
+                "COALESCE(r.trips_real_completed, 0) > 0",
+                "COALESCE(r.city, '') != ''",
+                "COALESCE(r.lob_base, '') != ''"
             ]
             params = []
             
             if country:
-                where_conditions.append("COALESCE(d.country, '') = %s")
+                where_conditions.append("COALESCE(r.country, '') = %s")
                 params.append(country)
             
             if city:
-                where_conditions.append("COALESCE(d.city, '') = %s")
-                params.append(city)
+                # Normalizar ciudad para matching con city_norm
+                city_norm = city.lower().strip()
+                where_conditions.append("r.city_norm = %s")
+                params.append(city_norm)
             
             where_clause = "WHERE " + " AND ".join(where_conditions)
             
             query = f"""
                 SELECT DISTINCT
-                    COALESCE(d.country, '') as country,
-                    COALESCE(d.city, '') as city,
-                    COALESCE(d.default_line_of_business, '') as line_of_business
-                FROM bi.real_monthly_agg r
-                LEFT JOIN dim.dim_park d ON r.park_id = d.park_id
+                    COALESCE(r.country, '') as country,
+                    COALESCE(r.city, '') as city,
+                    COALESCE(r.lob_base, '') as line_of_business
+                FROM ops.mv_real_trips_monthly r
                 {where_clause}
                 ORDER BY country, city, line_of_business
             """

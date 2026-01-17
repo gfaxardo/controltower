@@ -1,4 +1,5 @@
-from app.adapters.plan_repo import get_plan_data
+from app.db.connection import get_db
+from psycopg2.extras import RealDictCursor
 import logging
 from typing import List, Dict, Optional
 from collections import defaultdict
@@ -12,61 +13,65 @@ def get_plan_monthly_summary(
     year: Optional[int] = None
 ) -> List[Dict]:
     """
-    Obtiene resumen mensual de Plan en formato pivot.
+    Obtiene resumen mensual de Plan en formato pivot desde ops.v_plan_trips_monthly_latest.
     Retorna lista con period, trips_plan, revenue_plan.
     """
-    # #region agent log
-    import json
-    import time
-    LOG_PATH = r"c:\Users\Pc\Documents\Cursor Proyectos\YEGO CONTROL TOWER\.cursor\debug.log"
     try:
-        with open(LOG_PATH, "a", encoding="utf-8") as f:
-            json.dump({"sessionId":"debug-session","runId":"post-fix","hypothesisId":"H7","location":"summary_service.py:get_plan_monthly_summary","message":"Inicio get_plan_monthly_summary","data":{"country":country,"city":city,"line_of_business":line_of_business,"year":year},"timestamp":int(time.time()*1000)}, f, ensure_ascii=False)
-            f.write("\n")
-    except: pass
-    # #endregion
-    
-    try:
-        plan_data = get_plan_data(
-            country=country,
-            city=city,
-            line_of_business=line_of_business,
-            year=year,
-            table_name='plan_long_valid'
-        )
-        
-        # #region agent log
-        try:
-            with open(LOG_PATH, "a", encoding="utf-8") as f:
-                json.dump({"sessionId":"debug-session","runId":"post-fix","hypothesisId":"H7","location":"summary_service.py:get_plan_monthly_summary","message":"Datos obtenidos de plan_long_valid","data":{"rows_count":len(plan_data),"sample_periods":[r.get('period') for r in plan_data[:5]]},"timestamp":int(time.time()*1000)}, f, ensure_ascii=False)
-                f.write("\n")
-        except: pass
-        # #endregion
-        
-        summary_by_period = defaultdict(lambda: {'trips_plan': None, 'revenue_plan': None})
-        
-        for row in plan_data:
-            period = row.get('period')
-            metric = row.get('metric')
-            plan_value = row.get('plan_value', 0)
+        with get_db() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
             
-            if period and metric:
-                if metric == 'trips':
-                    summary_by_period[period]['trips_plan'] = plan_value
-                elif metric == 'revenue':
-                    summary_by_period[period]['revenue_plan'] = plan_value
-        
-        result = []
-        for period in sorted(summary_by_period.keys()):
-            result.append({
-                'period': period,
-                'trips_plan': summary_by_period[period]['trips_plan'],
-                'revenue_plan': summary_by_period[period]['revenue_plan']
-            })
-        
-        logger.info(f"Resumen mensual de Plan generado: {len(result)} períodos")
-        return result
-        
+            # Construir query desde vista latest
+            where_conditions = []
+            params = []
+            
+            if country:
+                where_conditions.append("country = %s")
+                params.append(country)
+            
+            if city and city.lower() != 'todas':
+                where_conditions.append("city_norm = %s")
+                params.append(city.lower().strip())
+            
+            if line_of_business and line_of_business.lower() != 'todas':
+                where_conditions.append("lob_base = %s")
+                params.append(line_of_business)
+            
+            if year:
+                where_conditions.append("EXTRACT(YEAR FROM month) = %s")
+                params.append(year)
+            
+            where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
+            
+            query = f"""
+                SELECT 
+                    month,
+                    SUM(projected_trips) as trips_plan,
+                    SUM(projected_revenue) as revenue_plan
+                FROM ops.v_plan_trips_monthly_latest
+                {where_clause}
+                GROUP BY month
+                ORDER BY month
+            """
+            
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            cursor.close()
+            
+            # Convertir a formato esperado (period como YYYY-MM)
+            result = []
+            for row in rows:
+                month = row['month']
+                if month:
+                    period = month.strftime('%Y-%m') if hasattr(month, 'strftime') else str(month)[:7]
+                    result.append({
+                        'period': period,
+                        'trips_plan': int(row['trips_plan']) if row['trips_plan'] else None,
+                        'revenue_plan': float(row['revenue_plan']) if row['revenue_plan'] else None
+                    })
+            
+            logger.info(f"Resumen mensual de Plan generado: {len(result)} períodos")
+            return result
+            
     except Exception as e:
         logger.error(f"Error al generar resumen mensual de Plan: {e}")
         raise

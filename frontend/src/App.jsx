@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import Filters from './components/Filters'
 import KPICards from './components/KPICards'
-import MonthlyView from './components/MonthlyView'
+import MonthlySplitView from './components/MonthlySplitView'
 import UploadPlan from './components/UploadPlan'
 import PlanTabs from './components/PlanTabs'
 
@@ -84,7 +84,7 @@ function App() {
         </div>
 
         {activeTab === 'valid' ? (
-          <MonthlyView key={`monthly-${refreshKey}`} filters={filters} />
+          <MonthlySplitView key={`monthly-${refreshKey}`} filters={filters} />
         ) : (
           <PlanTabs 
             key={`tabs-${refreshKey}`} 

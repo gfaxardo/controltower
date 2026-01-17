@@ -24,7 +24,8 @@ else:
     db_password = quote_plus(settings.DB_PASSWORD) if settings.DB_PASSWORD else ''
     database_url = f"postgresql://{db_user}:{db_password}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
 
-config.set_main_option('sqlalchemy.url', database_url)
+# Use attributes directly to avoid ConfigParser interpolation issues with special characters
+config.attributes['sqlalchemy.url'] = database_url
 
 target_metadata = None
 
@@ -40,7 +41,7 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = config.get_main_option("sqlalchemy.url")
+    url = config.attributes.get("sqlalchemy.url") or config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -59,7 +60,7 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    url = config.get_main_option("sqlalchemy.url")
+    url = config.attributes.get("sqlalchemy.url") or config.get_main_option("sqlalchemy.url")
     connectable = create_engine(url, poolclass=pool.NullPool)
 
     with connectable.connect() as connection:

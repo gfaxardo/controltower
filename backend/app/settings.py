@@ -30,6 +30,7 @@ class Settings(BaseSettings):
         import json
         LOG_PATH = r"c:\Users\Pc\Documents\Cursor Proyectos\YEGO CONTROL TOWER\.cursor\debug.log"
         try:
+            os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
             with open(LOG_PATH, "a", encoding="utf-8") as f:
                 json.dump({"sessionId":"debug-session","runId":"post-fix","hypothesisId":"H3","location":"settings.py:CORS_ORIGINS","message":"Convirtiendo CORS_ORIGINS_STR a lista","data":{"cors_origins_str":self.CORS_ORIGINS_STR},"timestamp":int(__import__('time').time()*1000)}, f, ensure_ascii=False)
                 f.write("\n")
@@ -42,7 +43,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = ""
 
     model_config = {
-        "env_file": ".env",
+        "env_file": os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"),
         "case_sensitive": False,
         "extra": "ignore",
         "populate_by_name": True
@@ -52,6 +53,7 @@ class Settings(BaseSettings):
 import json
 LOG_PATH = r"c:\Users\Pc\Documents\Cursor Proyectos\YEGO CONTROL TOWER\.cursor\debug.log"
 try:
+    os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
     with open(LOG_PATH, "a", encoding="utf-8") as f:
         json.dump({"sessionId":"debug-session","runId":"post-fix","hypothesisId":"H3","location":"settings.py:Settings","message":"Inicializando Settings","data":{"env_file_exists":os.path.exists(".env")},"timestamp":int(__import__('time').time()*1000)}, f, ensure_ascii=False)
         f.write("\n")
@@ -60,6 +62,7 @@ except: pass
 
 # #region agent log
 try:
+    os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
     with open(LOG_PATH, "a", encoding="utf-8") as f:
         json.dump({"sessionId":"debug-session","runId":"post-fix","hypothesisId":"H3","location":"settings.py:before_Settings","message":"Antes de crear Settings","data":{},"timestamp":int(__import__('time').time()*1000)}, f, ensure_ascii=False)
         f.write("\n")
@@ -70,6 +73,7 @@ try:
     settings = Settings()
     # #region agent log
     try:
+        os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
         with open(LOG_PATH, "a", encoding="utf-8") as f:
             json.dump({"sessionId":"debug-session","runId":"post-fix","hypothesisId":"H3","location":"settings.py:settings_created","message":"Settings creado exitosamente","data":{"cors_origins_str":settings.CORS_ORIGINS_STR},"timestamp":int(__import__('time').time()*1000)}, f, ensure_ascii=False)
             f.write("\n")
@@ -79,17 +83,22 @@ try:
     # #region agent log
     try:
         cors_origins_list = settings.CORS_ORIGINS
+        os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
         with open(LOG_PATH, "a", encoding="utf-8") as f:
             json.dump({"sessionId":"debug-session","runId":"post-fix","hypothesisId":"H3","location":"settings.py:settings","message":"Settings inicializado","data":{"cors_origins":cors_origins_list,"cors_origins_type":type(cors_origins_list).__name__},"timestamp":int(__import__('time').time()*1000)}, f, ensure_ascii=False)
             f.write("\n")
     except Exception as e:
-        with open(LOG_PATH, "a", encoding="utf-8") as f:
-            json.dump({"sessionId":"debug-session","runId":"post-fix","hypothesisId":"H3","location":"settings.py:settings_error","message":"Error al acceder CORS_ORIGINS","data":{"error":str(e),"error_type":type(e).__name__},"timestamp":int(__import__('time').time()*1000)}, f, ensure_ascii=False)
-            f.write("\n")
+        try:
+            os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
+            with open(LOG_PATH, "a", encoding="utf-8") as f:
+                json.dump({"sessionId":"debug-session","runId":"post-fix","hypothesisId":"H3","location":"settings.py:settings_error","message":"Error al acceder CORS_ORIGINS","data":{"error":str(e),"error_type":type(e).__name__},"timestamp":int(__import__('time').time()*1000)}, f, ensure_ascii=False)
+                f.write("\n")
+        except: pass
     # #endregion
 except Exception as e:
     # #region agent log
     try:
+        os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
         with open(LOG_PATH, "a", encoding="utf-8") as f:
             json.dump({"sessionId":"debug-session","runId":"post-fix","hypothesisId":"H3","location":"settings.py:Settings_exception","message":"Excepción al crear Settings","data":{"error":str(e),"error_type":type(e).__name__},"timestamp":int(__import__('time').time()*1000)}, f, ensure_ascii=False)
             f.write("\n")
