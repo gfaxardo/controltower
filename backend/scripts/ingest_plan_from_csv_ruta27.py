@@ -72,12 +72,15 @@ def ingest_plan_from_csv(csv_path: str, plan_version: str):
             with open(csv_path, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
                 
-                # Validar columnas (is_applicable es opcional)
+                # Validar columnas (is_applicable y revenue_plan son opcionales)
                 expected_cols = ['country', 'city', 'lob_base', 'segment', 'year', 'month', 
                                 'trips_plan', 'active_drivers_plan', 'avg_ticket_plan']
                 missing_cols = [col for col in expected_cols if col not in reader.fieldnames]
                 if missing_cols:
                     raise Exception(f"CSV faltan columnas: {missing_cols}")
+                
+                # revenue_plan es opcional - si existe, se usará directamente
+                has_revenue_plan = 'revenue_plan' in reader.fieldnames
                 
                 for row_num, row in enumerate(reader, start=2):
                     try:
@@ -138,7 +141,18 @@ def ingest_plan_from_csv(csv_path: str, plan_version: str):
                         avg_ticket_plan = row.get('avg_ticket_plan', '').strip()
                         projected_ticket = float(avg_ticket_plan) if avg_ticket_plan else None
                         
-                        # Insertar (incluyendo plan_city_resolved_norm si existe)
+                        # Revenue Plan: INPUT directo del Excel (NO calcular)
+                        revenue_plan = None
+                        if has_revenue_plan:
+                            revenue_plan_str = row.get('revenue_plan', '').strip()
+                            if revenue_plan_str:
+                                try:
+                                    revenue_plan = float(revenue_plan_str)
+                                except (ValueError, TypeError):
+                                    # Si no se puede parsear, dejar NULL
+                                    revenue_plan = None
+                        
+                        # Insertar (incluyendo plan_city_resolved_norm si existe y projected_revenue si está disponible)
                         cursor.execute("""
                             INSERT INTO ops.plan_trips_monthly (
                                 plan_version,
@@ -152,8 +166,9 @@ def ingest_plan_from_csv(csv_path: str, plan_version: str):
                                 month,
                                 projected_trips,
                                 projected_drivers,
-                                projected_ticket
-                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                projected_ticket,
+                                projected_revenue
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                             ON CONFLICT (plan_version, COALESCE(country, ''), COALESCE(city, ''), 
                                         COALESCE(park_id, '__NA__'), COALESCE(lob_base, ''), 
                                         COALESCE(segment, ''), month) 
@@ -170,9 +185,12 @@ def ingest_plan_from_csv(csv_path: str, plan_version: str):
                             month_date,
                             projected_trips,
                             projected_drivers,
-                            projected_ticket
+                            projected_ticket,
+                            revenue_plan
                         ))
-                        inserted_count += 1
+                        # Solo contar si realmente se insertó (cursor.rowcount > 0)
+                        if cursor.rowcount > 0:
+                            inserted_count += 1
                         
                     except Exception as e:
                         errors.append(f"Fila {row_num}: {str(e)}")

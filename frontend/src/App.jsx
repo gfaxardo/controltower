@@ -32,12 +32,11 @@ function App() {
             YEGO Control Tower — Fase 2A
           </h1>
           <p className="text-gray-600 mb-4">
-            Sistema de comparación Plan vs Real. En esta fase, el sistema muestra Real histórico (2025) y Plan futuro (2026).
-            La comparación activa se activará cuando exista Real 2026.
+            Fase 2A: mostramos Real histórico y Plan futuro. Comparable se activa cuando exista Real del mismo año del Plan.
           </p>
           <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-md">
-            <p className="text-blue-800 font-medium">
-              Plan vs Real se activa cuando exista Real 2026. Hoy mostramos histórico real + plan validado contra universo 2025.
+            <p className="text-blue-800 text-sm">
+              <strong>Fase 2A - Vista ALL:</strong> Cuando no se selecciona país, las métricas monetarias se presentan por país (PE/CO) para evitar mezcla de monedas. Ganancia Proxy (3%) es placeholder hasta reglas reales Fase 2B.
             </p>
           </div>
         </header>

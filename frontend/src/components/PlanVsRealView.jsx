@@ -56,9 +56,15 @@ function PlanVsRealView({ filters = {} }) {
     return Math.round(num).toLocaleString('es-ES')
   }
 
-  const formatCurrency = (num) => {
+  const formatCurrency = (num, currencyCode = 'PEN') => {
     if (num === null || num === undefined) return '-'
-    return num.toLocaleString('es-ES', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+    // Mapeo de currency_code a locale y símbolo
+    const currencyMap = {
+      'PEN': { currency: 'PEN', locale: 'es-PE' },
+      'COP': { currency: 'COP', locale: 'es-CO' }
+    }
+    const config = currencyMap[currencyCode] || currencyMap['PEN']
+    return num.toLocaleString(config.locale, { style: 'currency', currency: config.currency, maximumFractionDigits: 0 })
   }
 
   const formatPercent = (num) => {

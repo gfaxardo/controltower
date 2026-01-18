@@ -23,9 +23,16 @@ function MonthlySplitView({ filters = {} }) {
   const [overlapData, setOverlapData] = useState([])
   const [loading, setLoading] = useState(true)
   const [hasOverlap, setHasOverlap] = useState(false)
+  
+  // Datos separados por país para vista ALL
+  const [realDataPE, setRealDataPE] = useState([])
+  const [planDataPE, setPlanDataPE] = useState([])
+  const [realDataCO, setRealDataCO] = useState([])
+  const [planDataCO, setPlanDataCO] = useState([])
 
   const yearReal = filters.year_real || 2025
   const yearPlan = filters.year_plan || 2026
+  const isAll = !filters.country || filters.country === '' || filters.country === 'ALL' || filters.country === 'All' || filters.country === 'Todos'
 
   useEffect(() => {
     loadAllData()
@@ -35,39 +42,91 @@ function MonthlySplitView({ filters = {} }) {
     try {
       setLoading(true)
       
-      const [realResponse, planResponse, overlapResponse] = await Promise.all([
-        getRealMonthlySplit({
-          country: filters.country || undefined,
-          city: filters.city || undefined,
-          lob_base: filters.line_of_business || undefined,
-          segment: filters.segment || undefined,
-          year: yearReal
-        }),
-        getPlanMonthlySplit({
-          country: filters.country || undefined,
-          city: filters.city || undefined,
-          lob_base: filters.line_of_business || undefined,
-          segment: filters.segment || undefined,
-          year: yearPlan
-        }),
-        getOverlapMonthly({
-          country: filters.country || undefined,
-          city: filters.city || undefined,
-          lob_base: filters.line_of_business || undefined,
-          segment: filters.segment || undefined
-        })
-      ])
-      
-      setRealData(realResponse.data || [])
-      setPlanData(planResponse.data || [])
-      setOverlapData(overlapResponse.data || [])
-      setHasOverlap(overlapResponse.has_overlap || false)
+      if (isAll) {
+        // Vista ALL: cargar datos separados por país
+        const [realResponsePE, planResponsePE, realResponseCO, planResponseCO] = await Promise.all([
+          getRealMonthlySplit({
+            country: 'PE',
+            city: filters.city || undefined,
+            lob_base: filters.line_of_business || undefined,
+            segment: filters.segment || undefined,
+            year: yearReal
+          }),
+          getPlanMonthlySplit({
+            country: 'PE',
+            city: filters.city || undefined,
+            lob_base: filters.line_of_business || undefined,
+            segment: filters.segment || undefined,
+            year: yearPlan
+          }),
+          getRealMonthlySplit({
+            country: 'CO',
+            city: filters.city || undefined,
+            lob_base: filters.line_of_business || undefined,
+            segment: filters.segment || undefined,
+            year: yearReal
+          }),
+          getPlanMonthlySplit({
+            country: 'CO',
+            city: filters.city || undefined,
+            lob_base: filters.line_of_business || undefined,
+            segment: filters.segment || undefined,
+            year: yearPlan
+          })
+        ])
+        
+        setRealDataPE(realResponsePE.data || [])
+        setPlanDataPE(planResponsePE.data || [])
+        setRealDataCO(realResponseCO.data || [])
+        setPlanDataCO(planResponseCO.data || [])
+        setRealData([])
+        setPlanData([])
+        setOverlapData([])
+        setHasOverlap(false)
+      } else {
+        // Vista específica por país
+        const [realResponse, planResponse, overlapResponse] = await Promise.all([
+          getRealMonthlySplit({
+            country: filters.country || undefined,
+            city: filters.city || undefined,
+            lob_base: filters.line_of_business || undefined,
+            segment: filters.segment || undefined,
+            year: yearReal
+          }),
+          getPlanMonthlySplit({
+            country: filters.country || undefined,
+            city: filters.city || undefined,
+            lob_base: filters.line_of_business || undefined,
+            segment: filters.segment || undefined,
+            year: yearPlan
+          }),
+          getOverlapMonthly({
+            country: filters.country || undefined,
+            city: filters.city || undefined,
+            lob_base: filters.line_of_business || undefined,
+            segment: filters.segment || undefined
+          })
+        ])
+        
+        setRealData(realResponse.data || [])
+        setPlanData(planResponse.data || [])
+        setOverlapData(overlapResponse.data || [])
+        setHasOverlap(overlapResponse.has_overlap || false)
+        setRealDataPE([])
+        setPlanDataPE([])
+        setRealDataCO([])
+        setPlanDataCO([])
+      }
     } catch (error) {
       console.error('Error al cargar datos:', error)
       setRealData([])
       setPlanData([])
       setOverlapData([])
       setHasOverlap(false)
+      setRealDataPE([])
+      setPlanDataPE([])
+      setRealDataCO([])
+      setPlanDataCO([])
     } finally {
       setLoading(false)
     }
@@ -78,9 +137,29 @@ function MonthlySplitView({ filters = {} }) {
     return num.toLocaleString('es-ES', { maximumFractionDigits: 2 })
   }
 
-  const formatCurrency = (num) => {
+  const formatCurrency = (num, currencyCode = 'PEN') => {
     if (num === null || num === undefined) return '-'
-    return num.toLocaleString('es-ES', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
+    // Mapeo de currency_code a locale y símbolo
+    const currencyMap = {
+      'PEN': { currency: 'PEN', locale: 'es-PE' },
+      'COP': { currency: 'COP', locale: 'es-CO' }
+    }
+    const config = currencyMap[currencyCode] || currencyMap['PEN']
+    return num.toLocaleString(config.locale, { style: 'currency', currency: config.currency, maximumFractionDigits: 2 })
+  }
+
+  // Helper para extraer periodo de forma segura (maneja period, month como string o Date)
+  const getPeriodString = (row) => {
+    if (row.period) return row.period
+    if (row.month) {
+      if (typeof row.month === 'string') return row.month
+      if (row.month instanceof Date) {
+        const year = row.month.getFullYear()
+        const month = String(row.month.getMonth() + 1).padStart(2, '0')
+        return `${year}-${month}`
+      }
+    }
+    return null
   }
 
   if (loading) {
@@ -98,115 +177,288 @@ function MonthlySplitView({ filters = {} }) {
     )
   }
 
-  const renderRealTable = () => (
-    <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
-          <tr>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mes</th>
-            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Trips Real</th>
-            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Revenue Real</th>
-            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Drivers Activos</th>
-            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Ticket Promedio</th>
-          </tr>
-        </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
-          {realData.length > 0 ? (
-            realData.map((row) => {
-              const [yearStr, monthStr] = row.period.split('-')
-              const monthNum = parseInt(monthStr)
-              const mes = MESES.find(m => m.num === monthNum) || { nombre: monthStr }
-              return (
-                <tr key={row.period} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {mes.nombre} {yearStr}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
-                    {formatNumber(row.trips_real_completed)}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
-                    {formatNumber(row.revenue_real_proxy)}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
-                    {formatNumber(row.active_drivers_real)}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
-                    {formatCurrency(row.avg_ticket_real)}
+  const renderCountryRealTable = (countryCode, countryData, currencyCode, countryName, flag) => {
+    return (
+      <div className="mb-8">
+        <h4 className="text-lg font-bold mb-4 flex items-center">
+          <span className="text-2xl mr-2">{flag}</span>
+          <span>{countryName} ({currencyCode})</span>
+        </h4>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mes</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Trips Real</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                  Revenue Real
+                  <span className="ml-1 text-xs text-gray-400" title="Revenue Real corresponde al ingreso neto del precio_yango_pro (GMV antes de comisiones). No es revenue neto después de comisiones.">ℹ️</span>
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Drivers Activos</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Productividad</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                  Ganancia Proxy/Viaje
+                  <span className="ml-1 text-xs text-gray-400" title="Placeholder 3% hasta reglas reales Fase 2B">ℹ️</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {countryData.length > 0 ? (
+                countryData.map((row) => {
+                  const periodStr = getPeriodString(row)
+                  const [yearStr, monthStr] = periodStr ? periodStr.split('-') : ['', '']
+                  const monthNum = parseInt(monthStr)
+                  const mes = MESES.find(m => m.num === monthNum) || { nombre: monthStr }
+                  return (
+                    <tr key={periodStr || row.month || row.period} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {mes.nombre} {yearStr}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
+                        {formatNumber(row.trips_real_completed)}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
+                        {formatCurrency(row.revenue_real_proxy, currencyCode)}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
+                        {formatNumber(row.active_drivers_real)}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
+                        {row.trips_per_driver ? formatNumber(row.trips_per_driver) : '-'}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
+                        {row.profit_per_trip_proxy ? formatCurrency(row.profit_per_trip_proxy, currencyCode) : '-'}
+                      </td>
+                    </tr>
+                  )
+                })
+              ) : (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                    No hay datos Real para {countryName} en {yearReal}
                   </td>
                 </tr>
-              )
-            })
-          ) : (
-            <tr>
-              <td colSpan="5" className="px-4 py-8 text-center text-gray-500">
-                No hay datos Real para {yearReal}
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  )
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
 
-  const renderPlanTable = () => (
-    <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
-          <tr>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mes</th>
-            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Trips Plan</th>
-            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Revenue Plan</th>
-            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Drivers Plan</th>
-            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Ticket Plan</th>
-          </tr>
-        </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
-          {planData.length > 0 ? (
-            planData.map((row) => {
-              const [yearStr, monthStr] = row.period.split('-')
-              const monthNum = parseInt(monthStr)
-              const mes = MESES.find(m => m.num === monthNum) || { nombre: monthStr }
-              return (
-                <tr key={row.period} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {mes.nombre} {yearStr}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
-                    {formatNumber(row.projected_trips)}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
-                    {formatNumber(row.projected_revenue)}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
-                    {formatNumber(row.projected_drivers)}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
-                    {formatCurrency(row.projected_ticket)}
+  const renderRealTable = () => {
+    if (isAll) {
+      // Vista ALL: subtablas por país
+      return (
+        <div>
+          {renderCountryRealTable('PE', realDataPE, 'PEN', 'PERÚ', '🇵🇪')}
+          {renderCountryRealTable('CO', realDataCO, 'COP', 'COLOMBIA', '🇨🇴')}
+        </div>
+      )
+    }
+    
+    // Vista específica por país
+    const currencyCode = filters.country === 'CO' ? 'COP' : 'PEN'
+    
+    return (
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mes</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Trips Real</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Revenue Real</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Drivers Activos</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Productividad</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                Ganancia Proxy/Viaje
+                <span className="ml-1 text-xs text-gray-400" title="Placeholder 3% hasta reglas reales Fase 2B">ℹ️</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {realData.length > 0 ? (
+              realData.map((row) => {
+                const periodStr = getPeriodString(row)
+                const [yearStr, monthStr] = periodStr ? periodStr.split('-') : ['', '']
+                const monthNum = parseInt(monthStr)
+                const mes = MESES.find(m => m.num === monthNum) || { nombre: monthStr }
+                const rowCurrency = row.currency_code || currencyCode
+                return (
+                  <tr key={periodStr || row.month || row.period} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {mes.nombre} {yearStr}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
+                      {formatNumber(row.trips_real_completed)}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
+                      {formatCurrency(row.revenue_real_proxy, rowCurrency)}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
+                      {formatNumber(row.active_drivers_real)}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
+                      {row.trips_per_driver ? formatNumber(row.trips_per_driver) : '-'}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
+                      {row.profit_per_trip_proxy ? formatCurrency(row.profit_per_trip_proxy, rowCurrency) : '-'}
+                    </td>
+                  </tr>
+                )
+              })
+            ) : (
+              <tr>
+                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                  No hay datos Real para {yearReal}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  const renderCountryPlanTable = (countryCode, countryData, currencyCode, countryName, flag) => {
+    return (
+      <div className="mb-8">
+        <h4 className="text-lg font-bold mb-4 flex items-center">
+          <span className="text-2xl mr-2">{flag}</span>
+          <span>{countryName} ({currencyCode})</span>
+        </h4>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mes</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Trips Plan</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                  Revenue Plan
+                  <span className="ml-1 text-xs text-gray-400" title="Revenue Plan corresponde al ingreso neto esperado cargado en el Plan. No es GMV.">ℹ️</span>
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Drivers Plan</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Productividad</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {countryData.length > 0 ? (
+                countryData.map((row) => {
+                  const periodStr = getPeriodString(row)
+                  const [yearStr, monthStr] = periodStr ? periodStr.split('-') : ['', '']
+                  const monthNum = parseInt(monthStr)
+                  const mes = MESES.find(m => m.num === monthNum) || { nombre: monthStr }
+                  const tripsPerDriver = row.projected_drivers > 0 ? row.projected_trips / row.projected_drivers : null
+                  return (
+                    <tr key={periodStr || row.month || row.period} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {mes.nombre} {yearStr}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
+                        {formatNumber(row.projected_trips)}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
+                        {formatCurrency(row.projected_revenue, currencyCode)}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
+                        {formatNumber(row.projected_drivers)}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
+                        {tripsPerDriver ? formatNumber(tripsPerDriver) : '-'}
+                      </td>
+                    </tr>
+                  )
+                })
+              ) : (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                    No hay datos Plan para {countryName} en {yearPlan}
                   </td>
                 </tr>
-              )
-            })
-          ) : (
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
+
+  const renderPlanTable = () => {
+    if (isAll) {
+      // Vista ALL: subtablas por país
+      return (
+        <div>
+          {renderCountryPlanTable('PE', planDataPE, 'PEN', 'PERÚ', '🇵🇪')}
+          {renderCountryPlanTable('CO', planDataCO, 'COP', 'COLOMBIA', '🇨🇴')}
+        </div>
+      )
+    }
+    
+    // Vista específica por país
+    const currencyCode = filters.country === 'CO' ? 'COP' : 'PEN'
+    
+    return (
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
             <tr>
-              <td colSpan="5" className="px-4 py-8 text-center text-gray-500">
-                No hay datos Plan para {yearPlan}
-              </td>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mes</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Trips Plan</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Revenue Plan</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Drivers Plan</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Productividad</th>
             </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  )
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {planData.length > 0 ? (
+              planData.map((row) => {
+                const periodStr = getPeriodString(row)
+                const [yearStr, monthStr] = periodStr ? periodStr.split('-') : ['', '']
+                const monthNum = parseInt(monthStr)
+                const mes = MESES.find(m => m.num === monthNum) || { nombre: monthStr }
+                const tripsPerDriver = row.projected_drivers > 0 ? row.projected_trips / row.projected_drivers : null
+                return (
+                  <tr key={periodStr || row.month || row.period} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {mes.nombre} {yearStr}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
+                      {formatNumber(row.projected_trips)}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
+                      {formatCurrency(row.projected_revenue, currencyCode)}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
+                      {formatNumber(row.projected_drivers)}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
+                      {tripsPerDriver ? formatNumber(tripsPerDriver) : '-'}
+                    </td>
+                  </tr>
+                )
+              })
+            ) : (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                  No hay datos Plan para {yearPlan}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
 
   const renderOverlapTable = () => {
     if (!hasOverlap || overlapData.length === 0) {
       return (
         <div className="p-8 text-center text-gray-600 bg-gray-50 rounded-lg">
           <p className="text-lg font-medium mb-2">
-            Aún no hay meses comparables entre Real {yearReal} y Plan {yearPlan}
+            No comparable: la comparación activa requiere el mismo año (Real y Plan)
           </p>
-          <p className="text-sm">
-            La comparación se activará cuando existan meses con datos en ambos (Plan y Real) para el mismo período.
+          <p className="text-sm mt-2">
+            Actualmente: Real {yearReal} vs Plan {yearPlan}. La comparación se activará cuando exista Real {yearPlan} o cuando seleccione años coincidentes.
           </p>
         </div>
       )
@@ -228,7 +480,8 @@ function MonthlySplitView({ filters = {} }) {
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {overlapData.map((row) => {
-              const [yearStr, monthStr] = row.period.split('-')
+              const periodStr = getPeriodString(row)
+              const [yearStr, monthStr] = periodStr ? periodStr.split('-') : ['', '']
               const monthNum = parseInt(monthStr)
               const mes = MESES.find(m => m.num === monthNum) || { nombre: monthStr }
               return (
@@ -272,7 +525,10 @@ function MonthlySplitView({ filters = {} }) {
   return (
     <div className="bg-white p-6 rounded-lg shadow-md">
       <div className="mb-4">
-        <h3 className="text-lg font-semibold mb-4">Vista Mensual - Plan {yearPlan} vs Real {yearReal}</h3>
+        <h3 className="text-lg font-semibold mb-2">Vista Mensual - Plan {yearPlan} vs Real {yearReal}</h3>
+        <p className="text-sm text-gray-600 mb-4">
+          Fase 2A: mostramos Real histórico y Plan futuro. Comparable se activa cuando exista Real del mismo año del Plan.
+        </p>
         
         {/* Tabs */}
         <div className="border-b border-gray-200">
