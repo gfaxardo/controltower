@@ -152,8 +152,8 @@ async def get_real_monthly_endpoint(
     year: int = Query(2025, description="Año del Real")
 ):
     """
-    Obtiene datos REAL mensuales agregados desde ops.mv_real_trips_monthly.
-    Retorna month, trips_real_completed, revenue_real_proxy, active_drivers_real, avg_ticket_real.
+    Obtiene datos REAL mensuales agregados desde ops.mv_real_trips_monthly (sin proxies).
+    Retorna month, trips_real_completed, revenue_real_yego, active_drivers_real, avg_ticket_real.
     """
     try:
         data = get_real_monthly(

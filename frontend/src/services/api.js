@@ -103,4 +103,49 @@ export const getOverlapMonthly = async (filters = {}) => {
   return response.data
 }
 
+export const getPlanVsRealWeekly = async (filters = {}) => {
+  const response = await api.get('/phase2b/weekly/plan-vs-real', { params: filters })
+  return response.data
+}
+
+export const getWeeklyAlerts = async (filters = {}) => {
+  const response = await api.get('/phase2b/weekly/alerts', { params: filters })
+  return response.data
+}
+
+export const createPhase2BAction = async (actionData) => {
+  const response = await api.post('/phase2b/actions', actionData)
+  return response.data
+}
+
+export const getPhase2BActions = async (filters = {}) => {
+  const response = await api.get('/phase2b/actions', { params: filters })
+  return response.data
+}
+
+export const updatePhase2BAction = async (actionId, updateData) => {
+  const response = await api.patch(`/phase2b/actions/${actionId}`, updateData)
+  return response.data
+}
+
+export const getPhase2CScoreboard = async (filters = {}) => {
+  const response = await api.get('/phase2c/scoreboard', { params: filters })
+  return response.data
+}
+
+export const getPhase2CBacklog = async (filters = {}) => {
+  const response = await api.get('/phase2c/backlog', { params: filters })
+  return response.data
+}
+
+export const getPhase2CBreaches = async (filters = {}) => {
+  const response = await api.get('/phase2c/breaches', { params: filters })
+  return response.data
+}
+
+export const runPhase2CSnapshot = async () => {
+  const response = await api.post('/phase2c/run-snapshot')
+  return response.data
+}
+
 export default api

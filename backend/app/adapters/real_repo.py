@@ -14,16 +14,16 @@ def get_real_monthly_data(
     metric: str = 'trips'
 ) -> List[Dict]:
     """
-    Obtiene datos reales mensuales desde ops.mv_real_trips_monthly (vista materializada basada en trips_all).
+    Obtiene datos reales mensuales desde ops.mv_real_trips_monthly (sin proxies).
     Retorna lista de diccionarios en formato long.
     
     NOTA: Usa la vista materializada ops.mv_real_trips_monthly que se alimenta de public.trips_all
-    filtrando condicion='Completado'. Esta es la fuente canónica de datos ejecutados.
+    filtrando condicion='Completado'. Revenue real = SUM(comision_empresa_asociada).
     """
-    # Mapeo de métricas a columnas en ops.mv_real_trips_monthly
+    # Mapeo de métricas a columnas en ops.mv_real_trips_monthly (sin proxies)
     metric_column_map = {
         'trips': 'trips_real_completed',
-        'revenue': 'revenue_real_proxy',
+        'revenue': 'revenue_real_yego',  # Revenue real canónico
         'active_drivers': 'active_drivers_real',
         'avg_ticket': 'avg_ticket_real',
         'trips_per_driver': None  # Se calcula

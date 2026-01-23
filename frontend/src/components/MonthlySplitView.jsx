@@ -16,6 +16,9 @@ const MESES = [
   { num: 12, nombre: 'Diciembre', abrev: 'Dic' }
 ]
 
+const PRODUCTIVIDAD_TOOLTIP = "Promedio mensual de viajes realizados por cada driver activo.\nFórmula: Trips del mes / Drivers activos del mes.\nNo representa horas trabajadas ni eficiencia individual."
+const MARGEN_UNITARIO_TOOLTIP = "Ingreso promedio real de YEGO por cada viaje completado.\nFórmula: Comisión YEGO real / Viajes reales."
+
 function MonthlySplitView({ filters = {} }) {
   const [activeTab, setActiveTab] = useState('real')
   const [realData, setRealData] = useState([])
@@ -85,6 +88,17 @@ function MonthlySplitView({ filters = {} }) {
         setHasOverlap(false)
       } else {
         // Vista específica por país
+        const overlapFilters = {
+          country: filters.country || undefined,
+          city: filters.city || undefined,
+          lob_base: filters.line_of_business || undefined,
+          segment: filters.segment || undefined
+        }
+
+        const overlapPromise = yearReal === yearPlan
+          ? getOverlapMonthly({ ...overlapFilters, year: yearPlan })
+          : Promise.resolve({ data: [], has_overlap: false })
+
         const [realResponse, planResponse, overlapResponse] = await Promise.all([
           getRealMonthlySplit({
             country: filters.country || undefined,
@@ -100,12 +114,7 @@ function MonthlySplitView({ filters = {} }) {
             segment: filters.segment || undefined,
             year: yearPlan
           }),
-          getOverlapMonthly({
-            country: filters.country || undefined,
-            city: filters.city || undefined,
-            lob_base: filters.line_of_business || undefined,
-            segment: filters.segment || undefined
-          })
+          overlapPromise
         ])
         
         setRealData(realResponse.data || [])
@@ -191,14 +200,21 @@ function MonthlySplitView({ filters = {} }) {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mes</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Trips Real</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                  Revenue Real
-                  <span className="ml-1 text-xs text-gray-400" title="Revenue Real corresponde al ingreso neto del precio_yango_pro (GMV antes de comisiones). No es revenue neto después de comisiones.">ℹ️</span>
+                  Revenue Real (Comisión Yego)
+                  <span className="ml-1 text-xs text-gray-400" title="Fuente: comision_empresa_asociada viene negativa; se invierte para mostrar revenue positivo. Ver commission_yego_signed para auditoría.">ℹ️</span>
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                  <div className="flex items-center justify-end gap-1 whitespace-normal max-w-[180px]">
+                    <span className="block leading-tight">Ingreso YEGO por Viaje</span>
+                    <span className="text-xs text-gray-400" title={MARGEN_UNITARIO_TOOLTIP} aria-label={MARGEN_UNITARIO_TOOLTIP}>ℹ️</span>
+                  </div>
                 </th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Drivers Activos</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Productividad</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                  Ganancia Proxy/Viaje
-                  <span className="ml-1 text-xs text-gray-400" title="Placeholder 3% hasta reglas reales Fase 2B">ℹ️</span>
+                  <div className="flex items-center justify-end gap-1 whitespace-normal max-w-[180px]">
+                    <span className="block leading-tight">Trips por Driver Activo (Mes)</span>
+                    <span className="text-xs text-gray-400" title={PRODUCTIVIDAD_TOOLTIP} aria-label={PRODUCTIVIDAD_TOOLTIP}>ℹ️</span>
+                  </div>
                 </th>
               </tr>
             </thead>
@@ -218,16 +234,16 @@ function MonthlySplitView({ filters = {} }) {
                         {formatNumber(row.trips_real_completed)}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
-                        {formatCurrency(row.revenue_real_proxy, currencyCode)}
+                        {formatCurrency(row.revenue_real_yego || 0, currencyCode)}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
+                        {formatCurrency(row.margen_unitario_yego, currencyCode)}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
                         {formatNumber(row.active_drivers_real)}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
                         {row.trips_per_driver ? formatNumber(row.trips_per_driver) : '-'}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
-                        {row.profit_per_trip_proxy ? formatCurrency(row.profit_per_trip_proxy, currencyCode) : '-'}
                       </td>
                     </tr>
                   )
@@ -267,12 +283,19 @@ function MonthlySplitView({ filters = {} }) {
             <tr>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mes</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Trips Real</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Revenue Real</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Drivers Activos</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Productividad</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Revenue Real (Comisión Yego)</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                Ganancia Proxy/Viaje
-                <span className="ml-1 text-xs text-gray-400" title="Placeholder 3% hasta reglas reales Fase 2B">ℹ️</span>
+                <div className="flex items-center justify-end gap-1 whitespace-normal max-w-[180px]">
+                  <span className="block leading-tight">Ingreso YEGO por Viaje</span>
+                  <span className="text-xs text-gray-400" title={MARGEN_UNITARIO_TOOLTIP} aria-label={MARGEN_UNITARIO_TOOLTIP}>ℹ️</span>
+                </div>
+              </th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Drivers Activos</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                <div className="flex items-center justify-end gap-1 whitespace-normal max-w-[180px]">
+                  <span className="block leading-tight">Trips por Driver Activo (Mes)</span>
+                  <span className="text-xs text-gray-400" title={PRODUCTIVIDAD_TOOLTIP} aria-label={PRODUCTIVIDAD_TOOLTIP}>ℹ️</span>
+                </div>
               </th>
             </tr>
           </thead>
@@ -293,16 +316,16 @@ function MonthlySplitView({ filters = {} }) {
                       {formatNumber(row.trips_real_completed)}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
-                      {formatCurrency(row.revenue_real_proxy, rowCurrency)}
+                      {formatCurrency(row.revenue_real_yego || 0, rowCurrency)}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
+                      {formatCurrency(row.margen_unitario_yego, rowCurrency)}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
                       {formatNumber(row.active_drivers_real)}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
                       {row.trips_per_driver ? formatNumber(row.trips_per_driver) : '-'}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
-                      {row.profit_per_trip_proxy ? formatCurrency(row.profit_per_trip_proxy, rowCurrency) : '-'}
                     </td>
                   </tr>
                 )
@@ -338,7 +361,12 @@ function MonthlySplitView({ filters = {} }) {
                   <span className="ml-1 text-xs text-gray-400" title="Revenue Plan corresponde al ingreso neto esperado cargado en el Plan. No es GMV.">ℹ️</span>
                 </th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Drivers Plan</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Productividad</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                  <div className="flex items-center justify-end gap-1 whitespace-normal max-w-[180px]">
+                    <span className="block leading-tight">Trips por Driver Activo (Mes)</span>
+                    <span className="text-xs text-gray-400" title={PRODUCTIVIDAD_TOOLTIP} aria-label={PRODUCTIVIDAD_TOOLTIP}>ℹ️</span>
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -406,7 +434,12 @@ function MonthlySplitView({ filters = {} }) {
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Trips Plan</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Revenue Plan</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Drivers Plan</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Productividad</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                <div className="flex items-center justify-end gap-1 whitespace-normal max-w-[180px]">
+                  <span className="block leading-tight">Trips por Driver Activo (Mes)</span>
+                  <span className="text-xs text-gray-400" title={PRODUCTIVIDAD_TOOLTIP} aria-label={PRODUCTIVIDAD_TOOLTIP}>ℹ️</span>
+                </div>
+              </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
@@ -455,10 +488,12 @@ function MonthlySplitView({ filters = {} }) {
       return (
         <div className="p-8 text-center text-gray-600 bg-gray-50 rounded-lg">
           <p className="text-lg font-medium mb-2">
-            No comparable: la comparación activa requiere el mismo año (Real y Plan)
+            No hay comparación disponible para los filtros seleccionados
           </p>
           <p className="text-sm mt-2">
-            Actualmente: Real {yearReal} vs Plan {yearPlan}. La comparación se activará cuando exista Real {yearPlan} o cuando seleccione años coincidentes.
+            {yearReal !== yearPlan
+              ? `Actualmente: Real ${yearReal} vs Plan ${yearPlan}. Para comparar, selecciona el mismo año.`
+              : `Año ${yearPlan}: no hay datos reales suficientes para comparar.`}
           </p>
         </div>
       )
@@ -475,6 +510,12 @@ function MonthlySplitView({ filters = {} }) {
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Gap Trips</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Revenue Plan</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Revenue Real</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                <div className="flex items-center justify-end gap-1 whitespace-normal max-w-[180px]">
+                  <span className="block leading-tight">Ingreso YEGO por Viaje</span>
+                  <span className="text-xs text-gray-400" title={MARGEN_UNITARIO_TOOLTIP} aria-label={MARGEN_UNITARIO_TOOLTIP}>ℹ️</span>
+                </div>
+              </th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Gap Revenue</th>
             </tr>
           </thead>
@@ -487,7 +528,14 @@ function MonthlySplitView({ filters = {} }) {
               return (
                 <tr key={row.period} className="hover:bg-gray-50">
                   <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {mes.nombre} {yearStr}
+                    <div className="flex items-center gap-2">
+                      <span>{mes.nombre} {yearStr}</span>
+                      {row.is_partial_real && (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
+                          REAL PARCIAL
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
                     {formatNumber(row.projected_trips)}
@@ -505,7 +553,10 @@ function MonthlySplitView({ filters = {} }) {
                     {formatNumber(row.projected_revenue)}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
-                    {formatNumber(row.revenue_real_proxy)}
+                    {formatNumber(row.revenue_real_yego || 0)}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">
+                    {formatCurrency(row.margen_unitario_yego, currencyCode)}
                   </td>
                   <td className={`px-4 py-3 whitespace-nowrap text-sm text-right ${
                     row.gap_revenue && row.gap_revenue < 0 ? 'text-red-600' : 

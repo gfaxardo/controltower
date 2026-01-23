@@ -81,13 +81,14 @@ def get_plan_vs_real_monthly(
                     active_drivers_real,
                     avg_ticket_real,
                     trips_per_driver_real,
-                    revenue_real_proxy,
+                    revenue_real_yego,
+                    margen_unitario_yego,
                     -- GAPS
                     gap_trips,
                     gap_drivers,
                     gap_ticket,
                     gap_tpd,
-                    gap_revenue_proxy,
+                    gap_revenue,
                     -- FLAGS
                     has_plan,
                     has_real,
@@ -166,9 +167,9 @@ def get_alerts_monthly(
                     projected_trips,
                     projected_revenue,
                     trips_real_completed,
-                    revenue_real_proxy,
+                    revenue_real_yego,
                     gap_trips,
-                    gap_revenue_proxy,
+                    gap_revenue,
                     gap_trips_pct,
                     gap_revenue_pct,
                     alert_level

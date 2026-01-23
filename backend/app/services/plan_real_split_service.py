@@ -30,8 +30,8 @@ def get_real_monthly(
     year: int = 2025
 ) -> List[Dict]:
     """
-    Obtiene datos REAL mensuales agregados desde ops.mv_real_trips_monthly.
-    FASE 2A: Incluye trips_per_driver, profit_proxy, profit_per_trip_proxy.
+    Obtiene datos REAL mensuales agregados desde ops.mv_real_trips_monthly (sin proxies).
+    FASE 2A: Revenue real = revenue_real_yego (comision_empresa_asociada).
     Retorna currency_code basado en country (PE=PEN, CO=COP).
     """
     try:
@@ -65,29 +65,30 @@ def get_real_monthly(
             
             where_clause = "WHERE " + " AND ".join(where_conditions)
             
-            # FASE 2A: Incluir nuevas métricas derivadas y proxies
+            # FASE 2A: Sin proxies, solo revenue real
             query = f"""
                 SELECT 
                     month,
                     SUM(trips_real_completed) as trips_real_completed,
-                    SUM(revenue_real_proxy) as revenue_real_proxy,
+                    SUM(revenue_real_yego) as revenue_real_yego,
                     SUM(active_drivers_real) as active_drivers_real,
                     AVG(avg_ticket_real) FILTER (WHERE avg_ticket_real IS NOT NULL) as avg_ticket_real,
-                    -- FASE 2A: Métricas derivadas y proxies
+                    -- Métricas derivadas (calculadas desde datos reales)
                     CASE
                         WHEN SUM(active_drivers_real) > 0
                         THEN SUM(trips_real_completed)::NUMERIC / SUM(active_drivers_real)
                         ELSE NULL
                     END as trips_per_driver,
-                    SUM(profit_proxy) as profit_proxy,
                     CASE
                         WHEN SUM(trips_real_completed) > 0
-                        THEN SUM(profit_proxy)::NUMERIC / SUM(trips_real_completed)
+                        THEN SUM(revenue_real_yego) / SUM(trips_real_completed)
                         ELSE NULL
-                    END as profit_per_trip_proxy,
+                    END as margen_unitario_yego,
                     -- Para determinar currency_code, usar el primer país si hay uno único
                     COUNT(DISTINCT country) as country_count,
-                    MAX(country) FILTER (WHERE country IS NOT NULL) as primary_country
+                    MAX(country) FILTER (WHERE country IS NOT NULL) as primary_country,
+                    -- Flag para meses parciales
+                    BOOL_OR(is_partial_real) as is_partial_real
                 FROM ops.mv_real_trips_monthly
                 {where_clause}
                 GROUP BY month
@@ -115,14 +116,14 @@ def get_real_monthly(
                     'period': period,
                     'month': str(month),
                     'trips_real_completed': int(row['trips_real_completed']) if row['trips_real_completed'] else 0,
-                    'revenue_real_proxy': float(row['revenue_real_proxy']) if row['revenue_real_proxy'] else None,
+                    'revenue_real_yego': float(row['revenue_real_yego']) if row['revenue_real_yego'] else 0,
                     'active_drivers_real': int(row['active_drivers_real']) if row['active_drivers_real'] else 0,
                     'avg_ticket_real': float(row['avg_ticket_real']) if row['avg_ticket_real'] else None,
-                    # FASE 2A: Nuevas métricas
+                    # Métricas derivadas
                     'trips_per_driver': float(row['trips_per_driver']) if row['trips_per_driver'] is not None else None,
-                    'profit_proxy': float(row['profit_proxy']) if row['profit_proxy'] is not None else None,
-                    'profit_per_trip_proxy': float(row['profit_per_trip_proxy']) if row['profit_per_trip_proxy'] is not None else None,
-                    'currency_code': row_currency
+                    'margen_unitario_yego': float(row['margen_unitario_yego']) if row['margen_unitario_yego'] is not None else None,
+                    'currency_code': row_currency,
+                    'is_partial_real': bool(row.get('is_partial_real', False))
                 })
             
             logger.info(f"Real monthly generado: {len(result)} períodos para año {year}, currency={currency_code}")
@@ -247,24 +248,37 @@ def get_overlap_monthly(
             
             where_clause = "WHERE " + " AND ".join(where_conditions)
             
-            # Query desde vista comparativa, solo matched (donde hay overlap)
+            # Query desde plan y real v2 directamente (sin usar vista comparativa que tiene proxies)
             query = f"""
                 SELECT 
-                    month,
-                    country,
-                    city_norm_real as city_norm,
-                    lob_base,
-                    segment,
-                    SUM(projected_trips) as projected_trips,
-                    SUM(projected_revenue) as projected_revenue,
-                    SUM(trips_real_completed) as trips_real_completed,
-                    SUM(revenue_real_proxy) as revenue_real_proxy,
-                    SUM(gap_trips) as gap_trips,
-                    SUM(gap_revenue_proxy) as gap_revenue
-                FROM ops.v_plan_vs_real_monthly_latest
+                    p.month,
+                    p.country,
+                    p.city_norm as city_norm,
+                    p.lob_base,
+                    p.segment,
+                    SUM(p.projected_trips) as projected_trips,
+                    SUM(p.projected_revenue) as projected_revenue,
+                    SUM(COALESCE(r.trips_real_completed, 0)) as trips_real_completed,
+                    SUM(COALESCE(r.revenue_real_yego, 0)) as revenue_real_yego,
+                    CASE
+                        WHEN SUM(COALESCE(r.trips_real_completed, 0)) > 0
+                        THEN SUM(COALESCE(r.revenue_real_yego, 0)) / SUM(COALESCE(r.trips_real_completed, 0))
+                        ELSE NULL
+                    END as margen_unitario_yego,
+                    BOOL_OR(r.is_partial_real) as is_partial_real,
+                    SUM(p.projected_trips - COALESCE(r.trips_real_completed, 0)) as gap_trips,
+                    SUM(p.projected_revenue - COALESCE(r.revenue_real_yego, 0)) as gap_revenue
+                FROM ops.v_plan_trips_monthly_latest p
+                    LEFT JOIN ops.mv_real_trips_monthly r 
+                    ON p.month = r.month 
+                    AND p.country = r.country 
+                    AND p.city_norm = r.city_norm 
+                    AND p.lob_base = r.lob_base 
+                    AND COALESCE(p.segment, '') = COALESCE(r.segment, '')
                 {where_clause}
-                GROUP BY month, country, city_norm_real, lob_base, segment
-                ORDER BY month
+                GROUP BY p.month, p.country, p.city_norm, p.lob_base, p.segment
+                HAVING SUM(COALESCE(r.trips_real_completed, 0)) > 0 OR SUM(p.projected_trips) > 0
+                ORDER BY p.month
             """
             
             cursor.execute(query, params)
@@ -285,9 +299,11 @@ def get_overlap_monthly(
                     'projected_trips': int(row['projected_trips']) if row['projected_trips'] else None,
                     'projected_revenue': float(row['projected_revenue']) if row['projected_revenue'] else None,
                     'trips_real_completed': int(row['trips_real_completed']) if row['trips_real_completed'] else None,
-                    'revenue_real_proxy': float(row['revenue_real_proxy']) if row['revenue_real_proxy'] else None,
+                    'revenue_real_yego': float(row['revenue_real_yego']) if row['revenue_real_yego'] else 0,
+                    'margen_unitario_yego': float(row['margen_unitario_yego']) if row['margen_unitario_yego'] is not None else None,
                     'gap_trips': int(row['gap_trips']) if row['gap_trips'] is not None else None,
-                    'gap_revenue': float(row['gap_revenue']) if row['gap_revenue'] is not None else None
+                    'gap_revenue': float(row['gap_revenue']) if row['gap_revenue'] is not None else None,
+                    'is_partial_real': bool(row.get('is_partial_real', False))
                 })
             
             logger.info(f"Overlap monthly generado: {len(result)} períodos comparables")

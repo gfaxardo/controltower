@@ -1,6 +1,7 @@
-from pydantic import BaseModel
-from typing import Optional, List, Dict
-from datetime import datetime
+from pydantic import BaseModel, Field, field_validator
+from typing import Optional, List, Dict, Literal
+from datetime import datetime, date
+from uuid import UUID
 
 class PlanUploadResponse(BaseModel):
     rows_valid: int
@@ -54,3 +55,48 @@ class OpsUniversePoint(BaseModel):
 class OpsUniverseResponse(BaseModel):
     data: List[OpsUniversePoint]
     total_combinations: int
+
+
+# Schemas para Fase 2B - Acciones
+class Phase2BActionCreate(BaseModel):
+    week_start: date
+    country: str
+    city_norm: Optional[str] = None
+    lob_base: Optional[str] = None
+    segment: Optional[str] = None
+    alert_type: str
+    root_cause: str
+    action_type: str
+    action_description: str
+    owner_role: str
+    owner_user_id: Optional[UUID] = None
+    due_date: date
+
+
+class Phase2BActionUpdate(BaseModel):
+    status: Optional[Literal['OPEN', 'IN_PROGRESS', 'DONE', 'MISSED']] = None
+    action_description: Optional[str] = None
+
+
+class Phase2BActionResponse(BaseModel):
+    phase2b_action_id: int
+    week_start: date
+    country: str
+    city_norm: Optional[str] = None
+    lob_base: Optional[str] = None
+    segment: Optional[str] = None
+    alert_type: str
+    root_cause: str
+    action_type: str
+    action_description: str
+    owner_role: str
+    owner_user_id: Optional[UUID] = None
+    due_date: date
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class Phase2BActionsListResponse(BaseModel):
+    data: List[Phase2BActionResponse]
+    total: int

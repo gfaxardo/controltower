@@ -143,6 +143,11 @@ function CoreTable({ filters = {} }) {
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-center">
                     {getStatusBadge(row.comparison_status)}
+                    {row.is_partial_real && (
+                      <span className="ml-2 px-2 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
+                        REAL PARCIAL
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))

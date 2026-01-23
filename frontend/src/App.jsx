@@ -2,6 +2,9 @@ import { useState } from 'react'
 import Filters from './components/Filters'
 import KPICards from './components/KPICards'
 import MonthlySplitView from './components/MonthlySplitView'
+import WeeklyPlanVsRealView from './components/WeeklyPlanVsRealView'
+import Phase2BActionsTrackingView from './components/Phase2BActionsTrackingView'
+import Phase2CAccountabilityView from './components/Phase2CAccountabilityView'
 import UploadPlan from './components/UploadPlan'
 import PlanTabs from './components/PlanTabs'
 
@@ -29,14 +32,14 @@ function App() {
       <div className="container mx-auto px-4 py-8">
         <header className="mb-8">
           <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            YEGO Control Tower — Fase 2A
+            YEGO Control Tower — Fase 2A / 2B
           </h1>
           <p className="text-gray-600 mb-4">
-            Fase 2A: mostramos Real histórico y Plan futuro. Comparable se activa cuando exista Real del mismo año del Plan.
+            Fase 2A: mostramos Real histórico y Plan futuro. Fase 2B: comparación semanal Plan vs Real con alertas accionables.
           </p>
           <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-md">
             <p className="text-blue-800 text-sm">
-              <strong>Fase 2A - Vista ALL:</strong> Cuando no se selecciona país, las métricas monetarias se presentan por país (PE/CO) para evitar mezcla de monedas. Ganancia Proxy (3%) es placeholder hasta reglas reales Fase 2B.
+              <strong>Fase 2A - Vista ALL:</strong> Cuando no se selecciona país, las métricas monetarias se presentan por país (PE/CO) para evitar mezcla de monedas. Revenue Real = comisión YEGO (comision_empresa_asociada).
             </p>
           </div>
         </header>
@@ -79,15 +82,42 @@ function App() {
             >
               Huecos del Plan
             </button>
+            <button
+              onClick={() => setActiveTab('actions')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'actions'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Seguimiento Fase 2B
+            </button>
+            <button
+              onClick={() => setActiveTab('accountability')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'accountability'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Fase 2C - Ejecución
+            </button>
           </nav>
         </div>
 
         {activeTab === 'valid' ? (
-          <MonthlySplitView key={`monthly-${refreshKey}`} filters={filters} />
+          <>
+            <MonthlySplitView key={`monthly-${refreshKey}`} filters={filters} />
+            <WeeklyPlanVsRealView key={`weekly-${refreshKey}`} filters={filters} />
+          </>
+        ) : activeTab === 'actions' ? (
+          <Phase2BActionsTrackingView />
+        ) : activeTab === 'accountability' ? (
+          <Phase2CAccountabilityView />
         ) : (
-          <PlanTabs 
-            key={`tabs-${refreshKey}`} 
-            filters={filters} 
+          <PlanTabs
+            key={`tabs-${refreshKey}`}
+            filters={filters}
             activeTab={activeTab}
             onTabChange={setActiveTab}
           />

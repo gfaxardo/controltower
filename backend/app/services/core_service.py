@@ -62,10 +62,16 @@ def get_core_monthly_summary(
             trips_real = row_data['trips_real']
             revenue_real = row_data['revenue_real']
             
-            # Reglas de comparación:
-            # 1. NUNCA calcular deltas si year_real != year_plan
-            # 2. Solo calcular deltas cuando year_real == year_plan, combo está en universo, y existe real
-            # 3. Nunca comparar si reason = NOT_IN_UNIVERSE_YET (pero esto no aplica aquí porque solo vemos plan_long_valid)
+            # Reglas de comparación FASE 2A:
+            # 1. Permitir comparación cuando year_real == year_plan Y existan filas reales (aunque sea parcial)
+            # 2. Marcar is_partial_real si el mes es el mes actual
+            # 3. Calcular deltas solo cuando ambos tienen datos
+            
+            # Determinar si es mes parcial (mes actual)
+            from datetime import datetime
+            current_month = datetime.now().replace(day=1).date()
+            period_date = datetime.strptime(period, '%Y-%m').replace(day=1).date() if period and '-' in period else None
+            is_partial = period_date == current_month if period_date else False
             
             if year_real != year_plan:
                 # Años diferentes: no comparar
@@ -111,7 +117,8 @@ def get_core_monthly_summary(
                 'delta_trips_pct': delta_trips_pct,
                 'delta_revenue_abs': delta_revenue_abs,
                 'delta_revenue_pct': delta_revenue_pct,
-                'comparison_status': comparison_status
+                'comparison_status': comparison_status,
+                'is_partial_real': is_partial
             })
         
         logger.info(f"Resumen mensual CORE generado: {len(result)} períodos")

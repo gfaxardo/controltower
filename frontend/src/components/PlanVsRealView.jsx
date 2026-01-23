@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { getPlanVsRealMonthly, getPlanVsRealAlerts } from '../services/api'
 
+const MARGEN_UNITARIO_TOOLTIP = "Ingreso promedio real de YEGO por cada viaje completado.\nFórmula: Comisión YEGO real / Viajes reales."
+
 function PlanVsRealView({ filters = {} }) {
   const [comparisonData, setComparisonData] = useState([])
   const [alertsData, setAlertsData] = useState([])
@@ -163,7 +165,13 @@ function PlanVsRealView({ filters = {} }) {
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Trips Real</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Gap Trips</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Revenue Plan</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Revenue Real</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Revenue Real (Comisión Yego)</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <div className="flex items-center justify-end gap-1 whitespace-normal max-w-[180px]">
+                    <span className="block leading-tight">Ingreso YEGO por Viaje</span>
+                    <span className="text-xs text-gray-400" title={MARGEN_UNITARIO_TOOLTIP} aria-label={MARGEN_UNITARIO_TOOLTIP}>ℹ️</span>
+                  </div>
+                </th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Gap Revenue</th>
                 <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
               </tr>
@@ -208,12 +216,15 @@ function PlanVsRealView({ filters = {} }) {
                       {formatCurrency(row.projected_revenue)}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                      {formatCurrency(row.revenue_real_proxy)}
+                      {formatCurrency(row.revenue_real_yego || 0)}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
+                      {formatCurrency(row.margen_unitario_yego, row.currency_code || 'PEN')}
                     </td>
                     <td className={`px-4 py-4 whitespace-nowrap text-sm text-right ${
-                      row.gap_revenue_proxy < 0 ? 'text-red-600' : row.gap_revenue_proxy > 0 ? 'text-green-600' : 'text-gray-900'
+                      row.gap_revenue < 0 ? 'text-red-600' : row.gap_revenue > 0 ? 'text-green-600' : 'text-gray-900'
                     }`}>
-                      {formatCurrency(row.gap_revenue_proxy)}
+                      {formatCurrency(row.gap_revenue || 0)}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-center">
                       {getStatusBadge(row.status_bucket)}
@@ -282,9 +293,9 @@ function PlanVsRealView({ filters = {} }) {
                       {formatPercent(row.gap_trips_pct)}
                     </td>
                     <td className={`px-4 py-4 whitespace-nowrap text-sm text-right ${
-                      row.gap_revenue_proxy < 0 ? 'text-red-600' : 'text-gray-900'
+                      row.gap_revenue < 0 ? 'text-red-600' : 'text-gray-900'
                     }`}>
-                      {formatCurrency(row.gap_revenue_proxy)}
+                      {formatCurrency(row.gap_revenue || 0)}
                     </td>
                     <td className={`px-4 py-4 whitespace-nowrap text-sm text-right ${
                       row.gap_revenue_pct < 0 ? 'text-red-600' : 'text-gray-900'

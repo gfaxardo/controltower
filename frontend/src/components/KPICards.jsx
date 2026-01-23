@@ -11,8 +11,8 @@ function KPICards({ filters = {} }) {
     revenuePlanYTD: null,
     revenuePlanYTD_PE: null,
     revenuePlanYTD_CO: null,
-    profitProxyPE: null,
-    profitProxyCO: null
+    revenueRealYTD_PE: null,
+    revenueRealYTD_CO: null
   })
   const [loading, setLoading] = useState(true)
 
@@ -78,8 +78,8 @@ function KPICards({ filters = {} }) {
         // Monetarios por país
         const revenuePlanYTD_PE = (planDataPE.data || []).reduce((sum, row) => sum + (row.projected_revenue || 0), 0)
         const revenuePlanYTD_CO = (planDataCO.data || []).reduce((sum, row) => sum + (row.projected_revenue || 0), 0)
-        const profitProxyPE = revenuePlanYTD_PE * 0.03
-        const profitProxyCO = revenuePlanYTD_CO * 0.03
+        const revenueRealYTD_PE = (realDataPE.data || []).reduce((sum, row) => sum + (row.revenue_real_yego || 0), 0)
+        const revenueRealYTD_CO = (realDataCO.data || []).reduce((sum, row) => sum + (row.revenue_real_yego || 0), 0)
         
         setKpis({
           tripsRealYTD,
@@ -90,8 +90,8 @@ function KPICards({ filters = {} }) {
           revenuePlanYTD: null,
           revenuePlanYTD_PE: revenuePlanYTD_PE > 0 ? revenuePlanYTD_PE : null,
           revenuePlanYTD_CO: revenuePlanYTD_CO > 0 ? revenuePlanYTD_CO : null,
-          profitProxyPE: profitProxyPE > 0 ? profitProxyPE : null,
-          profitProxyCO: profitProxyCO > 0 ? profitProxyCO : null
+          revenueRealYTD_PE: revenueRealYTD_PE > 0 ? revenueRealYTD_PE : null,
+          revenueRealYTD_CO: revenueRealYTD_CO > 0 ? revenueRealYTD_CO : null
         })
       } else {
         // Vista específica por país
@@ -144,8 +144,8 @@ function KPICards({ filters = {} }) {
           revenuePlanYTD: revenuePlanYTD > 0 ? revenuePlanYTD : null,
           revenuePlanYTD_PE: null,
           revenuePlanYTD_CO: null,
-          profitProxyPE: null,
-          profitProxyCO: null
+          revenueRealYTD_PE: null,
+          revenueRealYTD_CO: null
         })
       }
     } catch (error) {
@@ -242,11 +242,11 @@ function KPICards({ filters = {} }) {
                   </p>
                 </div>
               )}
-              {kpis.profitProxyPE !== null && (
+              {kpis.revenueRealYTD_PE !== null && (
                 <div>
-                  <h4 className="text-sm font-medium text-gray-600 mb-1">Profit Proxy (3%)</h4>
-                  <p className="text-2xl font-bold text-purple-600">
-                    {formatCurrency(kpis.profitProxyPE, 'PEN')}
+                  <h4 className="text-sm font-medium text-gray-600 mb-1">Revenue Real (Comisión Yego)</h4>
+                  <p className="text-2xl font-bold text-blue-600">
+                    {formatCurrency(kpis.revenueRealYTD_PE, 'PEN')}
                   </p>
                 </div>
               )}
@@ -271,11 +271,11 @@ function KPICards({ filters = {} }) {
                   </p>
                 </div>
               )}
-              {kpis.profitProxyCO !== null && (
+              {kpis.revenueRealYTD_CO !== null && (
                 <div>
-                  <h4 className="text-sm font-medium text-gray-600 mb-1">Profit Proxy (3%)</h4>
-                  <p className="text-2xl font-bold text-purple-600">
-                    {formatCurrency(kpis.profitProxyCO, 'COP')}
+                  <h4 className="text-sm font-medium text-gray-600 mb-1">Revenue Real (Comisión Yego)</h4>
+                  <p className="text-2xl font-bold text-blue-600">
+                    {formatCurrency(kpis.revenueRealYTD_CO, 'COP')}
                   </p>
                 </div>
               )}

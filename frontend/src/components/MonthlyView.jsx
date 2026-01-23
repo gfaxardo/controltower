@@ -121,7 +121,8 @@ function MonthlyView({ filters = {} }) {
                 Trips Real
               </th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Revenue Real
+                Revenue Real (Comisión Yego)
+                <span className="ml-1 text-xs text-gray-400" title="Fuente: comision_empresa_asociada viene negativa; se invierte para mostrar revenue positivo. Ver commission_yego_signed para auditoría.">ℹ️</span>
               </th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Delta Trips
@@ -184,6 +185,11 @@ function MonthlyView({ filters = {} }) {
                     {row.comparison_status === 'NOT_COMPARABLE' && (
                       <span className="px-2 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">
                         No Comparable
+                      </span>
+                    )}
+                    {row.is_partial_real && (
+                      <span className="ml-2 px-2 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
+                        REAL PARCIAL
                       </span>
                     )}
                   </td>
