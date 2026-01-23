@@ -8,6 +8,10 @@ from app.services.phase2c_accountability_service import (
     get_breaches,
     run_snapshot
 )
+from app.services.lob_universe_service import (
+    get_universe_lob_summary,
+    get_unmatched_trips_summary
+)
 
 logger = logging.getLogger(__name__)
 
@@ -84,3 +88,48 @@ async def run_snapshot_endpoint():
     except Exception as e:
         logger.error(f"Error al ejecutar snapshot: {e}")
         raise HTTPException(status_code=500, detail=f"Error al ejecutar snapshot: {str(e)}")
+
+
+# ========== FASE 2C+: Universo & LOB Mapping ==========
+
+@router.get("/lob-universe")
+async def get_lob_universe_endpoint(
+    country: Optional[str] = Query(None, description="Filtrar por país"),
+    city: Optional[str] = Query(None, description="Filtrar por ciudad"),
+    lob_name: Optional[str] = Query(None, description="Filtrar por nombre de LOB")
+):
+    """
+    Fase 2C+: Universo LOB - PLAN vs REAL.
+    Muestra qué LOB del plan tienen viajes reales y cuáles no.
+    Incluye KPIs de cobertura.
+    """
+    try:
+        summary = get_universe_lob_summary(
+            country=country,
+            city=city,
+            lob_name=lob_name
+        )
+        return summary
+    except Exception as e:
+        logger.error(f"Error al obtener universo LOB: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al obtener universo LOB: {str(e)}")
+
+
+@router.get("/lob-universe/unmatched")
+async def get_unmatched_trips_endpoint(
+    country: Optional[str] = Query(None, description="Filtrar por país"),
+    city: Optional[str] = Query(None, description="Filtrar por ciudad")
+):
+    """
+    Fase 2C+: Viajes reales sin mapeo a LOB del plan.
+    Muestra viajes que no encajan en ninguna LOB del plan.
+    """
+    try:
+        summary = get_unmatched_trips_summary(
+            country=country,
+            city=city
+        )
+        return summary
+    except Exception as e:
+        logger.error(f"Error al obtener viajes unmatched: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al obtener viajes unmatched: {str(e)}")

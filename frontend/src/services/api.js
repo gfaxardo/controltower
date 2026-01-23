@@ -148,4 +148,15 @@ export const runPhase2CSnapshot = async () => {
   return response.data
 }
 
+// Fase 2C+: Universo & LOB Mapping
+export const getLobUniverse = async (filters = {}) => {
+  const response = await api.get('/phase2c/lob-universe', { params: filters })
+  return response.data
+}
+
+export const getUnmatchedTrips = async (filters = {}) => {
+  const response = await api.get('/phase2c/lob-universe/unmatched', { params: filters })
+  return response.data
+}
+
 export default api

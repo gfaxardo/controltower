@@ -1,7 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Query
 from app.services.plan_parser_service import parse_proyeccion_sheet_legacy as parse_proyeccion_sheet, parse_simple_template
 from app.services.plan_parser_service import _separate_by_universe, _find_missing_combos
-from app.adapters.plan_repo import save_plan_rows, save_plan_rows_raw, calculate_file_hash, get_plan_data
+from app.adapters.plan_repo import save_plan_rows, save_plan_rows_raw, save_plan_projection_raw, calculate_file_hash, get_plan_data
 from app.models.schemas import PlanUploadResponse
 from typing import Optional, List, Dict
 from datetime import datetime
@@ -70,6 +70,12 @@ async def upload_plan_simple(file: UploadFile = File(...)):
                 f.write("\n")
         except: pass
         # #endregion
+        
+        # Guardar en staging.plan_projection_raw para homologación LOB
+        try:
+            save_plan_projection_raw(rows_long, file.filename)
+        except Exception as e:
+            logger.warning(f"Error al guardar en staging.plan_projection_raw (no crítico): {e}")
         
         rows_loaded = save_plan_rows_raw(rows_long, file.filename, file_hash)
         

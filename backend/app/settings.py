@@ -1,7 +1,34 @@
 import os
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, field_validator
 from typing import List
+
+def ensure_utf8(value: str) -> str:
+    """Asegura que un string esté en UTF-8, convirtiendo desde otras codificaciones si es necesario."""
+    if not value:
+        return value
+    if isinstance(value, bytes):
+        # Intentar decodificar desde diferentes codificaciones
+        for encoding in ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']:
+            try:
+                return value.decode(encoding)
+            except (UnicodeDecodeError, AttributeError):
+                continue
+        # Fallback: reemplazar caracteres inválidos
+        return value.decode('utf-8', errors='replace')
+    # Si ya es string, verificar que se pueda codificar en UTF-8
+    try:
+        value.encode('utf-8')
+        return value
+    except UnicodeEncodeError:
+        # Intentar convertir desde otras codificaciones
+        for encoding in ['latin-1', 'cp1252', 'iso-8859-1']:
+            try:
+                return value.encode(encoding).decode('utf-8')
+            except:
+                continue
+        # Fallback: reemplazar caracteres problemáticos
+        return value.encode('utf-8', errors='replace').decode('utf-8')
 
 class Settings(BaseSettings):
     DB_HOST: str = "localhost"
@@ -9,6 +36,14 @@ class Settings(BaseSettings):
     DB_NAME: str = "yego_integral"
     DB_USER: str = ""
     DB_PASSWORD: str = ""
+    
+    @field_validator('DB_USER', 'DB_PASSWORD', 'DB_HOST', 'DB_NAME', mode='before')
+    @classmethod
+    def validate_encoding(cls, v):
+        """Valida y convierte a UTF-8."""
+        if v and isinstance(v, str):
+            return ensure_utf8(v)
+        return v
     
     @property
     def database_url(self) -> str:
