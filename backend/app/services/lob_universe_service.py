@@ -42,6 +42,11 @@ def get_universe_lob_summary(
         lob_with_real = len([u for u in universe_data if u.get('exists_in_real')])
         lob_without_real = len([u for u in universe_data if u.get('coverage_status') == 'PLAN_ONLY'])
         total_real_trips = sum([u.get('real_trips', 0) for u in universe_data])
+        count_ok = len([u for u in universe_data if u.get('coverage_status') == 'OK'])
+        count_plan_only = len([u for u in universe_data if u.get('coverage_status') == 'PLAN_ONLY'])
+        count_real_only = len([u for u in universe_data if u.get('coverage_status') == 'REAL_ONLY'])
+        total_coverage = total_lob_plan or 1
+        pct_real_only = round(100.0 * count_real_only / total_coverage, 2)
         
         return {
             "universe": universe_data,
@@ -54,7 +59,11 @@ def get_universe_lob_summary(
                 "total_real_trips": total_real_trips,
                 "pct_unmatched": quality_metrics.get('pct_unmatched', 0),
                 "total_unmatched": quality_metrics.get('total_unmatched', 0),
-                "total_trips": quality_metrics.get('total_trips', 0)
+                "total_trips": quality_metrics.get('total_trips', 0),
+                "count_ok": count_ok,
+                "count_plan_only": count_plan_only,
+                "count_real_only": count_real_only,
+                "pct_real_only": pct_real_only
             },
             "quality_metrics": quality_metrics
         }

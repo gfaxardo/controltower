@@ -10,45 +10,90 @@ from typing import List, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
+def _view_plan_vs_real_exists(conn) -> bool:
+    """Comprueba si existe la vista ops.v_plan_vs_real_lob_check (PASO 3)."""
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT 1 FROM information_schema.views
+            WHERE table_schema = 'ops' AND table_name = 'v_plan_vs_real_lob_check'
+        """)
+        exists = cur.fetchone() is not None
+        cur.close()
+        return exists
+    except Exception:
+        return False
+
+
 def get_lob_universe_check(
     country: Optional[str] = None,
     city: Optional[str] = None,
     lob_name: Optional[str] = None
 ) -> List[Dict]:
     """
-    Obtiene el universo LOB desde ops.v_lob_universe_check.
-    Muestra qué LOB del plan tienen viajes reales y cuáles no.
-    Si el catálogo está vacío, retorna lista vacía (modo REAL-only).
+    Obtiene el universo LOB. Si existe ops.v_plan_vs_real_lob_check (PASO 3), la usa;
+    si no, usa ops.v_lob_universe_check.
     """
     try:
         with get_db() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
-            
-            # Verificar si hay LOB en el catálogo
+            use_plan_vs_real = _view_plan_vs_real_exists(conn)
+            cursor.close()
+
+        with get_db() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            if use_plan_vs_real:
+                where_conditions = []
+                params = []
+                if country:
+                    where_conditions.append("country = %s")
+                    params.append(country)
+                if city:
+                    where_conditions.append("city = %s")
+                    params.append(city)
+                if lob_name:
+                    where_conditions.append("lob_name_norm = %s")
+                    params.append(lob_name)
+                where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
+                query = f"""
+                    SELECT
+                        country,
+                        city,
+                        lob_name_norm AS lob_name,
+                        NULL::INT AS lob_id,
+                        real_trips,
+                        exists_in_real,
+                        exists_in_plan,
+                        plan_trips,
+                        plan_revenue,
+                        coverage_status
+                    FROM ops.v_plan_vs_real_lob_check
+                    {where_clause}
+                    ORDER BY country, city, lob_name_norm
+                """
+                cursor.execute(query, params)
+                results = cursor.fetchall()
+                cursor.close()
+                return [dict(row) for row in results]
+            # Fallback: v_lob_universe_check
             cursor.execute("SELECT COUNT(*) FROM ops.lob_catalog WHERE status = 'active'")
             catalog_count = cursor.fetchone()[0]
-            
             if catalog_count == 0:
                 logger.info("Catálogo LOB vacío - modo REAL-only")
+                cursor.close()
                 return []
-            
             where_conditions = []
             params = []
-            
             if country:
                 where_conditions.append("country = %s")
                 params.append(country)
-            
             if city:
                 where_conditions.append("city = %s")
                 params.append(city)
-            
             if lob_name:
                 where_conditions.append("lob_name = %s")
                 params.append(lob_name)
-            
             where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
-            
             query = f"""
                 SELECT
                     country,
@@ -63,13 +108,10 @@ def get_lob_universe_check(
                 {where_clause}
                 ORDER BY country, city, lob_name
             """
-            
             cursor.execute(query, params)
             results = cursor.fetchall()
             cursor.close()
-            
             return [dict(row) for row in results]
-            
     except Exception as e:
         logger.error(f"Error al obtener universo LOB: {e}")
         raise

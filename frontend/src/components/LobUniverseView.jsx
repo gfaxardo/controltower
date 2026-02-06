@@ -48,7 +48,9 @@ function LobUniverseView({ filters = {} }) {
   const getStatusBadgeColor = (status) => {
     const colors = {
       'OK': 'bg-green-100 text-green-800',
-      'PLAN_ONLY': 'bg-yellow-100 text-yellow-800'
+      'PLAN_ONLY': 'bg-yellow-100 text-yellow-800',
+      'REAL_ONLY': 'bg-orange-100 text-orange-800',
+      'UNKNOWN': 'bg-gray-100 text-gray-800'
     }
     return colors[status] || 'bg-gray-100 text-gray-800'
   }
@@ -96,30 +98,53 @@ function LobUniverseView({ filters = {} }) {
           
           {/* KPIs */}
           {universeData?.kpis && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="bg-white p-4 rounded-lg shadow-md">
-                <div className="text-sm text-gray-600">Total LOB Planificadas</div>
-                <div className="text-2xl font-bold text-gray-900">{formatNumber(universeData.kpis.total_lob_plan)}</div>
-                {!universeData.has_plan_catalog && (
-                  <div className="text-xs text-yellow-600 mt-1">Sin plan catalog</div>
-                )}
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-white p-4 rounded-lg shadow-md">
+                  <div className="text-sm text-gray-600">Total LOB Planificadas</div>
+                  <div className="text-2xl font-bold text-gray-900">{formatNumber(universeData.kpis.total_lob_plan)}</div>
+                  {!universeData.has_plan_catalog && (
+                    <div className="text-xs text-yellow-600 mt-1">Sin plan catalog</div>
+                  )}
+                </div>
+                <div className="bg-white p-4 rounded-lg shadow-md">
+                  <div className="text-sm text-gray-600">LOB con Real</div>
+                  <div className="text-2xl font-bold text-green-600">{formatNumber(universeData.kpis.lob_with_real)}</div>
+                  {universeData.has_plan_catalog && (
+                    <div className="text-xs text-gray-500">{formatPercentage(universeData.kpis.pct_lob_with_real)}</div>
+                  )}
+                </div>
+                <div className="bg-white p-4 rounded-lg shadow-md">
+                  <div className="text-sm text-gray-600">LOB sin Real</div>
+                  <div className="text-2xl font-bold text-yellow-600">{formatNumber(universeData.kpis.lob_without_real)}</div>
+                </div>
+                <div className="bg-white p-4 rounded-lg shadow-md">
+                  <div className="text-sm text-gray-600">% Viajes UNMATCHED</div>
+                  <div className="text-2xl font-bold text-red-600">{formatPercentage(universeData.kpis.pct_unmatched)}</div>
+                  <div className="text-xs text-gray-500">{formatNumber(universeData.kpis.total_unmatched)} de {formatNumber(universeData.kpis.total_trips)}</div>
+                </div>
               </div>
-              <div className="bg-white p-4 rounded-lg shadow-md">
-                <div className="text-sm text-gray-600">LOB con Real</div>
-                <div className="text-2xl font-bold text-green-600">{formatNumber(universeData.kpis.lob_with_real)}</div>
-                {universeData.has_plan_catalog && (
-                  <div className="text-xs text-gray-500">{formatPercentage(universeData.kpis.pct_lob_with_real)}</div>
-                )}
-              </div>
-              <div className="bg-white p-4 rounded-lg shadow-md">
-                <div className="text-sm text-gray-600">LOB sin Real</div>
-                <div className="text-2xl font-bold text-yellow-600">{formatNumber(universeData.kpis.lob_without_real)}</div>
-              </div>
-              <div className="bg-white p-4 rounded-lg shadow-md">
-                <div className="text-sm text-gray-600">% Viajes UNMATCHED</div>
-                <div className="text-2xl font-bold text-red-600">{formatPercentage(universeData.kpis.pct_unmatched)}</div>
-                <div className="text-xs text-gray-500">{formatNumber(universeData.kpis.total_unmatched)} de {formatNumber(universeData.kpis.total_trips)}</div>
-              </div>
+              {/* Cobertura Plan vs Real: #OK, #PLAN_ONLY, #REAL_ONLY, %REAL_ONLY */}
+              {(universeData.kpis.count_ok != null || universeData.kpis.count_real_only != null) && (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="bg-white p-4 rounded-lg shadow-md border-l-4 border-green-500">
+                    <div className="text-sm text-gray-600"># OK (Plan + Real)</div>
+                    <div className="text-2xl font-bold text-green-700">{formatNumber(universeData.kpis.count_ok)}</div>
+                  </div>
+                  <div className="bg-white p-4 rounded-lg shadow-md border-l-4 border-yellow-500">
+                    <div className="text-sm text-gray-600"># PLAN_ONLY</div>
+                    <div className="text-2xl font-bold text-yellow-700">{formatNumber(universeData.kpis.count_plan_only)}</div>
+                  </div>
+                  <div className="bg-white p-4 rounded-lg shadow-md border-l-4 border-orange-500">
+                    <div className="text-sm text-gray-600"># REAL_ONLY</div>
+                    <div className="text-2xl font-bold text-orange-700">{formatNumber(universeData.kpis.count_real_only)}</div>
+                  </div>
+                  <div className="bg-white p-4 rounded-lg shadow-md">
+                    <div className="text-sm text-gray-600">% REAL_ONLY vs total</div>
+                    <div className="text-2xl font-bold text-orange-600">{formatPercentage(universeData.kpis.pct_real_only)}</div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
