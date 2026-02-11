@@ -1,0 +1,97 @@
+country,city,real_tipo_servicio,real_trips
+colombia,barranquilla,económico,824818
+colombia,barranquilla,moto,502481
+colombia,barranquilla,standard,107835
+colombia,barranquilla,confort,39586
+colombia,barranquilla,mensajería,22965
+colombia,barranquilla,envíos,2366
+colombia,barranquilla,start,322
+colombia,barranquilla,tuk-tuk,25
+colombia,barranquilla,confort+,9
+colombia,barranquilla,"11.0017)""",1
+colombia,bogota,cargo,21783
+colombia,bogota,envíos,719
+colombia,bogota,moto,272
+colombia,bogota,mensajería,60
+colombia,bogota,"el progreso""",1
+colombia,bucaramanga,moto,4488
+colombia,bucaramanga,económico,4404
+colombia,bucaramanga,standard,423
+colombia,bucaramanga,start,130
+colombia,bucaramanga,mensajería,33
+colombia,bucaramanga,envíos,3
+colombia,cali,económico,2943970
+colombia,cali,moto,943378
+colombia,cali,standard,219381
+colombia,cali,confort,170817
+colombia,cali,start,36671
+colombia,cali,confort+,33563
+colombia,cali,mensajería,20965
+colombia,cali,envíos,14999
+colombia,cali,cargo,2594
+colombia,cali,"cali, avenida 4a, 45-norte-58, municipio de santiago de cali, comuna 2, la flora""",20
+colombia,cali,"repuestos benelli, calle 9, 16-05, municipio de santiago de cali""",6
+colombia,cali,"cali, avenida 4a, 45-norte-42, municipio de santiago de cali, comuna 2, la flora""",3
+colombia,cali,"n, carrera 32, 9a-30, municipio de santiago de cali, comuna 10""",3
+colombia,cali,"3.36968)""",1
+colombia,cali,"centro integral de copiado y papelería, carrera 62, municipio de santiago de cali, comuna 19""",1
+colombia,cali,"3.43921)""",1
+colombia,cali,"1402, calle 17, 1-norte-25, municipio de santiago de cali""",1
+colombia,cali,"3.37199)""",1
+colombia,cali,"cali, communa 2, cali, colombia""",1
+colombia,cali,"3.46659)""",1
+colombia,cali,"3.46513) -> carrera 25a, 30-44, municipio de santiago de cali, comuna 11""",1
+colombia,cali,"3.41834)""",1
+colombia,cali,"repuestos benelli, calle 9, 16-21, municipio de santiago de cali""",1
+colombia,cali,"3.47755) -> panadería pablo's pan, calle 55, 30a-108, municipio de santiago de cali, comuna 15""",1
+colombia,cucuta,moto,1989
+colombia,cucuta,económico,604
+colombia,cucuta,mensajería,51
+colombia,cucuta,confort,46
+colombia,cucuta,envíos,6
+colombia,cucuta,standard,4
+colombia,medellin,económico,650574
+colombia,medellin,moto,119909
+colombia,medellin,standard,76194
+colombia,medellin,mensajería,13841
+colombia,medellin,start,8864
+colombia,medellin,confort,837
+colombia,medellin,envíos,664
+colombia,medellin,"fitness, funcional y triatlon, calle 2 sur, 67-230, municipio de medellín, guayabal""",12
+colombia,medellin,confort+,3
+colombia,medellin,"fitness, funcional y triatlon, calle 2 sur, 67-240, municipio de medellín, guayabal""",2
+colombia,medellin,"fitness, funcional y triatlon, calle 2 sur, 67-250, municipio de medellín, guayabal""",1
+colombia,medellin,"6.23194) -> carrera 101, 48a-34, municipio de medellín, san javier""",1
+colombia,medellin,"6.27766) -> bar la 39, carrera 51, 38a-20""",1
+colombia,medellin,"6.19615) -> calle 44, 71-55, municipio de medellín, laureles estadio""",1
+peru,arequipa,económico,121963
+peru,arequipa,confort,6468
+peru,arequipa,exprés,1106
+peru,arequipa,confort+,527
+peru,lima,económico,2956256
+peru,lima,confort,319737
+peru,lima,tuk-tuk,114393
+peru,lima,confort+,65964
+peru,lima,mensajería,54010
+peru,lima,minivan,47237
+peru,lima,exprés,17641
+peru,lima,cargo,11605
+peru,lima,premier,5218
+peru,lima,"-), calle enrique palacios, 1072, distrital miraflores""",14
+peru,lima,"iii etapa block 26 santiago de surco, jirón general pedro silva, 25, las viñas de surco""",4
+peru,lima,"focos led para auto, moto",2
+peru,lima,"-), calle enrique palacios, 1072, distrital miraflores -> avenida 2 de mayo, 1230, orrantia""",1
+peru,lima,"-), calle enrique palacios, 1072, distrital miraflores -> calle monti, 350, distrital san borja""",1
+peru,lima,"-), calle enrique palacios, 1072, distrital miraflores -> calle bolívar, 348, distrital miraflores""",1
+peru,lima,"las verduras del angel, jirón tejada, 271a, distrital barranco""",1
+peru,lima,"-12.0547) -> calle 2, 284, distrital bellavista""",1
+peru,lima,"-), calle enrique palacios, 1072, distrital miraflores -> distrital magdalena del mar""",1
+peru,lima,"-), calle enrique palacios, 1072, distrital miraflores -> neira, avenida 2 de mayo, 1230, orrantia""",1
+peru,lima,"miraflores, malecón balta, 956, distrital miraflores""",1
+peru,trujillo,económico,183624
+peru,trujillo,confort,21873
+peru,trujillo,exprés,1695
+peru,trujillo,confort+,1612
+peru,trujillo,cargo,20
+peru,trujillo,mensajería,1
+peru,trujillo,minivan,1

@@ -38,7 +38,7 @@ FULL OUTER JOIN ops.mv_real_tipo_servicio_universe_fast r
  AND LOWER(TRIM(COALESCE(r.city,''))) = LOWER(TRIM(COALESCE(p.city,'')))
  AND r.real_tipo_servicio = p.plan_lob_name_norm;
 
--- B) REAL traducido a PLAN vía homologación (prioridad country+city > country > global)
+-- B) REAL traducido a PLAN vía homologación (prioridad: park_id > country+city > country > global)
 CREATE OR REPLACE VIEW ops.v_real_to_plan_lob_resolved AS
 WITH real AS (
   SELECT country, city, real_tipo_servicio, trips_count
@@ -48,10 +48,11 @@ h_ranked AS (
   SELECT
     h.*,
     CASE
-      WHEN h.country IS NOT NULL AND h.city IS NOT NULL THEN 1
-      WHEN h.country IS NOT NULL AND h.city IS NULL THEN 2
-      WHEN h.country IS NULL AND h.city IS NULL THEN 3
-      ELSE 4
+      WHEN h.park_id IS NOT NULL AND h.country IS NOT NULL AND h.city IS NOT NULL THEN 1
+      WHEN h.park_id IS NULL AND h.country IS NOT NULL AND h.city IS NOT NULL THEN 2
+      WHEN h.country IS NOT NULL AND (h.city IS NULL OR h.city = '') THEN 3
+      WHEN h.country IS NULL OR h.country = '' THEN 4
+      ELSE 5
     END AS specificity_rank
   FROM ops.lob_homologation h
 ),

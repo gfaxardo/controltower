@@ -1,0 +1,25 @@
+country,city,plan_lob,plan_trips,plan_revenue
+co,barranquilla,auto taxi,682526.0,212757611.80
+co,barranquilla,moto taxi,594788.0,84153013.101
+co,barranquilla,delivery,51611.0,5845375.0884
+co,barranquilla,carga,665.0,1355477.69933
+co,bogotá,delivery,891857.0,227291085.70
+co,bogotá,carga,183764.0,392514505.96
+co,bucaramanga,moto taxi,1409.0,220825.66333
+co,bucaramanga,auto taxi,401.0,86633.962904
+co,cali,auto taxi,4562340.0,1652646104.35
+co,cali,moto taxi,1836951.0,379570017.14
+co,cali,delivery,224825.0,46452858.280
+co,cali,carga,6026.0,11901613.8205
+co,cúcuta,moto taxi,5592.0,566885.4136
+co,cúcuta,auto taxi,2976.0,844397.2845
+co,medellín,auto taxi,29801.0,11899683.4087
+co,medellín,moto taxi,20743.0,3607027.1010
+co,medellín,delivery,665.0,92635.842524
+pe,arequipa,auto taxi,2461399.0,725358.769191
+pe,lima,auto taxi,31343464.0,13837425.647591
+pe,lima,tuk tuk,810166.0,76685.588756
+pe,lima,delivery,720701.0,309492.340653
+pe,lima,carga,52632.0,103109.321952
+pe,trujillo,auto taxi,3655671.0,899216.74402
+pe,trujillo,delivery,7406.0,1409.81564696

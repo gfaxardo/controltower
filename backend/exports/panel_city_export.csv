@@ -1,0 +1,121 @@
+side,country,city,name,metric_trips,metric_revenue
+PLAN,co,barranquilla,auto taxi,682526.0,212757611.80
+PLAN,co,barranquilla,moto taxi,594788.0,84153013.101
+PLAN,co,barranquilla,delivery,51611.0,5845375.0884
+PLAN,co,barranquilla,carga,665.0,1355477.69933
+PLAN,co,bogotá,delivery,891857.0,227291085.70
+PLAN,co,bogotá,carga,183764.0,392514505.96
+PLAN,co,bucaramanga,moto taxi,1409.0,220825.66333
+PLAN,co,bucaramanga,auto taxi,401.0,86633.962904
+PLAN,co,cali,auto taxi,4562340.0,1652646104.35
+PLAN,co,cali,moto taxi,1836951.0,379570017.14
+PLAN,co,cali,delivery,224825.0,46452858.280
+PLAN,co,cali,carga,6026.0,11901613.8205
+PLAN,co,cúcuta,moto taxi,5592.0,566885.4136
+PLAN,co,cúcuta,auto taxi,2976.0,844397.2845
+PLAN,co,medellín,auto taxi,29801.0,11899683.4087
+PLAN,co,medellín,moto taxi,20743.0,3607027.1010
+PLAN,co,medellín,delivery,665.0,92635.842524
+REAL,colombia,barranquilla,económico,824818,
+REAL,colombia,barranquilla,moto,502481,
+REAL,colombia,barranquilla,standard,107835,
+REAL,colombia,barranquilla,confort,39586,
+REAL,colombia,barranquilla,mensajería,22965,
+REAL,colombia,barranquilla,envíos,2366,
+REAL,colombia,barranquilla,start,322,
+REAL,colombia,barranquilla,tuk-tuk,25,
+REAL,colombia,barranquilla,confort+,9,
+REAL,colombia,barranquilla,"11.0017)""",1,
+REAL,colombia,bogota,cargo,21783,
+REAL,colombia,bogota,envíos,719,
+REAL,colombia,bogota,moto,272,
+REAL,colombia,bogota,mensajería,60,
+REAL,colombia,bogota,"el progreso""",1,
+REAL,colombia,bucaramanga,moto,4488,
+REAL,colombia,bucaramanga,económico,4404,
+REAL,colombia,bucaramanga,standard,423,
+REAL,colombia,bucaramanga,start,130,
+REAL,colombia,bucaramanga,mensajería,33,
+REAL,colombia,bucaramanga,envíos,3,
+REAL,colombia,cali,económico,2943970,
+REAL,colombia,cali,moto,943378,
+REAL,colombia,cali,standard,219381,
+REAL,colombia,cali,confort,170817,
+REAL,colombia,cali,start,36671,
+REAL,colombia,cali,confort+,33563,
+REAL,colombia,cali,mensajería,20965,
+REAL,colombia,cali,envíos,14999,
+REAL,colombia,cali,cargo,2594,
+REAL,colombia,cali,"cali, avenida 4a, 45-norte-58, municipio de santiago de cali, comuna 2, la flora""",20,
+REAL,colombia,cali,"repuestos benelli, calle 9, 16-05, municipio de santiago de cali""",6,
+REAL,colombia,cali,"cali, avenida 4a, 45-norte-42, municipio de santiago de cali, comuna 2, la flora""",3,
+REAL,colombia,cali,"n, carrera 32, 9a-30, municipio de santiago de cali, comuna 10""",3,
+REAL,colombia,cali,"3.36968)""",1,
+REAL,colombia,cali,"centro integral de copiado y papelería, carrera 62, municipio de santiago de cali, comuna 19""",1,
+REAL,colombia,cali,"3.43921)""",1,
+REAL,colombia,cali,"1402, calle 17, 1-norte-25, municipio de santiago de cali""",1,
+REAL,colombia,cali,"3.37199)""",1,
+REAL,colombia,cali,"cali, communa 2, cali, colombia""",1,
+REAL,colombia,cali,"3.46659)""",1,
+REAL,colombia,cali,"3.46513) -> carrera 25a, 30-44, municipio de santiago de cali, comuna 11""",1,
+REAL,colombia,cali,"3.41834)""",1,
+REAL,colombia,cali,"repuestos benelli, calle 9, 16-21, municipio de santiago de cali""",1,
+REAL,colombia,cali,"3.47755) -> panadería pablo's pan, calle 55, 30a-108, municipio de santiago de cali, comuna 15""",1,
+REAL,colombia,cucuta,moto,1989,
+REAL,colombia,cucuta,económico,604,
+REAL,colombia,cucuta,mensajería,51,
+REAL,colombia,cucuta,confort,46,
+REAL,colombia,cucuta,envíos,6,
+REAL,colombia,cucuta,standard,4,
+REAL,colombia,medellin,económico,650574,
+REAL,colombia,medellin,moto,119909,
+REAL,colombia,medellin,standard,76194,
+REAL,colombia,medellin,mensajería,13841,
+REAL,colombia,medellin,start,8864,
+REAL,colombia,medellin,confort,837,
+REAL,colombia,medellin,envíos,664,
+REAL,colombia,medellin,"fitness, funcional y triatlon, calle 2 sur, 67-230, municipio de medellín, guayabal""",12,
+REAL,colombia,medellin,confort+,3,
+REAL,colombia,medellin,"fitness, funcional y triatlon, calle 2 sur, 67-240, municipio de medellín, guayabal""",2,
+REAL,colombia,medellin,"fitness, funcional y triatlon, calle 2 sur, 67-250, municipio de medellín, guayabal""",1,
+REAL,colombia,medellin,"6.23194) -> carrera 101, 48a-34, municipio de medellín, san javier""",1,
+REAL,colombia,medellin,"6.27766) -> bar la 39, carrera 51, 38a-20""",1,
+REAL,colombia,medellin,"6.19615) -> calle 44, 71-55, municipio de medellín, laureles estadio""",1,
+PLAN,pe,arequipa,auto taxi,2461399.0,725358.769191
+PLAN,pe,lima,auto taxi,31343464.0,13837425.647591
+PLAN,pe,lima,tuk tuk,810166.0,76685.588756
+PLAN,pe,lima,delivery,720701.0,309492.340653
+PLAN,pe,lima,carga,52632.0,103109.321952
+PLAN,pe,trujillo,auto taxi,3655671.0,899216.74402
+PLAN,pe,trujillo,delivery,7406.0,1409.81564696
+REAL,peru,arequipa,económico,121963,
+REAL,peru,arequipa,confort,6468,
+REAL,peru,arequipa,exprés,1106,
+REAL,peru,arequipa,confort+,527,
+REAL,peru,lima,económico,2956256,
+REAL,peru,lima,confort,319737,
+REAL,peru,lima,tuk-tuk,114393,
+REAL,peru,lima,confort+,65964,
+REAL,peru,lima,mensajería,54010,
+REAL,peru,lima,minivan,47237,
+REAL,peru,lima,exprés,17641,
+REAL,peru,lima,cargo,11605,
+REAL,peru,lima,premier,5218,
+REAL,peru,lima,"-), calle enrique palacios, 1072, distrital miraflores""",14,
+REAL,peru,lima,"iii etapa block 26 santiago de surco, jirón general pedro silva, 25, las viñas de surco""",4,
+REAL,peru,lima,"focos led para auto, moto",2,
+REAL,peru,lima,"-), calle enrique palacios, 1072, distrital miraflores -> avenida 2 de mayo, 1230, orrantia""",1,
+REAL,peru,lima,"-), calle enrique palacios, 1072, distrital miraflores -> calle monti, 350, distrital san borja""",1,
+REAL,peru,lima,"-), calle enrique palacios, 1072, distrital miraflores -> calle bolívar, 348, distrital miraflores""",1,
+REAL,peru,lima,"las verduras del angel, jirón tejada, 271a, distrital barranco""",1,
+REAL,peru,lima,"-12.0547) -> calle 2, 284, distrital bellavista""",1,
+REAL,peru,lima,"-), calle enrique palacios, 1072, distrital miraflores -> distrital magdalena del mar""",1,
+REAL,peru,lima,"-), calle enrique palacios, 1072, distrital miraflores -> neira, avenida 2 de mayo, 1230, orrantia""",1,
+REAL,peru,lima,"miraflores, malecón balta, 956, distrital miraflores""",1,
+REAL,peru,trujillo,económico,183624,
+REAL,peru,trujillo,confort,21873,
+REAL,peru,trujillo,exprés,1695,
+REAL,peru,trujillo,confort+,1612,
+REAL,peru,trujillo,cargo,20,
+REAL,peru,trujillo,mensajería,1,
+REAL,peru,trujillo,minivan,1,
