@@ -1,4 +1,4 @@
-side,country,city,name,metric_trips,metric_revenue
+﻿side,country,city,name,metric_trips,metric_revenue
 PLAN,co,barranquilla,auto taxi,682526.0,212757611.80
 PLAN,co,barranquilla,moto taxi,594788.0,84153013.101
 PLAN,co,barranquilla,delivery,51611.0,5845375.0884

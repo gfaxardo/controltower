@@ -128,8 +128,9 @@ def _fetch_real_agg(cursor):
 
 
 def _write_csv(path: str, headers: list, rows: list):
+    enc = "utf-8-sig"
     try:
-        with open(path, "w", newline="", encoding="utf-8") as f:
+        with open(path, "w", newline="", encoding=enc) as f:
             w = csv.writer(f, delimiter=",")
             w.writerow(headers)
             for row in rows:
@@ -139,7 +140,7 @@ def _write_csv(path: str, headers: list, rows: list):
         # Windows: archivo abierto en Excel/IDE; guardar en alternativo
         base, ext = os.path.splitext(path)
         alt = f"{base}_new{ext}"
-        with open(alt, "w", newline="", encoding="utf-8") as f:
+        with open(alt, "w", newline="", encoding=enc) as f:
             w = csv.writer(f, delimiter=",")
             w.writerow(headers)
             for row in rows:
