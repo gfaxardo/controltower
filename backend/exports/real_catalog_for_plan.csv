@@ -1,0 +1,152 @@
+country,city,park_id,park_name,real_tipo_servicio,total_trips,last_seen_date
+co,cali,05b1c831e66f41a9a87f5f3fa0a186ae,Yego Cali,económico,2943970,2026-01-22
+pe,lima,08e20910d81d42658d4334d3f6d10ac0,Yego,económico,2459142,2026-01-25
+co,cali,05b1c831e66f41a9a87f5f3fa0a186ae,Yego Cali,moto,943378,2026-01-22
+co,barranquilla,ef21f793358144f589aabcbeb8bd7d50,Yego Barranquilla,económico,824818,2026-01-22
+co,medellin,e081e2df33a74073992c859638bdf683,Yego Medellin,económico,650574,2026-01-22
+co,barranquilla,ef21f793358144f589aabcbeb8bd7d50,Yego Barranquilla,moto,502481,2026-01-22
+pe,lima,08e20910d81d42658d4334d3f6d10ac0,Yego,confort,244259,2026-01-25
+co,cali,05b1c831e66f41a9a87f5f3fa0a186ae,Yego Cali,standard,219381,2025-08-19
+pe,trujillo,851e30755bba4d298e2e837f571b4ab8,Yego Trujillo,económico,183624,2025-12-31
+co,cali,05b1c831e66f41a9a87f5f3fa0a186ae,Yego Cali,confort,170817,2026-01-22
+pe,lima,64085dd85e124e2c808806f70d527ea8,Yego Pro,económico,163413,2026-01-22
+pe,arequipa,56e4607dfc354e0a9cde4f0aa7973003,Yego Arequipa,económico,121963,2026-01-25
+co,medellin,e081e2df33a74073992c859638bdf683,Yego Medellin,moto,119909,2026-01-22
+pe,lima,2e39f6699c854bc49cc75197431fe25c,Yego.,económico,114501,2026-01-31
+pe,lima,e3e07c00ed914f82a59c03283a178d6e,Yego TukTuk,tuk-tuk,109276,2025-12-31
+co,barranquilla,ef21f793358144f589aabcbeb8bd7d50,Yego Barranquilla,standard,107835,2025-07-11
+pe,lima,fafd623109d740f8a1f15af7c3dd86c6,Yegó mi auto,económico,90857,2026-01-31
+co,medellin,e081e2df33a74073992c859638bdf683,Yego Medellin,standard,76194,2025-02-28
+pe,lima,962afaa34db6420fb03b7ae464f6a061,Yego Delivery Lima,mensajería,53953,2026-01-22
+pe,lima,08e20910d81d42658d4334d3f6d10ac0,Yego,confort+,52972,2026-01-25
+pe,lima,08e20910d81d42658d4334d3f6d10ac0,Yego,minivan,42766,2026-01-25
+co,barranquilla,ef21f793358144f589aabcbeb8bd7d50,Yego Barranquilla,confort,39586,2026-01-22
+co,cali,05b1c831e66f41a9a87f5f3fa0a186ae,Yego Cali,start,36671,2026-01-19
+pe,lima,c054c8b5dfe14e75b882943b2a252706,Yego Black,económico,34857,2026-01-22
+pe,lima,c58110bc70244430a70a8126fc69f22c,Yego Líderes,económico,34671,2026-01-22
+pe,lima,64085dd85e124e2c808806f70d527ea8,Yego Pro,confort,33896,2026-01-22
+co,cali,05b1c831e66f41a9a87f5f3fa0a186ae,Yego Cali,confort+,33563,2026-01-22
+pe,lima,ff424287c4bd4cbba6066962951a121f,Yego Promi,económico,24509,2026-01-22
+pe,trujillo,851e30755bba4d298e2e837f571b4ab8,Yego Trujillo,confort,21873,2025-12-31
+co,bogota,f4ac6fdbf26043dfabdd3315bb4d679e,Yego Bogota,cargo,21783,2026-01-22
+co,cali,05b1c831e66f41a9a87f5f3fa0a186ae,Yego Cali,mensajería,20965,2026-01-19
+pe,lima,5921e55cc5d042d28747dd722608955a,Yego Prime,económico,20952,2026-01-22
+pe,lima,08e20910d81d42658d4334d3f6d10ac0,Yego,exprés,15746,2026-01-25
+co,cali,05b1c831e66f41a9a87f5f3fa0a186ae,Yego Cali,envíos,14999,2026-01-22
+pe,lima,2e39f6699c854bc49cc75197431fe25c,Yego.,confort,13184,2026-01-31
+pe,lima,ae57aaedeacd41eb9fdbe1ff7a89a3f2,"Yego,",económico,13120,2026-01-31
+co,barranquilla,8d3b13bd6e584a3c98c3a9d9825cf7d2,Yego Delivery Barranquilla,mensajería,12669,2026-01-22
+co,medellin,6a087c4492ae49759bb23592212aa189,Yego Delivery Medellin,mensajería,12192,2026-01-19
+co,barranquilla,ef21f793358144f589aabcbeb8bd7d50,Yego Barranquilla,mensajería,10296,2026-01-22
+pe,lima,bed8509b67514379866e2907d72902a3,Yego Cargo Lima,cargo,9674,2026-01-22
+pe,lima,fafd623109d740f8a1f15af7c3dd86c6,Yegó mi auto,confort,9092,2026-01-31
+co,medellin,e081e2df33a74073992c859638bdf683,Yego Medellin,start,8864,2026-01-22
+pe,arequipa,56e4607dfc354e0a9cde4f0aa7973003,Yego Arequipa,confort,6468,2026-01-25
+pe,lima,c58110bc70244430a70a8126fc69f22c,Yego Líderes,confort,5951,2026-01-22
+pe,lima,08e20910d81d42658d4334d3f6d10ac0,Yego,tuk-tuk,5117,2026-01-25
+pe,lima,c054c8b5dfe14e75b882943b2a252706,Yego Black,confort,4973,2026-01-22
+pe,lima,64085dd85e124e2c808806f70d527ea8,Yego Pro,confort+,4744,2026-01-22
+pe,lima,08e20910d81d42658d4334d3f6d10ac0,Yego,premier,4661,2026-01-25
+pe,lima,96f5a1e493b6484e88d7fc2e3bb8cbdb,Yego,moto,4488,2026-01-05
+pe,lima,96f5a1e493b6484e88d7fc2e3bb8cbdb,Yego,económico,4404,2026-01-25
+pe,lima,5921e55cc5d042d28747dd722608955a,Yego Prime,confort,3626,2026-01-22
+pe,lima,ff424287c4bd4cbba6066962951a121f,Yego Promi,confort,3255,2026-01-22
+co,cali,05b1c831e66f41a9a87f5f3fa0a186ae,Yego Cali,cargo,2594,2026-01-19
+co,barranquilla,ef21f793358144f589aabcbeb8bd7d50,Yego Barranquilla,envíos,2366,2026-01-22
+pe,lima,c054c8b5dfe14e75b882943b2a252706,Yego Black,confort+,2330,2026-01-22
+pe,lima,7ca266b7f3774ffc9a89b5b261adc62c,Yego,moto,1989,2026-01-25
+pe,lima,08e20910d81d42658d4334d3f6d10ac0,Yego,cargo,1764,2026-01-25
+pe,lima,2e39f6699c854bc49cc75197431fe25c,Yego.,confort+,1726,2026-01-31
+pe,trujillo,851e30755bba4d298e2e837f571b4ab8,Yego Trujillo,exprés,1695,2025-12-31
+co,medellin,e081e2df33a74073992c859638bdf683,Yego Medellin,mensajería,1649,2026-01-22
+pe,trujillo,851e30755bba4d298e2e837f571b4ab8,Yego Trujillo,confort+,1612,2025-12-31
+pe,lima,ae57aaedeacd41eb9fdbe1ff7a89a3f2,"Yego,",confort,1501,2026-01-31
+pe,lima,5921e55cc5d042d28747dd722608955a,Yego Prime,confort+,1339,2026-01-22
+pe,lima,c054c8b5dfe14e75b882943b2a252706,Yego Black,minivan,1211,2026-01-22
+pe,arequipa,56e4607dfc354e0a9cde4f0aa7973003,Yego Arequipa,exprés,1106,2026-01-25
+pe,lima,ff424287c4bd4cbba6066962951a121f,Yego Promi,confort+,1000,2026-01-22
+pe,lima,c58110bc70244430a70a8126fc69f22c,Yego Líderes,confort+,948,2026-01-22
+pe,lima,c58110bc70244430a70a8126fc69f22c,Yego Líderes,minivan,846,2026-01-22
+co,medellin,e081e2df33a74073992c859638bdf683,Yego Medellin,confort,837,2025-12-31
+pe,lima,2e39f6699c854bc49cc75197431fe25c,Yego.,minivan,768,2026-01-31
+pe,lima,ff424287c4bd4cbba6066962951a121f,Yego Promi,minivan,741,2026-01-22
+co,bogota,f4ac6fdbf26043dfabdd3315bb4d679e,Yego Bogota,envíos,719,2026-01-22
+pe,lima,fafd623109d740f8a1f15af7c3dd86c6,Yegó mi auto,confort+,669,2026-01-31
+co,medellin,e081e2df33a74073992c859638bdf683,Yego Medellin,envíos,663,2026-01-22
+pe,lima,7ca266b7f3774ffc9a89b5b261adc62c,Yego,económico,604,2026-01-24
+pe,lima,5921e55cc5d042d28747dd722608955a,Yego Prime,minivan,559,2025-12-31
+pe,arequipa,56e4607dfc354e0a9cde4f0aa7973003,Yego Arequipa,confort+,527,2026-01-25
+pe,lima,2e39f6699c854bc49cc75197431fe25c,Yego.,exprés,494,2026-01-31
+pe,lima,96f5a1e493b6484e88d7fc2e3bb8cbdb,Yego,standard,423,2025-02-28
+pe,lima,64085dd85e124e2c808806f70d527ea8,Yego Pro,exprés,392,2025-12-31
+co,barranquilla,ef21f793358144f589aabcbeb8bd7d50,Yego Barranquilla,start,322,2025-12-06
+pe,lima,fafd623109d740f8a1f15af7c3dd86c6,Yegó mi auto,minivan,295,2025-10-30
+co,bogota,f4ac6fdbf26043dfabdd3315bb4d679e,Yego Bogota,moto,272,2026-01-19
+pe,lima,c054c8b5dfe14e75b882943b2a252706,Yego Black,premier,271,2026-01-22
+pe,lima,fafd623109d740f8a1f15af7c3dd86c6,Yegó mi auto,exprés,264,2026-01-31
+pe,lima,ae57aaedeacd41eb9fdbe1ff7a89a3f2,"Yego,",confort+,236,2026-01-31
+pe,lima,c054c8b5dfe14e75b882943b2a252706,Yego Black,exprés,224,2026-01-22
+pe,lima,ff424287c4bd4cbba6066962951a121f,Yego Promi,exprés,207,2026-01-22
+pe,lima,962afaa34db6420fb03b7ae464f6a061,Yego Delivery Lima,económico,183,2026-01-22
+pe,lima,96f5a1e493b6484e88d7fc2e3bb8cbdb,Yego,start,130,2025-11-26
+pe,lima,c58110bc70244430a70a8126fc69f22c,Yego Líderes,exprés,126,2026-01-22
+pe,lima,ae57aaedeacd41eb9fdbe1ff7a89a3f2,"Yego,",exprés,109,2026-01-31
+pe,lima,5921e55cc5d042d28747dd722608955a,Yego Prime,premier,109,2025-12-31
+pe,lima,ff424287c4bd4cbba6066962951a121f,Yego Promi,premier,81,2026-01-22
+pe,lima,c58110bc70244430a70a8126fc69f22c,Yego Líderes,premier,66,2026-01-18
+pe,lima,2e39f6699c854bc49cc75197431fe25c,Yego.,cargo,65,2025-12-19
+co,bogota,f4ac6fdbf26043dfabdd3315bb4d679e,Yego Bogota,mensajería,60,2026-01-19
+pe,lima,bed8509b67514379866e2907d72902a3,Yego Cargo Lima,exprés,55,2025-12-20
+pe,lima,7ca266b7f3774ffc9a89b5b261adc62c,Yego,mensajería,51,2025-11-28
+pe,lima,08e20910d81d42658d4334d3f6d10ac0,Yego,mensajería,50,2026-01-24
+pe,lima,ae57aaedeacd41eb9fdbe1ff7a89a3f2,"Yego,",minivan,47,2025-12-28
+pe,lima,7ca266b7f3774ffc9a89b5b261adc62c,Yego,confort,46,2026-01-17
+pe,lima,e3e07c00ed914f82a59c03283a178d6e,Yego TukTuk,económico,45,2025-11-01
+pe,lima,96f5a1e493b6484e88d7fc2e3bb8cbdb,Yego,mensajería,33,2025-12-01
+pe,lima,c054c8b5dfe14e75b882943b2a252706,Yego Black,cargo,32,2026-01-15
+pe,lima,ae57aaedeacd41eb9fdbe1ff7a89a3f2,"Yego,",premier,27,2025-12-23
+pe,lima,ff424287c4bd4cbba6066962951a121f,Yego Promi,cargo,26,2025-12-18
+co,barranquilla,ef21f793358144f589aabcbeb8bd7d50,Yego Barranquilla,tuk-tuk,25,2026-01-20
+pe,lima,5921e55cc5d042d28747dd722608955a,Yego Prime,exprés,23,2025-12-28
+co,cali,05b1c831e66f41a9a87f5f3fa0a186ae,Yego Cali,"cali, avenida 4a, 45-norte-58, municipio de santiago de cali, comuna 2, la flora""",20,2025-12-22
+pe,trujillo,851e30755bba4d298e2e837f571b4ab8,Yego Trujillo,cargo,20,2025-12-28
+pe,lima,c58110bc70244430a70a8126fc69f22c,Yego Líderes,cargo,16,2025-11-21
+pe,lima,08e20910d81d42658d4334d3f6d10ac0,Yego,"-), calle enrique palacios, 1072, distrital miraflores""",14,2026-01-11
+pe,lima,64085dd85e124e2c808806f70d527ea8,Yego Pro,cargo,13,2025-12-20
+co,medellin,e081e2df33a74073992c859638bdf683,Yego Medellin,"fitness, funcional y triatlon, calle 2 sur, 67-230, municipio de medellín, guayabal""",12,2025-10-25
+pe,lima,962afaa34db6420fb03b7ae464f6a061,Yego Delivery Lima,cargo,9,2025-05-04
+co,barranquilla,ef21f793358144f589aabcbeb8bd7d50,Yego Barranquilla,confort+,9,2025-11-04
+pe,lima,e3e07c00ed914f82a59c03283a178d6e,Yego TukTuk,mensajería,7,2025-12-31
+co,cali,05b1c831e66f41a9a87f5f3fa0a186ae,Yego Cali,"repuestos benelli, calle 9, 16-05, municipio de santiago de cali""",6,2025-12-09
+pe,lima,bed8509b67514379866e2907d72902a3,Yego Cargo Lima,económico,6,2026-01-12
+pe,lima,7ca266b7f3774ffc9a89b5b261adc62c,Yego,envíos,6,2026-01-15
+pe,lima,5921e55cc5d042d28747dd722608955a,Yego Prime,cargo,5,2025-09-28
+pe,lima,962afaa34db6420fb03b7ae464f6a061,Yego Delivery Lima,minivan,4,2026-01-18
+pe,lima,7ca266b7f3774ffc9a89b5b261adc62c,Yego,standard,4,2025-02-27
+pe,lima,08e20910d81d42658d4334d3f6d10ac0,Yego,"iii etapa block 26 santiago de surco, jirón general pedro silva, 25, las viñas de surco""",4,2025-11-02
+co,cali,05b1c831e66f41a9a87f5f3fa0a186ae,Yego Cali,"n, carrera 32, 9a-30, municipio de santiago de cali, comuna 10""",3,2025-07-06
+co,cali,05b1c831e66f41a9a87f5f3fa0a186ae,Yego Cali,"cali, avenida 4a, 45-norte-42, municipio de santiago de cali, comuna 2, la flora""",3,2025-01-31
+pe,lima,2e39f6699c854bc49cc75197431fe25c,Yego.,premier,3,2025-12-03
+pe,lima,96f5a1e493b6484e88d7fc2e3bb8cbdb,Yego,envíos,3,2026-01-20
+co,medellin,e081e2df33a74073992c859638bdf683,Yego Medellin,confort+,3,2025-11-14
+co,medellin,e081e2df33a74073992c859638bdf683,Yego Medellin,"fitness, funcional y triatlon, calle 2 sur, 67-240, municipio de medellín, guayabal""",2,2025-03-04
+pe,lima,08e20910d81d42658d4334d3f6d10ac0,Yego,"focos led para auto, moto",2,2025-12-29
+pe,trujillo,851e30755bba4d298e2e837f571b4ab8,Yego Trujillo,minivan,1,2025-06-27
+pe,lima,08e20910d81d42658d4334d3f6d10ac0,Yego,"miraflores, malecón balta, 956, distrital miraflores""",1,2025-06-10
+pe,lima,08e20910d81d42658d4334d3f6d10ac0,Yego,"las verduras del angel, jirón tejada, 271a, distrital barranco""",1,2025-05-28
+co,medellin,e081e2df33a74073992c859638bdf683,Yego Medellin,"fitness, funcional y triatlon, calle 2 sur, 67-250, municipio de medellín, guayabal""",1,2025-02-06
+co,medellin,6a087c4492ae49759bb23592212aa189,Yego Delivery Medellin,envíos,1,2025-07-29
+co,cali,05b1c831e66f41a9a87f5f3fa0a186ae,Yego Cali,"repuestos benelli, calle 9, 16-21, municipio de santiago de cali""",1,2025-01-28
+pe,lima,e3e07c00ed914f82a59c03283a178d6e,Yego TukTuk,exprés,1,2025-09-12
+co,cali,05b1c831e66f41a9a87f5f3fa0a186ae,Yego Cali,"centro integral de copiado y papelería, carrera 62, municipio de santiago de cali, comuna 19""",1,2025-08-08
+co,cali,05b1c831e66f41a9a87f5f3fa0a186ae,Yego Cali,"cali, communa 2, cali, colombia""",1,2025-01-20
+co,cali,05b1c831e66f41a9a87f5f3fa0a186ae,Yego Cali,"3.46659)""",1,2025-01-14
+co,cali,05b1c831e66f41a9a87f5f3fa0a186ae,Yego Cali,"3.43921)""",1,2025-06-24
+co,cali,05b1c831e66f41a9a87f5f3fa0a186ae,Yego Cali,"3.41834)""",1,2025-01-16
+co,cali,05b1c831e66f41a9a87f5f3fa0a186ae,Yego Cali,"3.37199)""",1,2025-01-15
+co,cali,05b1c831e66f41a9a87f5f3fa0a186ae,Yego Cali,"3.36968)""",1,2025-02-25
+co,cali,05b1c831e66f41a9a87f5f3fa0a186ae,Yego Cali,"1402, calle 17, 1-norte-25, municipio de santiago de cali""",1,2025-09-27
+co,bogota,f4ac6fdbf26043dfabdd3315bb4d679e,Yego Bogota,"el progreso""",1,2025-11-28
+co,barranquilla,ef21f793358144f589aabcbeb8bd7d50,Yego Barranquilla,"11.0017)""",1,2025-02-02
+pe,trujillo,851e30755bba4d298e2e837f571b4ab8,Yego Trujillo,mensajería,1,2025-04-26
+pe,lima,ae57aaedeacd41eb9fdbe1ff7a89a3f2,"Yego,",cargo,1,2025-11-12

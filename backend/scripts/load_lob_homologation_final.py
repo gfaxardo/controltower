@@ -23,6 +23,16 @@ def _open_csv(path: str):
         return open(path, "r", newline="", encoding="cp1252")
 
 
+def _fix_mojibake(s: str) -> str:
+    """Reparar mojibake UTF-8 leído como Latin-1 (econÃ³mico -> económico)."""
+    if not s or "\u00c3" not in s:
+        return s
+    try:
+        return s.encode("latin-1").decode("utf-8")
+    except (UnicodeDecodeError, UnicodeEncodeError):
+        return s
+
+
 def load():
     init_db_pool()
     if not os.path.isfile(CSV_PATH):
@@ -54,8 +64,10 @@ def load():
                     park_id = (row_norm.get("park_id") or "").strip()
                     park_name = (row_norm.get("park_name") or "").strip() or None
                     real_tipo_servicio = (row_norm.get("real_tipo_servicio") or "").strip().lower()
+                    real_tipo_servicio = _fix_mojibake(real_tipo_servicio) or real_tipo_servicio
                     plan_lob_raw = (row_norm.get("plan_lob_name") or "").strip()
                     plan_lob_name = (plan_lob_raw.strip().lower() if plan_lob_raw else "UNMAPPED")
+                    plan_lob_name = _fix_mojibake(plan_lob_name) or plan_lob_name
                     confidence = (row_norm.get("confidence") or "").strip() or "low"
                     notes = (row_norm.get("notes") or "").strip() or None
 
