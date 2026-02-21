@@ -159,4 +159,61 @@ export const getUnmatchedTrips = async (filters = {}) => {
   return response.data
 }
 
+// REAL LOB Observability (solo real, sin Plan). Timeout 15s para evitar loading infinito.
+const REAL_LOB_TIMEOUT_MS = 15000
+export const getRealLobMonthly = async (filters = {}) => {
+  const response = await api.get('/ops/real-lob/monthly', { params: filters, timeout: REAL_LOB_TIMEOUT_MS })
+  return response.data
+}
+
+export const getRealLobWeekly = async (filters = {}) => {
+  const response = await api.get('/ops/real-lob/weekly', { params: filters, timeout: REAL_LOB_TIMEOUT_MS })
+  return response.data
+}
+
+/** Solo en dev: max_month, max_week, count_month, count_week */
+export const getRealLobDebug = async () => {
+  const response = await api.get('/ops/real-lob/debug')
+  return response.data
+}
+
+// Real LOB v2: country, city, park_id, lob_group, real_tipo_servicio, segment_tag (B2B/B2C)
+export const getRealLobMonthlyV2 = async (filters = {}) => {
+  const response = await api.get('/ops/real-lob/monthly-v2', { params: filters, timeout: REAL_LOB_TIMEOUT_MS })
+  return response.data
+}
+
+export const getRealLobWeeklyV2 = async (filters = {}) => {
+  const response = await api.get('/ops/real-lob/weekly-v2', { params: filters, timeout: REAL_LOB_TIMEOUT_MS })
+  return response.data
+}
+
+// Real LOB v2: opciones para dropdowns (countries, cities, parks, lob_groups, tipo_servicio, segments, years)
+export const getRealLobFilters = async (params = {}) => {
+  const response = await api.get('/ops/real-lob/filters', { params, timeout: 10000 })
+  return response.data
+}
+
+// Real LOB v2: datos con consolidación (agg_level) y totales
+const REAL_LOB_DATA_TIMEOUT_MS = 20000
+export const getRealLobV2Data = async (params = {}) => {
+  const response = await api.get('/ops/real-lob/v2/data', { params, timeout: REAL_LOB_DATA_TIMEOUT_MS })
+  return response.data
+}
+
+// Real LOB Strategy (modo Ejecutivo): KPIs, forecast, rankings
+const REAL_STRATEGY_TIMEOUT_MS = 20000
+export const getRealStrategyCountry = async (params = {}) => {
+  const response = await api.get('/ops/real-strategy/country', { params, timeout: REAL_STRATEGY_TIMEOUT_MS })
+  return response.data
+}
+export const getRealStrategyLob = async (params = {}) => {
+  const response = await api.get('/ops/real-strategy/lob', { params, timeout: REAL_STRATEGY_TIMEOUT_MS })
+  return response.data
+}
+export const getRealStrategyCities = async (params = {}) => {
+  const response = await api.get('/ops/real-strategy/cities', { params, timeout: REAL_STRATEGY_TIMEOUT_MS })
+  return response.data
+}
+
 export default api

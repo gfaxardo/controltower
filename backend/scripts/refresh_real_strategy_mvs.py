@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""
+Refresca las MVs que alimentan Real LOB Strategy (ops.mv_real_lob_month_v2, ops.mv_real_lob_week_v2).
+Las vistas de estrategia (v_real_country_month, v_real_country_month_forecast, v_real_country_lob_month,
+v_real_country_city_month) son vistas normales que leen de estas MVs, por lo que al refrescar aquí
+queda actualizado todo el módulo Strategy.
+
+Uso: desde backend/ ejecutar python -m scripts.refresh_real_strategy_mvs
+Recomendado: refresh diario (ej. tras ingesta o en cron).
+"""
+import os
+import sys
+import logging
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+BACKEND_DIR = os.path.dirname(SCRIPT_DIR)
+sys.path.insert(0, BACKEND_DIR)
+
+try:
+    from dotenv import load_dotenv
+    p = os.path.join(BACKEND_DIR, ".env")
+    if os.path.isfile(p):
+        load_dotenv(p)
+except ImportError:
+    pass
+
+from app.db.connection import get_db, init_db_pool
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
+
+MV_MONTHLY = "ops.mv_real_lob_month_v2"
+MV_WEEKLY = "ops.mv_real_lob_week_v2"
+REFRESH_TIMEOUT_MS = 600000
+
+
+def _refresh_one(cur, conn, mv_name: str) -> None:
+    cur.execute("SET statement_timeout = %s", (str(REFRESH_TIMEOUT_MS),))
+    try:
+        cur.execute(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {mv_name}")
+        logger.info("Refrescando %s (CONCURRENTLY)...", mv_name)
+    except Exception as e:
+        err_msg = str(e).lower()
+        if "not been populated" in err_msg or "concurrently cannot be used" in err_msg:
+            conn.rollback()
+            cur.execute("SET statement_timeout = %s", (str(REFRESH_TIMEOUT_MS),))
+            logger.info("Refrescando %s (primera población, sin CONCURRENTLY)...", mv_name)
+            cur.execute(f"REFRESH MATERIALIZED VIEW {mv_name}")
+        else:
+            raise
+    conn.commit()
+
+
+def main():
+    init_db_pool()
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            _refresh_one(cur, conn, MV_MONTHLY)
+            _refresh_one(cur, conn, MV_WEEKLY)
+            cur.close()
+        logger.info("Refresh Real LOB Strategy (MVs base) completado correctamente.")
+    except Exception as e:
+        logger.exception("Error al refrescar MVs de Strategy: %s", e)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

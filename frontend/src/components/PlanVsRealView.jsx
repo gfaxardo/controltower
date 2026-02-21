@@ -23,8 +23,8 @@ function PlanVsRealView({ filters = {} }) {
       const response = await getPlanVsRealMonthly({
         country: filters.country || undefined,
         city: filters.city || undefined,
-        lob_base: filters.line_of_business || undefined,
-        segment: filters.segment || undefined,
+        real_tipo_servicio: filters.real_tipo_servicio || filters.line_of_business || undefined,
+        park_id: filters.park_id || undefined,
         month: filters.month || undefined
       })
       setComparisonData(response.data || [])
@@ -112,8 +112,9 @@ function PlanVsRealView({ filters = {} }) {
 
   const formatMonth = (monthStr) => {
     if (!monthStr) return '-'
-    const date = new Date(monthStr)
-    return date.toLocaleDateString('es-ES', { year: 'numeric', month: 'short' })
+    const s = typeof monthStr === 'string' ? monthStr : (monthStr.toISOString ? monthStr.toISOString().slice(0, 10) : String(monthStr).slice(0, 10))
+    const date = new Date(s + 'T00:00:00')
+    return isNaN(date.getTime()) ? s : date.toLocaleDateString('es-ES', { year: 'numeric', month: 'short' })
   }
 
   if (loading) {
@@ -159,13 +160,13 @@ function PlanVsRealView({ filters = {} }) {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mes</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">País</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ciudad</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">LOB</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Segmento</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Park</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo servicio</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Trips Plan</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Trips Real</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Gap Trips</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Revenue Plan</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Revenue Real (Comisión Yego)</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Revenue Real</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   <div className="flex items-center justify-end gap-1 whitespace-normal max-w-[180px]">
                     <span className="block leading-tight">Ingreso YEGO por Viaje</span>
@@ -179,58 +180,63 @@ function PlanVsRealView({ filters = {} }) {
             <tbody className="bg-white divide-y divide-gray-200">
               {comparisonData.length === 0 ? (
                 <tr>
-                  <td colSpan="12" className="px-4 py-4 text-center text-gray-500">
+                  <td colSpan="13" className="px-4 py-4 text-center text-gray-500">
                     No hay datos disponibles
                   </td>
                 </tr>
               ) : (
-                comparisonData.slice(0, 50).map((row, idx) => (
+                comparisonData.slice(0, 50).map((row, idx) => {
+                  const tripsReal = row.trips_real != null ? row.trips_real : row.trips_real_completed
+                  const revenueReal = row.revenue_real != null ? row.revenue_real : row.revenue_real_yego
+                  const margen = (tripsReal > 0 && revenueReal != null) ? revenueReal / tripsReal : null
+                  return (
                   <tr key={idx} className="hover:bg-gray-50">
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatMonth(row.month)}
+                      {formatMonth(row.month || row.period_date)}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
                       {row.country || '-'}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {row.city_norm_real || '-'}
+                      {row.city || row.city_norm_real || '-'}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {row.lob_base || '-'}
+                      {row.park_name || '-'}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {row.segment || '-'}
+                      {row.real_tipo_servicio || row.lob_base || '-'}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                      {formatNumber(row.projected_trips)}
+                      {formatNumber(row.trips_plan != null ? row.trips_plan : row.projected_trips)}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                      {formatNumber(row.trips_real_completed)}
+                      {formatNumber(tripsReal)}
                     </td>
                     <td className={`px-4 py-4 whitespace-nowrap text-sm text-right ${
-                      row.gap_trips < 0 ? 'text-red-600' : row.gap_trips > 0 ? 'text-green-600' : 'text-gray-900'
+                      (row.gap_trips ?? 0) < 0 ? 'text-red-600' : (row.gap_trips ?? 0) > 0 ? 'text-green-600' : 'text-gray-900'
                     }`}>
                       {formatNumber(row.gap_trips)}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                      {formatCurrency(row.projected_revenue)}
+                      {formatCurrency(row.revenue_plan != null ? row.revenue_plan : row.projected_revenue)}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                      {formatCurrency(row.revenue_real_yego || 0)}
+                      {formatCurrency(revenueReal ?? 0)}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                      {formatCurrency(row.margen_unitario_yego, row.currency_code || 'PEN')}
+                      {margen != null ? formatCurrency(margen, row.currency_code || 'PEN') : formatCurrency(row.margen_unitario_yego, row.currency_code || 'PEN')}
                     </td>
                     <td className={`px-4 py-4 whitespace-nowrap text-sm text-right ${
-                      row.gap_revenue < 0 ? 'text-red-600' : row.gap_revenue > 0 ? 'text-green-600' : 'text-gray-900'
+                      (row.gap_revenue ?? 0) < 0 ? 'text-red-600' : (row.gap_revenue ?? 0) > 0 ? 'text-green-600' : 'text-gray-900'
                     }`}>
-                      {formatCurrency(row.gap_revenue || 0)}
+                      {formatCurrency(row.gap_revenue ?? 0)}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-center">
                       {getStatusBadge(row.status_bucket)}
                     </td>
                   </tr>
-                ))
+                  )
+                })
               )}
             </tbody>
           </table>
@@ -248,8 +254,7 @@ function PlanVsRealView({ filters = {} }) {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mes</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">País</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ciudad</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">LOB</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Segmento</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo servicio</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Gap Trips</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Gap Trips %</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Gap Revenue</th>
@@ -260,7 +265,7 @@ function PlanVsRealView({ filters = {} }) {
             <tbody className="bg-white divide-y divide-gray-200">
               {alertsData.length === 0 ? (
                 <tr>
-                  <td colSpan="10" className="px-4 py-4 text-center text-gray-500">
+                  <td colSpan="9" className="px-4 py-4 text-center text-gray-500">
                     No hay alertas disponibles
                   </td>
                 </tr>
@@ -274,13 +279,10 @@ function PlanVsRealView({ filters = {} }) {
                       {row.country || '-'}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {row.city_norm_real || '-'}
+                      {row.city_norm_real || row.city || '-'}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {row.lob_base || '-'}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {row.segment || '-'}
+                      {row.lob_base || row.real_tipo_servicio || '-'}
                     </td>
                     <td className={`px-4 py-4 whitespace-nowrap text-sm text-right ${
                       row.gap_trips < 0 ? 'text-red-600' : 'text-gray-900'
@@ -298,7 +300,7 @@ function PlanVsRealView({ filters = {} }) {
                       {formatCurrency(row.gap_revenue || 0)}
                     </td>
                     <td className={`px-4 py-4 whitespace-nowrap text-sm text-right ${
-                      row.gap_revenue_pct < 0 ? 'text-red-600' : 'text-gray-900'
+                      (row.gap_revenue_pct ?? 0) < 0 ? 'text-red-600' : 'text-gray-900'
                     }`}>
                       {formatPercent(row.gap_revenue_pct)}
                     </td>
