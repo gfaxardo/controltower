@@ -31,6 +31,17 @@ from app.services.real_strategy_service import (
     get_real_strategy_lob,
     get_real_strategy_cities,
 )
+from app.services.real_drill_service import (
+    get_real_drill_summary,
+    get_real_drill_summary_countries,
+    get_real_drill_by_lob,
+    get_real_drill_by_park,
+    get_real_drill_totals,
+    get_real_drill_meta,
+    get_real_drill_coverage,
+    refresh_real_drill_mv,
+    RealDrillMvNotPopulatedError,
+)
 from app.settings import settings
 from typing import Optional, Literal
 import logging
@@ -336,6 +347,169 @@ async def get_real_lob_v2_data_endpoint(
         )
     except Exception as e:
         logger.error(f"Error Real LOB v2 data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─── Real LOB Drill-down (timeline por país, drill LOB/Park) ─────────────────
+@router.get("/real-drill/summary")
+async def get_real_drill_summary_endpoint(
+    period_type: Literal["monthly", "weekly"] = Query("monthly", description="monthly | weekly"),
+    segment: Optional[Literal["Todos", "B2B", "B2C"]] = Query("Todos", description="Todos | B2B | B2C"),
+    limit_periods: Optional[int] = Query(None, description="Máx periodos (default 24 meses o 26 semanas)"),
+):
+    """
+    Timeline por país: countries[] con coverage, kpis (sobre lo visible) y rows.
+    Orden: PE primero, CO segundo. KPIs calculados sobre los periodos devueltos.
+    """
+    try:
+        seg = None if segment == "Todos" else segment
+        result = get_real_drill_summary_countries(
+            period_type=period_type,
+            segment=seg,
+            limit_periods=limit_periods,
+        )
+        return result
+    except RealDrillMvNotPopulatedError as e:
+        return {
+            "countries": [
+                {"country": "pe", "coverage": {}, "kpis": {}, "rows": []},
+                {"country": "co", "coverage": {}, "kpis": {}, "rows": []},
+            ],
+            "meta": {
+                "last_period_monthly": None,
+                "last_period_weekly": None,
+                "hint": e.hint,
+            },
+        }
+    except Exception as e:
+        logger.error("Real drill summary: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/real-drill/by-lob")
+async def get_real_drill_by_lob_endpoint(
+    period_type: Literal["monthly", "weekly"] = Query("monthly"),
+    country: str = Query(..., description="País (requerido)"),
+    period_start: str = Query(..., description="Fecha inicio periodo (YYYY-MM-DD o YYYY-MM)"),
+    segment: Optional[Literal["Todos", "B2B", "B2C"]] = Query("Todos"),
+):
+    """Desglose por LOB para un país y periodo. Orden: trips DESC."""
+    try:
+        seg = None if segment == "Todos" else segment
+        data = get_real_drill_by_lob(
+            period_type=period_type,
+            country=country,
+            period_start=period_start,
+            segment=seg,
+        )
+        meta = get_real_drill_meta()
+        return {
+            "data": data,
+            "meta": {
+                "last_period_monthly": meta.get("last_period_monthly"),
+                "last_period_weekly": meta.get("last_period_weekly"),
+            },
+        }
+    except RealDrillMvNotPopulatedError as e:
+        return {
+            "data": [],
+            "meta": {"last_period_monthly": None, "last_period_weekly": None, "hint": e.hint},
+        }
+    except Exception as e:
+        logger.error("Real drill by-lob: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/real-drill/by-park")
+async def get_real_drill_by_park_endpoint(
+    period_type: Literal["monthly", "weekly"] = Query("monthly"),
+    country: str = Query(..., description="País (requerido)"),
+    period_start: str = Query(..., description="Fecha inicio periodo (YYYY-MM-DD)"),
+    segment: Optional[Literal["Todos", "B2B", "B2C"]] = Query("Todos"),
+):
+    """Desglose por park para un país y periodo. Orden: trips DESC."""
+    try:
+        seg = None if segment == "Todos" else segment
+        data = get_real_drill_by_park(
+            period_type=period_type,
+            country=country,
+            period_start=period_start,
+            segment=seg,
+        )
+        meta = get_real_drill_meta()
+        return {
+            "data": data,
+            "meta": {
+                "last_period_monthly": meta.get("last_period_monthly"),
+                "last_period_weekly": meta.get("last_period_weekly"),
+            },
+        }
+    except RealDrillMvNotPopulatedError as e:
+        return {
+            "data": [],
+            "meta": {"last_period_monthly": None, "last_period_weekly": None, "hint": e.hint},
+        }
+    except Exception as e:
+        logger.error("Real drill by-park: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/real-drill/refresh")
+async def refresh_real_drill_endpoint():
+    """
+    Refresca la MV ops.mv_real_rollup_day. Uso interno (cron, admin).
+    Ejecuta REFRESH MATERIALIZED VIEW CONCURRENTLY.
+    """
+    try:
+        return refresh_real_drill_mv()
+    except Exception as e:
+        logger.error("Real drill refresh: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/real-drill/coverage")
+async def get_real_drill_coverage_endpoint():
+    """Cobertura por país: last_trip_date, last_month_with_data, last_week_with_data."""
+    try:
+        data = get_real_drill_coverage()
+        return {"data": data}
+    except Exception as e:
+        msg = str(e) or ""
+        if "does not exist" in msg or "relation" in msg.lower() or "aborted" in msg.lower():
+            return {"data": []}
+        logger.error("Real drill coverage: %s", e)
+        raise HTTPException(status_code=500, detail=msg)
+
+
+@router.get("/real-drill/totals")
+async def get_real_drill_totals_endpoint(
+    period_type: Literal["monthly", "weekly"] = Query("monthly"),
+    segment: Optional[Literal["Todos", "B2B", "B2C"]] = Query("Todos"),
+    limit_periods: Optional[int] = Query(None),
+):
+    """Totales (total_trips, b2b_ratio) sobre el rango mostrado en summary."""
+    try:
+        seg = None if segment == "Todos" else segment
+        data = get_real_drill_totals(
+            period_type=period_type,
+            segment=seg,
+            limit_periods=limit_periods,
+        )
+        return data
+    except RealDrillMvNotPopulatedError as e:
+        return {
+            "total_trips": 0,
+            "total_b2b_trips": 0,
+            "b2b_ratio_pct": None,
+            "margin_total": None,
+            "margin_unit_avg_global": None,
+            "distance_total_km": None,
+            "distance_km_avg_global": None,
+            "last_trip_ts": None,
+            "hint": e.hint,
+        }
+    except Exception as e:
+        logger.error("Real drill totals: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

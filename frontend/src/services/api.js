@@ -1,7 +1,10 @@
 import axios from 'axios'
 
+// En dev: usar proxy Vite (/api -> localhost:8000) para evitar CORS y Network Error
+const baseURL = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_API_URL || 'http://localhost:8000')
+
 const api = axios.create({
-  baseURL: 'http://localhost:8000',
+  baseURL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -198,6 +201,29 @@ export const getRealLobFilters = async (params = {}) => {
 const REAL_LOB_DATA_TIMEOUT_MS = 20000
 export const getRealLobV2Data = async (params = {}) => {
   const response = await api.get('/ops/real-lob/v2/data', { params, timeout: REAL_LOB_DATA_TIMEOUT_MS })
+  return response.data
+}
+
+// Real LOB Drill-down: timeline por país, drill LOB/Park (doble click)
+const REAL_DRILL_TIMEOUT_MS = 20000
+export const getRealDrillSummary = async (params = {}) => {
+  const response = await api.get('/ops/real-drill/summary', { params, timeout: REAL_DRILL_TIMEOUT_MS })
+  return response.data
+}
+export const getRealDrillByLob = async (params = {}) => {
+  const response = await api.get('/ops/real-drill/by-lob', { params, timeout: REAL_DRILL_TIMEOUT_MS })
+  return response.data
+}
+export const getRealDrillByPark = async (params = {}) => {
+  const response = await api.get('/ops/real-drill/by-park', { params, timeout: REAL_DRILL_TIMEOUT_MS })
+  return response.data
+}
+export const getRealDrillTotals = async (params = {}) => {
+  const response = await api.get('/ops/real-drill/totals', { params, timeout: REAL_DRILL_TIMEOUT_MS })
+  return response.data
+}
+export const getRealDrillCoverage = async () => {
+  const response = await api.get('/ops/real-drill/coverage', { timeout: REAL_DRILL_TIMEOUT_MS })
   return response.data
 }
 

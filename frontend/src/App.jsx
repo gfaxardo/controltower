@@ -7,6 +7,7 @@ import Phase2BActionsTrackingView from './components/Phase2BActionsTrackingView'
 import Phase2CAccountabilityView from './components/Phase2CAccountabilityView'
 import LobUniverseView from './components/LobUniverseView'
 import RealLOBView from './components/RealLOBView'
+import RealLOBDrillView from './components/RealLOBDrillView'
 import UploadPlan from './components/UploadPlan'
 import PlanTabs from './components/PlanTabs'
 
@@ -139,7 +140,7 @@ function App() {
         ) : activeTab === 'lob_universe' ? (
           <LobUniverseView key={`lob-universe-${refreshKey}`} filters={filters} />
         ) : activeTab === 'real_lob' ? (
-          <RealLOBView key={`real-lob-${refreshKey}`} filters={filters} />
+          <RealLOBDrillView key={`real-lob-drill-${refreshKey}`} />
         ) : (
           <PlanTabs
             key={`tabs-${refreshKey}`}
