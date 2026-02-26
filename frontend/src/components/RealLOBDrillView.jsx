@@ -5,10 +5,14 @@
  */
 import { useState, useEffect, useCallback, Fragment } from 'react'
 import {
+  getRealLobDrillPro,
+  getRealLobDrillProChildren,
   getRealDrillSummary,
   getRealDrillByLob,
   getRealDrillByPark
 } from '../services/api'
+
+const USE_DRILL_PRO = true
 
 const MARGIN_TOOLTIP = 'Margen mostrado en positivo (ABS) para lectura de negocio.'
 
@@ -66,20 +70,30 @@ export default function RealLOBDrillView () {
     setLoading(true)
     setError(null)
     try {
-      const summaryRes = await getRealDrillSummary({
-        period_type: periodType,
-        segment: segment === 'Todos' ? undefined : segment,
-        limit_periods: limitPeriods
-      })
-      setCountries(summaryRes.countries || [])
-      setMeta(summaryRes.meta || {})
+      if (USE_DRILL_PRO) {
+        const res = await getRealLobDrillPro({
+          period: periodType === 'monthly' ? 'month' : 'week',
+          desglose: drillBy === 'lob' ? 'LOB' : 'PARK',
+          segmento: segment === 'Todos' ? 'all' : segment.toLowerCase()
+        })
+        setCountries(res.countries || [])
+        setMeta(res.meta || {})
+      } else {
+        const summaryRes = await getRealDrillSummary({
+          period_type: periodType,
+          segment: segment === 'Todos' ? undefined : segment,
+          limit_periods: limitPeriods
+        })
+        setCountries(summaryRes.countries || [])
+        setMeta(summaryRes.meta || {})
+      }
     } catch (e) {
       setError(e.message || 'Error al cargar timeline')
       setCountries([])
     } finally {
       setLoading(false)
     }
-  }, [periodType, segment, limitPeriods])
+  }, [periodType, segment, limitPeriods, drillBy])
 
   useEffect(() => {
     loadSummary()
@@ -107,18 +121,32 @@ export default function RealLOBDrillView () {
     if (subrows[key]?.data || subrows[rawKey]?.data) return
     setSubrows((prev) => ({ ...prev, [key]: { loading: true, data: null, error: null } }))
     try {
-      const params = {
-        period_type: periodType,
-        country,
-        period_start: normalizePeriodStart(periodStart),
-        segment: segment === 'Todos' ? undefined : segment
+      if (USE_DRILL_PRO) {
+        const res = await getRealLobDrillProChildren({
+          country,
+          period: periodType === 'monthly' ? 'month' : 'week',
+          period_start: normalizePeriodStart(periodStart),
+          desglose: drillBy === 'lob' ? 'LOB' : 'PARK',
+          segmento: segment === 'Todos' ? 'all' : segment.toLowerCase()
+        })
+        setSubrows((prev) => ({
+          ...prev,
+          [key]: { loading: false, data: res.data || [], error: null }
+        }))
+      } else {
+        const params = {
+          period_type: periodType,
+          country,
+          period_start: normalizePeriodStart(periodStart),
+          segment: segment === 'Todos' ? undefined : segment
+        }
+        const fetcher = drillBy === 'lob' ? getRealDrillByLob : getRealDrillByPark
+        const res = await fetcher(params)
+        setSubrows((prev) => ({
+          ...prev,
+          [key]: { loading: false, data: res.data || [], error: null }
+        }))
       }
-      const fetcher = drillBy === 'lob' ? getRealDrillByLob : getRealDrillByPark
-      const res = await fetcher(params)
-      setSubrows((prev) => ({
-        ...prev,
-        [key]: { loading: false, data: res.data || [], error: null }
-      }))
     } catch (e) {
       setSubrows((prev) => ({
         ...prev,
@@ -296,7 +324,7 @@ export default function RealLOBDrillView () {
                         return (
                           <Fragment key={key}>
                             <tr
-                              onDoubleClick={() => toggleExpand((row.country || countryCode || '').trim(), row.period_start)}
+                              onClick={() => toggleExpand((row.country || countryCode || '').trim(), row.period_start)}
                               className="cursor-pointer hover:bg-slate-50 select-none"
                             >
                               <td className="px-3 py-2 text-sm text-gray-500">
@@ -389,8 +417,8 @@ export default function RealLOBDrillView () {
                                               )}
                                               {drillBy === 'park' && (
                                                 <>
-                                                  <td className="pr-4 py-1 text-gray-700">{r.city ?? '—'}</td>
-                                                  <td className="pr-4 py-1 text-gray-900">{r.park_name_resolved ?? r.park_name ?? r.park_id ?? '—'}</td>
+                                                  <td className="pr-4 py-1 text-gray-700">{r.city ?? 'SIN_CITY'}</td>
+                                                  <td className="pr-4 py-1 text-gray-900">{r.park_name_resolved ?? r.park_name ?? r.park_id ?? 'SIN_PARK'}</td>
                                                   <td className="pr-4 py-1">
                                                     {r.park_bucket && r.park_bucket !== 'OK' ? (
                                                       <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800" title="Park sin ID o no catalogado">
@@ -407,7 +435,10 @@ export default function RealLOBDrillView () {
                                               <td className="text-right py-1">{subMargin}</td>
                                               <td className="text-right py-1">{subKm}</td>
                                               {segment === 'Todos' && (
-                                                <td className="text-right py-1">{formatNumber(r.b2b_trips)}</td>
+                                                <td className="text-right py-1">
+                                                  {formatNumber(r.b2b_trips)}
+                                                  {r.pct_b2b != null && ` (${(Number(r.pct_b2b) * 100).toFixed(1)}%)`}
+                                                </td>
                                               )}
                                             </tr>
                                           )
@@ -435,7 +466,7 @@ export default function RealLOBDrillView () {
       )}
 
       <p className="mt-4 text-xs text-gray-500">
-        Doble click en una fila para desplegar desglose por {drillBy === 'lob' ? 'LOB' : 'Park'}.
+        Clic en una fila para desplegar desglose por {drillBy === 'lob' ? 'LOB' : 'Park'}.
         Orden: más reciente → más antiguo; subfilas por viajes descendente.
       </p>
     </div>

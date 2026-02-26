@@ -42,6 +42,7 @@ from app.services.real_drill_service import (
     refresh_real_drill_mv,
     RealDrillMvNotPopulatedError,
 )
+from app.services.real_lob_drill_pro_service import get_drill as get_real_lob_drill_pro, get_drill_children as get_real_lob_drill_pro_children
 from app.settings import settings
 from typing import Optional, Literal
 import logging
@@ -350,7 +351,54 @@ async def get_real_lob_v2_data_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ─── Real LOB Drill-down (timeline por país, drill LOB/Park) ─────────────────
+# ─── Real LOB Drill PRO (MV ops.mv_real_lob_drill_agg; calendario completo, KPIs por país) ─────────────────
+@router.get("/real-lob/drill")
+async def get_real_lob_drill_pro_endpoint(
+    period: Literal["month", "week"] = Query("month", description="month | week"),
+    desglose: Literal["LOB", "PARK"] = Query("PARK", description="Desglose al expandir: LOB | PARK"),
+    segmento: Optional[Literal["all", "b2c", "b2b"]] = Query("all", description="all | b2c | b2b"),
+    country: Optional[Literal["all", "pe", "co"]] = Query("all", description="all | pe | co"),
+):
+    """
+    Real LOB Drill PRO: countries[] con coverage, kpis (sobre lo visible), rows por periodo.
+    Orden: PE primero, CO segundo; filas periodo más reciente → más antiguo.
+    """
+    try:
+        return get_real_lob_drill_pro(
+            period=period,
+            desglose=desglose,
+            segmento=segmento,
+            country=country,
+        )
+    except Exception as e:
+        logger.error("Real LOB drill PRO: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/real-lob/drill/children")
+async def get_real_lob_drill_children_endpoint(
+    country: str = Query(..., description="País (pe | co)"),
+    period: Literal["month", "week"] = Query("month"),
+    period_start: str = Query(..., description="YYYY-MM-DD o YYYY-MM-01"),
+    desglose: Literal["LOB", "PARK"] = Query("PARK"),
+    segmento: Optional[Literal["all", "b2c", "b2b"]] = Query("all"),
+):
+    """Desglose por Park (city, park_name) o LOB (lob_group, tipo_servicio_norm). Orden: viajes DESC."""
+    try:
+        data = get_real_lob_drill_pro_children(
+            country=country,
+            period=period,
+            period_start=period_start,
+            desglose=desglose,
+            segmento=segmento,
+        )
+        return {"data": data}
+    except Exception as e:
+        logger.error("Real LOB drill PRO children: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─── Real LOB Drill-down (timeline por país, drill LOB/Park) [legacy; preferir /real-lob/drill] ─────────────────
 @router.get("/real-drill/summary")
 async def get_real_drill_summary_endpoint(
     period_type: Literal["monthly", "weekly"] = Query("monthly", description="monthly | weekly"),

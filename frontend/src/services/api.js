@@ -204,8 +204,18 @@ export const getRealLobV2Data = async (params = {}) => {
   return response.data
 }
 
-// Real LOB Drill-down: timeline por país, drill LOB/Park (doble click)
+// Real LOB Drill PRO (MV unificada; preferido)
 const REAL_DRILL_TIMEOUT_MS = 20000
+export const getRealLobDrillPro = async (params = {}) => {
+  const response = await api.get('/ops/real-lob/drill', { params, timeout: REAL_DRILL_TIMEOUT_MS })
+  return response.data
+}
+export const getRealLobDrillProChildren = async (params = {}) => {
+  const response = await api.get('/ops/real-lob/drill/children', { params, timeout: REAL_DRILL_TIMEOUT_MS })
+  return response.data
+}
+
+// Real LOB Drill-down: timeline por país, drill LOB/Park [legacy]
 export const getRealDrillSummary = async (params = {}) => {
   const response = await api.get('/ops/real-drill/summary', { params, timeout: REAL_DRILL_TIMEOUT_MS })
   return response.data

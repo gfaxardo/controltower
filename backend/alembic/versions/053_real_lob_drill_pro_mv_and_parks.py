@@ -1,25 +1,181 @@
 """
-052_real_drill_robust_normalization: Normalización fuerte CO, margin_raw/pos, park robusto.
-- park_id_norm, city_norm con fallback p.city + t.city (si existe)
-- margin_total_raw (auditoría), margin_total_pos, margin_unit_pos
-- park_name_resolved y park_bucket según spec
-- Vista ops.v_real_drill_unk_sample para inspección de country='unk'
-- Vistas drill exponen margin_total_pos, margin_unit_pos, margin_total_raw
+053 Real LOB Drill PRO: MV unificada ops.mv_real_lob_drill_agg + fix parks Colombia (nombres nunca vacíos, fallback país).
+- ops.park_country_fallback: park_id -> country para parks huérfanos (ej. CO).
+- ops.mv_real_lob_drill_agg: agregado (country, period_type, period_start, city_norm, park_key, park_name, lob_group, tipo_servicio_norm, segmento).
+  Margen en positivo: margen_total = -SUM(comision_empresa_asociada), km_prom = AVG(distancia_km)/1000, viajes_b2b, pct_b2b.
+- Actualiza mv_real_rollup_day: park_name_resolved = COALESCE(parks.name, 'UNKNOWN_PARK ('||park_key||')'), SIN_PARK si null; city SIN_CITY; country con fallback.
+- Calendario completo y estado Falta data ya cubiertos en 052.
 """
 from alembic import op
 
-revision = "052_real_drill_robust_norm"
-down_revision = "051_real_drill_mv_rollup"
+revision = "053_real_lob_drill_pro"
+down_revision = "052_real_drill_robust_norm"
 branch_labels = None
 depends_on = None
 
 
 def upgrade() -> None:
-    # 1) Recrear MV con normalización robusta y unit economics corregido
-    op.execute("SET statement_timeout = '0'")
-    op.execute("DROP MATERIALIZED VIEW IF EXISTS ops.mv_real_rollup_day CASCADE")
+    # 1) Tabla fallback país para parks que no están en public.parks (ej. flotas CO)
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS ops.park_country_fallback (
+            park_id TEXT PRIMARY KEY,
+            country TEXT NOT NULL CHECK (country IN ('co','pe')),
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """)
+    op.execute("COMMENT ON TABLE ops.park_country_fallback IS 'Parks huérfanos: asignar country cuando no existe en public.parks. Poblar manualmente para que aparezcan en drill CO/PE.'")
 
-    # city_norm: p.city primero; si trips_all tiene columna city, se puede extender con COALESCE(..., t.city, ...)
+    # 2) Vista materializada unificada para Real LOB Drill PRO
+    # park_key = NULLIF(TRIM(park_id),''); park_name = COALESCE(parks.name, 'UNKNOWN_PARK ('||park_key||')'); SIN_PARK si park_key null
+    # city_norm con COALESCE a 'SIN_CITY'; country desde dim_city_country o park_country_fallback
+    # segmento = B2B si pago_corporativo IS NOT NULL else B2C
+    # lob_group desde canon.map_real_tipo_servicio_to_lob_group (real_tipo_servicio_norm)
+    op.execute("SET statement_timeout = '0'")
+    op.execute("DROP MATERIALIZED VIEW IF EXISTS ops.mv_real_lob_drill_agg CASCADE")
+    op.execute("""
+        CREATE MATERIALIZED VIEW ops.mv_real_lob_drill_agg AS
+        WITH base AS (
+            SELECT
+                t.fecha_inicio_viaje,
+                NULLIF(TRIM(t.park_id::text), '') AS park_key,
+                t.tipo_servicio,
+                t.comision_empresa_asociada,
+                t.distancia_km,
+                t.pago_corporativo,
+                p.id AS park_catalog_id,
+                p.name AS park_name_raw,
+                p.city AS park_city_raw
+            FROM public.trips_all t
+            LEFT JOIN public.parks p ON p.id::text = NULLIF(TRIM(t.park_id::text), '')
+            WHERE t.fecha_inicio_viaje IS NOT NULL
+              AND t.tipo_servicio IS NOT NULL
+              AND t.condicion = 'Completado'
+              AND LENGTH(TRIM(t.tipo_servicio::text)) < 100
+              AND t.tipo_servicio::text NOT LIKE '%%->%%'
+        ),
+        with_city AS (
+            SELECT
+                b.*,
+                LOWER(TRIM(COALESCE(b.park_city_raw::text, ''))) AS city_from_park,
+                CASE
+                    WHEN b.park_city_raw::text ILIKE '%%cali%%' THEN 'cali'
+                    WHEN b.park_city_raw::text ILIKE '%%bogot%%' THEN 'bogota'
+                    WHEN b.park_city_raw::text ILIKE '%%medell%%' THEN 'medellin'
+                    WHEN b.park_city_raw::text ILIKE '%%barranquilla%%' THEN 'barranquilla'
+                    WHEN b.park_city_raw::text ILIKE '%%cucut%%' THEN 'cucuta'
+                    WHEN b.park_city_raw::text ILIKE '%%bucaramanga%%' THEN 'bucaramanga'
+                    WHEN b.park_city_raw::text ILIKE '%%lima%%' OR TRIM(COALESCE(b.park_name_raw::text,'')) = 'Yego' THEN 'lima'
+                    WHEN b.park_city_raw::text ILIKE '%%arequip%%' THEN 'arequipa'
+                    WHEN b.park_city_raw::text ILIKE '%%trujill%%' THEN 'trujillo'
+                    ELSE LOWER(TRIM(COALESCE(b.park_city_raw::text, '')))
+                END AS city_norm_raw
+            FROM base b
+        ),
+        with_country AS (
+            SELECT
+                w.*,
+                COALESCE(NULLIF(TRIM(w.city_norm_raw), ''), 'sin_city') AS city_norm,
+                COALESCE(d.country, f.country, 'unk') AS country,
+                CASE
+                    WHEN w.park_key IS NULL THEN 'SIN_PARK'
+                    ELSE COALESCE(NULLIF(TRIM(w.park_name_raw::text), ''), 'UNKNOWN_PARK (' || w.park_key::text || ')')
+                END AS park_name,
+                CASE
+                    WHEN LOWER(TRIM(w.tipo_servicio::text)) IN ('economico', 'económico') THEN 'economico'
+                    WHEN LOWER(TRIM(w.tipo_servicio::text)) IN ('confort', 'comfort') THEN 'confort'
+                    WHEN LOWER(TRIM(w.tipo_servicio::text)) = 'confort+' THEN 'confort+'
+                    WHEN LOWER(TRIM(w.tipo_servicio::text)) IN ('mensajeria','mensajería') THEN 'mensajería'
+                    WHEN LOWER(TRIM(w.tipo_servicio::text)) IN ('exprés','exprs') THEN 'express'
+                    WHEN LOWER(TRIM(w.tipo_servicio::text)) IN ('minivan','express','premier','moto','cargo','standard','start') THEN LOWER(TRIM(w.tipo_servicio::text))
+                    WHEN LOWER(TRIM(w.tipo_servicio::text)) = 'tuk-tuk' THEN 'tuk-tuk'
+                    WHEN LENGTH(TRIM(w.tipo_servicio::text)) > 30 THEN 'UNCLASSIFIED'
+                    ELSE LOWER(TRIM(w.tipo_servicio::text))
+                END AS tipo_servicio_norm
+            FROM with_city w
+            LEFT JOIN ops.dim_city_country d ON d.city_norm = NULLIF(TRIM(w.city_norm_raw), '')
+            LEFT JOIN ops.park_country_fallback f ON f.park_id = w.park_key
+        ),
+        with_lob AS (
+            SELECT
+                v.*,
+                COALESCE(m.lob_group, 'UNCLASSIFIED') AS lob_group,
+                CASE WHEN v.pago_corporativo IS NOT NULL THEN 'B2B' ELSE 'B2C' END AS segmento
+            FROM with_country v
+            LEFT JOIN canon.map_real_tipo_servicio_to_lob_group m ON m.real_tipo_servicio = v.tipo_servicio_norm
+        ),
+        agg AS (
+            SELECT
+                v.country,
+                v.city_norm,
+                v.park_key,
+                v.park_name,
+                v.lob_group,
+                v.tipo_servicio_norm,
+                v.segmento,
+                DATE_TRUNC('month', v.fecha_inicio_viaje)::date AS period_start,
+                'month' AS period_type,
+                COUNT(*) AS viajes,
+                (-1) * SUM(v.comision_empresa_asociada)::numeric AS margen_total,
+                (-1) * AVG(v.comision_empresa_asociada)::numeric AS margen_trip,
+                (AVG(v.distancia_km)::numeric) / 1000.0 AS km_prom,
+                SUM(CASE WHEN v.pago_corporativo IS NOT NULL THEN 1 ELSE 0 END) AS viajes_b2b,
+                MAX(v.fecha_inicio_viaje) AS last_trip_ts
+            FROM with_lob v
+            WHERE v.country IN ('co','pe')
+            GROUP BY v.country, v.city_norm, v.park_key, v.park_name, v.lob_group, v.tipo_servicio_norm, v.segmento,
+                     DATE_TRUNC('month', v.fecha_inicio_viaje)::date
+            UNION ALL
+            SELECT
+                v.country,
+                v.city_norm,
+                v.park_key,
+                v.park_name,
+                v.lob_group,
+                v.tipo_servicio_norm,
+                v.segmento,
+                DATE_TRUNC('week', v.fecha_inicio_viaje)::date AS period_start,
+                'week' AS period_type,
+                COUNT(*) AS viajes,
+                (-1) * SUM(v.comision_empresa_asociada)::numeric AS margen_total,
+                (-1) * AVG(v.comision_empresa_asociada)::numeric AS margen_trip,
+                (AVG(v.distancia_km)::numeric) / 1000.0 AS km_prom,
+                SUM(CASE WHEN v.pago_corporativo IS NOT NULL THEN 1 ELSE 0 END) AS viajes_b2b,
+                MAX(v.fecha_inicio_viaje) AS last_trip_ts
+            FROM with_lob v
+            WHERE v.country IN ('co','pe')
+            GROUP BY v.country, v.city_norm, v.park_key, v.park_name, v.lob_group, v.tipo_servicio_norm, v.segmento,
+                     DATE_TRUNC('week', v.fecha_inicio_viaje)::date
+        )
+        SELECT
+            country,
+            period_type,
+            period_start,
+            city_norm,
+            park_key,
+            park_name,
+            lob_group,
+            tipo_servicio_norm,
+            segmento,
+            viajes,
+            margen_total,
+            margen_trip,
+            km_prom,
+            viajes_b2b,
+            (viajes_b2b::numeric / NULLIF(viajes, 0)) AS pct_b2b,
+            last_trip_ts
+        FROM agg
+    """)
+
+    op.execute("""
+        CREATE UNIQUE INDEX uq_mv_real_lob_drill_agg
+        ON ops.mv_real_lob_drill_agg (country, period_type, period_start, COALESCE(city_norm,''), COALESCE(park_key::text,''), lob_group, tipo_servicio_norm, segmento)
+    """)
+    op.execute("CREATE INDEX idx_mv_real_lob_drill_country_period ON ops.mv_real_lob_drill_agg (country, period_type, period_start DESC)")
+    op.execute("CREATE INDEX idx_mv_real_lob_drill_country_lob ON ops.mv_real_lob_drill_agg (country, period_type, period_start, lob_group)")
+    op.execute("CREATE INDEX idx_mv_real_lob_drill_country_park ON ops.mv_real_lob_drill_agg (country, period_type, period_start, park_key)")
+
+    # 3) Actualizar mv_real_rollup_day: park_name_resolved = UNKNOWN_PARK(id) / SIN_PARK, city SIN_CITY, country con fallback
+    op.execute("DROP MATERIALIZED VIEW IF EXISTS ops.mv_real_rollup_day CASCADE")
     op.execute("""
         CREATE MATERIALIZED VIEW ops.mv_real_rollup_day AS
         WITH base AS (
@@ -34,7 +190,7 @@ def upgrade() -> None:
                 p.id AS park_catalog_id,
                 p.name AS park_name,
                 p.city AS park_city,
-                LOWER(TRIM(COALESCE(NULLIF(TRIM(COALESCE(p.city,'')::text), ''), '(sin_city)'))) AS city_norm
+                LOWER(TRIM(COALESCE(p.city,'')::text)) AS city_norm
             FROM public.trips_all t
             LEFT JOIN public.parks p ON p.id::text = NULLIF(TRIM(t.park_id::text), '')
             WHERE t.tipo_servicio IS NOT NULL
@@ -45,12 +201,12 @@ def upgrade() -> None:
         with_country AS (
             SELECT
                 b.*,
-                COALESCE(d.country, 'unk') AS country,
-                COALESCE(NULLIF(TRIM(b.park_city::text), ''), '(sin_city)') AS city,
-                COALESCE(
-                    NULLIF(TRIM(b.park_name::text), ''),
-                    CASE WHEN b.park_id_norm IS NOT NULL THEN 'PARK '||b.park_id_norm ELSE 'SIN_PARK_ID' END
-                ) AS park_name_resolved,
+                COALESCE(d.country, f.country, 'unk') AS country,
+                COALESCE(NULLIF(TRIM(b.park_city::text), ''), 'SIN_CITY') AS city,
+                CASE
+                    WHEN b.park_id_norm IS NULL THEN 'SIN_PARK'
+                    ELSE COALESCE(NULLIF(TRIM(b.park_name::text), ''), 'UNKNOWN_PARK (' || b.park_id_norm::text || ')')
+                END AS park_name_resolved,
                 CASE
                     WHEN b.park_id_norm IS NULL THEN 'SIN_PARK_ID'
                     WHEN b.park_catalog_id IS NULL THEN 'PARK_NO_CATALOG'
@@ -69,6 +225,7 @@ def upgrade() -> None:
                 END AS real_tipo_norm
             FROM base b
             LEFT JOIN ops.dim_city_country d ON d.city_norm = b.city_norm
+            LEFT JOIN ops.park_country_fallback f ON f.park_id = b.park_id_norm
         ),
         agg AS (
             SELECT
@@ -120,7 +277,7 @@ def upgrade() -> None:
     op.execute("CREATE INDEX idx_mv_real_rollup_country_city_day ON ops.mv_real_rollup_day (country, city, trip_day)")
     op.execute("CREATE INDEX idx_mv_real_rollup_country_park_day ON ops.mv_real_rollup_day (country, park_id, trip_day)")
 
-    # 3) Coverage (sin cambios de estructura)
+    # 4) Recrear vistas que dependen de mv_real_rollup_day (mismo contenido que 052)
     op.execute("DROP VIEW IF EXISTS ops.v_real_data_coverage CASCADE")
     op.execute("""
         CREATE VIEW ops.v_real_data_coverage AS
@@ -138,7 +295,6 @@ def upgrade() -> None:
         GROUP BY country
     """)
 
-    # 4) Country MONTH con margin_total_pos, margin_unit_pos, margin_total_raw
     op.execute("DROP VIEW IF EXISTS ops.v_real_drill_country_month CASCADE")
     op.execute("""
         CREATE VIEW ops.v_real_drill_country_month AS
@@ -215,7 +371,6 @@ def upgrade() -> None:
         FROM combined c
     """)
 
-    # 5) Country WEEK
     op.execute("DROP VIEW IF EXISTS ops.v_real_drill_country_week CASCADE")
     op.execute("""
         CREATE VIEW ops.v_real_drill_country_week AS
@@ -288,7 +443,6 @@ def upgrade() -> None:
         FROM combined c
     """)
 
-    # 6) LOB MONTH
     op.execute("DROP VIEW IF EXISTS ops.v_real_drill_lob_month CASCADE")
     op.execute("""
         CREATE VIEW ops.v_real_drill_lob_month AS
@@ -310,7 +464,6 @@ def upgrade() -> None:
         GROUP BY country, lob_group, date_trunc('month', trip_day)::date
     """)
 
-    # 7) LOB WEEK
     op.execute("DROP VIEW IF EXISTS ops.v_real_drill_lob_week CASCADE")
     op.execute("""
         CREATE VIEW ops.v_real_drill_lob_week AS
@@ -332,7 +485,6 @@ def upgrade() -> None:
         GROUP BY country, lob_group, date_trunc('week', trip_day)::date
     """)
 
-    # 8) Park MONTH
     op.execute("DROP VIEW IF EXISTS ops.v_real_drill_park_month CASCADE")
     op.execute("""
         CREATE VIEW ops.v_real_drill_park_month AS
@@ -356,7 +508,6 @@ def upgrade() -> None:
         GROUP BY country, city, park_id, park_name_resolved, park_bucket, date_trunc('month', trip_day)::date
     """)
 
-    # 9) Park WEEK
     op.execute("DROP VIEW IF EXISTS ops.v_real_drill_park_week CASCADE")
     op.execute("""
         CREATE VIEW ops.v_real_drill_park_week AS
@@ -381,22 +532,10 @@ def upgrade() -> None:
     """)
 
     op.execute("REFRESH MATERIALIZED VIEW ops.mv_real_rollup_day")
-
-    # Vista para inspección de filas con country='unk' (no mezcladas en drill)
-    op.execute("""
-        CREATE OR REPLACE VIEW ops.v_real_drill_unk_sample AS
-        SELECT trip_day, city, COUNT(*) AS cnt, SUM(trips) AS total_trips
-        FROM ops.mv_real_rollup_day
-        WHERE country = 'unk'
-        GROUP BY trip_day, city
-        ORDER BY trip_day DESC, total_trips DESC
-        LIMIT 500
-    """)
-    op.execute("COMMENT ON VIEW ops.v_real_drill_unk_sample IS 'Muestra de filas con country=unk para inspección; no se incluyen en drill principal.'")
+    op.execute("REFRESH MATERIALIZED VIEW ops.mv_real_lob_drill_agg")
 
 
 def downgrade() -> None:
-    op.execute("DROP VIEW IF EXISTS ops.v_real_drill_unk_sample CASCADE")
     op.execute("DROP VIEW IF EXISTS ops.v_real_drill_park_week CASCADE")
     op.execute("DROP VIEW IF EXISTS ops.v_real_drill_park_month CASCADE")
     op.execute("DROP VIEW IF EXISTS ops.v_real_drill_lob_week CASCADE")
@@ -405,4 +544,6 @@ def downgrade() -> None:
     op.execute("DROP VIEW IF EXISTS ops.v_real_drill_country_month CASCADE")
     op.execute("DROP VIEW IF EXISTS ops.v_real_data_coverage CASCADE")
     op.execute("DROP MATERIALIZED VIEW IF EXISTS ops.mv_real_rollup_day CASCADE")
-    # Recrear MV y vistas como en 051 (ejecutar upgrade 051 para restaurar)
+    op.execute("DROP MATERIALIZED VIEW IF EXISTS ops.mv_real_lob_drill_agg CASCADE")
+    op.execute("DROP TABLE IF EXISTS ops.park_country_fallback CASCADE")
+    # Re-run 052 upgrade to restore mv_real_rollup_day and views as before 053
