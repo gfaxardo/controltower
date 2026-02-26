@@ -211,7 +211,10 @@ export const getRealLobDrillPro = async (params = {}) => {
   return response.data
 }
 export const getRealLobDrillProChildren = async (params = {}) => {
-  const response = await api.get('/ops/real-lob/drill/children', { params, timeout: REAL_DRILL_TIMEOUT_MS })
+  const { signal, ...queryParams } = params
+  const config = { params: queryParams, timeout: REAL_DRILL_TIMEOUT_MS }
+  if (signal) config.signal = signal
+  const response = await api.get('/ops/real-lob/drill/children', config)
   return response.data
 }
 

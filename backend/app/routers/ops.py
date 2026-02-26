@@ -382,8 +382,26 @@ async def get_real_lob_drill_children_endpoint(
     period_start: str = Query(..., description="YYYY-MM-DD o YYYY-MM-01"),
     desglose: Literal["LOB", "PARK"] = Query("PARK"),
     segmento: Optional[Literal["all", "b2c", "b2b"]] = Query("all"),
+    drill_lob_id: Optional[str] = Query(None, description="Filtro LOB (solo válido si desglose=LOB)"),
+    drill_park_id: Optional[str] = Query(None, description="Filtro Park (solo válido si desglose=PARK)"),
 ):
-    """Desglose por Park (city, park_name) o LOB (lob_group, tipo_servicio_norm). Orden: viajes DESC."""
+    """
+    Desglose por Park (city, park_name) o LOB (lob_group, tipo_servicio_norm). Orden: viajes DESC.
+
+    Contrato params por dimensión (FASE 2D):
+    - desglose=LOB  => permitido drill_lob_id; 400 si llega drill_park_id.
+    - desglose=PARK => permitido drill_park_id; 400 si llega drill_lob_id.
+    """
+    if desglose == "PARK" and drill_lob_id is not None and str(drill_lob_id).strip() != "":
+        raise HTTPException(
+            status_code=400,
+            detail="Incompatible drill params for groupBy=PARK: drill_lob_id is not allowed when desglose is PARK.",
+        )
+    if desglose == "LOB" and drill_park_id is not None and str(drill_park_id).strip() != "":
+        raise HTTPException(
+            status_code=400,
+            detail="Incompatible drill params for groupBy=LOB: drill_park_id is not allowed when desglose is LOB.",
+        )
     try:
         data = get_real_lob_drill_pro_children(
             country=country,

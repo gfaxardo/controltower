@@ -294,18 +294,20 @@ def get_drill_children(
                 """, params)
             rows = cur.fetchall()
             out = []
+            is_park = desglose.upper() == "PARK"
             for r in rows:
                 row = dict(r)
-                if row.get("city") is None or (isinstance(row.get("city"), str) and row.get("city").lower() == "sin_city"):
-                    row["city"] = "SIN_CITY"
-                if row.get("park_name") is None or str(row.get("park_name", "")).strip() == "":
-                    row["park_name"] = "SIN_PARK"
+                if is_park:
+                    if row.get("city") is None or (isinstance(row.get("city"), str) and row.get("city").lower() == "sin_city"):
+                        row["city"] = "SIN_CITY"
+                    if row.get("park_name") is None or str(row.get("park_name", "")).strip() == "":
+                        row["park_name"] = "SIN_PARK"
+                    row["park_name_resolved"] = row.get("park_name")
                 row["margin_total_pos"] = row.get("margen_total")
                 row["margin_unit_pos"] = row.get("margen_trip")
                 row["km_prom"] = round(float(row["km_prom"]), 4) if row.get("km_prom") is not None else None
                 row["trips"] = row.get("viajes")
                 row["b2b_trips"] = row.get("viajes_b2b")
-                row["park_name_resolved"] = row.get("park_name")
                 row["lob_group"] = row.get("lob_group")
                 out.append(row)
             cur.close()

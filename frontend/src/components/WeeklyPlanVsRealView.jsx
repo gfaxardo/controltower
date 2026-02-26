@@ -19,6 +19,7 @@ function WeeklyPlanVsRealView({ filters = {} }) {
   const [weekStartTo, setWeekStartTo] = useState('')
 
   useEffect(() => {
+    setExpandedRows({})
     loadComparisonData()
     loadAlertsData()
   }, [filters, weekStartFrom, weekStartTo, alertFilter])

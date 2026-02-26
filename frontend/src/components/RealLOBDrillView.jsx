@@ -1,9 +1,9 @@
 /**
  * RealLOBDrillView — Vista drill-down jerárquica (Fase 2C+).
  * Timeline mensual/semanal por país (CO, PE); doble click despliega por LOB o por Park.
- * Sin inputs de país/ciudad/park; segmento Todos|B2B|B2C.
+ * FASE 2D: clave dimensional con buildDrillKey, reset al cambiar dim, AbortController + guard.
  */
-import { useState, useEffect, useCallback, Fragment } from 'react'
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import {
   getRealLobDrillPro,
   getRealLobDrillProChildren,
@@ -11,6 +11,7 @@ import {
   getRealDrillByLob,
   getRealDrillByPark
 } from '../services/api'
+import { buildDimKey, buildDrillKey } from '../utils/dimKey'
 
 const USE_DRILL_PRO = true
 
@@ -61,10 +62,28 @@ export default function RealLOBDrillView () {
   const [meta, setMeta] = useState({ last_period_monthly: null, last_period_weekly: null })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [expanded, setExpanded] = useState(new Set()) // keys "country|period_start"
+  const [expanded, setExpanded] = useState(new Set())
   const [subrows, setSubrows] = useState({}) // key -> { loading, data, error }
 
+  const abortControllerRef = useRef(null)
+  const activeDimKeyRef = useRef('')
+
   const limitPeriods = periodType === 'monthly' ? 24 : 26
+
+  const getDimObj = useCallback(() => ({
+    drillBy,
+    periodType,
+    segment
+  }), [drillBy, periodType, segment])
+
+  const resetDrillState = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    abortControllerRef.current = new AbortController()
+    setExpanded(new Set())
+    setSubrows({})
+  }, [])
 
   const loadSummary = useCallback(async () => {
     setLoading(true)
@@ -105,55 +124,85 @@ export default function RealLOBDrillView () {
     return s
   }
 
+  const subrowKey = useCallback((country, periodStart) => {
+    const norm = normalizePeriodStart(periodStart)
+    const dimObj = { ...getDimObj(), country: (country || '').trim() }
+    return buildDrillKey(dimObj, norm)
+  }, [getDimObj])
+
+  const handleDrillByChange = useCallback((newDrillBy) => {
+    if (newDrillBy === drillBy) return
+    resetDrillState()
+    setDrillBy(newDrillBy)
+  }, [drillBy, resetDrillState])
+
+  const handlePeriodTypeChange = useCallback((newPeriodType) => {
+    if (newPeriodType === periodType) return
+    resetDrillState()
+    setPeriodType(newPeriodType)
+  }, [periodType, resetDrillState])
+
   const toggleExpand = useCallback(async (country, periodStart) => {
-    const rawKey = `${country}|${periodStart}`
-    const key = `${country}|${normalizePeriodStart(periodStart)}`
-    if (expanded.has(key) || expanded.has(rawKey)) {
+    const key = subrowKey((country || '').trim(), periodStart)
+    if (expanded.has(key)) {
       setExpanded((prev) => {
         const next = new Set(prev)
         next.delete(key)
-        next.delete(rawKey)
         return next
       })
       return
     }
     setExpanded((prev) => new Set(prev).add(key))
-    if (subrows[key]?.data || subrows[rawKey]?.data) return
+    if (subrows[key]?.data) return
+    if (!abortControllerRef.current) {
+      abortControllerRef.current = new AbortController()
+    }
+    const signal = abortControllerRef.current.signal
+    const dimKeyAtRequest = buildDimKey(getDimObj())
+    activeDimKeyRef.current = dimKeyAtRequest
     setSubrows((prev) => ({ ...prev, [key]: { loading: true, data: null, error: null } }))
     try {
       if (USE_DRILL_PRO) {
         const res = await getRealLobDrillProChildren({
-          country,
+          country: (country || '').trim(),
           period: periodType === 'monthly' ? 'month' : 'week',
           period_start: normalizePeriodStart(periodStart),
           desglose: drillBy === 'lob' ? 'LOB' : 'PARK',
-          segmento: segment === 'Todos' ? 'all' : segment.toLowerCase()
+          segmento: segment === 'Todos' ? 'all' : segment.toLowerCase(),
+          signal
         })
-        setSubrows((prev) => ({
-          ...prev,
-          [key]: { loading: false, data: res.data || [], error: null }
-        }))
+        if (activeDimKeyRef.current === buildDimKey(getDimObj())) {
+          setSubrows((prev) => ({
+            ...prev,
+            [key]: { loading: false, data: res.data || [], error: null }
+          }))
+        }
       } else {
         const params = {
           period_type: periodType,
-          country,
+          country: (country || '').trim(),
           period_start: normalizePeriodStart(periodStart),
           segment: segment === 'Todos' ? undefined : segment
         }
         const fetcher = drillBy === 'lob' ? getRealDrillByLob : getRealDrillByPark
         const res = await fetcher(params)
-        setSubrows((prev) => ({
-          ...prev,
-          [key]: { loading: false, data: res.data || [], error: null }
-        }))
+        if (activeDimKeyRef.current === buildDimKey(getDimObj())) {
+          setSubrows((prev) => ({
+            ...prev,
+            [key]: { loading: false, data: res.data || [], error: null }
+          }))
+        }
       }
     } catch (e) {
-      setSubrows((prev) => ({
-        ...prev,
-        [key]: { loading: false, data: null, error: e.message || 'Error al cargar desglose' }
-      }))
+      if (e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') return
+      if (activeDimKeyRef.current === buildDimKey(getDimObj())) {
+        setSubrows((prev) => ({
+          ...prev,
+          [key]: { loading: false, data: null, error: e.message || 'Error al cargar desglose' }
+        }))
+      }
     }
-  }, [expanded, subrows, periodType, drillBy, segment])
+  }, [expanded, subrows, periodType, drillBy, segment, subrowKey, getDimObj])
 
   const now = new Date()
   const currentMonthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
@@ -181,14 +230,14 @@ export default function RealLOBDrillView () {
           <span className="text-sm text-gray-500">Periodo:</span>
           <button
             type="button"
-            onClick={() => setPeriodType('monthly')}
+            onClick={() => handlePeriodTypeChange('monthly')}
             className={`px-3 py-1.5 rounded text-sm ${periodType === 'monthly' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}
           >
             Mensual
           </button>
           <button
             type="button"
-            onClick={() => setPeriodType('weekly')}
+            onClick={() => handlePeriodTypeChange('weekly')}
             className={`px-3 py-1.5 rounded text-sm ${periodType === 'weekly' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}
           >
             Semanal
@@ -197,14 +246,14 @@ export default function RealLOBDrillView () {
           <span className="text-sm text-gray-500">Desglose:</span>
           <button
             type="button"
-            onClick={() => setDrillBy('lob')}
+            onClick={() => handleDrillByChange('lob')}
             className={`px-3 py-1.5 rounded text-sm ${drillBy === 'lob' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}
           >
             LOB
           </button>
           <button
             type="button"
-            onClick={() => setDrillBy('park')}
+            onClick={() => handleDrillByChange('park')}
             className={`px-3 py-1.5 rounded text-sm ${drillBy === 'park' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}
           >
             Park
@@ -213,7 +262,11 @@ export default function RealLOBDrillView () {
           <span className="text-sm text-gray-500">Segmento:</span>
           <select
             value={segment}
-            onChange={(e) => setSegment(e.target.value)}
+            onChange={(e) => {
+              const v = e.target.value
+              resetDrillState()
+              setSegment(v)
+            }}
             className="border rounded px-2 py-1.5 text-sm"
           >
             {SEGMENT_OPTIONS.map((o) => (
@@ -308,9 +361,10 @@ export default function RealLOBDrillView () {
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {rows.map((row) => {
-                        const key = `${(row.country || countryCode || '').trim()}|${normalizePeriodStart(row.period_start)}`
+                        const rowId = `${(row.country || countryCode || '').trim()}|${normalizePeriodStart(row.period_start)}`
+                        const key = subrowKey((row.country || countryCode || '').trim(), row.period_start)
                         const isExp = expanded.has(key)
-                        const sr = subrows[key] || subrows[`${(row.country || countryCode || '').trim()}|${row.period_start}`]
+                        const sr = subrows[key]
                         const open = isPeriodOpen(row.period_start)
                         const b2bRatio =
                           segment === 'Todos' && row.trips > 0 && row.b2b_trips != null
@@ -322,7 +376,7 @@ export default function RealLOBDrillView () {
                           ? formatDistanceKm(row.km_prom ?? row.distance_km_avg ?? (row.distance_total_km / row.trips), row.trips)
                           : '—'
                         return (
-                          <Fragment key={key}>
+                          <Fragment key={rowId}>
                             <tr
                               onClick={() => toggleExpand((row.country || countryCode || '').trim(), row.period_start)}
                               className="cursor-pointer hover:bg-slate-50 select-none"
@@ -377,7 +431,7 @@ export default function RealLOBDrillView () {
                               </td>
                             </tr>
                             {isExp && sr && (
-                              <tr key={`${key}-sub`} className="bg-slate-50">
+                              <tr key={`${rowId}-sub`} className="bg-slate-50">
                                 <td colSpan={8} className="px-4 py-3">
                                   {sr.loading && <p className="text-sm text-gray-500">Cargando…</p>}
                                   {sr.error && <p className="text-sm text-red-600">{sr.error}</p>}
