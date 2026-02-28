@@ -100,6 +100,8 @@ YEGO CONTROL TOWER/
 | **2C** | Scoreboard, backlog, breaches de SLA, snapshot. |
 | **2C+** | Universo LOB, mapeo Plan → Real, viajes sin mapeo. |
 
+**Cierre Fase 2B:** Runbook y bloque único en `docs/PHASE_2B_RUNBOOK.md` (sección «Cierre FASE 2B con evidencia»). Evidencia en `docs/PHASE_2B_STATUS.md`.
+
 ---
 
 ## 6. Endpoints API (resumen)
