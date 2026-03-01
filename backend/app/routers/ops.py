@@ -625,8 +625,6 @@ async def get_real_strategy_lob_endpoint(
     except Exception as e:
         logger.error(f"Error Real strategy LOB: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
 @router.get("/real-strategy/cities")
 async def get_real_strategy_cities_endpoint(
     country: str = Query(..., description="País (requerido)"),

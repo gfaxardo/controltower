@@ -1,0 +1,150 @@
+================================================================================
+A) MAPEO AUTOMÁTICO (SCAN) — Driver Lifecycle
+   Fuentes: public.trips_all, public.drivers
+================================================================================
+
+--- 1) ESQUEMA Y COLUMNAS ---
+
+public.trips_all:
+  id                                  character varying         YES      
+  condicion                           character varying         YES      
+  codigo_pedido                       character varying         YES      
+  conductor_id                        character varying         YES      
+  conductor_nombre                    character varying         YES      
+  vehiculo_placa                      character varying         YES      
+  vehiculo_modelo                     character varying         YES      
+  fecha_inicio_viaje                  timestamp without time zone YES      
+  fecha_finalizacion                  timestamp without time zone YES      
+  motivo_cancelacion                  text                      YES      
+  direccion                           text                      YES      
+  tipo_servicio                       character varying         YES      
+  distancia_km                        numeric                   YES      
+  precio_yango_pro                    numeric                   YES      
+  efectivo                            numeric                   YES      
+  tarjeta                             numeric                   YES      
+  pago_corporativo                    numeric                   YES      
+  propina                             numeric                   YES      
+  promocion                           numeric                   YES      
+  bonificaciones                      numeric                   YES      
+  comision_servicio                   numeric                   YES      
+  comision_empresa_asociada           numeric                   YES      
+  otros_pagos                         numeric                   YES      
+  pagos_viajes_flota                  numeric                   YES      
+  park_id                             character varying         YES      
+
+public.drivers:
+  driver_id                           character varying         NO       
+  park_id                             character varying         YES      
+  first_name                          character varying         YES      
+  last_name                           character varying         YES      
+  middle_name                         character varying         YES      
+  full_name                           character varying         YES      
+  phone                               character varying         YES      
+  rating                              double precision          YES      
+  work_status                         character varying         YES      
+  hire_date                           date                      YES      
+  fire_date                           date                      YES      
+  is_selfemployed                     boolean                   YES      
+  car_id                              character varying         YES      
+  car_brand                           character varying         YES      
+  car_model                           character varying         YES      
+  car_color                           character varying         YES      
+  car_number                          character varying         YES      
+  car_callsign                        character varying         YES      
+  car_normalized_number               character varying         YES      
+  license_number                      character varying         YES      
+  license_country                     character varying         YES      
+  license_expiration_date             date                      YES      
+  license_issue_date                  date                      YES      
+  license_normalized_number           character varying         YES      
+  account_balance                     numeric                   YES      
+  account_balance_limit               numeric                   YES      
+  account_id                          character varying         YES      
+  current_status                      character varying         YES      
+  status_updated_at                   date                      YES      
+  account_type                        character varying         YES      
+  account_number                      character varying         YES      
+  recipient_name                      character varying         YES      
+  document_type                       character varying         YES      
+  document_number                     character varying         YES      
+  created_at                          timestamp without time zone YES      CURRENT_TIMESTAMP
+  updated_at                          timestamp without time zone YES      CURRENT_TIMESTAMP
+  id                                  bigint                    NO       
+  active                              boolean                   YES      
+  works_terms                         character varying         YES      NULL::character varying
+
+
+--- 2) PERFILADO trips_all ---
+
+COUNT(*): 50,312,509
+COUNT(DISTINCT conductor_id): 42,099
+Driver key (trips) elegido: conductor_id
+Top 20 valores 'condicion':
+  Cancelado                                39,585,972
+  Completado                               10,723,688
+  En viaje                                 1,246
+  Sin condición                            1,176
+  Esperando                                385
+  Conduciendo                              28
+  condicion: 'charmap' codec can't encode characters in position 2-9: character maps to <undefined>
+
+Columnas de tiempo (MIN/MAX / % nulls):
+  fecha_inicio_viaje: MIN=2025-01-01 00:00:00 MAX=2026-01-31 23:59:49 nulls=0.00%
+  fecha_finalizacion: MIN=2024-12-31 23:45:36 MAX=2026-02-01 01:09:19 nulls=0.01%
+
+Dimensiones (top 20 / % nulls):
+  park_id: nulls=0.00% top=['05b1c831e66f41a9a87f5f3fa0a186ae', '08e20910d81d42658d4334d3f6d10ac0', 'ef21f793358144f589aabcbeb8bd7d50', 'e081e2df33a74073992c859638bdf683', '851e30755bba4d298e2e837f571b4ab8']
+  tipo_servicio: nulls=0.00% top=['Económico', 'Moto', 'Confort', 'Standard', 'Confort+']
+
+--- 3) PERFILADO drivers ---
+
+COUNT(*): 134,308
+PK candidato: id
+Timestamps drivers (MIN/MAX / % nulls):
+  hire_date: MIN=2023-09-13 MAX=2032-10-14 nulls=0.00%
+  fire_date: MIN=2023-09-27 MAX=2026-02-28 nulls=96.38%
+  license_expiration_date: MIN=1863-03-30 MAX=3031-06-30 nulls=0.41%
+  license_issue_date: MIN=1887-02-11 MAX=2103-04-29 nulls=0.41%
+  status_updated_at: MIN=2024-01-15 MAX=2026-02-28 nulls=32.88%
+  created_at: MIN=2025-07-08 17:30:40.729376 MAX=2026-02-28 12:31:30.702768 nulls=0.00%
+  updated_at: MIN=2025-07-09 09:22:46.688709 MAX=2026-02-28 12:31:30.702768 nulls=0.00%
+Top 'work_status': [('working', 129137), ('fired', 5109), ('not_working', 62)]
+Top 'current_status': [('offline', 125719), ('busy', 6906), ('in_order_free', 616), (None, 544), ('free', 321), ('in_order_busy', 202)]
+Top 'status_updated_at': [(None, 44154), (datetime.date(2026, 2, 28), 10994), (datetime.date(2026, 2, 27), 1656), (datetime.date(2026, 2, 26), 830), (datetime.date(2026, 2, 25), 710), (datetime.date(2026, 2, 23), 577), (datetime.date(2026, 2, 24), 556), (datetime.date(2026, 2, 21), 434), (datetime.date(2026, 2, 19), 431), (datetime.date(2025, 7, 2), 431)]
+Top 'active': [(None, 134308)]
+
+--- 4) JOIN CANDIDATOS (trips_all <-> drivers) ---
+
+  trips.conductor_id = drivers.driver_id -> match_count=50,312,509 distinct_drivers=42,099 %trips=100.00%
+  trips.conductor_id = drivers.id: operator does not exist: character varying = bigint
+LINE 6: ...    INNER JOIN public.drivers d ON t."conductor_id" = d."id"
+                                                               ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+
+
+--- 5) COMPLETION_TS (timestamp viaje completado) ---
+
+  Error filtrando por condicion: current transaction is aborted, commands ignored until end of transaction block
+
+  completion_ts por defecto (primera columna tiempo): fecha_inicio_viaje
+
+--- 6) REQUEST_TS (creación/solicitud trip) ---
+
+  request_ts = completion_ts (mismo timestamp usado como proxy)
+
+--- 7) ACTIVATION + registered_ts / approved_ts (drivers) ---
+
+  drivers.registered_ts: created_at
+  drivers.approved_ts: NO ENCONTRADO
+
+================================================================================
+RESUMEN SCAN
+================================================================================
+  best_join_key:        trips.conductor_id = drivers.driver_id
+  completion_ts:        fecha_inicio_viaje
+  request_ts:           fecha_inicio_viaje
+  driver_key (trips):   conductor_id
+  driver_registered_ts: created_at
+  driver_approved_ts:   N/A
+  dimensiones (trips):  ['park_id', 'tipo_servicio']
+================================================================================

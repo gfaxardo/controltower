@@ -255,4 +255,43 @@ export const getRealStrategyCities = async (params = {}) => {
   return response.data
 }
 
+// Driver Lifecycle (drilldown por park)
+const DRIVER_LIFECYCLE_TIMEOUT_MS = 30000
+export const getDriverLifecycleWeekly = async (params = {}) => {
+  const response = await api.get('/ops/driver-lifecycle/weekly', { params, timeout: DRIVER_LIFECYCLE_TIMEOUT_MS })
+  return response.data
+}
+export const getDriverLifecycleMonthly = async (params = {}) => {
+  const response = await api.get('/ops/driver-lifecycle/monthly', { params, timeout: DRIVER_LIFECYCLE_TIMEOUT_MS })
+  return response.data
+}
+export const getDriverLifecycleDrilldown = async (params = {}) => {
+  const response = await api.get('/ops/driver-lifecycle/drilldown', { params, timeout: DRIVER_LIFECYCLE_TIMEOUT_MS })
+  return response.data
+}
+export const getDriverLifecycleParksSummary = async (params = {}) => {
+  const response = await api.get('/ops/driver-lifecycle/parks-summary', { params, timeout: DRIVER_LIFECYCLE_TIMEOUT_MS })
+  return response.data
+}
+export const getDriverLifecycleParksList = async () => {
+  const response = await api.get('/ops/driver-lifecycle/parks', { timeout: 10000 })
+  return response.data
+}
+export const getDriverLifecycleBaseMetrics = async (params = {}) => {
+  const response = await api.get('/ops/driver-lifecycle/base-metrics', { params, timeout: DRIVER_LIFECYCLE_TIMEOUT_MS })
+  return response.data
+}
+export const getDriverLifecycleBaseMetricsDrilldown = async (params = {}) => {
+  const response = await api.get('/ops/driver-lifecycle/base-metrics-drilldown', { params, timeout: DRIVER_LIFECYCLE_TIMEOUT_MS })
+  return response.data
+}
+export const getDriverLifecycleCohorts = async (params = {}) => {
+  const response = await api.get('/ops/driver-lifecycle/cohorts', { params, timeout: DRIVER_LIFECYCLE_TIMEOUT_MS })
+  return response.data
+}
+export const getDriverLifecycleCohortDrilldown = async (params = {}) => {
+  const response = await api.get('/ops/driver-lifecycle/cohort-drilldown', { params, timeout: DRIVER_LIFECYCLE_TIMEOUT_MS })
+  return response.data
+}
+
 export default api
