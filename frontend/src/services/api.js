@@ -255,6 +255,12 @@ export const getRealStrategyCities = async (params = {}) => {
   return response.data
 }
 
+// Ops parks (dropdown: park_id + park_name, mismo criterio que Real LOB)
+export const getOpsParks = async (params = {}) => {
+  const response = await api.get('/ops/parks', { params, timeout: 10000 })
+  return response.data
+}
+
 // Driver Lifecycle (drilldown por park)
 const DRIVER_LIFECYCLE_TIMEOUT_MS = 30000
 export const getDriverLifecycleWeekly = async (params = {}) => {
@@ -263,6 +269,14 @@ export const getDriverLifecycleWeekly = async (params = {}) => {
 }
 export const getDriverLifecycleMonthly = async (params = {}) => {
   const response = await api.get('/ops/driver-lifecycle/monthly', { params, timeout: DRIVER_LIFECYCLE_TIMEOUT_MS })
+  return response.data
+}
+export const getDriverLifecycleSeries = async (params = {}) => {
+  const response = await api.get('/ops/driver-lifecycle/series', { params, timeout: DRIVER_LIFECYCLE_TIMEOUT_MS })
+  return response.data
+}
+export const getDriverLifecycleSummary = async (params = {}) => {
+  const response = await api.get('/ops/driver-lifecycle/summary', { params, timeout: DRIVER_LIFECYCLE_TIMEOUT_MS })
   return response.data
 }
 export const getDriverLifecycleDrilldown = async (params = {}) => {

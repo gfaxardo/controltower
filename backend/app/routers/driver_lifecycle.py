@@ -8,6 +8,8 @@ from app.services.driver_lifecycle_service import (
     get_monthly,
     get_drilldown,
     get_parks_summary,
+    get_series,
+    get_summary,
     get_cohorts,
     get_cohort_drilldown,
     get_base_metrics,
@@ -134,6 +136,48 @@ async def driver_lifecycle_base_metrics_drilldown(
         raise
     except Exception as e:
         logger.exception("driver-lifecycle base-metrics-drilldown: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/series")
+async def driver_lifecycle_series(
+    from_: str = Query(..., alias="from", description="YYYY-MM-DD"),
+    to: str = Query(..., description="YYYY-MM-DD"),
+    grain: str = Query("weekly", description="weekly | monthly"),
+    park_id: Optional[str] = Query(None, description="Filtro opcional por park"),
+):
+    """
+    Serie por periodo (week_start o month_start). Orden: más reciente → más antiguo.
+    Métricas: period_start, activations, active_drivers, churned, reactivated,
+    churn_rate, reactivation_rate, net_growth, mix_ft_pt.
+    """
+    if grain not in ("weekly", "monthly"):
+        raise HTTPException(status_code=400, detail="grain must be weekly or monthly")
+    try:
+        return get_series(from_date=from_, to_date=to, grain=grain, park_id=park_id)
+    except Exception as e:
+        logger.exception("driver-lifecycle series: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/summary")
+async def driver_lifecycle_summary(
+    from_: str = Query(..., alias="from", description="YYYY-MM-DD"),
+    to: str = Query(..., description="YYYY-MM-DD"),
+    grain: str = Query("weekly", description="weekly | monthly"),
+    park_id: Optional[str] = Query(None, description="Filtro opcional por park"),
+):
+    """
+    Resumen (cards) del rango: activations_range, churned_range, reactivated_range,
+    time_to_first_trip_avg_days, lifetime_avg_active_days, active_drivers_last_period.
+    Consistente con /series (active_drivers_last_period = primer periodo de la serie).
+    """
+    if grain not in ("weekly", "monthly"):
+        raise HTTPException(status_code=400, detail="grain must be weekly or monthly")
+    try:
+        return get_summary(from_date=from_, to_date=to, grain=grain, park_id=park_id)
+    except Exception as e:
+        logger.exception("driver-lifecycle summary: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

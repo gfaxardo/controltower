@@ -5,12 +5,11 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 import {
-  getDriverLifecycleWeekly,
-  getDriverLifecycleMonthly,
+  getOpsParks,
+  getDriverLifecycleSeries,
+  getDriverLifecycleSummary,
   getDriverLifecycleDrilldown,
   getDriverLifecycleParksSummary,
-  getDriverLifecycleParksList,
-  getDriverLifecycleBaseMetrics,
   getDriverLifecycleBaseMetricsDrilldown,
   getDriverLifecycleCohorts,
   getDriverLifecycleCohortDrilldown
@@ -51,12 +50,13 @@ export default function DriverLifecycleView () {
 
   const [from, setFrom] = useState(fromDefault)
   const [to, setTo] = useState(today)
-  const [parkId, setParkId] = useState('') // optional filter; empty = global + breakdown
+  const [parkId, setParkId] = useState('') // '' = Todos; si hay valor = park_id seleccionado
   const [periodType, setPeriodType] = useState('week') // 'week' | 'month'
-  const [parksList, setParksList] = useState([])
-  const [kpis, setKpis] = useState([])
-  const [breakdownByPark, setBreakdownByPark] = useState([])
-  const [parksSummary, setParksSummary] = useState([])
+  const [parksList, setParksList] = useState([]) // [{ park_id, park_name }] desde GET /ops/parks
+  const [summary, setSummary] = useState(null) // cards desde GET /summary
+  const [seriesRows, setSeriesRows] = useState([]) // tabla por periodo desde GET /series
+  const [showBreakdownByPark, setShowBreakdownByPark] = useState(false)
+  const [parksSummary, setParksSummary] = useState([]) // desglose por park (solo si showBreakdownByPark)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
@@ -65,7 +65,6 @@ export default function DriverLifecycleView () {
   const [drilldownData, setDrilldownData] = useState({ drivers: [], total: 0, page: 1, page_size: 50 })
   const [drilldownLoading, setDrilldownLoading] = useState(false)
 
-  const [baseMetrics, setBaseMetrics] = useState(null)
   const [cohortFrom, setCohortFrom] = useState(fromDefault)
   const [cohortTo, setCohortTo] = useState(today)
   const [cohortParkId, setCohortParkId] = useState('')
@@ -75,54 +74,56 @@ export default function DriverLifecycleView () {
 
   const loadParksList = useCallback(async () => {
     try {
-      const res = await getDriverLifecycleParksList()
+      const res = await getOpsParks()
       setParksList(res.parks || [])
     } catch (e) {
-      console.error('Driver lifecycle parks list:', e)
+      console.error('Ops parks:', e)
     }
   }, [])
 
   useEffect(() => { loadParksList() }, [loadParksList])
 
+  const grain = periodType === 'week' ? 'weekly' : 'monthly'
+
   const loadData = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const params = { from, to }
-      if (parkId && parkId.trim() !== '') {
-        params.park_id = parkId
-      }
-      let data
-      if (periodType === 'week') {
-        data = await getDriverLifecycleWeekly(params)
-      } else {
-        data = await getDriverLifecycleMonthly(params)
-      }
-      setKpis(data.kpis || [])
-      setBreakdownByPark(data.breakdown_by_park || [])
+      const params = { from, to, grain }
+      if (parkId && parkId.trim() !== '') params.park_id = parkId
 
-      const summaryRes = await getDriverLifecycleParksSummary({ from, to, period_type: periodType })
-      setParksSummary(summaryRes.parks || [])
+      const [summaryRes, seriesRes] = await Promise.all([
+        getDriverLifecycleSummary(params),
+        getDriverLifecycleSeries(params)
+      ])
+      setSummary(summaryRes)
+      setSeriesRows(seriesRes.rows || [])
 
-      const baseParams = { from, to }
-      if (parkId && parkId.trim() !== '') baseParams.park_id = parkId
-      try {
-        const baseRes = await getDriverLifecycleBaseMetrics(baseParams)
-        setBaseMetrics(baseRes)
-      } catch (e) {
-        setBaseMetrics(null)
+      if (showBreakdownByPark && (!parkId || parkId.trim() === '')) {
+        const psRes = await getDriverLifecycleParksSummary({ from, to, period_type: periodType })
+        setParksSummary(psRes.parks || [])
+      } else if (!showBreakdownByPark) {
+        setParksSummary([])
       }
     } catch (e) {
       setError(e?.response?.data?.detail || e?.message || 'Error al cargar')
     } finally {
       setLoading(false)
     }
-  }, [from, to, parkId, periodType])
+  }, [from, to, parkId, periodType, grain, showBreakdownByPark])
 
   useEffect(() => { loadData() }, [loadData])
 
-  const openDrilldown = (parkId, metric) => {
-    const periodStart = periodType === 'week' ? lastWeekStart(to) : lastMonthStart(to)
+  useEffect(() => {
+    if (showBreakdownByPark && (!parkId || parkId.trim() === '') && !loading) {
+      getDriverLifecycleParksSummary({ from, to, period_type: periodType })
+        .then(res => setParksSummary(res.parks || []))
+        .catch(() => setParksSummary([]))
+    }
+  }, [showBreakdownByPark, parkId, from, to, periodType, loading])
+
+  const openDrilldown = (periodStart, metric) => {
+    if (!parkId || parkId.trim() === '') return
     setModalPayload({ type: 'kpi', park_id: parkId, period_start: periodStart, metric })
     setModalOpen(true)
     setDrilldownData({ drivers: [], total: 0, page: 1, page_size: 50 })
@@ -146,7 +147,7 @@ export default function DriverLifecycleView () {
   useEffect(() => { loadCohorts() }, [loadCohorts])
 
   const openBaseMetricsDrilldown = (metric) => {
-    const pid = parkId && parkId.trim() !== '' ? parkId : (parksList[0] || '')
+    const pid = parkId && parkId.trim() !== '' ? parkId : (parksList[0]?.park_id || '')
     if (!pid) return
     setModalPayload({ type: 'base_metrics', metric, park_id: pid, from, to })
     setModalOpen(true)
@@ -244,11 +245,6 @@ export default function DriverLifecycleView () {
     URL.revokeObjectURL(a.href)
   }
 
-  const totalActivations = kpis.reduce((s, r) => s + (Number(r.activations) || 0), 0)
-  const totalActive = kpis.length ? kpis[kpis.length - 1]?.active_drivers : null
-  const totalChurned = periodType === 'week' ? kpis.reduce((s, r) => s + (Number(r.churned) || 0), 0) : null
-  const totalReactivated = periodType === 'week' ? kpis.reduce((s, r) => s + (Number(r.reactivated) || 0), 0) : null
-
   return (
     <div className="bg-white rounded-lg shadow p-6">
       <h2 className="text-xl font-semibold text-gray-800 mb-4">Driver Lifecycle (por Park)</h2>
@@ -277,11 +273,11 @@ export default function DriverLifecycleView () {
           <select
             value={parkId}
             onChange={e => setParkId(e.target.value)}
-            className="border rounded px-2 py-1 text-sm min-w-[140px]"
+            className="border rounded px-2 py-1 text-sm min-w-[180px]"
           >
-            <option value="">— Todos (global + desglose) —</option>
+            <option value="">Todos</option>
             {parksList.map(p => (
-              <option key={p} value={p}>{p}</option>
+              <option key={p.park_id} value={p.park_id}>{p.park_name || p.park_id}</option>
             ))}
           </select>
         </label>
@@ -313,58 +309,62 @@ export default function DriverLifecycleView () {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <div className="bg-gray-50 rounded p-3">
               <div className="text-xs text-gray-500 uppercase">Activations (rango)</div>
-              <div className="text-lg font-semibold">{formatNum(totalActivations)}</div>
+              <div className="text-lg font-semibold">{formatNum(summary?.activations_range)}</div>
             </div>
-            {baseMetrics && (
-              <>
-                <div className="bg-gray-50 rounded p-3">
-                  <div className="text-xs text-gray-500 uppercase">Time to first trip (avg días)</div>
-                  <button
-                    type="button"
-                    onClick={() => parkId && openBaseMetricsDrilldown('time_to_first_trip')}
-                    className={`text-lg font-semibold ${parkId ? 'text-blue-600 hover:underline' : ''}`}
-                  >
-                    {formatNum(baseMetrics.time_to_first_trip_avg)}
-                  </button>
-                  {parkId && <span className="text-xs text-gray-500 ml-1">(Drilldown)</span>}
-                </div>
-                <div className="bg-gray-50 rounded p-3">
-                  <div className="text-xs text-gray-500 uppercase">Lifetime (avg días activos)</div>
-                  <button
-                    type="button"
-                    onClick={() => parkId && openBaseMetricsDrilldown('lifetime_days')}
-                    className={`text-lg font-semibold ${parkId ? 'text-blue-600 hover:underline' : ''}`}
-                  >
-                    {formatNum(baseMetrics.lifetime_days_avg)}
-                  </button>
-                  {parkId && <span className="text-xs text-gray-500 ml-1">(Drilldown)</span>}
-                </div>
-              </>
-            )}
+            <div className="bg-gray-50 rounded p-3">
+              <div className="text-xs text-gray-500 uppercase">Time to first trip (avg días)</div>
+              <button
+                type="button"
+                onClick={() => parkId && openBaseMetricsDrilldown('time_to_first_trip')}
+                className={`text-lg font-semibold ${parkId ? 'text-blue-600 hover:underline' : ''}`}
+              >
+                {formatNum(summary?.time_to_first_trip_avg_days)}
+              </button>
+              {parkId && <span className="text-xs text-gray-500 ml-1">(Drilldown)</span>}
+            </div>
+            <div className="bg-gray-50 rounded p-3">
+              <div className="text-xs text-gray-500 uppercase">Lifetime (avg días activos)</div>
+              <button
+                type="button"
+                onClick={() => parkId && openBaseMetricsDrilldown('lifetime_days')}
+                className={`text-lg font-semibold ${parkId ? 'text-blue-600 hover:underline' : ''}`}
+              >
+                {formatNum(summary?.lifetime_avg_active_days)}
+              </button>
+              {parkId && <span className="text-xs text-gray-500 ml-1">(Drilldown)</span>}
+            </div>
             <div className="bg-gray-50 rounded p-3">
               <div className="text-xs text-gray-500 uppercase">Active drivers (último periodo)</div>
-              <div className="text-lg font-semibold">{formatNum(totalActive)}</div>
+              <div className="text-lg font-semibold">{formatNum(summary?.active_drivers_last_period)}</div>
             </div>
-            {periodType === 'week' && (
-              <>
-                <div className="bg-gray-50 rounded p-3">
-                  <div className="text-xs text-gray-500 uppercase">Churned (rango)</div>
-                  <div className="text-lg font-semibold">{formatNum(totalChurned)}</div>
-                </div>
-                <div className="bg-gray-50 rounded p-3">
-                  <div className="text-xs text-gray-500 uppercase">Reactivated (rango)</div>
-                  <div className="text-lg font-semibold">{formatNum(totalReactivated)}</div>
-                </div>
-              </>
-            )}
+            <div className="bg-gray-50 rounded p-3">
+              <div className="text-xs text-gray-500 uppercase">Churned (rango)</div>
+              <div className="text-lg font-semibold">{formatNum(summary?.churned_range)}</div>
+            </div>
+            <div className="bg-gray-50 rounded p-3">
+              <div className="text-xs text-gray-500 uppercase">Reactivated (rango)</div>
+              <div className="text-lg font-semibold">{formatNum(summary?.reactivated_range)}</div>
+            </div>
           </div>
 
-          <h3 className="text-lg font-medium text-gray-700 mb-2">Desglose por Park</h3>
+          {(!parkId || parkId.trim() === '') && (
+            <div className="mb-3">
+              <button
+                type="button"
+                onClick={() => setShowBreakdownByPark(!showBreakdownByPark)}
+                className="px-3 py-1 rounded text-sm bg-gray-200 hover:bg-gray-300"
+              >
+                {showBreakdownByPark ? 'Ocultar desglose por Park' : 'Ver desglose por Park'}
+              </button>
+            </div>
+          )}
+
+          <h3 className="text-lg font-medium text-gray-700 mb-2">Serie por Periodo</h3>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Park</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Periodo</th>
                   <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Activations</th>
                   <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Active Drivers</th>
                   <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Churn Rate</th>
@@ -374,14 +374,15 @@ export default function DriverLifecycleView () {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {parksSummary.map((row, idx) => (
-                  <tr key={row.park_id || idx}>
-                    <td className="px-4 py-2 text-sm text-gray-900">{row.park_id ?? '—'}</td>
+                {seriesRows.map((row, idx) => (
+                  <tr key={row.period_start || idx}>
+                    <td className="px-4 py-2 text-sm text-gray-900">{row.period_start ?? '—'}</td>
                     <td className="px-4 py-2 text-sm text-right">
                       <button
                         type="button"
-                        onClick={() => openDrilldown(row.park_id, 'activations')}
-                        className="text-blue-600 hover:underline"
+                        onClick={() => openDrilldown(row.period_start, 'activations')}
+                        className={parkId ? 'text-blue-600 hover:underline' : 'cursor-default'}
+                        disabled={!parkId}
                       >
                         {formatNum(row.activations)}
                       </button>
@@ -389,8 +390,9 @@ export default function DriverLifecycleView () {
                     <td className="px-4 py-2 text-sm text-right">
                       <button
                         type="button"
-                        onClick={() => openDrilldown(row.park_id, 'active')}
-                        className="text-blue-600 hover:underline"
+                        onClick={() => openDrilldown(row.period_start, 'active')}
+                        className={parkId ? 'text-blue-600 hover:underline' : 'cursor-default'}
+                        disabled={!parkId}
                       >
                         {formatNum(row.active_drivers)}
                       </button>
@@ -398,8 +400,9 @@ export default function DriverLifecycleView () {
                     <td className="px-4 py-2 text-sm text-right">
                       <button
                         type="button"
-                        onClick={() => openDrilldown(row.park_id, 'churned')}
-                        className="text-blue-600 hover:underline"
+                        onClick={() => openDrilldown(row.period_start, 'churned')}
+                        className={parkId ? 'text-blue-600 hover:underline' : 'cursor-default'}
+                        disabled={!parkId}
                       >
                         {formatPct(row.churn_rate)}
                       </button>
@@ -407,8 +410,9 @@ export default function DriverLifecycleView () {
                     <td className="px-4 py-2 text-sm text-right">
                       <button
                         type="button"
-                        onClick={() => openDrilldown(row.park_id, 'reactivated')}
-                        className="text-blue-600 hover:underline"
+                        onClick={() => openDrilldown(row.period_start, 'reactivated')}
+                        className={parkId ? 'text-blue-600 hover:underline' : 'cursor-default'}
+                        disabled={!parkId}
                       >
                         {formatPct(row.reactivation_rate)}
                       </button>
@@ -419,10 +423,47 @@ export default function DriverLifecycleView () {
                 ))}
               </tbody>
             </table>
-            {parksSummary.length === 0 && (
-              <p className="text-gray-500 py-4 text-center">No hay datos por park en el rango seleccionado.</p>
+            {seriesRows.length === 0 && (
+              <p className="text-gray-500 py-4 text-center">No hay datos en el rango seleccionado.</p>
             )}
           </div>
+
+          {showBreakdownByPark && (!parkId || parkId.trim() === '') && (
+            <>
+              <h3 className="text-lg font-medium text-gray-700 mb-2 mt-6">Desglose por Park</h3>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Park</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Activations</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Active Drivers</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Churn Rate</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Reactivation Rate</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Net Growth</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Mix FT/PT</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {parksSummary.map((row, idx) => (
+                      <tr key={row.park_id || idx}>
+                        <td className="px-4 py-2 text-sm text-gray-900">{row.park_name ?? row.park_id ?? '—'}</td>
+                        <td className="px-4 py-2 text-sm text-right">{formatNum(row.activations)}</td>
+                        <td className="px-4 py-2 text-sm text-right">{formatNum(row.active_drivers)}</td>
+                        <td className="px-4 py-2 text-sm text-right">{formatPct(row.churn_rate)}</td>
+                        <td className="px-4 py-2 text-sm text-right">{formatPct(row.reactivation_rate)}</td>
+                        <td className="px-4 py-2 text-sm text-right">{formatNum(row.net_growth)}</td>
+                        <td className="px-4 py-2 text-sm text-gray-600">{row.mix_ft_pt ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {parksSummary.length === 0 && (
+                  <p className="text-gray-500 py-4 text-center">No hay datos por park en el rango seleccionado.</p>
+                )}
+              </div>
+            </>
+          )}
 
           <h3 className="text-lg font-medium text-gray-700 mb-2 mt-8">Cohortes por Park</h3>
           <div className="flex flex-wrap gap-4 mb-3">
@@ -449,11 +490,11 @@ export default function DriverLifecycleView () {
               <select
                 value={cohortParkId}
                 onChange={e => setCohortParkId(e.target.value)}
-                className="border rounded px-2 py-1 text-sm min-w-[140px]"
+                className="border rounded px-2 py-1 text-sm min-w-[180px]"
               >
                 <option value="">— Todos —</option>
                 {parksList.map(p => (
-                  <option key={p} value={p}>{p}</option>
+                  <option key={p.park_id} value={p.park_id}>{p.park_name || p.park_id}</option>
                 ))}
               </select>
             </label>

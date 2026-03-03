@@ -308,6 +308,30 @@ async def get_real_lob_weekly_v2_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/parks")
+async def get_ops_parks(
+    country: Optional[str] = Query(None, description="Filtrar por país (mismo criterio que Real LOB)"),
+    city: Optional[str] = Query(None, description="Filtrar por ciudad"),
+):
+    """
+    Lista de parks para dropdowns (Driver Lifecycle, etc.).
+    Misma fuente y orden que Real LOB: [{ park_id, park_name }].
+    La opción "Todos" se arma en frontend.
+    """
+    try:
+        filters = get_real_lob_filters(country=country, city=city)
+        parks = filters.get("parks") or []
+        return {
+            "parks": [
+                {"park_id": p.get("park_id"), "park_name": p.get("park_name") or str(p.get("park_id") or "")}
+                for p in parks
+            ]
+        }
+    except Exception as e:
+        logger.error("GET /ops/parks: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/real-lob/filters")
 async def get_real_lob_filters_endpoint(
     country: Optional[str] = Query(None, description="Filtrar ciudades/parks por país"),
