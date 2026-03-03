@@ -15,10 +15,50 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse, urlunparse
 import logging
+import json
 
 logger = logging.getLogger(__name__)
+
+def _dbg_log(msg: str, data: dict, hyp: str = ""):
+    try:
+        p = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "debug-7a8d73.log")
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId":"7a8d73","message":msg,"data":data,"hypothesisId":hyp,"timestamp":__import__("time").time()*1000}, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def _url_ascii_safe(url: str) -> str:
+    """Reconstruye la URL con user/password en percent-encoding (solo ASCII) para psycopg2 en Windows."""
+    def force_ascii(s: str) -> str:
+        """Convierte cualquier str a solo ASCII (percent-encoding UTF-8)."""
+        out = []
+        for c in s:
+            if ord(c) < 128:
+                out.append(c)
+            else:
+                for b in c.encode("utf-8"):
+                    out.append(f"%{b:02X}")
+        return "".join(out)
+
+    try:
+        if isinstance(url, bytes):
+            try:
+                url = url.decode("utf-8")
+            except UnicodeDecodeError:
+                url = url.decode("latin-1", errors="replace")
+        p = urlparse(url)
+        if not p.hostname:
+            return force_ascii(url)
+        user = quote_plus(p.username or "", safe="") if p.username else ""
+        password = quote_plus(p.password or "", safe="") if p.password else ""
+        netloc = f"{user}:{password}@{p.hostname}" + (f":{p.port}" if p.port else "")
+        result = urlunparse((p.scheme, netloc, p.path or "", p.params, p.query, p.fragment))
+        return force_ascii(result) if any(ord(c) > 127 for c in result) else result
+    except Exception:
+        return force_ascii(str(url))
 
 def safe_encode(value: str) -> str:
     """Codifica de forma segura un valor para URL, manejando caracteres especiales."""
@@ -70,22 +110,8 @@ def safe_encode(value: str) -> str:
             return ''
 
 if settings.DATABASE_URL:
-    # Si DATABASE_URL está configurado, asegurar que esté en UTF-8 válido
-    try:
-        database_url = settings.DATABASE_URL
-        # Verificar que se puede codificar
-        database_url.encode('utf-8')
-    except (UnicodeEncodeError, AttributeError):
-        # Intentar convertir desde otras codificaciones
-        for encoding in ['latin-1', 'cp1252', 'iso-8859-1']:
-            try:
-                database_url = settings.DATABASE_URL.encode(encoding).decode('utf-8')
-                break
-            except:
-                continue
-        else:
-            # Fallback: reemplazar caracteres problemáticos
-            database_url = settings.DATABASE_URL.encode('utf-8', errors='replace').decode('utf-8')
+    # URL con user/password en percent-encoding (solo ASCII) para evitar error de codificación en psycopg2
+    database_url = _url_ascii_safe(settings.DATABASE_URL)
 else:
     db_user = safe_encode(settings.DB_USER) if settings.DB_USER else ''
     db_password = safe_encode(settings.DB_PASSWORD) if settings.DB_PASSWORD else ''
@@ -159,152 +185,93 @@ def run_migrations_online() -> None:
                 return value.encode('utf-8', errors='replace').decode('utf-8')
         return str(value)
     
-    # Si no hay DATABASE_URL, usar siempre conexión directa para evitar problemas de codificación
-    # con la construcción de URL desde variables individuales
-    if not settings.DATABASE_URL:
-        logger.info("DATABASE_URL no configurado, usando conexión directa con parámetros individuales")
-        use_direct_connection = True
-    else:
-        # Si hay DATABASE_URL, intentar usarlo
-        url = config.attributes.get("sqlalchemy.url") or config.get_main_option("sqlalchemy.url")
-        
-        # Verificar si podemos usar la URL directamente
-        use_direct_connection = False
-        try:
-            # Intentar codificar la URL para verificar que es válida en UTF-8
-            if isinstance(url, str):
-                url.encode('utf-8')
-            # Si llegamos aquí, la URL es válida en UTF-8
-            use_direct_connection = False
-        except (UnicodeEncodeError, UnicodeDecodeError, AttributeError) as e:
-            # Si hay problemas de codificación con la URL, usar conexión directa
-            logger.warning(f"Problema de codificación detectado con URL, usando parámetros directos: {type(e).__name__}")
-            use_direct_connection = True
-    
-    if use_direct_connection:
-        # Usar psycopg2 directamente con parámetros individuales y crear engine de SQLAlchemy
-        import psycopg2
-        
-        try:
-            # Obtener valores y asegurar UTF-8
-            conn_params = {
-                'host': ensure_utf8_param(settings.DB_HOST) or 'localhost',
-                'port': settings.DB_PORT or 5432,
-                'database': ensure_utf8_param(settings.DB_NAME) or '',
-                'user': ensure_utf8_param(settings.DB_USER) or '',
-                'password': ensure_utf8_param(settings.DB_PASSWORD) or '',
-                'client_encoding': 'UTF8'
-            }
-            
-            # Crear conexión directa
-            raw_conn = psycopg2.connect(**conn_params)
-            
-            # Crear engine de SQLAlchemy usando la conexión raw
-            # Usamos un DSN básico sin password para evitar problemas de codificación
-            dsn = f"postgresql://{conn_params['user']}@{conn_params['host']}:{conn_params['port']}/{conn_params['database']}"
-            
-            # Crear engine con creator que devuelve la conexión raw
-            def creator():
-                return raw_conn
-            
-            connectable = create_engine(
-                'postgresql://',
-                poolclass=pool.NullPool,
-                creator=creator,
-                connect_args={'client_encoding': 'UTF8'}
-            )
-            
-            # Usar esta conexión para las migraciones
-            with connectable.connect() as connection:
-                context.configure(
-                    connection=connection, 
-                    target_metadata=target_metadata
-                )
-                
-                with context.begin_transaction():
-                    context.run_migrations()
-            
-            raw_conn.close()
-            return
-        except Exception as e:
-            logger.error(f"Error al conectar directamente con psycopg2: {e}")
-            logger.error("Solución: Usa DATABASE_URL en tu archivo .env en lugar de variables individuales")
-            logger.error("Ejemplo: DATABASE_URL=postgresql://usuario:contraseña@localhost:5432/yego_integral")
-            raise
-    
-    # Si llegamos aquí, usar la URL normalmente (solo si hay DATABASE_URL)
-    url = config.attributes.get("sqlalchemy.url") or config.get_main_option("sqlalchemy.url")
-    connect_args = {
-        'client_encoding': 'utf8'
-    }
-    
-    try:
-        connectable = create_engine(
-            url, 
-            poolclass=pool.NullPool,
-            connect_args=connect_args
+    # Evitar UnicodeDecodeError en psycopg2/libpq (Windows): DSN solo ASCII + limpiar env PG*
+    import psycopg2
+
+    # 1) Cargar DATABASE_URL desde .env con codificación explícita (bypass pydantic)
+    def _load_database_url() -> str:
+        env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+        if not os.path.isfile(env_path):
+            return getattr(settings, "DATABASE_URL", "") or ""
+        for enc in ("utf-8", "cp1252", "latin-1"):
+            try:
+                with open(env_path, "r", encoding=enc) as f:
+                    for line in f:
+                        s = line.strip()
+                        if s.startswith("DATABASE_URL="):
+                            val = s.split("=", 1)[1].strip()
+                            if len(val) >= 2 and val[0] == val[-1] and val[0] in '"\'':
+                                val = val[1:-1].replace('\\"', '"').replace("\\'", "'")
+                            return val
+            except Exception:
+                continue
+        return getattr(settings, "DATABASE_URL", "") or ""
+
+    url_from_file = _load_database_url()
+    raw_url = url_from_file or getattr(settings, "DATABASE_URL", "")
+    # #region agent log
+    _dbg_log("raw_url source", {"from_file": bool(url_from_file), "raw_len": len(raw_url), "raw_has_non_ascii": any(ord(c) > 127 for c in raw_url) if raw_url else False}, "H2")
+    # #endregion
+
+    if not raw_url:
+        # Construir URL desde variables individuales (evitar pasar password con acentos)
+        raw_url = "postgresql://{user}:{password}@{host}:{port}/{database}".format(
+            user=ensure_utf8_param(settings.DB_USER) or "",
+            password=ensure_utf8_param(settings.DB_PASSWORD) or "",
+            host=ensure_utf8_param(settings.DB_HOST) or "localhost",
+            port=settings.DB_PORT or 5432,
+            database=ensure_utf8_param(settings.DB_NAME) or "",
         )
-        
-        # Intentar conectar - si falla por codificación, usar conexión directa
+
+    # Siempre usar DSN ASCII (nunca pasar password/user con acentos a psycopg2)
+    dsn = _url_ascii_safe(raw_url)
+    # #region agent log
+    _dbg_log("after _url_ascii_safe", {"dsn_len": len(dsn), "dsn_has_non_ascii": any(ord(c) > 127 for c in dsn)}, "H1")
+    # #endregion
+    dsn = "".join(
+        c if ord(c) < 128 else "".join(f"%{b:02X}" for b in c.encode("utf-8"))
+        for c in dsn
+    )
+    # #region agent log
+    _dbg_log("after nuclear conversion", {"dsn_len": len(dsn), "dsn_has_non_ascii": any(ord(c) > 127 for c in dsn), "byte_at_85": ord(dsn[85]) if len(dsn) > 85 else None}, "H1|H5")
+    # #endregion
+    # Limpiar vars PG* para que libpq use solo nuestro DSN
+    for k in list(os.environ):
+        if k.upper() in (
+            "PGPASSWORD", "PGHOST", "PGUSER", "PGDATABASE", "PGPORT", "DATABASE_URL",
+            "PGHOSTADDR", "PGSERVICE", "PGSERVICEFILE", "PGPASSFILE",
+        ):
+            os.environ.pop(k, None)
+    conn_kw = {"dsn": dsn, "client_encoding": "UTF8"}
+    # #region agent log
+    _dbg_log("before connect", {"dsn_len": len(dsn), "dsn_is_ascii": all(ord(c) < 128 for c in dsn), "conn_kw_keys": list(conn_kw.keys())}, "H1|H4|H5")
+    # #endregion
+
+    try:
+        raw_conn = psycopg2.connect(**conn_kw)
+        def creator():
+            return raw_conn
+        connectable = create_engine(
+            'postgresql://',
+            poolclass=pool.NullPool,
+            creator=creator,
+            connect_args={'client_encoding': 'UTF8'}
+        )
         with connectable.connect() as connection:
             context.configure(
-                connection=connection, target_metadata=target_metadata
+                connection=connection,
+                target_metadata=target_metadata
             )
-
             with context.begin_transaction():
                 context.run_migrations()
-    except (UnicodeDecodeError, UnicodeEncodeError) as e:
-        # Si hay error de codificación, usar conexión directa como fallback
-        logger.warning(f"Error de codificación UTF-8 detectado al usar URL, cambiando a conexión directa: {e}")
-        
-        # Usar psycopg2 directamente con parámetros individuales y crear engine de SQLAlchemy
-        import psycopg2
-        
-        try:
-            # Obtener valores y asegurar UTF-8
-            conn_params = {
-                'host': ensure_utf8_param(settings.DB_HOST) or 'localhost',
-                'port': settings.DB_PORT or 5432,
-                'database': ensure_utf8_param(settings.DB_NAME) or '',
-                'user': ensure_utf8_param(settings.DB_USER) or '',
-                'password': ensure_utf8_param(settings.DB_PASSWORD) or '',
-                'client_encoding': 'UTF8'
-            }
-            
-            # Crear conexión directa
-            raw_conn = psycopg2.connect(**conn_params)
-            
-            # Crear engine de SQLAlchemy usando la conexión raw
-            # Usamos un DSN básico sin password para evitar problemas de codificación
-            def creator():
-                return raw_conn
-            
-            connectable = create_engine(
-                'postgresql://',
-                poolclass=pool.NullPool,
-                creator=creator,
-                connect_args={'client_encoding': 'UTF8'}
-            )
-            
-            # Usar esta conexión para las migraciones
-            with connectable.connect() as connection:
-                context.configure(
-                    connection=connection, 
-                    target_metadata=target_metadata
-                )
-                
-                with context.begin_transaction():
-                    context.run_migrations()
-            
-            raw_conn.close()
-        except Exception as e2:
-            logger.error(f"Error al conectar directamente con psycopg2: {e2}")
-            logger.error("Solución: Usa DATABASE_URL en tu archivo .env en lugar de variables individuales")
-            logger.error("Ejemplo: DATABASE_URL=postgresql://usuario:contraseña@localhost:5432/yego_integral")
-            raise
+        raw_conn.close()
     except Exception as e:
-        logger.error(f"Error al crear engine de SQLAlchemy: {e}")
-        logger.error(f"URL (sin password): {url.split('@')[1] if '@' in url else url}")
+        # #region agent log
+        _dbg_log("connect failed", {"error_type": type(e).__name__, "error_msg": str(e)[:200]}, "H4")
+        # #endregion
+        logger.error(f"Error al conectar: {e}")
+        if not settings.DATABASE_URL:
+            logger.error("Comprueba DB_HOST, DB_USER, DB_PASSWORD, DB_NAME o define DATABASE_URL en .env")
         raise
 
 

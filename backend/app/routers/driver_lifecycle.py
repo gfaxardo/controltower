@@ -3,6 +3,7 @@ Driver Lifecycle: endpoints con drilldown por park.
 """
 from fastapi import APIRouter, Query, HTTPException
 from typing import Optional
+from fastapi.responses import PlainTextResponse
 from app.services.driver_lifecycle_service import (
     get_weekly,
     get_monthly,
@@ -14,6 +15,11 @@ from app.services.driver_lifecycle_service import (
     get_cohort_drilldown,
     get_base_metrics,
     get_base_metrics_drilldown,
+    get_parks_for_selector,
+    get_pro_churn_segments,
+    get_pro_park_shock_list,
+    get_pro_behavior_shifts,
+    get_pro_drivers_at_risk,
 )
 import logging
 
@@ -139,6 +145,26 @@ async def driver_lifecycle_base_metrics_drilldown(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/park/series")
+async def driver_lifecycle_park_series(
+    park_id: str = Query(..., description="Park (obligatorio)"),
+    from_: str = Query(..., alias="from", description="YYYY-MM-DD"),
+    to: str = Query(..., description="YYYY-MM-DD"),
+    grain: str = Query("weekly", description="weekly | monthly"),
+):
+    """
+    Serie por periodo para un park (PRO). Orden: más reciente primero.
+    Alias de GET /series con park_id obligatorio.
+    """
+    if grain not in ("weekly", "monthly"):
+        raise HTTPException(status_code=400, detail="grain must be weekly or monthly")
+    try:
+        return get_series(from_date=from_, to_date=to, grain=grain, park_id=park_id)
+    except Exception as e:
+        logger.exception("driver-lifecycle park/series: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/series")
 async def driver_lifecycle_series(
     from_: str = Query(..., alias="from", description="YYYY-MM-DD"),
@@ -200,29 +226,13 @@ async def driver_lifecycle_parks_summary(
 @router.get("/parks")
 async def driver_lifecycle_parks_list():
     """
-    Lista de park_id con al menos un driver en las MVs (para selector).
-    Incluye NULL como PARK_DESCONOCIDO si existe.
+    Lista de parks para selector (Driver Lifecycle PRO).
+    Fuente: dim.dim_park [{ park_id, park_name }]. Misma dimensión que Real LOB.
+    Fallback: distinct park_id desde MVs + nombres desde dim.dim_park.
     """
-    from app.db.connection import get_db
-    from psycopg2.extras import RealDictCursor
     try:
-        with get_db() as conn:
-            cur = conn.cursor(cursor_factory=RealDictCursor)
-            cur.execute("""
-                SELECT DISTINCT park_id FROM ops.mv_driver_weekly_stats
-                ORDER BY park_id NULLS LAST
-            """)
-            rows = cur.fetchall()
-            cur.close()
-        parks = []
-        seen = set()
-        for r in rows:
-            pid = r["park_id"]
-            display = "PARK_DESCONOCIDO" if pid is None or (isinstance(pid, str) and str(pid).strip() == "") else pid
-            if display not in seen:
-                seen.add(display)
-                parks.append(display)
-        return {"parks": parks}
+        parks = get_parks_for_selector()
+        return {"parks": [{"park_id": p["park_id"], "park_name": p.get("park_name") or str(p.get("park_id") or "")} for p in parks]}
     except Exception as e:
         logger.exception("driver-lifecycle parks list: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -245,6 +255,95 @@ async def driver_lifecycle_cohorts(
         )
     except Exception as e:
         logger.exception("driver-lifecycle cohorts: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─── PRO: churn segments, park shock, behavior shifts, drivers at risk + CSV export ─────────────────
+def _to_csv(rows: list, columns: list) -> str:
+    import csv
+    import io
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(columns)
+    for r in rows:
+        w.writerow([r.get(c) for c in columns])
+    return buf.getvalue()
+
+
+@router.get("/pro/churn-segments")
+async def driver_lifecycle_pro_churn_segments(
+    week_start: Optional[str] = Query(None, description="YYYY-MM-DD (lunes)"),
+    segment: Optional[str] = Query(None, description="power | mid | light | newbie"),
+    park_id: Optional[str] = Query(None),
+    limit: int = Query(5000, ge=1, le=50000),
+    format: Optional[str] = Query(None, description="csv para export"),
+):
+    """Lista ops.mv_driver_churn_segments_weekly. format=csv devuelve CSV."""
+    try:
+        rows = get_pro_churn_segments(week_start=week_start, segment=segment, park_id=park_id, limit=limit)
+        if format == "csv":
+            cols = ["driver_key", "week_start", "park_id", "trips_completed_week", "work_mode_week", "trips_prev_4w", "churn_segment"]
+            return PlainTextResponse(_to_csv(rows, cols), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=driver_churn_segments.csv"})
+        return {"data": rows, "total": len(rows)}
+    except Exception as e:
+        logger.exception("driver-lifecycle pro churn-segments: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/pro/park-shock")
+async def driver_lifecycle_pro_park_shock(
+    week_start: Optional[str] = Query(None),
+    limit: int = Query(5000, ge=1, le=50000),
+    format: Optional[str] = Query(None, description="csv para export"),
+):
+    """Drivers con park_shock (cambio park dominante 8w vs baseline 12-5). format=csv devuelve CSV."""
+    try:
+        rows = get_pro_park_shock_list(week_start=week_start, limit=limit)
+        if format == "csv":
+            cols = ["driver_key", "week_start", "baseline_park_id", "recent_park_id", "park_shock"]
+            return PlainTextResponse(_to_csv(rows, cols), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=driver_park_shock.csv"})
+        return {"data": rows, "total": len(rows)}
+    except Exception as e:
+        logger.exception("driver-lifecycle pro park-shock: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/pro/behavior-shifts")
+async def driver_lifecycle_pro_behavior_shifts(
+    week_start: Optional[str] = Query(None),
+    shift: Optional[str] = Query(None, description="drop | spike | stable"),
+    park_id: Optional[str] = Query(None),
+    limit: int = Query(5000, ge=1, le=50000),
+    format: Optional[str] = Query(None, description="csv para export"),
+):
+    """Lista ops.mv_driver_behavior_shifts_weekly. format=csv devuelve CSV."""
+    try:
+        rows = get_pro_behavior_shifts(week_start=week_start, shift=shift, park_id=park_id, limit=limit)
+        if format == "csv":
+            cols = ["driver_key", "week_start", "park_id", "trips_current_week", "avg_trips_prev_4w", "behavior_shift"]
+            return PlainTextResponse(_to_csv(rows, cols), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=driver_behavior_shifts.csv"})
+        return {"data": rows, "total": len(rows)}
+    except Exception as e:
+        logger.exception("driver-lifecycle pro behavior-shifts: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/pro/drivers-at-risk")
+async def driver_lifecycle_pro_drivers_at_risk(
+    week_start: Optional[str] = Query(None),
+    park_id: Optional[str] = Query(None),
+    limit: int = Query(5000, ge=1, le=50000),
+    format: Optional[str] = Query(None, description="csv para export"),
+):
+    """Drivers en riesgo: light/newbie, drop o park_shock. format=csv devuelve CSV."""
+    try:
+        rows = get_pro_drivers_at_risk(week_start=week_start, park_id=park_id, limit=limit)
+        if format == "csv":
+            cols = ["driver_key", "week_start", "park_id", "churn_segment", "behavior_shift", "park_shock"]
+            return PlainTextResponse(_to_csv(rows, cols), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=drivers_at_risk.csv"})
+        return {"data": rows, "total": len(rows)}
+    except Exception as e:
+        logger.exception("driver-lifecycle pro drivers-at-risk: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

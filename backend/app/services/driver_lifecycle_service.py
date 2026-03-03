@@ -45,6 +45,53 @@ def _park_names_lookup(conn, park_ids: list) -> dict:
         cur.close()
 
 
+def get_parks_for_selector() -> list[dict[str, Any]]:
+    """
+    Lista de parks para selector Driver Lifecycle PRO.
+    Fuente preferida: dim.dim_park (park_id, park_name). Misma dimensión que Real LOB.
+    Fallback 1: dim.dim_park solo park_id (park_name = park_id).
+    Fallback 2: distinct park_id desde ops.mv_driver_weekly_stats + lookup dim.dim_park si existe.
+    """
+    with get_db() as conn:
+        cur = _cursor(conn)
+        try:
+            # Intentar con park_name (columna puede no existir en algunos entornos)
+            cur.execute("""
+                SELECT park_id,
+                       COALESCE(NULLIF(TRIM(park_name::text), ''), park_id::text) AS park_name
+                FROM dim.dim_park
+                ORDER BY park_name NULLS LAST, park_id
+            """)
+            rows = cur.fetchall()
+            return [{"park_id": r["park_id"], "park_name": r["park_name"]} for r in rows]
+        except Exception:
+            try:
+                # Fallback: dim.dim_park solo park_id
+                cur.execute("""
+                    SELECT park_id, park_id::text AS park_name
+                    FROM dim.dim_park
+                    ORDER BY park_id
+                """)
+                rows = cur.fetchall()
+                return [{"park_id": r["park_id"], "park_name": r["park_name"]} for r in rows]
+            except Exception:
+                pass
+            # Fallback: distinct park_id de weekly_stats + lookup nombres (dim.dim_park si existe)
+            try:
+                cur.execute("""
+                    SELECT DISTINCT park_id FROM ops.mv_driver_weekly_stats
+                    WHERE park_id IS NOT NULL AND TRIM(COALESCE(park_id::text, '')) != ''
+                    ORDER BY park_id
+                """)
+                ids = [r["park_id"] for r in cur.fetchall()]
+                names = _park_names_lookup(conn, ids)
+                return [{"park_id": pid, "park_name": names.get(pid, str(pid))} for pid in ids]
+            except Exception:
+                return []
+        finally:
+            cur.close()
+
+
 def _cohort_mvs_exist(conn) -> tuple[bool, bool]:
     """Comprueba si existen las MVs de cohortes. Devuelve (kpis_exist, weekly_exist)."""
     cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -1163,6 +1210,152 @@ def get_cohorts(
         "to_cohort_week": to_cohort_week,
         "cohorts": [dict(r) for r in rows],
     }
+
+
+def get_pro_churn_segments(
+    week_start: Optional[str] = None,
+    segment: Optional[str] = None,
+    park_id: Optional[str] = None,
+    limit: int = 5000,
+) -> list[dict[str, Any]]:
+    """Lista desde ops.mv_driver_churn_segments_weekly. Filtros: week_start, churn_segment, park_id."""
+    with get_db() as conn:
+        cur = _cursor(conn)
+        conditions = ["1=1"]
+        params: list[Any] = []
+        if week_start:
+            conditions.append("week_start = %s::date")
+            params.append(week_start)
+        if segment:
+            conditions.append("churn_segment = %s")
+            params.append(segment)
+        if park_id:
+            conditions.append("park_id IS NOT DISTINCT FROM %s")
+            params.append(park_id)
+        params.append(limit)
+        cur.execute(
+            f"""
+            SELECT driver_key, week_start::text, park_id, trips_completed_week, work_mode_week,
+                   trips_prev_4w, churn_segment
+            FROM ops.mv_driver_churn_segments_weekly
+            WHERE {' AND '.join(conditions)}
+            ORDER BY week_start DESC, trips_completed_week DESC
+            LIMIT %s
+            """,
+            params,
+        )
+        rows = cur.fetchall()
+        cur.close()
+    return [dict(r) for r in rows]
+
+
+def get_pro_park_shock_list(
+    week_start: Optional[str] = None,
+    limit: int = 5000,
+) -> list[dict[str, Any]]:
+    """Drivers con park_shock = true desde ops.mv_driver_park_shock_weekly."""
+    with get_db() as conn:
+        cur = _cursor(conn)
+        if week_start:
+            cur.execute(
+                """
+                SELECT driver_key, week_start::text, baseline_park_id, recent_park_id, park_shock
+                FROM ops.mv_driver_park_shock_weekly
+                WHERE week_start = %s::date AND park_shock = true
+                ORDER BY week_start DESC
+                LIMIT %s
+                """,
+                (week_start, limit),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT driver_key, week_start::text, baseline_park_id, recent_park_id, park_shock
+                FROM ops.mv_driver_park_shock_weekly
+                WHERE park_shock = true
+                ORDER BY week_start DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+        rows = cur.fetchall()
+        cur.close()
+    return [dict(r) for r in rows]
+
+
+def get_pro_behavior_shifts(
+    week_start: Optional[str] = None,
+    shift: Optional[str] = None,
+    park_id: Optional[str] = None,
+    limit: int = 5000,
+) -> list[dict[str, Any]]:
+    """Lista desde ops.mv_driver_behavior_shifts_weekly. shift: drop | spike | stable."""
+    with get_db() as conn:
+        cur = _cursor(conn)
+        conditions = ["1=1"]
+        params: list[Any] = []
+        if week_start:
+            conditions.append("week_start = %s::date")
+            params.append(week_start)
+        if shift:
+            conditions.append("behavior_shift = %s")
+            params.append(shift)
+        if park_id:
+            conditions.append("park_id IS NOT DISTINCT FROM %s")
+            params.append(park_id)
+        params.append(limit)
+        cur.execute(
+            f"""
+            SELECT driver_key, week_start::text, park_id, trips_current_week,
+                   avg_trips_prev_4w, behavior_shift
+            FROM ops.mv_driver_behavior_shifts_weekly
+            WHERE {' AND '.join(conditions)}
+            ORDER BY week_start DESC, trips_current_week DESC
+            LIMIT %s
+            """,
+            params,
+        )
+        rows = cur.fetchall()
+        cur.close()
+    return [dict(r) for r in rows]
+
+
+def get_pro_drivers_at_risk(
+    week_start: Optional[str] = None,
+    park_id: Optional[str] = None,
+    limit: int = 5000,
+) -> list[dict[str, Any]]:
+    """Drivers en riesgo: churn_segment light o newbie, o behavior_shift drop, o park_shock."""
+    with get_db() as conn:
+        cur = _cursor(conn)
+        conditions = ["1=1"]
+        params: list[Any] = []
+        if week_start:
+            conditions.append("c.week_start = %s::date")
+            params.append(week_start)
+        if park_id:
+            conditions.append("c.park_id IS NOT DISTINCT FROM %s")
+            params.append(park_id)
+        params.append(limit)
+        cur.execute(
+            f"""
+            SELECT DISTINCT c.driver_key, c.week_start::text, c.park_id, c.churn_segment,
+                   s.behavior_shift, COALESCE(sh.park_shock, false) AS park_shock
+            FROM ops.mv_driver_churn_segments_weekly c
+            LEFT JOIN ops.mv_driver_behavior_shifts_weekly s
+              ON s.driver_key = c.driver_key AND s.week_start = c.week_start
+            LEFT JOIN ops.mv_driver_park_shock_weekly sh
+              ON sh.driver_key = c.driver_key AND sh.week_start = c.week_start
+            WHERE {' AND '.join(conditions)}
+              AND (c.churn_segment IN ('light', 'newbie') OR s.behavior_shift = 'drop' OR COALESCE(sh.park_shock, false) = true)
+            ORDER BY c.week_start DESC
+            LIMIT %s
+            """,
+            params,
+        )
+        rows = cur.fetchall()
+        cur.close()
+    return [dict(r) for r in rows]
 
 
 def get_cohort_drilldown(
