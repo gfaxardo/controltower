@@ -165,9 +165,19 @@ export default function DriverLifecycleView () {
     setDrilldownData({ drivers: [], total: 0, page: 1, page_size: 50 })
   }
 
+  // Regla presentación: no mostrar IDs en UI; solo nombres legibles (park_name, city, country)
+  function displayParkLabel (p) {
+    if (!p) return '—'
+    const name = p.park_name || 'UNKNOWN PARK'
+    if (p.country && p.city) return `${name} — ${p.city} (${p.country})`
+    if (p.city) return `${name} — ${p.city}`
+    return name
+  }
+
   function displayParkId (pid) {
     if (pid == null || pid === '' || (typeof pid === 'string' && pid.trim() === '')) return 'PARK_DESCONOCIDO'
-    return pid
+    const p = parksList.find(x => x.park_id === pid)
+    return p ? displayParkLabel(p) : pid
   }
 
   function isParkDesconocido (pid) {
@@ -282,7 +292,7 @@ export default function DriverLifecycleView () {
           >
             <option value="">— Selecciona park —</option>
             {parksList.map(p => (
-              <option key={p.park_id ?? ''} value={p.park_id ?? ''}>{p.park_name || p.park_id || '—'}</option>
+              <option key={p.park_id ?? ''} value={p.park_id ?? ''}>{displayParkLabel(p)}</option>
             ))}
           </select>
         </label>
@@ -445,7 +455,7 @@ export default function DriverLifecycleView () {
                     <tbody className="bg-white divide-y divide-gray-200">
                       {parksSummary.map((row, idx) => (
                         <tr key={row.park_id || idx}>
-                          <td className="px-4 py-2 text-sm text-gray-900">{row.park_name ?? row.park_id ?? '—'}</td>
+                          <td className="px-4 py-2 text-sm text-gray-900">{displayParkLabel({ park_name: row.park_name, city: row.city, country: row.country })}</td>
                           <td className="px-4 py-2 text-sm text-right">{formatNum(row.activations)}</td>
                           <td className="px-4 py-2 text-sm text-right">{formatNum(row.active_drivers)}</td>
                           <td className="px-4 py-2 text-sm text-right">{formatPct(row.churn_rate)}</td>
@@ -510,7 +520,7 @@ export default function DriverLifecycleView () {
               >
                 <option value="">— Todos —</option>
                 {parksList.map(p => (
-                  <option key={p.park_id} value={p.park_id}>{p.park_name || p.park_id}</option>
+                  <option key={p.park_id} value={p.park_id}>{displayParkLabel(p)}</option>
                 ))}
               </select>
             </label>
@@ -547,7 +557,7 @@ export default function DriverLifecycleView () {
                       <td className="px-4 py-2 text-sm text-right">
                         <button
                           type="button"
-                          onClick={() => openCohortDrilldown(row.cohort_week, 'base', displayParkId(row.park_id))}
+                          onClick={() => openCohortDrilldown(row.cohort_week, 'base', row.park_id)}
                           className="text-blue-600 hover:underline"
                         >
                           {formatNum(row.cohort_size)}
@@ -556,7 +566,7 @@ export default function DriverLifecycleView () {
                       <td className="px-4 py-2 text-sm text-right">
                         <button
                           type="button"
-                          onClick={() => openCohortDrilldown(row.cohort_week, 'w1', displayParkId(row.park_id))}
+                          onClick={() => openCohortDrilldown(row.cohort_week, 'w1', row.park_id)}
                           className="text-blue-600 hover:underline"
                         >
                           {formatPct(row.retention_w1)}
@@ -565,7 +575,7 @@ export default function DriverLifecycleView () {
                       <td className="px-4 py-2 text-sm text-right">
                         <button
                           type="button"
-                          onClick={() => openCohortDrilldown(row.cohort_week, 'w4', displayParkId(row.park_id))}
+                          onClick={() => openCohortDrilldown(row.cohort_week, 'w4', row.park_id)}
                           className="text-blue-600 hover:underline"
                         >
                           {formatPct(row.retention_w4)}
@@ -574,7 +584,7 @@ export default function DriverLifecycleView () {
                       <td className="px-4 py-2 text-sm text-right">
                         <button
                           type="button"
-                          onClick={() => openCohortDrilldown(row.cohort_week, 'w8', displayParkId(row.park_id))}
+                          onClick={() => openCohortDrilldown(row.cohort_week, 'w8', row.park_id)}
                           className="text-blue-600 hover:underline"
                         >
                           {formatPct(row.retention_w8)}
@@ -583,7 +593,7 @@ export default function DriverLifecycleView () {
                       <td className="px-4 py-2 text-sm text-right">
                         <button
                           type="button"
-                          onClick={() => openCohortDrilldown(row.cohort_week, 'w12', displayParkId(row.park_id))}
+                          onClick={() => openCohortDrilldown(row.cohort_week, 'w12', row.park_id)}
                           className="text-blue-600 hover:underline"
                         >
                           {formatPct(row.retention_w12)}
@@ -607,10 +617,10 @@ export default function DriverLifecycleView () {
             <div className="p-4 border-b flex justify-between items-center">
               <h4 className="font-semibold">
                 {modalPayload.type === 'base_metrics'
-                  ? `Drilldown: ${modalPayload.park_id} — ${modalPayload.metric}`
+                  ? `Drilldown: ${displayParkId(modalPayload.park_id)} — ${modalPayload.metric}`
                   : modalPayload.type === 'cohort'
-                    ? `Drilldown: ${modalPayload.park_id} — cohort ${modalPayload.cohort_week} (${modalPayload.horizon})`
-                    : `Drilldown: ${modalPayload.park_id} — ${modalPayload.metric} (periodo ${modalPayload.period_start})`}
+                    ? `Drilldown: ${displayParkId(modalPayload.park_id)} — cohort ${modalPayload.cohort_week} (${modalPayload.horizon})`
+                    : `Drilldown: ${displayParkId(modalPayload.park_id)} — ${modalPayload.metric} (periodo ${modalPayload.period_start})`}
               </h4>
               <button type="button" onClick={() => setModalOpen(false)} className="text-gray-500 hover:text-black">✕</button>
             </div>

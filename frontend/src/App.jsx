@@ -8,6 +8,7 @@ import Phase2CAccountabilityView from './components/Phase2CAccountabilityView'
 import LobUniverseView from './components/LobUniverseView'
 import RealLOBDrillView from './components/RealLOBDrillView'
 import DriverLifecycleView from './components/DriverLifecycleView'
+import SupplyView from './components/SupplyView'
 import UploadPlan from './components/UploadPlan'
 import PlanTabs from './components/PlanTabs'
 
@@ -79,6 +80,16 @@ function App() {
               Driver Lifecycle
             </button>
             <button
+              onClick={() => setActiveTab('supply')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'supply'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Supply (Real)
+            </button>
+            <button
               onClick={() => setActiveTab('legacy')}
               className={`py-4 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'legacy'
@@ -106,6 +117,9 @@ function App() {
         )}
         {activeTab === 'driver_lifecycle' && (
           <DriverLifecycleView key={`driver-lifecycle-${refreshKey}`} />
+        )}
+        {activeTab === 'supply' && (
+          <SupplyView key={`supply-${refreshKey}`} />
         )}
         {activeTab === 'legacy' && (
           <div className="space-y-4">

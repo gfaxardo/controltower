@@ -9,17 +9,49 @@ logger = logging.getLogger(__name__)
 
 connection_pool = None
 
+
+def _get_connection_params():
+    """Parámetros unificados: DB_* desde settings (misma fuente que DATABASE_URL en .env)."""
+    return {
+        "host": settings.DB_HOST or "localhost",
+        "port": settings.DB_PORT or 5432,
+        "database": settings.DB_NAME or "yego_integral",
+        "user": settings.DB_USER or "",
+        "password": settings.DB_PASSWORD or "",
+    }
+
+
+def get_connection_info():
+    """Retorna (db, user, host, port) para logging. No requiere conexión."""
+    p = _get_connection_params()
+    return p["database"], p["user"], p["host"], p["port"]
+
+
+def log_connection_context(cur):
+    """Imprime current_database, current_user, current_schema y to_regclass para diagnóstico."""
+    try:
+        cur.execute("SELECT current_database() AS db, current_user AS usr, current_schema() AS sch")
+        r = cur.fetchone()
+        db = r["db"] if hasattr(r, "get") else (r[0] if r else "?")
+        usr = r["usr"] if hasattr(r, "get") else (r[1] if r and len(r) > 1 else "?")
+        sch = r["sch"] if hasattr(r, "get") else (r[2] if r and len(r) > 2 else "?")
+        print(f"DB: {db} | user: {usr} | schema: {sch}")
+        cur.execute("SELECT to_regclass('ops.mv_driver_lifecycle_base') AS base, to_regclass('ops.mv_driver_weekly_stats') AS weekly")
+        r2 = cur.fetchone()
+        base = r2["base"] if hasattr(r2, "get") else (r2[0] if r2 else None)
+        weekly = r2["weekly"] if hasattr(r2, "get") else (r2[1] if r2 and len(r2) > 1 else None)
+        print(f"to_regclass: ops.mv_driver_lifecycle_base={base} | ops.mv_driver_weekly_stats={weekly}")
+    except Exception as e:
+        print(f"[WARN] log_connection_context: {e}")
+
+
 def init_db_pool():
+    """Pool unificado: usa DATABASE_URL (parseado) o DB_* según settings."""
     global connection_pool
     try:
+        params = _get_connection_params()
         connection_pool = psycopg2.pool.ThreadedConnectionPool(
-            minconn=1,
-            maxconn=10,
-            host=settings.DB_HOST,
-            port=settings.DB_PORT,
-            database=settings.DB_NAME,
-            user=settings.DB_USER,
-            password=settings.DB_PASSWORD
+            minconn=1, maxconn=10, **params
         )
         logger.info("Pool de conexiones inicializado correctamente")
     except Exception as e:

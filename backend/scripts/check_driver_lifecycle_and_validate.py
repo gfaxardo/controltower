@@ -21,7 +21,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.db.connection import get_db, init_db_pool
+from app.db.connection import get_db, init_db_pool, get_connection_info, log_connection_context
 from psycopg2.extras import RealDictCursor
 
 
@@ -156,6 +156,8 @@ def main():
     parser.add_argument("--diagnose", action="store_true", help="Solo diagnóstico (locks, timeouts), no refresh")
     args = parser.parse_args()
 
+    db, user, host, port = get_connection_info()
+    print(f"Config: db={db} user={user} host={host}:{port}")
     init_db_pool()
     mode = _env_mode()
     timeout_min = _env_timeout_minutes()
@@ -164,13 +166,13 @@ def main():
 
     with get_db() as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-
+        # Evitar transacción implícita antes de SET (autocommit para timeouts)
+        conn.autocommit = True
+        log_connection_context(cur)
         if args.diagnose:
             cur.close()
             return run_diagnose(conn, timeout_min, lock_timeout_min)
 
-        # Evitar transacción implícita que pueda afectar SET (SET es session-level)
-        conn.autocommit = True
         try:
             # --- Timeouts ANTES ---
             cur.execute("SHOW statement_timeout")
@@ -211,20 +213,38 @@ def main():
                 cur.close()
                 return 2
 
-            # Listar MVs existentes
+            # Listar MVs existentes: pg_matviews + to_regclass como validación cruzada
             cur.execute("""
                 SELECT matviewname FROM pg_matviews
-                WHERE schemaname = 'ops' AND (
-                    matviewname LIKE 'mv_driver_lifecycle%'
+                WHERE schemaname = 'ops'
+                  AND (
+                    matviewname LIKE 'mv_driver_lifecycle%%'
                     OR matviewname IN ('mv_driver_weekly_stats', 'mv_driver_monthly_stats')
                     OR matviewname IN ('mv_driver_cohorts_weekly', 'mv_driver_cohort_kpis')
-                )
+                  )
                 ORDER BY matviewname
             """)
             all_mvs = [r["matviewname"] for r in cur.fetchall()]
+            # Fallback: si pg_matviews vacío, validar con to_regclass
+            if not all_mvs:
+                cur.execute("""
+                    SELECT to_regclass('ops.mv_driver_lifecycle_base') AS base,
+                           to_regclass('ops.mv_driver_weekly_stats') AS weekly,
+                           to_regclass('ops.mv_driver_monthly_stats') AS monthly
+                """)
+                tr = cur.fetchone()
+                if tr and (tr.get("base") or tr.get("weekly") or tr.get("monthly")):
+                    found = [n for n, v in [("mv_driver_lifecycle_base", tr.get("base")),
+                                            ("mv_driver_weekly_stats", tr.get("weekly")),
+                                            ("mv_driver_monthly_stats", tr.get("monthly"))] if v]
+                    print("\nMVs driver lifecycle en ops: ninguna (pg_matviews)")
+                    print("  to_regclass SÍ encuentra:", found, "- posible schema/search_path")
+                else:
+                    print("\nMVs driver lifecycle en ops: ninguna")
+            else:
+                print("\nMVs driver lifecycle en ops:", all_mvs)
             mvs_lifecycle = [m for m in all_mvs if m.startswith("mv_driver_lifecycle")]
             mvs_extra = [m for m in all_mvs if m in ("mv_driver_weekly_stats", "mv_driver_monthly_stats")]
-            print("\nMVs driver lifecycle en ops:", all_mvs or "ninguna")
 
             if not mvs_lifecycle:
                 print("Ejecuta antes: python -m scripts.run_driver_lifecycle_build")

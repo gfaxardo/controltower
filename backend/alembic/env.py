@@ -209,15 +209,28 @@ def run_migrations_online() -> None:
 
     url_from_file = _load_database_url()
     raw_url = url_from_file or getattr(settings, "DATABASE_URL", "")
+    # Forzar ASCII desde el origen (evita UnicodeDecodeError en psycopg2/libpq en Windows)
+    def _force_ascii(s: str) -> str:
+        if not s:
+            return s
+        out = []
+        for c in s:
+            if ord(c) < 128:
+                out.append(c)
+            else:
+                for b in c.encode("utf-8"):
+                    out.append(f"%{b:02X}")
+        return "".join(out)
+    raw_url = _force_ascii(raw_url)
     # #region agent log
     _dbg_log("raw_url source", {"from_file": bool(url_from_file), "raw_len": len(raw_url), "raw_has_non_ascii": any(ord(c) > 127 for c in raw_url) if raw_url else False}, "H2")
     # #endregion
 
     if not raw_url:
-        # Construir URL desde variables individuales (evitar pasar password con acentos)
+        # Construir URL desde variables individuales (password con quote_plus por &, +, etc.)
         raw_url = "postgresql://{user}:{password}@{host}:{port}/{database}".format(
-            user=ensure_utf8_param(settings.DB_USER) or "",
-            password=ensure_utf8_param(settings.DB_PASSWORD) or "",
+            user=quote_plus(ensure_utf8_param(settings.DB_USER) or "", safe=""),
+            password=quote_plus(ensure_utf8_param(settings.DB_PASSWORD) or "", safe=""),
             host=ensure_utf8_param(settings.DB_HOST) or "localhost",
             port=settings.DB_PORT or 5432,
             database=ensure_utf8_param(settings.DB_NAME) or "",
@@ -228,10 +241,17 @@ def run_migrations_online() -> None:
     # #region agent log
     _dbg_log("after _url_ascii_safe", {"dsn_len": len(dsn), "dsn_has_non_ascii": any(ord(c) > 127 for c in dsn)}, "H1")
     # #endregion
-    dsn = "".join(
-        c if ord(c) < 128 else "".join(f"%{b:02X}" for b in c.encode("utf-8"))
-        for c in dsn
-    )
+    # Forzar 100% ASCII: cualquier char no-ASCII -> percent-encoding UTF-8
+    def _to_ascii(s: str) -> str:
+        out = []
+        for c in s:
+            if ord(c) < 128:
+                out.append(c)
+            else:
+                for b in c.encode("utf-8"):
+                    out.append(f"%{b:02X}")
+        return "".join(out)
+    dsn = _to_ascii(dsn)
     # #region agent log
     _dbg_log("after nuclear conversion", {"dsn_len": len(dsn), "dsn_has_non_ascii": any(ord(c) > 127 for c in dsn), "byte_at_85": ord(dsn[85]) if len(dsn) > 85 else None}, "H1|H5")
     # #endregion
@@ -242,9 +262,17 @@ def run_migrations_online() -> None:
             "PGHOSTADDR", "PGSERVICE", "PGSERVICEFILE", "PGPASSFILE",
         ):
             os.environ.pop(k, None)
-    conn_kw = {"dsn": dsn, "client_encoding": "UTF8"}
+    # Usar parámetros explícitos (como app.db.connection) para evitar encoding en DSN (Windows)
+    conn_kw = {
+        "host": settings.DB_HOST or "localhost",
+        "port": settings.DB_PORT or 5432,
+        "user": settings.DB_USER or "",
+        "password": settings.DB_PASSWORD or "",
+        "dbname": settings.DB_NAME or "yego_integral",
+        "client_encoding": "UTF8",
+    }
     # #region agent log
-    _dbg_log("before connect", {"dsn_len": len(dsn), "dsn_is_ascii": all(ord(c) < 128 for c in dsn), "conn_kw_keys": list(conn_kw.keys())}, "H1|H4|H5")
+    _dbg_log("before connect", {"conn_kw_keys": list(conn_kw.keys())}, "H1|H4|H5")
     # #endregion
 
     try:

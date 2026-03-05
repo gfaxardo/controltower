@@ -17,8 +17,7 @@ def get_real_monthly_data(
     Obtiene datos reales mensuales desde ops.mv_real_trips_monthly (sin proxies).
     Retorna lista de diccionarios en formato long.
     
-    NOTA: Usa la vista materializada ops.mv_real_trips_monthly que se alimenta de public.trips_all
-    filtrando condicion='Completado'. Revenue real = SUM(comision_empresa_asociada).
+    NOTA: ops.mv_real_trips_monthly es una MV distinta; Real LOB (drill/cobertura) usa ops.v_trips_real_canon (trips_all + trips_2026) vía v_real_trips_with_lob_v2 y mv_real_rollup_day. Revenue real = SUM(comision_empresa_asociada).
     """
     # Mapeo de métricas a columnas en ops.mv_real_trips_monthly (sin proxies)
     metric_column_map = {
@@ -109,7 +108,7 @@ def get_ops_universe_data(country: Optional[str] = None, city: Optional[str] = N
     El universo se construye dinámicamente desde la query (puede crecer).
     Soporta filtros opcionales por country y city.
     
-    NOTA: Usa ops.mv_real_trips_monthly que se alimenta de public.trips_all filtrando condicion='Completado'.
+    NOTA: ops.mv_real_trips_monthly; para universo Real LOB con datos recientes (trips_2026) se usa la cadena basada en ops.v_trips_real_canon.
     """
     try:
         with get_db() as conn:

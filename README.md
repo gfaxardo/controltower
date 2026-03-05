@@ -69,6 +69,8 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 El backend estará disponible en `http://localhost:8000`
 Documentación API disponible en `http://localhost:8000/docs`
 
+**Regla de presentación:** En UI y exports no se muestran IDs (park_id, driver_id); solo campos legibles (park_name, city, country; driver_name). Ver [docs/REGLA_PRESENTACION_NO_IDS.md](docs/REGLA_PRESENTACION_NO_IDS.md).
+
 ### Frontend
 
 1. **Instalar dependencias:**

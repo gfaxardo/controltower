@@ -3,6 +3,21 @@ from typing import Optional, List, Dict, Literal
 from datetime import datetime, date
 from uuid import UUID
 
+# ─── Regla de presentación: no IDs en UI ─────────────────────────────────────
+# ParkDisplay / DriverDisplay: solo campos legibles. El id puede ir en response para value de selects, pero NUNCA renderizarse como texto.
+
+
+class ParkDisplay(BaseModel):
+    """Solo campos legibles para UI. No mostrar id en etiquetas ni tablas."""
+    name: str
+    city: Optional[str] = None
+    country: Optional[str] = None
+
+
+class DriverDisplay(BaseModel):
+    """Solo nombre legible para UI. No mostrar id en etiquetas ni tablas."""
+    name: str
+
 class PlanUploadResponse(BaseModel):
     rows_valid: int
     rows_out_of_universe: int

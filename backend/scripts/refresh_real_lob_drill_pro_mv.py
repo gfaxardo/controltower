@@ -1,8 +1,10 @@
 """
-Refresca ops.mv_real_lob_drill_agg y ops.mv_real_rollup_day para Real LOB Drill PRO.
+Refresca ops.mv_real_drill_dim_agg y ops.mv_real_rollup_day para Real LOB Drill PRO.
 Uso: desde backend/ ejecutar python -m scripts.refresh_real_lob_drill_pro_mv
 Recomendado: cron diario tras carga de datos en trips_all.
 Usa conexión directa con statement_timeout=0 para evitar timeout del pool.
+
+PREFERIR: scripts.safe_refresh_real_lob (work_mem alto, temp logging, orden correcto).
 """
 import os
 import sys
@@ -47,15 +49,20 @@ def main():
                     logger.info("ops.mv_real_rollup_day refreshed.")
                 else:
                     raise
-            # Refresh drill PRO MV
+            # Refresh drill PRO: primero enriched (base), luego dim_agg (agregados)
             try:
-                cur.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY ops.mv_real_lob_drill_agg")
-                logger.info("ops.mv_real_lob_drill_agg refreshed (concurrent).")
+                cur.execute("REFRESH MATERIALIZED VIEW ops.mv_real_drill_enriched")
+                logger.info("ops.mv_real_drill_enriched refreshed.")
+            except (OperationalError, ProgrammingError) as e:
+                raise
+            try:
+                cur.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY ops.mv_real_drill_dim_agg")
+                logger.info("ops.mv_real_drill_dim_agg refreshed (concurrent).")
             except (OperationalError, ProgrammingError) as e:
                 if "concurrent" in (str(e) or "").lower() or "unique" in (str(e) or "").lower():
-                    logger.info("Usando REFRESH sin CONCURRENTLY para mv_real_lob_drill_agg...")
-                    cur.execute("REFRESH MATERIALIZED VIEW ops.mv_real_lob_drill_agg")
-                    logger.info("ops.mv_real_lob_drill_agg refreshed.")
+                    logger.info("Usando REFRESH sin CONCURRENTLY para mv_real_drill_dim_agg...")
+                    cur.execute("REFRESH MATERIALIZED VIEW ops.mv_real_drill_dim_agg")
+                    logger.info("ops.mv_real_drill_dim_agg refreshed.")
                 else:
                     raise
         finally:

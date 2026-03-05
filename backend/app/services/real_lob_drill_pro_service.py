@@ -1,8 +1,8 @@
 """
 Real LOB Drill PRO: endpoints /ops/real-lob/drill y /ops/real-lob/drill/children.
-Fuente: ops.mv_real_lob_drill_agg (y ops.v_real_data_coverage para cobertura).
+Fuente: ops.mv_real_drill_dim_agg (breakdown lob|park|service_type) y ops.v_real_data_coverage.
 - Respuesta: countries[] con coverage, kpis (sobre lo visible), rows con periodo/estado/viajes/margen/km/b2b.
-- Children: desglose por PARK (city, park_name) o LOB (lob_group, tipo_servicio_norm); orden viajes DESC.
+- Children: desglose por LOB (1 fila por lob_group), PARK (city, park_name), o SERVICE_TYPE (tipo_servicio).
 """
 from app.db.connection import get_db
 from psycopg2.extras import RealDictCursor
@@ -11,7 +11,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-MV_AGG = "ops.mv_real_lob_drill_agg"
+MV_DIM = "ops.mv_real_drill_dim_agg"
 VIEW_COVERAGE = "ops.v_real_data_coverage"
 TIMEOUT_MS = 20000
 
@@ -19,7 +19,7 @@ TIMEOUT_MS = 20000
 def _segment_filter(segment: Optional[str]) -> str:
     if not segment or segment.lower() == "all":
         return ""
-    return " AND segmento = %(segment)s "
+    return " AND segment = %(segment)s "
 
 
 def get_drill(
@@ -46,7 +46,7 @@ def get_drill(
             cur = conn.cursor(cursor_factory=RealDictCursor)
             cur.execute("SET statement_timeout = %s", (str(TIMEOUT_MS),))
 
-            # Coverage por país
+            # Coverage por país (v_real_data_coverage) + freshness desde canon (v_real_freshness_trips)
             cur.execute(f"""
                 SELECT country,
                     last_trip_date::text AS last_day_with_data,
@@ -58,6 +58,18 @@ def get_drill(
             """)
             coverage_rows = cur.fetchall()
             coverage_by_country = {r["country"]: dict(r) for r in coverage_rows} if coverage_rows else {}
+            cur.execute("""
+                SELECT country, last_trip_date::text, max_trip_ts
+                FROM ops.v_real_freshness_trips
+                WHERE country IN ('pe','co')
+                ORDER BY country
+            """)
+            freshness_rows = cur.fetchall()
+            for r in freshness_rows:
+                c = r["country"]
+                if c in coverage_by_country:
+                    coverage_by_country[c]["freshness_last_trip_date"] = r["last_trip_date"]
+                    coverage_by_country[c]["freshness_max_trip_ts"] = str(r["max_trip_ts"]) if r.get("max_trip_ts") else None
 
             # Calendario: meses o semanas hasta el actual
             if period_type == "month":
@@ -92,36 +104,36 @@ def get_drill(
                 if ccode not in ("pe", "co"):
                     continue
                 cov = coverage_by_country.get(ccode) or {}
-                # Agregado por (country, period_start) desde MV con filtro segmento
-                params = {"country": ccode, "period_type": period_type}
+                # Agregado por (country, period_start) desde MV dimensional (breakdown=lob)
+                params = {"country": ccode, "period_grain": period_type}
                 if seg_param:
                     params["segment"] = seg_param
                 where_seg = _segment_filter(segmento)
                 cur.execute(f"""
                     SELECT
                         period_start,
-                        SUM(viajes) AS viajes,
-                        SUM(margen_total) AS margen_total,
-                        SUM(viajes_b2b) AS viajes_b2b,
+                        SUM(trips) AS viajes,
+                        SUM(margin_total) AS margen_total,
+                        SUM(b2b_trips) AS viajes_b2b,
                         MAX(last_trip_ts) AS last_trip_ts
-                    FROM {MV_AGG}
-                    WHERE country = %(country)s AND period_type = %(period_type)s {where_seg}
+                    FROM {MV_DIM}
+                    WHERE country = %(country)s AND period_grain = %(period_grain)s AND breakdown = 'lob' {where_seg}
                     GROUP BY period_start
                 """, params)
                 agg_rows = {r["period_start"]: dict(r) for r in cur.fetchall()}
 
-                # margen_trip y km_prom a nivel periodo: desde MV con SUM ponderado
+                # margen_trip y km_prom a nivel periodo: desde MV dimensional
                 cur.execute(f"""
                     SELECT
                         period_start,
-                        SUM(viajes) AS viajes,
-                        SUM(margen_total) AS margen_total,
-                        CASE WHEN SUM(viajes) > 0 THEN SUM(margen_total) / SUM(viajes) ELSE NULL END AS margen_trip,
-                        CASE WHEN SUM(viajes) > 0 THEN SUM(km_prom * viajes) / NULLIF(SUM(viajes), 0) ELSE NULL END AS km_prom,
-                        SUM(viajes_b2b) AS viajes_b2b,
+                        SUM(trips) AS viajes,
+                        SUM(margin_total) AS margen_total,
+                        CASE WHEN SUM(trips) > 0 THEN SUM(margin_total) / SUM(trips) ELSE NULL END AS margen_trip,
+                        CASE WHEN SUM(trips) > 0 THEN SUM(km_avg * trips) / NULLIF(SUM(trips), 0) ELSE NULL END AS km_prom,
+                        SUM(b2b_trips) AS viajes_b2b,
                         MAX(last_trip_ts) AS last_trip_ts
-                    FROM {MV_AGG}
-                    WHERE country = %(country)s AND period_type = %(period_type)s {where_seg}
+                    FROM {MV_DIM}
+                    WHERE country = %(country)s AND period_grain = %(period_grain)s AND breakdown = 'lob' {where_seg}
                     GROUP BY period_start
                 """, params)
                 agg_detail = {r["period_start"]: dict(r) for r in cur.fetchall()}
@@ -244,71 +256,66 @@ def get_drill_children(
 ) -> List[Dict[str, Any]]:
     """
     GET /ops/real-lob/drill/children
-    Desglose por PARK (city_norm, park_name) o LOB (lob_group, tipo_servicio_norm).
+    Desglose por LOB (1 fila por lob_group), PARK (city, park_name), o SERVICE_TYPE (economico, confort, etc.).
     Orden: viajes DESC.
     """
-    period_type = "month" if period == "month" else "week"
+    period_grain = "month" if period == "month" else "week"
     seg_param = None
     if segmento and segmento.lower() in ("b2c", "b2b"):
         seg_param = segmento.upper()
     where_seg = _segment_filter(segmento)
-    params: Dict[str, Any] = {"country": country.strip().lower(), "period_type": period_type, "period_start": period_start}
+    params: Dict[str, Any] = {"country": country.strip().lower(), "period_grain": period_grain, "period_start": period_start}
     if seg_param:
         params["segment"] = seg_param
+
+    desg_upper = desglose.upper()
+    if desg_upper not in ("LOB", "PARK", "SERVICE_TYPE"):
+        desg_upper = "LOB"
+
+    breakdown_map = {"LOB": "lob", "PARK": "park", "SERVICE_TYPE": "service_type"}
 
     try:
         with get_db() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
             cur.execute("SET statement_timeout = %s", (str(TIMEOUT_MS),))
-            if desglose.upper() == "PARK":
-                cur.execute(f"""
-                    SELECT
-                        city_norm AS city,
-                        park_name,
-                        SUM(viajes) AS viajes,
-                        SUM(margen_total) AS margen_total,
-                        CASE WHEN SUM(viajes) > 0 THEN SUM(margen_total) / SUM(viajes) ELSE NULL END AS margen_trip,
-                        CASE WHEN SUM(viajes) > 0 THEN SUM(km_prom * viajes) / NULLIF(SUM(viajes), 0) ELSE NULL END AS km_prom,
-                        SUM(viajes_b2b) AS viajes_b2b,
-                        (SUM(viajes_b2b)::numeric / NULLIF(SUM(viajes), 0)) AS pct_b2b
-                    FROM {MV_AGG}
-                    WHERE country = %(country)s AND period_type = %(period_type)s AND period_start = %(period_start)s::date {where_seg}
-                    GROUP BY city_norm, park_key, park_name
-                    ORDER BY SUM(viajes) DESC
-                """, params)
-            else:
-                cur.execute(f"""
-                    SELECT
-                        lob_group,
-                        tipo_servicio_norm,
-                        SUM(viajes) AS viajes,
-                        SUM(margen_total) AS margen_total,
-                        CASE WHEN SUM(viajes) > 0 THEN SUM(margen_total) / SUM(viajes) ELSE NULL END AS margen_trip,
-                        CASE WHEN SUM(viajes) > 0 THEN SUM(km_prom * viajes) / NULLIF(SUM(viajes), 0) ELSE NULL END AS km_prom,
-                        SUM(viajes_b2b) AS viajes_b2b,
-                        (SUM(viajes_b2b)::numeric / NULLIF(SUM(viajes), 0)) AS pct_b2b
-                    FROM {MV_AGG}
-                    WHERE country = %(country)s AND period_type = %(period_type)s AND period_start = %(period_start)s::date {where_seg}
-                    GROUP BY lob_group, tipo_servicio_norm
-                    ORDER BY SUM(viajes) DESC
-                """, params)
+            cur.execute(f"""
+                SELECT
+                    dimension_key,
+                    dimension_id,
+                    city,
+                    SUM(trips) AS viajes,
+                    SUM(margin_total) AS margen_total,
+                    CASE WHEN SUM(trips) > 0 THEN SUM(margin_total) / SUM(trips) ELSE NULL END AS margen_trip,
+                    CASE WHEN SUM(trips) > 0 THEN SUM(km_avg * trips) / NULLIF(SUM(trips), 0) ELSE NULL END AS km_prom,
+                    SUM(b2b_trips) AS viajes_b2b,
+                    (SUM(b2b_trips)::numeric / NULLIF(SUM(trips), 0)) AS pct_b2b
+                FROM {MV_DIM}
+                WHERE country = %(country)s AND period_grain = %(period_grain)s AND period_start = %(period_start)s::date
+                  AND breakdown = %(breakdown)s {where_seg}
+                GROUP BY dimension_key, dimension_id, city
+                ORDER BY SUM(trips) DESC
+            """, {**params, "breakdown": breakdown_map[desg_upper]})
             rows = cur.fetchall()
             out = []
-            is_park = desglose.upper() == "PARK"
             for r in rows:
                 row = dict(r)
-                if is_park:
-                    if row.get("city") is None or (isinstance(row.get("city"), str) and row.get("city").lower() == "sin_city"):
+                if desg_upper == "PARK":
+                    if row.get("city") is None or (isinstance(row.get("city"), str) and str(row.get("city")).lower() == "sin_city"):
                         row["city"] = "SIN_CITY"
-                    if row.get("park_name") is None or str(row.get("park_name", "")).strip() == "":
+                    if row.get("dimension_key") is None or str(row.get("dimension_key", "")).strip() == "":
                         row["park_name"] = "SIN_PARK"
+                    else:
+                        row["park_name"] = row["dimension_key"]
                     row["park_name_resolved"] = row.get("park_name")
+                elif desg_upper == "LOB":
+                    row["lob_group"] = row.get("dimension_key")
+                elif desg_upper == "SERVICE_TYPE":
+                    row["service_type"] = row.get("dimension_key")
                 row["margin_total_pos"] = row.get("margen_total")
                 row["margin_unit_pos"] = row.get("margen_trip")
                 row["km_prom"] = round(float(row["km_prom"]), 4) if row.get("km_prom") is not None else None
                 row["trips"] = row.get("viajes")
                 row["b2b_trips"] = row.get("viajes_b2b")
-                row["lob_group"] = row.get("lob_group")
                 out.append(row)
             cur.close()
         return out

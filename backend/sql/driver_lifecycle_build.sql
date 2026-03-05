@@ -10,6 +10,7 @@ CREATE SCHEMA IF NOT EXISTS ops;
 -- Base: viajes completados con completion_ts y request_ts
 -- completion_ts = COALESCE(fecha_finalizacion, fecha_inicio_viaje)
 -- -----------------------------------------------------------------------------
+-- Fuente: public.trips_unified (no trips_all) para incluir trips_2026
 DROP VIEW IF EXISTS ops.v_driver_lifecycle_trips_completed CASCADE;
 CREATE VIEW ops.v_driver_lifecycle_trips_completed AS
 SELECT
@@ -20,7 +21,7 @@ SELECT
   t.park_id,
   t.tipo_servicio,
   CASE WHEN t.pago_corporativo IS NOT NULL AND t.pago_corporativo > 0 THEN 'b2b' ELSE 'b2c' END AS segment
-FROM public.trips_all t
+FROM public.trips_unified t
 WHERE t.condicion = 'Completado'
   AND t.conductor_id IS NOT NULL
   AND t.fecha_inicio_viaje IS NOT NULL;

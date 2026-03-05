@@ -1,6 +1,10 @@
 -- =============================================================================
 -- DRIVER LIFECYCLE — Validaciones (queries de chequeo)
 -- Ejecutar tras refresh de MVs para sanity checks.
+--
+-- NOTA: scripts.run_driver_lifecycle_build usa versiones optimizadas inline
+-- (acotadas por fecha, reltuples, etc.) para evitar timeouts. Este archivo
+-- se mantiene como referencia para ejecución manual.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------

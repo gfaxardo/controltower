@@ -24,59 +24,106 @@ def _cursor(conn):
     return c
 
 
-def _park_names_lookup(conn, park_ids: list) -> dict:
-    """Devuelve { park_id: park_name } desde dim.dim_park. Fallback: park_id como nombre."""
+def _park_resolved_lookup(conn, park_ids: list) -> dict:
+    """Devuelve { park_id: {park_name, city, country} } desde ops.v_dim_park_resolved o dim.dim_park."""
     if not park_ids:
         return {}
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         cur.execute(
             """
-            SELECT park_id, COALESCE(NULLIF(TRIM(park_name::text), ''), park_id::text) AS park_name
-            FROM dim.dim_park
+            SELECT park_id, park_name, city, country
+            FROM ops.v_dim_park_resolved
             WHERE park_id = ANY(%s)
             """,
             (list(park_ids),),
         )
-        return {r["park_id"]: r["park_name"] for r in cur.fetchall()}
+        return {
+            r["park_id"]: {
+                "park_name": r["park_name"] or "UNKNOWN PARK",
+                "city": r.get("city"),
+                "country": r.get("country"),
+            }
+            for r in cur.fetchall()
+        }
     except Exception:
-        return {}
+        try:
+            cur.execute(
+                """
+                SELECT park_id, COALESCE(NULLIF(TRIM(park_name::text), ''), park_id::text) AS park_name,
+                       NULLIF(TRIM(COALESCE(city, '')), '') AS city,
+                       NULLIF(TRIM(COALESCE(country, '')), '') AS country
+                FROM dim.dim_park
+                WHERE park_id = ANY(%s)
+                """,
+                (list(park_ids),),
+            )
+            return {
+                r["park_id"]: {
+                    "park_name": r["park_name"] or "UNKNOWN PARK",
+                    "city": r.get("city"),
+                    "country": r.get("country"),
+                }
+                for r in cur.fetchall()
+            }
+        except Exception:
+            return {}
     finally:
         cur.close()
+
+
+def _park_names_lookup(conn, park_ids: list) -> dict:
+    """Devuelve { park_id: park_name } desde dim.dim_park. Fallback: park_id como nombre."""
+    resolved = _park_resolved_lookup(conn, park_ids)
+    return {pid: info["park_name"] for pid, info in resolved.items()}
 
 
 def get_parks_for_selector() -> list[dict[str, Any]]:
     """
     Lista de parks para selector Driver Lifecycle PRO.
-    Fuente preferida: dim.dim_park (park_id, park_name). Misma dimensión que Real LOB.
-    Fallback 1: dim.dim_park solo park_id (park_name = park_id).
-    Fallback 2: distinct park_id desde ops.mv_driver_weekly_stats + lookup dim.dim_park si existe.
+    Fuente: ops.v_dim_park_resolved (park_id, park_name, city, country). Regla: no mostrar IDs en UI.
+    Fallback: dim.dim_park; luego distinct desde mv_driver_weekly_stats + lookup.
     """
     with get_db() as conn:
         cur = _cursor(conn)
         try:
-            # Intentar con park_name (columna puede no existir en algunos entornos)
             cur.execute("""
-                SELECT park_id,
-                       COALESCE(NULLIF(TRIM(park_name::text), ''), park_id::text) AS park_name
-                FROM dim.dim_park
-                ORDER BY park_name NULLS LAST, park_id
+                SELECT park_id, park_name, city, country
+                FROM ops.v_dim_park_resolved
+                ORDER BY country NULLS LAST, city NULLS LAST, park_name NULLS LAST, park_id
             """)
             rows = cur.fetchall()
-            return [{"park_id": r["park_id"], "park_name": r["park_name"]} for r in rows]
+            return [
+                {
+                    "park_id": r["park_id"],
+                    "park_name": r["park_name"] or "UNKNOWN PARK",
+                    "city": r.get("city"),
+                    "country": r.get("country"),
+                }
+                for r in rows
+            ]
         except Exception:
             try:
-                # Fallback: dim.dim_park solo park_id
                 cur.execute("""
-                    SELECT park_id, park_id::text AS park_name
+                    SELECT park_id,
+                           COALESCE(NULLIF(TRIM(park_name::text), ''), park_id::text) AS park_name,
+                           NULLIF(TRIM(COALESCE(city, '')), '') AS city,
+                           NULLIF(TRIM(COALESCE(country, '')), '') AS country
                     FROM dim.dim_park
-                    ORDER BY park_id
+                    ORDER BY park_name NULLS LAST, park_id
                 """)
                 rows = cur.fetchall()
-                return [{"park_id": r["park_id"], "park_name": r["park_name"]} for r in rows]
+                return [
+                    {
+                        "park_id": r["park_id"],
+                        "park_name": r["park_name"] or "UNKNOWN PARK",
+                        "city": r.get("city"),
+                        "country": r.get("country"),
+                    }
+                    for r in rows
+                ]
             except Exception:
                 pass
-            # Fallback: distinct park_id de weekly_stats + lookup nombres (dim.dim_park si existe)
             try:
                 cur.execute("""
                     SELECT DISTINCT park_id FROM ops.mv_driver_weekly_stats
@@ -84,8 +131,16 @@ def get_parks_for_selector() -> list[dict[str, Any]]:
                     ORDER BY park_id
                 """)
                 ids = [r["park_id"] for r in cur.fetchall()]
-                names = _park_names_lookup(conn, ids)
-                return [{"park_id": pid, "park_name": names.get(pid, str(pid))} for pid in ids]
+                lookup = _park_resolved_lookup(conn, ids)
+                return [
+                    {
+                        "park_id": pid,
+                        "park_name": lookup.get(pid, {}).get("park_name", "UNKNOWN PARK"),
+                        "city": lookup.get(pid, {}).get("city"),
+                        "country": lookup.get(pid, {}).get("country"),
+                    }
+                    for pid in ids
+                ]
             except Exception:
                 return []
         finally:
@@ -202,6 +257,16 @@ def get_weekly(
                 (from_date, to_date, from_date, to_date, from_date, to_date, from_date, to_date),
             )
             breakdown_by_park = [dict(r) for r in cur.fetchall()]
+            # Enriquecer con nombres legibles (regla: no IDs en UI)
+            if breakdown_by_park:
+                park_ids = list({r["park_id"] for r in breakdown_by_park if r.get("park_id") is not None})
+                lookup = _park_resolved_lookup(conn, park_ids)
+                for r in breakdown_by_park:
+                    pid = r.get("park_id")
+                    info = lookup.get(pid, {"park_name": "UNKNOWN PARK", "city": None, "country": None})
+                    r["park_name"] = info.get("park_name", "UNKNOWN PARK")
+                    r["city"] = info.get("city")
+                    r["country"] = info.get("country")
 
         elif park_id:
             # Filtrar kpis por park: agregar desde stats solo para ese park
@@ -336,6 +401,15 @@ def get_monthly(
                 (from_date, to_date, from_date, to_date),
             )
             breakdown_by_park = [dict(r) for r in cur.fetchall()]
+            if breakdown_by_park:
+                park_ids = list({r["park_id"] for r in breakdown_by_park if r.get("park_id") is not None})
+                lookup = _park_resolved_lookup(conn, park_ids)
+                for r in breakdown_by_park:
+                    pid = r.get("park_id")
+                    info = lookup.get(pid, {"park_name": "UNKNOWN PARK", "city": None, "country": None})
+                    r["park_name"] = info.get("park_name", "UNKNOWN PARK")
+                    r["city"] = info.get("city")
+                    r["country"] = info.get("country")
         elif park_id:
             cur.execute(
                 """
@@ -839,13 +913,16 @@ def get_parks_summary(from_date: str, to_date: str, period_type: str = "week") -
             )
         rows = cur.fetchall()
         park_ids = list({r.get("park_id") for r in rows if r.get("park_id") is not None})
-        park_names = _park_names_lookup(conn, park_ids)
+        park_resolved = _park_resolved_lookup(conn, park_ids)
         cur.close()
 
     summary = [dict(r) for r in rows]
     for row in summary:
         pid = row.get("park_id")
-        row["park_name"] = park_names.get(pid, (pid if pid is not None and str(pid).strip() else "PARK_DESCONOCIDO"))
+        info = park_resolved.get(pid, {"park_name": "UNKNOWN PARK", "city": None, "country": None})
+        row["park_name"] = info.get("park_name", "UNKNOWN PARK")
+        row["city"] = info.get("city")
+        row["country"] = info.get("country")
         ad = row.get("active_drivers") or 0
         row["churn_rate"] = round((row.get("churned") or 0) / ad, 4) if ad else 0
         row["reactivation_rate"] = round((row.get("reactivated") or 0) / ad, 4) if ad else 0

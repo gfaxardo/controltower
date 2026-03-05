@@ -56,7 +56,7 @@ function formatDistanceKm (n, trips) {
 
 export default function RealLOBDrillView () {
   const [periodType, setPeriodType] = useState('monthly')
-  const [drillBy, setDrillBy] = useState('lob') // 'lob' | 'park'
+  const [drillBy, setDrillBy] = useState('lob') // 'lob' | 'park' | 'service_type'
   const [segment, setSegment] = useState('Todos')
   const [countries, setCountries] = useState([]) // [{ country, coverage, kpis, rows }]
   const [meta, setMeta] = useState({ last_period_monthly: null, last_period_weekly: null })
@@ -92,7 +92,7 @@ export default function RealLOBDrillView () {
       if (USE_DRILL_PRO) {
         const res = await getRealLobDrillPro({
           period: periodType === 'monthly' ? 'month' : 'week',
-          desglose: drillBy === 'lob' ? 'LOB' : 'PARK',
+          desglose: drillBy === 'lob' ? 'LOB' : drillBy === 'park' ? 'PARK' : 'SERVICE_TYPE',
           segmento: segment === 'Todos' ? 'all' : segment.toLowerCase()
         })
         setCountries(res.countries || [])
@@ -167,7 +167,7 @@ export default function RealLOBDrillView () {
           country: (country || '').trim(),
           period: periodType === 'monthly' ? 'month' : 'week',
           period_start: normalizePeriodStart(periodStart),
-          desglose: drillBy === 'lob' ? 'LOB' : 'PARK',
+          desglose: drillBy === 'lob' ? 'LOB' : drillBy === 'park' ? 'PARK' : 'SERVICE_TYPE',
           segmento: segment === 'Todos' ? 'all' : segment.toLowerCase(),
           signal
         })
@@ -257,6 +257,13 @@ export default function RealLOBDrillView () {
             className={`px-3 py-1.5 rounded text-sm ${drillBy === 'park' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}
           >
             Park
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDrillByChange('service_type')}
+            className={`px-3 py-1.5 rounded text-sm ${drillBy === 'service_type' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}
+          >
+            Tipo de servicio
           </button>
           <span className="w-px h-6 bg-gray-300" />
           <span className="text-sm text-gray-500">Segmento:</span>
@@ -440,13 +447,8 @@ export default function RealLOBDrillView () {
                                       <thead>
                                         <tr className="text-left text-gray-500">
                                           {drillBy === 'lob' && <th className="pr-4 py-1">LOB</th>}
-                                          {drillBy === 'park' && (
-                                            <>
-                                              <th className="pr-4 py-1">Ciudad</th>
-                                              <th className="pr-4 py-1">Park</th>
-                                              <th className="pr-4 py-1">Bucket</th>
-                                            </>
-                                          )}
+                                          {drillBy === 'park' && <th className="pr-4 py-1">Park</th>}
+                                          {drillBy === 'service_type' && <th className="pr-4 py-1">Tipo de servicio</th>}
                                           <th className="text-right py-1">Viajes</th>
                                           <th className="text-right py-1" title={MARGIN_TOOLTIP}>Margen total</th>
                                           <th className="text-right py-1" title={MARGIN_TOOLTIP}>Margen/trip</th>
@@ -469,20 +471,11 @@ export default function RealLOBDrillView () {
                                               {drillBy === 'lob' && (
                                                 <td className="pr-4 py-1 text-gray-900">{r.lob_group ?? '—'}</td>
                                               )}
+                                          {drillBy === 'service_type' && (
+                                                <td className="pr-4 py-1 text-gray-900">{r.service_type ?? r.dimension_key ?? '—'}</td>
+                                          )}
                                               {drillBy === 'park' && (
-                                                <>
-                                                  <td className="pr-4 py-1 text-gray-700">{r.city ?? 'SIN_CITY'}</td>
-                                                  <td className="pr-4 py-1 text-gray-900">{r.park_name_resolved ?? r.park_name ?? r.park_id ?? 'SIN_PARK'}</td>
-                                                  <td className="pr-4 py-1">
-                                                    {r.park_bucket && r.park_bucket !== 'OK' ? (
-                                                      <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800" title="Park sin ID o no catalogado">
-                                                        {r.park_bucket}
-                                                      </span>
-                                                    ) : (
-                                                      '—'
-                                                    )}
-                                                  </td>
-                                                </>
+                                                <td className="pr-4 py-1 text-gray-900">{r.dimension_key ?? r.park_name_resolved ?? r.park_name ?? '—'}</td>
                                               )}
                                               <td className="text-right py-1">{formatNumber(r.trips)}</td>
                                               <td className="text-right py-1">{subTrips ? formatMargin(subMarginTotal, subTrips) : '—'}</td>
@@ -491,7 +484,7 @@ export default function RealLOBDrillView () {
                                               {segment === 'Todos' && (
                                                 <td className="text-right py-1">
                                                   {formatNumber(r.b2b_trips)}
-                                                  {r.pct_b2b != null && ` (${(Number(r.pct_b2b) * 100).toFixed(1)}%)`}
+                                                  {r.pct_b2b != null ? ` (${(Number(r.pct_b2b) * 100).toFixed(1)}%)` : ''}
                                                 </td>
                                               )}
                                             </tr>
@@ -520,7 +513,7 @@ export default function RealLOBDrillView () {
       )}
 
       <p className="mt-4 text-xs text-gray-500">
-        Clic en una fila para desplegar desglose por {drillBy === 'lob' ? 'LOB' : 'Park'}.
+        Clic en una fila para desplegar desglose por {drillBy === 'lob' ? 'LOB' : drillBy === 'park' ? 'Park' : 'Tipo de servicio'}.
         Orden: más reciente → más antiguo; subfilas por viajes descendente.
       </p>
     </div>

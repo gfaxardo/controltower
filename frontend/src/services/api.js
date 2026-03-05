@@ -308,4 +308,43 @@ export const getDriverLifecycleCohortDrilldown = async (params = {}) => {
   return response.data
 }
 
+// Control Tower Supply (REAL) — radar: geo, overview, segments, alerts, drilldown
+export const getSupplyGeo = async (params = {}) => {
+  const response = await api.get('/ops/supply/geo', { params, timeout: 10000 })
+  return response.data
+}
+export const getSupplyParks = async (params = {}) => {
+  const response = await api.get('/ops/supply/parks', { params, timeout: 10000 })
+  return response.data
+}
+export const getSupplySeries = async (params = {}) => {
+  const response = await api.get('/ops/supply/series', { params, timeout: 30000 })
+  return response.data
+}
+export const getSupplySummary = async (params = {}) => {
+  const response = await api.get('/ops/supply/summary', { params, timeout: 15000 })
+  return response.data
+}
+export const getSupplySegmentsSeries = async (params = {}) => {
+  const response = await api.get('/ops/supply/segments/series', { params, timeout: 20000 })
+  return response.data
+}
+export const getSupplyGlobalSeries = async (params = {}) => {
+  const response = await api.get('/ops/supply/global/series', { params, timeout: 30000 })
+  return response.data
+}
+
+export const getSupplyAlerts = async (params = {}) => {
+  const response = await api.get('/ops/supply/alerts', { params, timeout: 15000 })
+  return response.data
+}
+export const getSupplyAlertDrilldown = async (params = {}) => {
+  const response = await api.get('/ops/supply/alerts/drilldown', { params, timeout: 15000 })
+  return response.data
+}
+export const refreshSupplyAlerting = async () => {
+  const response = await api.post('/ops/supply/refresh', {}, { timeout: 600000 })
+  return response.data
+}
+
 export default api

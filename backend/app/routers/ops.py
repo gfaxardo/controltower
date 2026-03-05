@@ -43,8 +43,22 @@ from app.services.real_drill_service import (
     RealDrillMvNotPopulatedError,
 )
 from app.services.real_lob_drill_pro_service import get_drill as get_real_lob_drill_pro, get_drill_children as get_real_lob_drill_pro_children
+from app.services.supply_service import (
+    get_supply_geo,
+    get_supply_parks,
+    get_supply_series,
+    get_supply_summary,
+    get_supply_global_series,
+    get_supply_segments_series,
+    get_supply_alerts,
+    get_supply_alert_drilldown,
+    refresh_supply_alerting_mvs,
+)
 from app.settings import settings
+from fastapi.responses import Response
 from typing import Optional, Literal
+import csv
+import io
 import logging
 
 logger = logging.getLogger(__name__)
@@ -332,6 +346,225 @@ async def get_ops_parks(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ─── Control Tower Supply (REAL) ─────────────────────────────────────────────
+@router.get("/supply/geo")
+async def get_supply_geo_endpoint(
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+):
+    """Geo para filtros: countries, cities (por country), parks (por country/city). Fuente: dim.v_geo_park."""
+    try:
+        return get_supply_geo(country=country, city=city)
+    except Exception as e:
+        logger.error("GET /ops/supply/geo: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/supply/parks")
+async def get_supply_parks_endpoint(
+    country: Optional[str] = Query(None, description="Filtrar por país"),
+    city: Optional[str] = Query(None, description="Filtrar por ciudad"),
+):
+    """Parks para Supply (geo). Fuente: dim.v_geo_park. Orden: country, city, park_name."""
+    try:
+        data = get_supply_parks(country=country, city=city)
+        return {"data": data}
+    except Exception as e:
+        logger.error("GET /ops/supply/parks: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _to_csv(rows: list, columns: list) -> str:
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(columns)
+    for r in rows:
+        w.writerow([r.get(c) for c in columns])
+    return buf.getvalue()
+
+
+@router.get("/supply/series")
+async def get_supply_series_endpoint(
+    park_id: str = Query(..., description="Park (obligatorio)"),
+    from_: str = Query(..., alias="from", description="Fecha inicio YYYY-MM-DD"),
+    to: str = Query(..., description="Fecha fin YYYY-MM-DD"),
+    grain: Literal["weekly", "monthly"] = Query("weekly"),
+    format: Optional[str] = Query(None, description="csv para descarga"),
+):
+    """Serie por periodo (DESC). park_id obligatorio."""
+    try:
+        data = get_supply_series(park_id=park_id, from_date=from_, to_date=to, grain=grain)
+        if (format or "").lower() == "csv":
+            # Regla presentación: no IDs en export; solo columnas legibles (park_name, city, country)
+            cols = ["period_start", "park_name", "city", "country", "activations", "active_drivers", "churned", "reactivated", "churn_rate", "reactivation_rate", "net_growth"]
+            body = _to_csv(data, [c for c in cols if data and data[0].get(c) is not None] or cols)
+            return Response(content=body, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=supply_series.csv"})
+        return {"data": data}
+    except Exception as e:
+        logger.error("GET /ops/supply/series: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/supply/segments/series")
+async def get_supply_segments_series_endpoint(
+    park_id: str = Query(..., description="Park (obligatorio)"),
+    from_: str = Query(..., alias="from", description="YYYY-MM-DD"),
+    to: str = Query(..., description="YYYY-MM-DD"),
+    format: Optional[str] = Query(None),
+):
+    """Serie de segmentos por semana (FT/PT/CASUAL/OCC/DORMANT). Fuente: ops.mv_supply_segments_weekly. Orden: week_start DESC."""
+    try:
+        data = get_supply_segments_series(park_id=park_id, from_date=from_, to_date=to)
+        if (format or "").lower() == "csv":
+            cols = ["week_start", "segment_week", "drivers_count", "trips_sum", "share_of_active", "park_name", "city", "country"]
+            body = _to_csv(data, cols)
+            return Response(
+                content=body,
+                media_type="text/csv",
+                headers={"Content-Disposition": "attachment; filename=supply_segments_series.csv"},
+            )
+        return {"data": data}
+    except Exception as e:
+        logger.error("GET /ops/supply/segments/series: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/supply/summary")
+async def get_supply_summary_endpoint(
+    park_id: str = Query(..., description="Park (obligatorio)"),
+    from_: str = Query(..., alias="from"),
+    to: str = Query(..., description="Fecha fin YYYY-MM-DD"),
+    grain: Literal["weekly", "monthly"] = Query("weekly"),
+):
+    """Summary cards del rango visible (sumas y tasas ponderadas)."""
+    try:
+        return get_supply_summary(park_id=park_id, from_date=from_, to_date=to, grain=grain)
+    except Exception as e:
+        logger.error("GET /ops/supply/summary: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/supply/global/series")
+async def get_supply_global_series_endpoint(
+    from_: str = Query(..., alias="from"),
+    to: str = Query(..., description="Fecha fin YYYY-MM-DD"),
+    grain: Literal["weekly", "monthly"] = Query("weekly"),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    format: Optional[str] = Query(None),
+):
+    """Serie global (agregada por periodo; opcional country/city)."""
+    try:
+        data = get_supply_global_series(from_date=from_, to_date=to, grain=grain, country=country, city=city)
+        if (format or "").lower() == "csv":
+            cols = ["period_start", "activations", "active_drivers", "churned", "reactivated", "net_growth"]
+            if data and any("country" in r for r in data):
+                cols = ["period_start", "country", "city"] + [c for c in cols if c != "period_start"]
+            body = _to_csv(data, cols)
+            return Response(content=body, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=supply_global.csv"})
+        return {"data": data}
+    except Exception as e:
+        logger.error("GET /ops/supply/global/series: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/supply/alerts")
+async def get_supply_alerts_endpoint(
+    park_id: Optional[str] = Query(None),
+    from_: Optional[str] = Query(None, alias="from", description="Semana desde YYYY-MM-DD"),
+    to: Optional[str] = Query(None, description="Semana hasta YYYY-MM-DD"),
+    week_start_from: Optional[str] = Query(None),
+    week_start_to: Optional[str] = Query(None),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    alert_type: Optional[str] = Query(None, description="segment_drop | segment_spike"),
+    severity: Optional[str] = Query(None, description="P0 | P1 | P2 | P3"),
+    limit: int = Query(200, ge=1, le=500),
+    format: Optional[str] = Query(None),
+):
+    """Alertas Supply PRO por semana, park, segmento. Fuente: ops.mv_supply_alerts_weekly."""
+    try:
+        from_val = from_ or week_start_from
+        to_val = to or week_start_to
+        data = get_supply_alerts(
+            week_start_from=from_val,
+            week_start_to=to_val,
+            park_id=park_id,
+            country=country,
+            city=city,
+            alert_type=alert_type,
+            severity=severity,
+            limit=limit,
+        )
+        if (format or "").lower() == "csv":
+            cols = ["week_start", "severity", "alert_type", "segment_week", "current_value", "baseline_avg", "delta_pct", "message_short", "recommended_action", "park_name", "city", "country"]
+            body = _to_csv(data, cols)
+            return Response(
+                content=body,
+                media_type="text/csv",
+                headers={"Content-Disposition": "attachment; filename=supply_alerts.csv"},
+            )
+        return {"data": data, "total": len(data)}
+    except Exception as e:
+        logger.error("GET /ops/supply/alerts: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/supply/alerts/drilldown")
+async def get_supply_alert_drilldown_endpoint(
+    park_id: str = Query(..., description="Park ID"),
+    week_start: str = Query(..., description="Semana (YYYY-MM-DD)"),
+    segment_week: Optional[str] = Query(None, description="FT | PT | CASUAL | OCCASIONAL"),
+    alert_type: Optional[str] = Query(None, description="segment_drop | segment_spike"),
+    format: Optional[str] = Query(None, description="csv para export"),
+):
+    """Conductores afectados (downshift/drop) para una alerta. Orden: baseline_trips_4w_avg desc."""
+    try:
+        data = get_supply_alert_drilldown(
+            week_start=week_start,
+            park_id=park_id,
+            segment_week=segment_week,
+            alert_type=alert_type,
+        )
+        if (format or "").lower() == "csv":
+            cols = ["driver_key", "prev_segment_week", "segment_week_current", "trips_completed_week", "baseline_trips_4w_avg", "segment_change_type", "week_start", "park_id"]
+            body = _to_csv(data, cols)
+            return Response(
+                content=body,
+                media_type="text/csv",
+                headers={"Content-Disposition": f"attachment; filename=supply_alert_drilldown_{week_start}_{park_id or 'all'}.csv"},
+            )
+        return {"data": data, "total": len(data)}
+    except Exception as e:
+        logger.error("GET /ops/supply/alerts/drilldown: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/supply/refresh")
+async def post_supply_refresh():
+    """Refresca MVs de Supply Alerting. CONCURRENTLY."""
+    try:
+        refresh_supply_alerting_mvs()
+        return {"ok": True, "message": "ops.refresh_supply_alerting_mvs() ejecutado"}
+    except Exception as e:
+        logger.error("POST /ops/supply/refresh: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/supply/refresh-alerting")
+async def post_supply_refresh_alerting():
+    """Refresca MVs de Supply Alerting (solo si SUPPLY_REFRESH_ALLOWED=true). Uso admin."""
+    import os
+    if os.environ.get("SUPPLY_REFRESH_ALLOWED", "").lower() not in ("1", "true", "yes"):
+        raise HTTPException(status_code=403, detail="Supply refresh not allowed (set SUPPLY_REFRESH_ALLOWED)")
+    try:
+        refresh_supply_alerting_mvs()
+        return {"ok": True, "message": "ops.refresh_supply_alerting_mvs() ejecutado"}
+    except Exception as e:
+        logger.error("POST /ops/supply/refresh-alerting: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/real-lob/filters")
 async def get_real_lob_filters_endpoint(
     country: Optional[str] = Query(None, description="Filtrar ciudades/parks por país"),
@@ -375,11 +608,11 @@ async def get_real_lob_v2_data_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ─── Real LOB Drill PRO (MV ops.mv_real_lob_drill_agg; calendario completo, KPIs por país) ─────────────────
+# ─── Real LOB Drill PRO (MV ops.mv_real_drill_dim_agg; calendario completo, KPIs por país) ─────────────────
 @router.get("/real-lob/drill")
 async def get_real_lob_drill_pro_endpoint(
     period: Literal["month", "week"] = Query("month", description="month | week"),
-    desglose: Literal["LOB", "PARK"] = Query("PARK", description="Desglose al expandir: LOB | PARK"),
+    desglose: Literal["LOB", "PARK", "SERVICE_TYPE"] = Query("PARK", description="Desglose al expandir: LOB | PARK | SERVICE_TYPE"),
     segmento: Optional[Literal["all", "b2c", "b2b"]] = Query("all", description="all | b2c | b2b"),
     country: Optional[Literal["all", "pe", "co"]] = Query("all", description="all | pe | co"),
 ):
@@ -404,17 +637,18 @@ async def get_real_lob_drill_children_endpoint(
     country: str = Query(..., description="País (pe | co)"),
     period: Literal["month", "week"] = Query("month"),
     period_start: str = Query(..., description="YYYY-MM-DD o YYYY-MM-01"),
-    desglose: Literal["LOB", "PARK"] = Query("PARK"),
+    desglose: Literal["LOB", "PARK", "SERVICE_TYPE"] = Query("PARK"),
     segmento: Optional[Literal["all", "b2c", "b2b"]] = Query("all"),
     drill_lob_id: Optional[str] = Query(None, description="Filtro LOB (solo válido si desglose=LOB)"),
     drill_park_id: Optional[str] = Query(None, description="Filtro Park (solo válido si desglose=PARK)"),
 ):
     """
-    Desglose por Park (city, park_name) o LOB (lob_group, tipo_servicio_norm). Orden: viajes DESC.
+    Desglose por LOB (1 fila por lob_group), Park (city, park_name), o Tipo de servicio. Orden: viajes DESC.
 
-    Contrato params por dimensión (FASE 2D):
+    Contrato params por dimensión:
     - desglose=LOB  => permitido drill_lob_id; 400 si llega drill_park_id.
     - desglose=PARK => permitido drill_park_id; 400 si llega drill_lob_id.
+    - desglose=SERVICE_TYPE => no drill_lob_id ni drill_park_id.
     """
     if desglose == "PARK" and drill_lob_id is not None and str(drill_lob_id).strip() != "":
         raise HTTPException(

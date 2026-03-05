@@ -232,7 +232,17 @@ async def driver_lifecycle_parks_list():
     """
     try:
         parks = get_parks_for_selector()
-        return {"parks": [{"park_id": p["park_id"], "park_name": p.get("park_name") or str(p.get("park_id") or "")} for p in parks]}
+        return {
+            "parks": [
+                {
+                    "park_id": p["park_id"],
+                    "park_name": p.get("park_name") or "UNKNOWN PARK",
+                    "city": p.get("city"),
+                    "country": p.get("country"),
+                }
+                for p in parks
+            ]
+        }
     except Exception as e:
         logger.exception("driver-lifecycle parks list: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
