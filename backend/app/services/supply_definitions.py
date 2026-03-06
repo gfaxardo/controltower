@@ -2,6 +2,8 @@
 Definiciones oficiales de métricas del módulo Driver Supply Dynamics.
 Usado por documentación, tooltips y validación. No modifica MVs ni cálculos.
 """
+from __future__ import annotations
+
 from datetime import date
 from typing import Union
 
