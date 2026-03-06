@@ -69,12 +69,22 @@ from app.settings import settings
 from fastapi.responses import Response
 from typing import Optional, Literal
 import asyncio
+import functools
 import csv
 import io
 import logging
 import os
 import json
 import time
+
+# asyncio.to_thread existe desde Python 3.9; en 3.8 usamos run_in_executor
+if hasattr(asyncio, "to_thread"):
+    async def _run_sync(func, *args, **kwargs):
+        return await asyncio.to_thread(func, *args, **kwargs)
+else:
+    async def _run_sync(func, *args, **kwargs):
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, functools.partial(func, *args, **kwargs))
 
 logger = logging.getLogger(__name__)
 # #region agent log
@@ -760,7 +770,7 @@ async def get_real_lob_drill_pro_endpoint(
     # #endregion
     logger.info("Real LOB drill: request received period=%s desglose=%s segmento=%s park_id=%s", period, desglose, segmento, park_id)
     try:
-        return await asyncio.to_thread(
+        return await _run_sync(
             get_real_lob_drill_pro,
             period=period,
             desglose=desglose,
@@ -810,7 +820,7 @@ async def get_real_lob_drill_children_endpoint(
     if effective_park_id is not None:
         effective_park_id = str(effective_park_id).strip() or None
     try:
-        data = await asyncio.to_thread(
+        data = await _run_sync(
             get_real_lob_drill_pro_children,
             country=country,
             period=period,
@@ -834,7 +844,7 @@ async def get_real_lob_drill_parks_endpoint(
     El filtro Park es de contexto y debe poblarse siempre, independiente del desglose (LOB / Park / Tipo de servicio).
     """
     try:
-        parks = await asyncio.to_thread(get_real_lob_drill_parks, country=country)
+        parks = await _run_sync(get_real_lob_drill_parks, country=country)
         return {"parks": parks}
     except Exception as e:
         logger.error("GET /ops/real-lob/drill/parks: %s", e)
