@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  // Producción: build para raíz del dominio (ej. http://162.55.214.109/)
+  base: '/',
   server: {
     port: 5173,
     proxy: {
