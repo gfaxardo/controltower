@@ -1,6 +1,7 @@
 """
 Real LOB v2: opciones para dropdowns de filtros (countries, cities, parks, lob_groups, tipo_servicio, years).
 Fuente: ops.mv_real_lob_month_v2 y ops.mv_real_lob_week_v2.
+Fallback: si parks queda vacío (p. ej. MVs no refrescadas), se rellenan desde ops.real_drill_dim_fact.
 Cache en memoria 5 min para no golpear la DB en cada carga.
 """
 from app.db.connection import get_db
@@ -89,6 +90,13 @@ def get_real_lob_filters(
                     pass
                 else:
                     p["park_name"] = str(p.get("park_id") or "")
+            # Fallback: si las MVs no tienen parks (p. ej. no refrescadas), usar fuente del drill
+            if not parks:
+                try:
+                    from app.services.real_lob_drill_pro_service import get_drill_parks
+                    parks = get_drill_parks(country=None)
+                except Exception as fb_e:
+                    logger.warning("Real LOB filters: fallback drill parks failed: %s", fb_e)
             # LOB groups
             cur.execute(f"""
                 SELECT DISTINCT lob_group FROM (

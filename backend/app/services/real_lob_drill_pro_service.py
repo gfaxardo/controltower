@@ -28,6 +28,8 @@ VIEW_COVERAGE = "ops.v_real_data_coverage"
 # Drill consulta MV + varias vistas. Rol puede tener 15s: forzar 0 (sin límite) para esta request.
 # Si el rol no permite override, el DBA debe ejecutar: ALTER ROLE yego_user SET statement_timeout TO '300s';
 TIMEOUT_POSTGRES = "0"
+# MV para desglose tipo_servicio por park (068)
+MV_SERVICE_BY_PARK = "ops.mv_real_drill_service_by_park"
 
 
 def _segment_filter(segment: Optional[str]) -> str:
@@ -36,18 +38,60 @@ def _segment_filter(segment: Optional[str]) -> str:
     return " AND segment = %(segment)s "
 
 
+def get_drill_parks(country: Optional[str] = None) -> List[Dict[str, Any]]:
+    """
+    Lista de parks para el filtro del drill. Fuente: ops.real_drill_dim_fact (breakdown=park).
+    Garantiza que el dropdown Park se pueble con el mismo universo que el drill, independiente del desglose.
+    """
+    try:
+        with get_db_drill() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("SET statement_timeout = '15000'")
+            if country and str(country).strip():
+                cur.execute("""
+                    SELECT DISTINCT country, city, dimension_id AS park_id, dimension_key AS park_name
+                    FROM ops.real_drill_dim_fact
+                    WHERE breakdown = 'park'
+                      AND country = %(country)s
+                      AND dimension_id IS NOT NULL AND TRIM(COALESCE(dimension_id,'')) <> ''
+                    ORDER BY country, city, dimension_key
+                """, {"country": str(country).strip().lower()})
+            else:
+                cur.execute("""
+                    SELECT DISTINCT country, city, dimension_id AS park_id, dimension_key AS park_name
+                    FROM ops.real_drill_dim_fact
+                    WHERE breakdown = 'park'
+                      AND dimension_id IS NOT NULL AND TRIM(COALESCE(dimension_id,'')) <> ''
+                    ORDER BY country, city, dimension_key
+                """)
+            rows = cur.fetchall()
+            out = []
+            for r in rows:
+                p = dict(r)
+                if p.get("park_name") is None or (isinstance(p.get("park_name"), str) and not p["park_name"].strip()):
+                    p["park_name"] = str(p.get("park_id") or "")
+                out.append(p)
+            cur.close()
+            return out
+    except Exception as e:
+        logger.exception("Real LOB drill parks: %s", e)
+        raise
+
+
 def get_drill(
     period: str = "month",
     desglose: str = "PARK",
     segmento: Optional[str] = None,
     country: Optional[str] = None,
+    park_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     GET /ops/real-lob/drill
     period: month | week
-    desglose: LOB | PARK (solo define tipo de subfila al expandir)
+    desglose: LOB | PARK | SERVICE_TYPE
     segmento: all | b2c | b2b
     country: all | pe | co
+    park_id: opcional; si se indica, KPIs y filas se limitan a ese park (breakdown=park + filtro).
     Devuelve: { countries: [ { country, coverage, kpis, rows } ], meta? }
     """
     period_type = "month" if period == "month" else "week"
@@ -150,11 +194,18 @@ def get_drill(
                 if ccode not in ("pe", "co"):
                     continue
                 cov = coverage_by_country.get(ccode) or {}
-                # Agregado por (country, period_start) desde MV dimensional (breakdown=lob)
+                # Agregado por (country, period_start): si park_id indicado, usar breakdown=park y filtrar
                 params = {"country": ccode, "period_grain": period_type}
                 if seg_param:
                     params["segment"] = seg_param
                 where_seg = _segment_filter(segmento)
+                if park_id and str(park_id).strip():
+                    params["park_id"] = str(park_id).strip()
+                    where_park = " AND dimension_id = %(park_id)s "
+                    breakdown_use = "park"
+                else:
+                    where_park = ""
+                    breakdown_use = "lob"
                 cur.execute(f"""
                     SELECT
                         period_start,
@@ -163,9 +214,9 @@ def get_drill(
                         SUM(b2b_trips) AS viajes_b2b,
                         MAX(last_trip_ts) AS last_trip_ts
                     FROM {MV_DIM}
-                    WHERE country = %(country)s AND period_grain = %(period_grain)s AND breakdown = 'lob' {where_seg}
+                    WHERE country = %(country)s AND period_grain = %(period_grain)s AND breakdown = %(breakdown_use)s {where_seg} {where_park}
                     GROUP BY period_start
-                """, params)
+                """, {**params, "breakdown_use": breakdown_use})
                 agg_rows = {r["period_start"]: dict(r) for r in cur.fetchall()}
 
                 # margen_trip y km_prom a nivel periodo: desde MV dimensional
@@ -179,9 +230,9 @@ def get_drill(
                         SUM(b2b_trips) AS viajes_b2b,
                         MAX(last_trip_ts) AS last_trip_ts
                     FROM {MV_DIM}
-                    WHERE country = %(country)s AND period_grain = %(period_grain)s AND breakdown = 'lob' {where_seg}
+                    WHERE country = %(country)s AND period_grain = %(period_grain)s AND breakdown = %(breakdown_use)s {where_seg} {where_park}
                     GROUP BY period_start
-                """, params)
+                """, {**params, "breakdown_use": breakdown_use})
                 agg_detail = {r["period_start"]: dict(r) for r in cur.fetchall()}
 
                 expected_loaded = "CURRENT_DATE - 1"
@@ -305,10 +356,12 @@ def get_drill_children(
     period_start: str,
     desglose: str,
     segmento: Optional[str] = None,
+    park_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     GET /ops/real-lob/drill/children
     Desglose por LOB (1 fila por lob_group), PARK (city, park_name), o SERVICE_TYPE (economico, confort, etc.).
+    Si desglose=SERVICE_TYPE y park_id está indicado, el desglose se limita a ese park (consulta a fuente).
     Orden: viajes DESC.
     """
     period_grain = "month" if period == "month" else "week"
@@ -325,6 +378,61 @@ def get_drill_children(
         desg_upper = "LOB"
 
     breakdown_map = {"LOB": "lob", "PARK": "park", "SERVICE_TYPE": "service_type"}
+
+    # Cuando desglose=SERVICE_TYPE y hay park_id: leer desde MV (068) para respuesta rápida
+    if desg_upper == "SERVICE_TYPE" and park_id and str(park_id).strip():
+        try:
+            with get_db_drill() as conn:
+                cur = conn.cursor(cursor_factory=RealDictCursor)
+                cur.execute("SET statement_timeout = %s", (TIMEOUT_POSTGRES,))
+                segment_cond = "" if seg_param is None else " AND segment = %(segment)s "
+                qparams = {
+                    "country": country.strip().lower(),
+                    "period_grain": period_grain,
+                    "period_start": period_start,
+                    "park_id": str(park_id).strip(),
+                    "segment": seg_param or "B2C",
+                }
+                cur.execute(f"""
+                    SELECT
+                        tipo_servicio_norm AS dimension_key,
+                        SUM(trips) AS viajes,
+                        SUM(margin_total) AS margen_total,
+                        CASE WHEN SUM(trips) > 0 THEN SUM(margin_total) / SUM(trips) ELSE NULL END AS margen_trip,
+                        CASE WHEN SUM(trips) > 0 THEN SUM(km_avg * trips) / NULLIF(SUM(trips), 0) ELSE NULL END AS km_prom,
+                        SUM(b2b_trips) AS viajes_b2b
+                    FROM {MV_SERVICE_BY_PARK}
+                    WHERE country = %(country)s AND period_grain = %(period_grain)s AND period_start = %(period_start)s::date
+                      AND park_id = %(park_id)s {segment_cond}
+                    GROUP BY tipo_servicio_norm
+                    ORDER BY SUM(trips) DESC
+                """, qparams)
+                rows = cur.fetchall()
+                out = []
+                for r in rows:
+                    viajes = r.get("viajes") or 0
+                    row = {
+                        "dimension_key": r.get("dimension_key"),
+                        "dimension_id": None,
+                        "city": None,
+                        "viajes": viajes,
+                        "margen_total": r.get("margen_total"),
+                        "margen_trip": r.get("margen_trip"),
+                        "km_prom": round(float(r["km_prom"]), 4) if r.get("km_prom") is not None else None,
+                        "viajes_b2b": r.get("viajes_b2b"),
+                        "pct_b2b": (float(r["viajes_b2b"]) / float(viajes)) if viajes else None,
+                    }
+                    row["service_type"] = row["dimension_key"]
+                    row["margin_total_pos"] = row["margen_total"]
+                    row["margin_unit_pos"] = row["margen_trip"]
+                    row["trips"] = row["viajes"]
+                    row["b2b_trips"] = row["viajes_b2b"]
+                    out.append(row)
+                cur.close()
+            return out
+        except Exception as e:
+            logger.exception("Real LOB drill PRO children (SERVICE_TYPE by park from MV): %s", e)
+            raise
 
     try:
         with get_db_drill() as conn:

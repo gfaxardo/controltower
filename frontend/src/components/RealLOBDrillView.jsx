@@ -9,7 +9,8 @@ import {
   getRealLobDrillProChildren,
   getRealDrillSummary,
   getRealDrillByLob,
-  getRealDrillByPark
+  getRealDrillByPark,
+  getRealLobDrillParks
 } from '../services/api'
 import { buildDimKey, buildDrillKey } from '../utils/dimKey'
 
@@ -58,6 +59,8 @@ export default function RealLOBDrillView () {
   const [periodType, setPeriodType] = useState('monthly')
   const [drillBy, setDrillBy] = useState('lob') // 'lob' | 'park' | 'service_type'
   const [segment, setSegment] = useState('Todos')
+  const [parkId, setParkId] = useState('') // '' = todos; si hay valor, timeline y desglose tipo_servicio filtrados por park
+  const [parks, setParks] = useState([]) // lista para filtro Park (fuente: drill); siempre poblada, independiente del desglose
   const [countries, setCountries] = useState([]) // [{ country, coverage, kpis, rows }]
   const [meta, setMeta] = useState({ last_period_monthly: null, last_period_weekly: null })
   const [lobCoverage, setLobCoverage] = useState(null) // { min_trip_date_loaded, max_trip_date_loaded, recent_days_config }
@@ -75,8 +78,16 @@ export default function RealLOBDrillView () {
   const getDimObj = useCallback(() => ({
     drillBy,
     periodType,
-    segment
-  }), [drillBy, periodType, segment])
+    segment,
+    parkId
+  }), [drillBy, periodType, segment, parkId])
+
+  // Parks para filtro de contexto: misma fuente que el drill (real_drill_dim_fact). No depende del tipo de desglose.
+  useEffect(() => {
+    getRealLobDrillParks()
+      .then((res) => setParks(res.parks || []))
+      .catch(() => setParks([]))
+  }, [])
 
   const resetDrillState = useCallback(() => {
     if (abortControllerRef.current) {
@@ -100,6 +111,7 @@ export default function RealLOBDrillView () {
           period: periodType === 'monthly' ? 'month' : 'week',
           desglose: drillBy === 'lob' ? 'LOB' : drillBy === 'park' ? 'PARK' : 'SERVICE_TYPE',
           segmento: segment === 'Todos' ? 'all' : segment.toLowerCase(),
+          park_id: parkId && parkId.trim() ? parkId.trim() : undefined,
           signal: ac.signal
         })
         setCountries(res.countries || [])
@@ -141,7 +153,7 @@ export default function RealLOBDrillView () {
     } finally {
       setLoading(false)
     }
-  }, [periodType, segment, limitPeriods, drillBy])
+  }, [periodType, segment, limitPeriods, drillBy, parkId])
 
   useEffect(() => {
     loadSummary()
@@ -198,6 +210,7 @@ export default function RealLOBDrillView () {
           period_start: normalizePeriodStart(periodStart),
           desglose: drillBy === 'lob' ? 'LOB' : drillBy === 'park' ? 'PARK' : 'SERVICE_TYPE',
           segmento: segment === 'Todos' ? 'all' : segment.toLowerCase(),
+          park_id: parkId && parkId.trim() ? parkId.trim() : undefined,
           signal
         })
         if (activeDimKeyRef.current === buildDimKey(getDimObj())) {
@@ -225,13 +238,19 @@ export default function RealLOBDrillView () {
     } catch (e) {
       if (e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') return
       if (activeDimKeyRef.current === buildDimKey(getDimObj())) {
+        let errMsg = e.message || 'Error al cargar desglose'
+        if (e?.code === 'ECONNABORTED' || errMsg.toLowerCase().includes('timeout')) {
+          errMsg = 'La consulta tardó demasiado. Prueba sin filtrar por park o otro periodo.'
+        } else if (e?.response?.status === 500 && parkId) {
+          errMsg = 'Error en el servidor al filtrar por park. Prueba sin park o más tarde.'
+        }
         setSubrows((prev) => ({
           ...prev,
-          [key]: { loading: false, data: null, error: e.message || 'Error al cargar desglose' }
+          [key]: { loading: false, data: null, error: errMsg }
         }))
       }
     }
-  }, [expanded, subrows, periodType, drillBy, segment, subrowKey, getDimObj])
+  }, [expanded, subrows, periodType, drillBy, segment, parkId, subrowKey, getDimObj])
 
   const now = new Date()
   const currentMonthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
@@ -294,6 +313,31 @@ export default function RealLOBDrillView () {
           >
             Tipo de servicio
           </button>
+          <span className="w-px h-6 bg-gray-300" />
+          <span className="text-sm text-gray-500">Park:</span>
+          <select
+            value={parkId}
+            onChange={(e) => {
+              const v = e.target.value
+              resetDrillState()
+              setParkId(v)
+            }}
+            className="border rounded px-2 py-1.5 text-sm min-w-[200px]"
+            title="Filtro de contexto por park; el desglose por tipo de servicio respeta este filtro"
+          >
+            <option value="">Todos</option>
+            {parks.map((p) => {
+              const id = p.park_id ?? p.id ?? ''
+              const name = p.park_name || p.park_id || p.id || '—'
+              const city = p.city && String(p.city).trim() && String(p.city).toLowerCase() !== 'sin_city' ? p.city : null
+              const label = city ? `${name} — ${city}` : name
+              return (
+                <option key={id} value={id}>
+                  {label}
+                </option>
+              )
+            })}
+          </select>
           <span className="w-px h-6 bg-gray-300" />
           <span className="text-sm text-gray-500">Segmento:</span>
           <select

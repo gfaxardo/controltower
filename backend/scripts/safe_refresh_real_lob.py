@@ -57,12 +57,12 @@ def main() -> None:
 
             _log_temp_usage(cur)
 
-            # Orden: enriched (base) -> dim_agg (lee de enriched) -> rollup_day (independiente)
-            # enriched es el más pesado; dim_agg es ligero (lee tabla materializada)
+            # Orden: enriched (base) -> dim_agg (lee de enriched) -> rollup_day -> service_by_park (068)
             mvs = [
                 ("ops.mv_real_drill_enriched", False),  # sin unique index, no CONCURRENTLY
                 ("ops.mv_real_drill_dim_agg", True),    # con unique index
                 ("ops.mv_real_rollup_day", True),       # con unique index
+                ("ops.mv_real_drill_service_by_park", True),  # 068: desglose tipo_servicio por park
             ]
             for mv_name, use_concurrent in mvs:
                 try:

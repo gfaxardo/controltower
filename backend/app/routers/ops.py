@@ -42,7 +42,11 @@ from app.services.real_drill_service import (
     refresh_real_drill_mv,
     RealDrillMvNotPopulatedError,
 )
-from app.services.real_lob_drill_pro_service import get_drill as get_real_lob_drill_pro, get_drill_children as get_real_lob_drill_pro_children
+from app.services.real_lob_drill_pro_service import (
+    get_drill as get_real_lob_drill_pro,
+    get_drill_children as get_real_lob_drill_pro_children,
+    get_drill_parks as get_real_lob_drill_parks,
+)
 from app.services.supply_service import (
     get_supply_geo,
     get_supply_parks,
@@ -50,10 +54,17 @@ from app.services.supply_service import (
     get_supply_summary,
     get_supply_global_series,
     get_supply_segments_series,
+    get_supply_segment_config,
     get_supply_alerts,
     get_supply_alert_drilldown,
     refresh_supply_alerting_mvs,
+    get_supply_overview_enhanced,
+    get_supply_composition,
+    get_supply_migration,
+    get_supply_migration_drilldown,
+    get_supply_freshness,
 )
+from app.services.supply_definitions import get_definitions
 from app.settings import settings
 from fastapi.responses import Response
 from typing import Optional, Literal
@@ -442,6 +453,16 @@ async def get_supply_segments_series_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/supply/segments/config")
+async def get_supply_segment_config_endpoint():
+    """Configuración de segmentos (ops.driver_segment_config): segment, min_trips, max_trips, priority. Sustituye umbrales hardcodeados."""
+    try:
+        return {"data": get_supply_segment_config()}
+    except Exception as e:
+        logger.error("GET /ops/supply/segments/config: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/supply/summary")
 async def get_supply_summary_endpoint(
     park_id: str = Query(..., description="Park (obligatorio)"),
@@ -553,6 +574,105 @@ async def get_supply_alert_drilldown_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/supply/overview-enhanced")
+async def get_supply_overview_enhanced_endpoint(
+    park_id: str = Query(..., description="Park (obligatorio)"),
+    from_: str = Query(..., alias="from", description="YYYY-MM-DD"),
+    to: str = Query(..., description="YYYY-MM-DD"),
+    grain: Literal["weekly", "monthly"] = Query("weekly"),
+):
+    """Overview enriquecido: trips, avg_trips_per_driver, FT/PT/weak_supply share; WoW cuando grain=weekly."""
+    try:
+        data = get_supply_overview_enhanced(park_id=park_id, from_date=from_, to_date=to, grain=grain)
+        return data
+    except Exception as e:
+        logger.error("GET /ops/supply/overview-enhanced: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/supply/composition")
+async def get_supply_composition_endpoint(
+    park_id: str = Query(..., description="Park (obligatorio)"),
+    from_: str = Query(..., alias="from", description="YYYY-MM-DD"),
+    to: str = Query(..., description="YYYY-MM-DD"),
+    format: Optional[str] = Query(None),
+):
+    """Composición semanal por segmento con WoW. Fuente: ops.mv_supply_segments_weekly."""
+    try:
+        data = get_supply_composition(park_id=park_id, from_date=from_, to_date=to)
+        if (format or "").lower() == "csv":
+            cols = ["week_start", "segment_week", "drivers_count", "delta_drivers", "trips_sum", "share_of_active", "delta_share", "supply_contribution", "avg_trips_per_driver", "drivers_wow_pct", "trips_wow_pct", "share_wow_pp"]
+            body = _to_csv(data, [c for c in cols if data and data[0].get(c) is not None] or cols)
+            return Response(content=body, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=supply_composition.csv"})
+        return {"data": data, "total": len(data)}
+    except Exception as e:
+        logger.error("GET /ops/supply/composition: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/supply/migration")
+async def get_supply_migration_endpoint(
+    park_id: str = Query(..., description="Park (obligatorio)"),
+    from_: str = Query(..., alias="from", description="YYYY-MM-DD"),
+    to: str = Query(..., description="YYYY-MM-DD"),
+    format: Optional[str] = Query(None),
+):
+    """Migración entre segmentos por semana: from_segment, to_segment, drivers_migrated, migration_type. Incluye summary (upgrades, downgrades, drops, revivals)."""
+    try:
+        result = get_supply_migration(park_id=park_id, from_date=from_, to_date=to)
+        rows = result.get("data", [])
+        summary = result.get("summary", {"upgrades": 0, "downgrades": 0, "drops": 0, "revivals": 0})
+        if (format or "").lower() == "csv":
+            cols = ["week_start", "park_id", "from_segment", "to_segment", "migration_type", "drivers_migrated"]
+            body = _to_csv(rows, cols)
+            return Response(content=body, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=supply_migration.csv"})
+        return {"data": rows, "total": len(rows), "summary": summary}
+    except Exception as e:
+        logger.error("GET /ops/supply/migration: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/supply/migration/drilldown")
+async def get_supply_migration_drilldown_endpoint(
+    park_id: str = Query(..., description="Park ID"),
+    week_start: str = Query(..., description="Semana YYYY-MM-DD"),
+    from_segment: Optional[str] = Query(None),
+    to_segment: Optional[str] = Query(None),
+    format: Optional[str] = Query(None),
+):
+    """Drivers que migraron en una semana (opcional: from_segment, to_segment)."""
+    try:
+        data = get_supply_migration_drilldown(park_id=park_id, week_start=week_start, from_segment=from_segment, to_segment=to_segment)
+        if (format or "").lower() == "csv":
+            cols = ["driver_key", "week_start", "park_id", "from_segment", "to_segment", "migration_type", "trips_completed_week", "baseline_trips_4w_avg"]
+            body = _to_csv(data, cols)
+            return Response(content=body, media_type="text/csv", headers={"Content-Disposition": f"attachment; filename=supply_migration_drilldown_{week_start}_{park_id}.csv"})
+        return {"data": data, "total": len(data)}
+    except Exception as e:
+        logger.error("GET /ops/supply/migration/drilldown: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/supply/definitions")
+async def get_supply_definitions_endpoint():
+    """Definiciones oficiales de métricas (active_supply, churned, reactivated, growth_rate, segments, migration)."""
+    try:
+        return get_definitions()
+    except Exception as e:
+        logger.error("GET /ops/supply/definitions: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/supply/freshness")
+async def get_supply_freshness_endpoint():
+    """Última semana disponible, última corrida de refresh y estado del pipeline (fresh/stale/unknown)."""
+    try:
+        return get_supply_freshness()
+    except Exception as e:
+        logger.error("GET /ops/supply/freshness: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/supply/refresh")
 async def post_supply_refresh():
     """Refresca MVs de Supply Alerting. CONCURRENTLY."""
@@ -628,23 +748,25 @@ async def get_real_lob_drill_pro_endpoint(
     desglose: Literal["LOB", "PARK", "SERVICE_TYPE"] = Query("PARK", description="Desglose al expandir: LOB | PARK | SERVICE_TYPE"),
     segmento: Optional[Literal["all", "b2c", "b2b"]] = Query("all", description="all | b2c | b2b"),
     country: Optional[Literal["all", "pe", "co"]] = Query("all", description="all | pe | co"),
+    park_id: Optional[str] = Query(None, description="Filtro opcional por park; aplica a timeline y a desglose tipo_servicio"),
 ):
     """
     Real LOB Drill PRO: countries[] con coverage, kpis (sobre lo visible), rows por periodo.
+    Si park_id se indica, KPIs y filas se limitan a ese park; el desglose por tipo_servicio respeta ese filtro.
     Orden: PE primero, CO segundo; filas periodo más reciente → más antiguo.
     """
     # #region agent log
     _debug_log("ops.py:drill_endpoint", "drill request received", {"period": period, "desglose": desglose, "segmento": segmento}, "H1_H2_H3")
     # #endregion
-    logger.info("Real LOB drill: request received period=%s desglose=%s segmento=%s", period, desglose, segmento)
+    logger.info("Real LOB drill: request received period=%s desglose=%s segmento=%s park_id=%s", period, desglose, segmento, park_id)
     try:
-        # Ejecutar en thread para no bloquear el event loop; así Ctrl+C responde aunque la consulta tarde.
         return await asyncio.to_thread(
             get_real_lob_drill_pro,
             period=period,
             desglose=desglose,
             segmento=segmento,
             country=country,
+            park_id=park_id,
         )
     except Exception as e:
         # #region agent log
@@ -662,26 +784,31 @@ async def get_real_lob_drill_children_endpoint(
     desglose: Literal["LOB", "PARK", "SERVICE_TYPE"] = Query("PARK"),
     segmento: Optional[Literal["all", "b2c", "b2b"]] = Query("all"),
     drill_lob_id: Optional[str] = Query(None, description="Filtro LOB (solo válido si desglose=LOB)"),
-    drill_park_id: Optional[str] = Query(None, description="Filtro Park (solo válido si desglose=PARK)"),
+    drill_park_id: Optional[str] = Query(None, description="Filtro Park (válido si desglose=PARK o desglose=SERVICE_TYPE para filtrar tipo_servicio por park)"),
+    park_id: Optional[str] = Query(None, description="Filtro por park (igual que drill_park_id; aplica a desglose tipo_servicio)"),
 ):
     """
     Desglose por LOB (1 fila por lob_group), Park (city, park_name), o Tipo de servicio. Orden: viajes DESC.
+    Si desglose=SERVICE_TYPE y park_id (o drill_park_id) está indicado, el desglose se limita a ese park.
 
     Contrato params por dimensión:
     - desglose=LOB  => permitido drill_lob_id; 400 si llega drill_park_id.
     - desglose=PARK => permitido drill_park_id; 400 si llega drill_lob_id.
-    - desglose=SERVICE_TYPE => no drill_lob_id ni drill_park_id.
+    - desglose=SERVICE_TYPE => permitido park_id/drill_park_id para filtrar por park.
     """
     if desglose == "PARK" and drill_lob_id is not None and str(drill_lob_id).strip() != "":
         raise HTTPException(
             status_code=400,
             detail="Incompatible drill params for groupBy=PARK: drill_lob_id is not allowed when desglose is PARK.",
         )
-    if desglose == "LOB" and drill_park_id is not None and str(drill_park_id).strip() != "":
+    if desglose == "LOB" and (drill_park_id is not None and str(drill_park_id).strip() != "" or park_id is not None and str(park_id).strip() != ""):
         raise HTTPException(
             status_code=400,
-            detail="Incompatible drill params for groupBy=LOB: drill_park_id is not allowed when desglose is LOB.",
+            detail="Incompatible drill params for groupBy=LOB: drill_park_id/park_id is not allowed when desglose is LOB.",
         )
+    effective_park_id = (park_id or drill_park_id)
+    if effective_park_id is not None:
+        effective_park_id = str(effective_park_id).strip() or None
     try:
         data = await asyncio.to_thread(
             get_real_lob_drill_pro_children,
@@ -690,10 +817,27 @@ async def get_real_lob_drill_children_endpoint(
             period_start=period_start,
             desglose=desglose,
             segmento=segmento,
+            park_id=effective_park_id,
         )
         return {"data": data}
     except Exception as e:
         logger.error("Real LOB drill PRO children: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/real-lob/drill/parks")
+async def get_real_lob_drill_parks_endpoint(
+    country: Optional[str] = Query(None, description="Filtrar parks por país (pe | co)"),
+):
+    """
+    Lista de parks para el filtro Park del drill. Fuente: real_drill_dim_fact (breakdown=park).
+    El filtro Park es de contexto y debe poblarse siempre, independiente del desglose (LOB / Park / Tipo de servicio).
+    """
+    try:
+        parks = await asyncio.to_thread(get_real_lob_drill_parks, country=country)
+        return {"parks": parks}
+    except Exception as e:
+        logger.error("GET /ops/real-lob/drill/parks: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

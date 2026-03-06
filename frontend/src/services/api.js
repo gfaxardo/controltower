@@ -226,6 +226,12 @@ export const getRealLobDrillProChildren = async (params = {}) => {
   return response.data
 }
 
+/** Parks para el filtro Park del drill. Fuente: misma que el drill (real_drill_dim_fact). Poblado siempre, independiente del desglose. */
+export const getRealLobDrillParks = async (params = {}) => {
+  const response = await api.get('/ops/real-lob/drill/parks', { params, timeout: 15000 })
+  return response.data
+}
+
 // Real LOB Drill-down: timeline por país, drill LOB/Park [legacy]
 export const getRealDrillSummary = async (params = {}) => {
   const response = await api.get('/ops/real-drill/summary', { params, timeout: REAL_DRILL_TIMEOUT_MS })
@@ -316,7 +322,7 @@ export const getDriverLifecycleCohortDrilldown = async (params = {}) => {
   return response.data
 }
 
-// Control Tower Supply (REAL) — radar: geo, overview, segments, alerts, drilldown
+// Driver Supply Dynamics — radar: geo, overview, composition, migration, alerts, drilldown
 export const getSupplyGeo = async (params = {}) => {
   const response = await api.get('/ops/supply/geo', { params, timeout: 10000 })
   return response.data
@@ -352,6 +358,49 @@ export const getSupplyAlertDrilldown = async (params = {}) => {
 }
 export const refreshSupplyAlerting = async () => {
   const response = await api.post('/ops/supply/refresh', {}, { timeout: 600000 })
+  return response.data
+}
+
+// Driver Supply Dynamics — configuración de segmentos (ops.driver_segment_config)
+export const getSupplySegmentConfig = async () => {
+  const response = await api.get('/ops/supply/segments/config', { timeout: 5000 })
+  return response.data?.data ?? []
+}
+
+// Driver Supply Dynamics — definiciones oficiales de métricas (tooltips, glosario)
+export const getSupplyDefinitions = async () => {
+  const response = await api.get('/ops/supply/definitions', { timeout: 5000 })
+  return response.data
+}
+
+// Driver Supply Dynamics — freshness (última semana, último refresh, estado)
+export const getSupplyFreshness = async () => {
+  const response = await api.get('/ops/supply/freshness', { timeout: 5000 })
+  return response.data
+}
+
+// Driver Supply Dynamics — overview enriquecido (trips, shares, WoW, rolling, trend)
+export const getSupplyOverviewEnhanced = async (params = {}) => {
+  const response = await api.get('/ops/supply/overview-enhanced', { params, timeout: 20000 })
+  return response.data
+}
+
+// Composición semanal por segmento con WoW
+export const getSupplyComposition = async (params = {}) => {
+  const response = await api.get('/ops/supply/composition', { params, timeout: 20000 })
+  return response.data
+}
+
+// Migración entre segmentos (incluye summary: upgrades, downgrades, drops, revivals)
+export const getSupplyMigration = async (params = {}) => {
+  const response = await api.get('/ops/supply/migration', { params, timeout: 20000 })
+  const data = response.data
+  return { data: data?.data ?? data, summary: data?.summary ?? null }
+}
+
+// Drilldown de migración (drivers por semana y from/to segment)
+export const getSupplyMigrationDrilldown = async (params = {}) => {
+  const response = await api.get('/ops/supply/migration/drilldown', { params, timeout: 15000 })
   return response.data
 }
 
