@@ -117,9 +117,6 @@ export default function RealLOBDrillView () {
         setCountries(res.countries || [])
         setMeta(res.meta || {})
         setLobCoverage(res.lob_coverage || null)
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/d1353b8d-83b3-4a07-af72-66d85f06aec4',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1c8c83'},body:JSON.stringify({sessionId:'1c8c83',location:'RealLOBDrillView.jsx:loadSummary',message:'drill success',data:{elapsedMs:Date.now()-t0},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{})
-        // #endregion
       } else {
         const summaryRes = await getRealDrillSummary({
           period_type: periodType,
@@ -132,10 +129,6 @@ export default function RealLOBDrillView () {
       }
     } catch (e) {
       if (e?.name === 'CanceledError' || e?.name === 'AbortError' || ac.signal.aborted) return
-      // #region agent log
-      const elapsed = Date.now() - t0
-      fetch('http://127.0.0.1:7243/ingest/d1353b8d-83b3-4a07-af72-66d85f06aec4',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1c8c83'},body:JSON.stringify({sessionId:'1c8c83',location:'RealLOBDrillView.jsx:loadSummary',message:'drill error caught',data:{code:e?.code,status:e?.response?.status,elapsedMs:elapsed,msg:e?.message},timestamp:Date.now(),hypothesisId:'H1_H2_H3'})}).catch(()=>{})
-      // #endregion
       let msg = 'Error al cargar timeline'
       if (e?.response?.data?.detail) {
         msg = Array.isArray(e.response.data.detail)

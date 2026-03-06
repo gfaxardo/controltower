@@ -77,14 +77,10 @@ import os
 import json
 import time
 
-# asyncio.to_thread existe desde Python 3.9; en 3.8 usamos run_in_executor
-if hasattr(asyncio, "to_thread"):
-    async def _run_sync(func, *args, **kwargs):
-        return await asyncio.to_thread(func, *args, **kwargs)
-else:
-    async def _run_sync(func, *args, **kwargs):
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, functools.partial(func, *args, **kwargs))
+# Ejecutar función síncrona en thread pool (compatible Python 3.8+; no usar asyncio.to_thread que es 3.9+)
+async def _run_sync(func, *args, **kwargs):
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, functools.partial(func, *args, **kwargs))
 
 logger = logging.getLogger(__name__)
 # #region agent log
