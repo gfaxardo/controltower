@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     BACKEND_PORT: int = 8000
     
     CORS_ORIGINS_STR: str = Field(
-        default="http://localhost:5173,http://localhost:3000",
+        default="http://localhost:5173,http://localhost:3000,http://162.55.214.109,https://162.55.214.109",
         alias="CORS_ORIGINS"
     )
     
