@@ -1,3 +1,4 @@
+# Python: usar 3.8 mínimo, recomendado 3.9 o 3.10 (compatible con asyncio run_in_executor y pydantic 2).
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 pandas>=2.0.0

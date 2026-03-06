@@ -83,6 +83,7 @@ async def _run_sync(func, *args, **kwargs):
     return await loop.run_in_executor(None, functools.partial(func, *args, **kwargs))
 
 logger = logging.getLogger(__name__)
+logger.info("ops router: _run_sync uses run_in_executor (Python 3.8 compatible)")
 # #region agent log
 def _debug_log(location: str, message: str, data: dict, hypothesis_id: str):
     try:
