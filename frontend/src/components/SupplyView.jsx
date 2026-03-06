@@ -198,7 +198,7 @@ export default function SupplyView () {
     if (alert.segment_week) q.set('segment_week', alert.segment_week)
     if (alert.alert_type) q.set('alert_type', alert.alert_type)
     if (import.meta.env.DEV) return `/api/ops/supply/alerts/drilldown?${q}`
-    const base = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+    const base = (import.meta.env.VITE_API_URL || '').trim() || '/api'
     return `${base}/ops/supply/alerts/drilldown?${q}`
   }
 
@@ -206,7 +206,7 @@ export default function SupplyView () {
     if (!parkId) return null
     const q = new URLSearchParams({ park_id: parkId, from, to, format: 'csv' })
     if (import.meta.env.DEV) return `/api/ops/supply/segments/series?${q}`
-    const base = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+    const base = (import.meta.env.VITE_API_URL || '').trim() || '/api'
     return `${base}/ops/supply/segments/series?${q}`
   }
 
@@ -214,7 +214,7 @@ export default function SupplyView () {
     if (!parkId) return null
     const q = new URLSearchParams({ park_id: parkId, from, to, format: 'csv' })
     if (import.meta.env.DEV) return `/api/ops/supply/alerts?${q}`
-    const base = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+    const base = (import.meta.env.VITE_API_URL || '').trim() || '/api'
     return `${base}/ops/supply/alerts?${q}`
   }
 
@@ -222,7 +222,7 @@ export default function SupplyView () {
     if (!parkId) return null
     const q = new URLSearchParams({ park_id: parkId, from, to, grain, format: 'csv' })
     if (import.meta.env.DEV) return `/api/ops/supply/series?${q}`
-    const base = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+    const base = (import.meta.env.VITE_API_URL || '').trim() || '/api'
     return `${base}/ops/supply/series?${q}`
   }
 

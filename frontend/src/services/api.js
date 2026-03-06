@@ -1,7 +1,8 @@
 import axios from 'axios'
 
-// En dev: usar proxy Vite (/api -> localhost:8000) para evitar CORS y Network Error
-const baseURL = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_API_URL || 'http://localhost:8000')
+// Dev: proxy Vite /api. Producción: VITE_API_URL si está definido, si no '/api' (mismo origen con nginx)
+const apiBase = (import.meta.env.VITE_API_URL || '').trim()
+const baseURL = import.meta.env.DEV ? '/api' : (apiBase || '/api')
 
 const api = axios.create({
   baseURL,

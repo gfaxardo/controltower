@@ -7,7 +7,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: process.env.VITE_API_URL || 'http://162.55.214.109:8000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
         // Drill puede tardar hasta 5 min (statement_timeout 300s); proxy debe esperar 6 min
