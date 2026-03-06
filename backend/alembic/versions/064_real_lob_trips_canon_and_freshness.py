@@ -3,11 +3,13 @@ Real LOB: fuente canónica de trips (trips_all + trips_2026) y freshness.
 - ops.v_trips_real_canon: unión trips_all (<2026) + trips_2026 (>=2026) con columnas necesarias para Real LOB y freshness; source_table para auditoría.
 - ops.v_real_freshness_trips: MAX(trip_datetime) por country desde canon con condicion='Completado'.
 - v_real_trips_with_lob_v2, mv_real_rollup_day: leer de ops.v_trips_real_canon.
-- ops.mv_real_drill_dim_agg: MV dimensional única con breakdown (lob|park|service_type); 1 fila por dimensión por periodo.
-  Fix LOB duplicado: drill por LOB agrupa SOLO por lob_group. Nuevo desglose: Tipo de servicio (economico, confort, confort_plus, xl, premier, unknown).
-- v_real_drill_lob, v_real_drill_park, v_real_drill_service_type: vistas legacy filtradas por breakdown.
+- MODO INCREMENTAL (evitar DiskFull): tablas fact ops.real_drill_dim_fact y ops.real_rollup_day_fact.
+  Solo se inserta ventana reciente (REAL_LOB_RECENT_DAYS, default 90). Backfill: scripts/backfill_real_lob_mvs.py
+- ops.mv_real_drill_dim_agg, ops.mv_real_rollup_day: vistas sobre fact tables (compatibilidad).
+- ops.v_real_lob_coverage: min/max cargado, recent_days_config.
 """
 import logging
+import os
 
 from alembic import op
 from sqlalchemy import text
@@ -312,18 +314,80 @@ def upgrade() -> None:
         LEFT JOIN canon.map_real_tipo_servicio_to_lob_group m ON m.real_tipo_servicio = v.real_tipo_servicio_norm
     """)
 
-    # --- 4) mv_real_drill_dim_agg: MV dimensional única (breakdown lob|park|service_type); 1 fila por dimensión ---
-    # Estrategia en 2 fases para reducir pico de uso de temp (DiskFull): primero MV intermedia, luego agregados.
-    # Fase 4a: ops.mv_real_drill_enriched (1 fila por trip enriquecido) — usa temp para joins.
-    # Fase 4b: ops.mv_real_drill_dim_agg lee de enriched — menos temp (solo GROUP BY sobre tabla materializada).
+    # --- 4) MODO INCREMENTAL: tablas fact + vistas (evitar DiskFull por MVs gigantes) ---
+    # Ventana reciente: REAL_LOB_RECENT_DAYS (env, default 90). Backfill: scripts/backfill_real_lob_mvs.py
+    recent_days = int(os.environ.get("REAL_LOB_RECENT_DAYS", "90"))
+    cutoff_sql = f"(current_date - interval '{recent_days} days')::date"
+    logger.info("Real LOB modo incremental: ventana %s días, cutoff >= %s", recent_days, cutoff_sql)
+
+    # Orden: DROP MATERIALIZED VIEW primero; DROP VIEW falla si el objeto es MV
     op.execute("DROP MATERIALIZED VIEW IF EXISTS ops.mv_real_drill_dim_agg CASCADE")
+    op.execute("DROP VIEW IF EXISTS ops.mv_real_drill_dim_agg CASCADE")
+    op.execute("DROP MATERIALIZED VIEW IF EXISTS ops.mv_real_rollup_day CASCADE")
+    op.execute("DROP VIEW IF EXISTS ops.mv_real_rollup_day CASCADE")
     op.execute("DROP MATERIALIZED VIEW IF EXISTS ops.mv_real_drill_enriched CASCADE")
     op.execute("DROP MATERIALIZED VIEW IF EXISTS ops.mv_real_lob_drill_agg CASCADE")
+    op.execute("DROP TABLE IF EXISTS ops.real_drill_dim_fact CASCADE")
+    op.execute("DROP TABLE IF EXISTS ops.real_rollup_day_fact CASCADE")
 
-    _log_temp_usage(conn, "pre-mv_real_drill_enriched")
-    # --- 4a) MV intermedia: 1 fila por trip enriquecido (country co/pe) ---
+    # --- 4a) Tabla fact drill dimensional ---
     op.execute("""
-        CREATE MATERIALIZED VIEW ops.mv_real_drill_enriched AS
+        CREATE TABLE ops.real_drill_dim_fact (
+            country text NOT NULL,
+            period_grain text NOT NULL,
+            period_start date NOT NULL,
+            segment text NOT NULL,
+            breakdown text NOT NULL,
+            dimension_key text,
+            dimension_id text,
+            city text,
+            trips bigint NOT NULL,
+            margin_total numeric,
+            margin_per_trip numeric,
+            km_avg numeric,
+            b2b_trips bigint,
+            b2b_share numeric,
+            last_trip_ts timestamptz
+        )
+    """)
+    op.execute("""
+        CREATE UNIQUE INDEX uq_real_drill_dim_fact
+        ON ops.real_drill_dim_fact (country, period_grain, period_start, segment, breakdown, COALESCE(dimension_key,''), COALESCE(dimension_id,''), COALESCE(city,''))
+    """)
+    op.execute("CREATE INDEX idx_real_drill_dim_country_period ON ops.real_drill_dim_fact (country, period_grain, period_start DESC)")
+    op.execute("CREATE INDEX idx_real_drill_dim_breakdown ON ops.real_drill_dim_fact (breakdown, country, period_start)")
+
+    # --- 4b) Tabla fact rollup diario ---
+    op.execute("""
+        CREATE TABLE ops.real_rollup_day_fact (
+            trip_day date NOT NULL,
+            country text NOT NULL,
+            city text,
+            park_id text,
+            park_name_resolved text,
+            park_bucket text,
+            lob_group text,
+            segment_tag text,
+            trips bigint NOT NULL,
+            b2b_trips bigint,
+            margin_total_raw numeric,
+            margin_total_pos numeric,
+            margin_unit_pos numeric,
+            distance_total_km numeric,
+            km_prom numeric,
+            last_trip_ts timestamptz
+        )
+    """)
+    op.execute("""
+        CREATE UNIQUE INDEX uq_real_rollup_day_fact
+        ON ops.real_rollup_day_fact (trip_day, country, COALESCE(city,''), COALESCE(park_id,''), lob_group, segment_tag)
+    """)
+    op.execute("CREATE INDEX idx_real_rollup_country_day ON ops.real_rollup_day_fact (country, trip_day)")
+
+    # --- 4c) INSERT ventana reciente en drill_dim (enriched + agg con filtro fecha) ---
+    _log_temp_usage(conn, "pre-insert-drill-dim")
+    op.execute(f"""
+        INSERT INTO ops.real_drill_dim_fact
         WITH base AS (
             SELECT
                 t.fecha_inicio_viaje,
@@ -338,6 +402,7 @@ def upgrade() -> None:
             FROM ops.v_trips_real_canon t
             LEFT JOIN public.parks p ON p.id::text = NULLIF(TRIM(t.park_id::text), '')
             WHERE t.fecha_inicio_viaje IS NOT NULL
+              AND t.fecha_inicio_viaje::date >= {cutoff_sql}
               AND t.tipo_servicio IS NOT NULL
               AND t.condicion = 'Completado'
               AND LENGTH(TRIM(t.tipo_servicio::text)) < 100
@@ -412,15 +477,9 @@ def upgrade() -> None:
                 v.country
             FROM with_country v
             LEFT JOIN canon.map_real_tipo_servicio_to_lob_group m ON m.real_tipo_servicio = v.tipo_servicio_norm
-        )
-        SELECT * FROM with_lob WHERE country IN ('co','pe')
-    """)
-    _log_temp_usage(conn, "post-mv_real_drill_enriched")
-
-    # --- 4b) MV dimensional: agregados desde enriched (menos temp: solo GROUP BY sobre tabla) ---
-    op.execute("""
-        CREATE MATERIALIZED VIEW ops.mv_real_drill_dim_agg AS
-        WITH lob_agg AS (
+        ),
+        enriched AS (SELECT * FROM with_lob WHERE country IN ('co','pe')),
+        lob_agg AS (
             SELECT
                 country,
                 'month' AS period_grain,
@@ -437,7 +496,7 @@ def upgrade() -> None:
                 SUM(CASE WHEN pago_corporativo IS NOT NULL AND (pago_corporativo::numeric) <> 0 THEN 1 ELSE 0 END) AS b2b_trips,
                 (SUM(CASE WHEN pago_corporativo IS NOT NULL AND (pago_corporativo::numeric) <> 0 THEN 1 ELSE 0 END)::numeric / NULLIF(COUNT(*), 0)) AS b2b_share,
                 MAX(fecha_inicio_viaje) AS last_trip_ts
-            FROM ops.mv_real_drill_enriched
+            FROM enriched
             GROUP BY country, segment, lob_group, DATE_TRUNC('month', fecha_inicio_viaje)::date
             UNION ALL
             SELECT
@@ -448,7 +507,7 @@ def upgrade() -> None:
                 SUM(CASE WHEN pago_corporativo IS NOT NULL AND (pago_corporativo::numeric)<>0 THEN 1 ELSE 0 END),
                 (SUM(CASE WHEN pago_corporativo IS NOT NULL AND (pago_corporativo::numeric)<>0 THEN 1 ELSE 0 END)::numeric/NULLIF(COUNT(*),0)),
                 MAX(fecha_inicio_viaje)
-            FROM ops.mv_real_drill_enriched
+            FROM enriched
             GROUP BY country, segment, lob_group, DATE_TRUNC('week', fecha_inicio_viaje)::date
         ),
         park_agg AS (
@@ -460,7 +519,7 @@ def upgrade() -> None:
                 SUM(CASE WHEN pago_corporativo IS NOT NULL AND (pago_corporativo::numeric)<>0 THEN 1 ELSE 0 END),
                 (SUM(CASE WHEN pago_corporativo IS NOT NULL AND (pago_corporativo::numeric)<>0 THEN 1 ELSE 0 END)::numeric/NULLIF(COUNT(*),0)),
                 MAX(fecha_inicio_viaje)
-            FROM ops.mv_real_drill_enriched
+            FROM enriched
             GROUP BY country, segment, city_norm, park_key, park_display_key, DATE_TRUNC('month', fecha_inicio_viaje)::date
             UNION ALL
             SELECT
@@ -471,7 +530,7 @@ def upgrade() -> None:
                 SUM(CASE WHEN pago_corporativo IS NOT NULL AND (pago_corporativo::numeric)<>0 THEN 1 ELSE 0 END),
                 (SUM(CASE WHEN pago_corporativo IS NOT NULL AND (pago_corporativo::numeric)<>0 THEN 1 ELSE 0 END)::numeric/NULLIF(COUNT(*),0)),
                 MAX(fecha_inicio_viaje)
-            FROM ops.mv_real_drill_enriched
+            FROM enriched
             GROUP BY country, segment, city_norm, park_key, park_display_key, DATE_TRUNC('week', fecha_inicio_viaje)::date
         ),
         service_agg AS (
@@ -483,7 +542,7 @@ def upgrade() -> None:
                 SUM(CASE WHEN pago_corporativo IS NOT NULL AND (pago_corporativo::numeric)<>0 THEN 1 ELSE 0 END),
                 (SUM(CASE WHEN pago_corporativo IS NOT NULL AND (pago_corporativo::numeric)<>0 THEN 1 ELSE 0 END)::numeric/NULLIF(COUNT(*),0)),
                 MAX(fecha_inicio_viaje)
-            FROM ops.mv_real_drill_enriched
+            FROM enriched
             GROUP BY country, segment, service_type_norm, DATE_TRUNC('month', fecha_inicio_viaje)::date
             UNION ALL
             SELECT
@@ -494,24 +553,17 @@ def upgrade() -> None:
                 SUM(CASE WHEN pago_corporativo IS NOT NULL AND (pago_corporativo::numeric)<>0 THEN 1 ELSE 0 END),
                 (SUM(CASE WHEN pago_corporativo IS NOT NULL AND (pago_corporativo::numeric)<>0 THEN 1 ELSE 0 END)::numeric/NULLIF(COUNT(*),0)),
                 MAX(fecha_inicio_viaje)
-            FROM ops.mv_real_drill_enriched
+            FROM enriched
             GROUP BY country, segment, service_type_norm, DATE_TRUNC('week', fecha_inicio_viaje)::date
         )
         SELECT * FROM lob_agg
         UNION ALL SELECT * FROM park_agg
         UNION ALL SELECT * FROM service_agg
     """)
-    op.execute("""
-        COMMENT ON MATERIALIZED VIEW ops.mv_real_drill_dim_agg IS
-        'Drill dimensional: 1 fila por (country, period, segment, breakdown, dimension_key). breakdown: lob|park|service_type. service_type_norm: economico, confort, confort_plus, xl, premier, unknown.'
-    """)
-    op.execute("""
-        CREATE UNIQUE INDEX uq_mv_real_drill_dim_agg
-        ON ops.mv_real_drill_dim_agg (country, period_grain, period_start, segment, breakdown, COALESCE(dimension_key,''), COALESCE(dimension_id,''), COALESCE(city,''))
-    """)
-    op.execute("CREATE INDEX idx_mv_real_drill_dim_country_period ON ops.mv_real_drill_dim_agg (country, period_grain, period_start DESC)")
-    op.execute("CREATE INDEX idx_mv_real_drill_dim_breakdown ON ops.mv_real_drill_dim_agg (breakdown, country, period_start)")
-    _log_temp_usage(conn, "post-mv_real_drill_dim_agg")
+    _log_temp_usage(conn, "post-insert-drill-dim")
+
+    # --- 4d) Vista compatibilidad (backend espera ops.mv_real_drill_dim_agg) ---
+    op.execute("CREATE VIEW ops.mv_real_drill_dim_agg AS SELECT * FROM ops.real_drill_dim_fact")
 
     # --- 4c) Vistas legacy por breakdown ---
     op.execute("DROP VIEW IF EXISTS ops.v_real_drill_lob CASCADE")
@@ -521,11 +573,10 @@ def upgrade() -> None:
     op.execute("DROP VIEW IF EXISTS ops.v_real_drill_service_type CASCADE")
     op.execute("CREATE VIEW ops.v_real_drill_service_type AS SELECT * FROM ops.mv_real_drill_dim_agg WHERE breakdown = 'service_type'")
 
-    # --- 5) mv_real_rollup_day: base desde canon ---
-    _log_temp_usage(conn, "pre-mv_real_rollup_day")
-    op.execute("DROP MATERIALIZED VIEW IF EXISTS ops.mv_real_rollup_day CASCADE")
-    op.execute("""
-        CREATE MATERIALIZED VIEW ops.mv_real_rollup_day AS
+    # --- 5) INSERT ventana reciente en rollup_day ---
+    _log_temp_usage(conn, "pre-insert-rollup-day")
+    op.execute(f"""
+        INSERT INTO ops.real_rollup_day_fact
         WITH base AS (
             SELECT
                 (t.fecha_inicio_viaje)::date AS trip_day,
@@ -543,6 +594,7 @@ def upgrade() -> None:
             LEFT JOIN public.parks p ON p.id::text = NULLIF(TRIM(t.park_id::text), '')
             WHERE t.tipo_servicio IS NOT NULL
               AND t.condicion = 'Completado'
+              AND t.fecha_inicio_viaje::date >= {cutoff_sql}
               AND LENGTH(TRIM(t.tipo_servicio::text)) < 100
               AND t.tipo_servicio::text NOT LIKE '%%->%%'
         ),
@@ -616,15 +668,23 @@ def upgrade() -> None:
             a.last_trip_ts
         FROM agg a
     """)
-    op.execute("""
-        CREATE UNIQUE INDEX uq_mv_real_rollup_day
-        ON ops.mv_real_rollup_day (trip_day, country, COALESCE(city,''), COALESCE(park_id::text,''), lob_group, segment_tag)
-    """)
-    op.execute("CREATE INDEX idx_mv_real_rollup_country_day ON ops.mv_real_rollup_day (country, trip_day)")
-    op.execute("CREATE INDEX idx_mv_real_rollup_country_city_day ON ops.mv_real_rollup_day (country, city, trip_day)")
-    op.execute("CREATE INDEX idx_mv_real_rollup_country_park_day ON ops.mv_real_rollup_day (country, park_id, trip_day)")
+    _log_temp_usage(conn, "post-insert-rollup-day")
 
-    # --- 6) Recrear v_real_data_coverage (depende de mv_real_rollup_day) ---
+    # --- 5b) Vista compatibilidad (v_real_data_coverage y drill views esperan ops.mv_real_rollup_day) ---
+    op.execute("CREATE VIEW ops.mv_real_rollup_day AS SELECT * FROM ops.real_rollup_day_fact")
+
+    # --- 6) v_real_lob_coverage: observabilidad modo incremental ---
+    op.execute("DROP VIEW IF EXISTS ops.v_real_lob_coverage CASCADE")
+    op.execute(f"""
+        CREATE VIEW ops.v_real_lob_coverage AS
+        SELECT
+            (SELECT MIN(trip_day) FROM ops.real_rollup_day_fact) AS min_trip_date_loaded,
+            (SELECT MAX(trip_day) FROM ops.real_rollup_day_fact) AS max_trip_date_loaded,
+            {recent_days} AS recent_days_config,
+            NOW() AS computed_at
+    """)
+
+    # --- 7) Recrear v_real_data_coverage (depende de mv_real_rollup_day = view sobre fact) ---
     op.execute("DROP VIEW IF EXISTS ops.v_real_data_coverage CASCADE")
     op.execute("""
         CREATE VIEW ops.v_real_data_coverage AS
@@ -642,7 +702,7 @@ def upgrade() -> None:
         GROUP BY country
     """)
 
-    # --- 7) Recrear vistas de drill que dependen de mv_real_rollup_day / v_real_data_coverage (mismo contenido que 053) ---
+    # --- 8) Recrear vistas de drill que dependen de mv_real_rollup_day / v_real_data_coverage (mismo contenido que 053) ---
     op.execute("DROP VIEW IF EXISTS ops.v_real_drill_country_month CASCADE")
     op.execute("""
         CREATE VIEW ops.v_real_drill_country_month AS
@@ -879,21 +939,22 @@ def upgrade() -> None:
         GROUP BY country, city, park_id, park_name_resolved, park_bucket, date_trunc('week', trip_day)::date
     """)
 
-    # --- 8) Refrescar MVs: NO ejecutado en migración ---
-    # CREATE MATERIALIZED VIEW ... AS SELECT ya popula las MVs. Para actualizar datos tras carga:
-    #   python -m scripts.safe_refresh_real_lob
+    # --- 9) Modo incremental: datos ya insertados en fact tables. Backfill histórico:
+    #   python -m scripts.backfill_real_lob_mvs --from YYYY-MM-01 --to YYYY-MM-01
     _log_temp_usage(conn, "fin-migracion-064")
 
 
 def downgrade() -> None:
-    # Revertir: vistas/MVs que leen de trips_all otra vez (definiciones abreviadas; en producción usar backup de 053).
+    # Revertir: vistas/tablas fact modo incremental.
     op.execute("DROP VIEW IF EXISTS ops.v_real_data_coverage CASCADE")
-    op.execute("DROP MATERIALIZED VIEW IF EXISTS ops.mv_real_rollup_day CASCADE")
+    op.execute("DROP VIEW IF EXISTS ops.v_real_lob_coverage CASCADE")
+    op.execute("DROP VIEW IF EXISTS ops.mv_real_rollup_day CASCADE")
     op.execute("DROP VIEW IF EXISTS ops.v_real_drill_service_type CASCADE")
     op.execute("DROP VIEW IF EXISTS ops.v_real_drill_park CASCADE")
     op.execute("DROP VIEW IF EXISTS ops.v_real_drill_lob CASCADE")
-    op.execute("DROP MATERIALIZED VIEW IF EXISTS ops.mv_real_drill_dim_agg CASCADE")
-    op.execute("DROP MATERIALIZED VIEW IF EXISTS ops.mv_real_drill_enriched CASCADE")
+    op.execute("DROP VIEW IF EXISTS ops.mv_real_drill_dim_agg CASCADE")
+    op.execute("DROP TABLE IF EXISTS ops.real_rollup_day_fact CASCADE")
+    op.execute("DROP TABLE IF EXISTS ops.real_drill_dim_fact CASCADE")
     op.execute("DROP VIEW IF EXISTS ops.v_real_trips_with_lob_v2 CASCADE")
     op.execute("DROP VIEW IF EXISTS ops.v_real_freshness_trips CASCADE")
     op.execute("DROP VIEW IF EXISTS ops.v_trips_real_canon CASCADE")

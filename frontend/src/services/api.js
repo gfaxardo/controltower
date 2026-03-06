@@ -204,10 +204,17 @@ export const getRealLobV2Data = async (params = {}) => {
   return response.data
 }
 
-// Real LOB Drill PRO (MV unificada; preferido)
-const REAL_DRILL_TIMEOUT_MS = 20000
+// Real LOB Drill PRO. BD tiene statement_timeout 300s → cliente debe esperar más (6 min).
+const REAL_DRILL_TIMEOUT_MS = 360000
 export const getRealLobDrillPro = async (params = {}) => {
-  const response = await api.get('/ops/real-lob/drill', { params, timeout: REAL_DRILL_TIMEOUT_MS })
+  // #region agent log
+  const t0 = Date.now()
+  fetch('http://127.0.0.1:7243/ingest/d1353b8d-83b3-4a07-af72-66d85f06aec4',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1c8c83'},body:JSON.stringify({sessionId:'1c8c83',location:'api.js:getRealLobDrillPro',message:'drill request started',data:{timeoutMs:REAL_DRILL_TIMEOUT_MS,params},timestamp:Date.now(),hypothesisId:'H1_H2'})}).catch(()=>{})
+  // #endregion
+  const { signal, ...queryParams } = params
+  const config = { params: queryParams, timeout: REAL_DRILL_TIMEOUT_MS }
+  if (signal) config.signal = signal
+  const response = await api.get('/ops/real-lob/drill', config)
   return response.data
 }
 export const getRealLobDrillProChildren = async (params = {}) => {

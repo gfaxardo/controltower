@@ -60,12 +60,14 @@ export default function RealLOBDrillView () {
   const [segment, setSegment] = useState('Todos')
   const [countries, setCountries] = useState([]) // [{ country, coverage, kpis, rows }]
   const [meta, setMeta] = useState({ last_period_monthly: null, last_period_weekly: null })
+  const [lobCoverage, setLobCoverage] = useState(null) // { min_trip_date_loaded, max_trip_date_loaded, recent_days_config }
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [expanded, setExpanded] = useState(new Set())
   const [subrows, setSubrows] = useState({}) // key -> { loading, data, error }
 
   const abortControllerRef = useRef(null)
+  const summaryAbortRef = useRef(null)
   const activeDimKeyRef = useRef('')
 
   const limitPeriods = periodType === 'monthly' ? 24 : 26
@@ -86,17 +88,26 @@ export default function RealLOBDrillView () {
   }, [])
 
   const loadSummary = useCallback(async () => {
+    if (summaryAbortRef.current) summaryAbortRef.current.abort()
+    const ac = new AbortController()
+    summaryAbortRef.current = ac
     setLoading(true)
     setError(null)
+    const t0 = Date.now()
     try {
       if (USE_DRILL_PRO) {
         const res = await getRealLobDrillPro({
           period: periodType === 'monthly' ? 'month' : 'week',
           desglose: drillBy === 'lob' ? 'LOB' : drillBy === 'park' ? 'PARK' : 'SERVICE_TYPE',
-          segmento: segment === 'Todos' ? 'all' : segment.toLowerCase()
+          segmento: segment === 'Todos' ? 'all' : segment.toLowerCase(),
+          signal: ac.signal
         })
         setCountries(res.countries || [])
         setMeta(res.meta || {})
+        setLobCoverage(res.lob_coverage || null)
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/d1353b8d-83b3-4a07-af72-66d85f06aec4',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1c8c83'},body:JSON.stringify({sessionId:'1c8c83',location:'RealLOBDrillView.jsx:loadSummary',message:'drill success',data:{elapsedMs:Date.now()-t0},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{})
+        // #endregion
       } else {
         const summaryRes = await getRealDrillSummary({
           period_type: periodType,
@@ -105,9 +116,27 @@ export default function RealLOBDrillView () {
         })
         setCountries(summaryRes.countries || [])
         setMeta(summaryRes.meta || {})
+        setLobCoverage(null)
       }
     } catch (e) {
-      setError(e.message || 'Error al cargar timeline')
+      if (e?.name === 'CanceledError' || e?.name === 'AbortError' || ac.signal.aborted) return
+      // #region agent log
+      const elapsed = Date.now() - t0
+      fetch('http://127.0.0.1:7243/ingest/d1353b8d-83b3-4a07-af72-66d85f06aec4',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1c8c83'},body:JSON.stringify({sessionId:'1c8c83',location:'RealLOBDrillView.jsx:loadSummary',message:'drill error caught',data:{code:e?.code,status:e?.response?.status,elapsedMs:elapsed,msg:e?.message},timestamp:Date.now(),hypothesisId:'H1_H2_H3'})}).catch(()=>{})
+      // #endregion
+      let msg = 'Error al cargar timeline'
+      if (e?.response?.data?.detail) {
+        msg = Array.isArray(e.response.data.detail)
+          ? e.response.data.detail.map(d => d.msg || JSON.stringify(d)).join(' ')
+          : String(e.response.data.detail)
+      } else if (e?.code === 'ECONNABORTED') {
+        msg = 'La solicitud tardó demasiado (timeout). El drill puede tardar hasta 5 min; si persiste, revisa el backend (p. ej. espacio en disco: docs/MIGRACION_064_DISKFULL_TROUBLESHOOTING.md).'
+      } else if (e?.code === 'ECONNREFUSED' || e?.message?.includes('ECONNREFUSED')) {
+        msg = 'No se pudo conectar al backend. Comprueba que uvicorn esté en marcha (puerto 8000).'
+      } else if (e?.message) {
+        msg = e.message
+      }
+      setError(msg)
       setCountries([])
     } finally {
       setLoading(false)
@@ -289,14 +318,42 @@ export default function RealLOBDrillView () {
         </div>
       )}
 
+      {lobCoverage && (lobCoverage.min_trip_date_loaded || lobCoverage.max_trip_date_loaded) && (
+        <div className="p-3 bg-slate-50 border border-slate-200 rounded text-slate-700 text-sm mb-4">
+          <span className="font-medium">Cobertura actual:</span>{' '}
+          {lobCoverage.min_trip_date_loaded && lobCoverage.max_trip_date_loaded
+            ? `${lobCoverage.min_trip_date_loaded} — ${lobCoverage.max_trip_date_loaded}`
+            : lobCoverage.max_trip_date_loaded
+              ? `Último día con data: ${lobCoverage.max_trip_date_loaded}`
+              : `Desde: ${lobCoverage.min_trip_date_loaded}`}
+          {lobCoverage.recent_days_config != null && (
+            <span className="ml-2 text-slate-500">(ventana: {lobCoverage.recent_days_config} días)</span>
+          )}
+        </div>
+      )}
+
       {error && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded text-red-800 text-sm mb-4">{error}</div>
+        <div className="p-4 bg-red-50 border border-red-200 rounded text-red-800 text-sm mb-4 flex flex-wrap items-center justify-between gap-2">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => { setError(null); loadSummary(); }}
+            className="px-3 py-1.5 bg-red-600 text-white text-sm rounded hover:bg-red-700"
+          >
+            Reintentar
+          </button>
+        </div>
       )}
 
       {loading ? (
-        <div className="animate-pulse space-y-3">
-          <div className="h-4 bg-gray-200 rounded w-1/3" />
-          <div className="h-32 bg-gray-200 rounded" />
+        <div className="p-6 space-y-3">
+          <div className="animate-pulse space-y-3">
+            <div className="h-4 bg-gray-200 rounded w-1/3" />
+            <div className="h-32 bg-gray-200 rounded" />
+          </div>
+          <p className="text-sm text-gray-500">
+            Cargando drill… Puede tardar hasta 5 minutos. Si tarda más, revisa la consola del backend.
+          </p>
         </div>
       ) : (
         <div className="space-y-6">

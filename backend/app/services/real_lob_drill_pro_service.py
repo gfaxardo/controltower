@@ -4,16 +4,30 @@ Fuente: ops.mv_real_drill_dim_agg (breakdown lob|park|service_type) y ops.v_real
 - Respuesta: countries[] con coverage, kpis (sobre lo visible), rows con periodo/estado/viajes/margen/km/b2b.
 - Children: desglose por LOB (1 fila por lob_group), PARK (city, park_name), o SERVICE_TYPE (tipo_servicio).
 """
-from app.db.connection import get_db
+from app.db.connection import get_db_drill
 from psycopg2.extras import RealDictCursor
 from typing import Optional, List, Dict, Any
 import logging
+import os
+import json
+import time
 
 logger = logging.getLogger(__name__)
+# #region agent log
+def _debug_log_svc(location: str, message: str, data: dict, hypothesis_id: str):
+    try:
+        log_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "debug-1c8c83.log")
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId": "1c8c83", "timestamp": int(time.time() * 1000), "location": location, "message": message, "data": data, "hypothesisId": hypothesis_id}) + "\n")
+    except Exception:
+        pass
+# #endregion
 
 MV_DIM = "ops.mv_real_drill_dim_agg"
 VIEW_COVERAGE = "ops.v_real_data_coverage"
-TIMEOUT_MS = 20000
+# Drill consulta MV + varias vistas. Rol puede tener 15s: forzar 0 (sin límite) para esta request.
+# Si el rol no permite override, el DBA debe ejecutar: ALTER ROLE yego_user SET statement_timeout TO '300s';
+TIMEOUT_POSTGRES = "0"
 
 
 def _segment_filter(segment: Optional[str]) -> str:
@@ -41,11 +55,21 @@ def get_drill(
     if segmento and segmento.lower() in ("b2c", "b2b"):
         seg_param = segmento.upper()
 
+    # #region agent log
+    _debug_log_svc("real_lob_drill_pro_service.py:get_drill", "get_drill entered", {"period": period, "desglose": desglose}, "H3_H4")
+    # #endregion
+    logger.info("Real LOB drill PRO: opening dedicated connection (statement_timeout=0)")
     try:
-        with get_db() as conn:
+        with get_db_drill() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
-            cur.execute("SET statement_timeout = %s", (str(TIMEOUT_MS),))
+            # Conexión drill ya tiene statement_timeout=0 por options; por si acaso:
+            cur.execute("SET LOCAL statement_timeout = %s", (TIMEOUT_POSTGRES,))
+            # Reducir spill a disco (evitar DiskFull): más RAM, menos pgsql_tmp
+            cur.execute("SET LOCAL work_mem = '256MB'")
 
+            # #region agent log
+            _debug_log_svc("real_lob_drill_pro_service.py:before_first_select", "about to run first SELECT (v_real_data_coverage)", {}, "H5")
+            # #endregion
             # Coverage por país (v_real_data_coverage) + freshness desde canon (v_real_freshness_trips)
             cur.execute(f"""
                 SELECT country,
@@ -58,13 +82,35 @@ def get_drill(
             """)
             coverage_rows = cur.fetchall()
             coverage_by_country = {r["country"]: dict(r) for r in coverage_rows} if coverage_rows else {}
+            # Freshness desde fact table (15K filas) en vez de v_real_freshness_trips
+            # que escanea v_trips_real_canon (58M filas con DISTINCT ON → GB de temp files).
             cur.execute("""
-                SELECT country, last_trip_date::text, max_trip_ts
-                FROM ops.v_real_freshness_trips
+                SELECT country,
+                       MAX(trip_day)::text AS last_trip_date,
+                       MAX(last_trip_ts) AS max_trip_ts
+                FROM ops.real_rollup_day_fact
                 WHERE country IN ('pe','co')
+                GROUP BY country
                 ORDER BY country
             """)
             freshness_rows = cur.fetchall()
+            # Coverage modo incremental (v_real_lob_coverage): min/max cargado, ventana config
+            lob_coverage = {}
+            try:
+                cur.execute("""
+                    SELECT min_trip_date_loaded::text, max_trip_date_loaded::text, recent_days_config, computed_at
+                    FROM ops.v_real_lob_coverage
+                """)
+                r = cur.fetchone()
+                if r:
+                    lob_coverage = {
+                        "min_trip_date_loaded": r.get("min_trip_date_loaded"),
+                        "max_trip_date_loaded": r.get("max_trip_date_loaded"),
+                        "recent_days_config": r.get("recent_days_config"),
+                        "computed_at": str(r.get("computed_at")) if r.get("computed_at") else None,
+                    }
+            except Exception:
+                pass
             for r in freshness_rows:
                 c = r["country"]
                 if c in coverage_by_country:
@@ -241,8 +287,14 @@ def get_drill(
                 })
 
             cur.close()
-        return {"countries": countries_out}
+        # #region agent log
+        _debug_log_svc("real_lob_drill_pro_service.py:success", "drill completed", {"countries_count": len(countries_out)}, "H4")
+        # #endregion
+        return {"countries": countries_out, "lob_coverage": lob_coverage}
     except Exception as e:
+        # #region agent log
+        _debug_log_svc("real_lob_drill_pro_service.py:except", "drill failed", {"error_type": type(e).__name__, "error_msg": str(e)}, "H5")
+        # #endregion
         logger.exception("Real LOB drill PRO: %s", e)
         raise
 
@@ -275,9 +327,9 @@ def get_drill_children(
     breakdown_map = {"LOB": "lob", "PARK": "park", "SERVICE_TYPE": "service_type"}
 
     try:
-        with get_db() as conn:
+        with get_db_drill() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
-            cur.execute("SET statement_timeout = %s", (str(TIMEOUT_MS),))
+            cur.execute("SET statement_timeout = %s", (TIMEOUT_POSTGRES,))
             cur.execute(f"""
                 SELECT
                     dimension_key,

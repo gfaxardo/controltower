@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import Filters from './components/Filters'
-import KPICards from './components/KPICards'
+import CollapsibleFilters from './components/CollapsibleFilters'
+import ExecutiveSnapshotView from './components/ExecutiveSnapshotView'
 import MonthlySplitView from './components/MonthlySplitView'
 import WeeklyPlanVsRealView from './components/WeeklyPlanVsRealView'
 import Phase2BActionsTrackingView from './components/Phase2BActionsTrackingView'
@@ -25,6 +25,7 @@ function App() {
   const [refreshKey, setRefreshKey] = useState(0)
   const [activeTab, setActiveTab] = useState('real_lob')
   const [legacySubTab, setLegacySubTab] = useState('valid')
+  const [showAdminModal, setShowAdminModal] = useState(false)
 
   const handleFilterChange = (newFilters) => {
     setFilters(newFilters)
@@ -32,33 +33,47 @@ function App() {
 
   const handleUploadSuccess = () => {
     setRefreshKey(prev => prev + 1)
+    setShowAdminModal(false)
   }
 
   return (
     <div className="min-h-screen bg-gray-100">
       <div className="container mx-auto px-4 py-8">
-        <header className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            YEGO Control Tower — Fase 2A / 2B / 2C+
+        <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
+          <h1 className="text-2xl font-bold text-gray-800">
+            YEGO Control Tower
           </h1>
-          <p className="text-gray-600 mb-4">
-            Fase 2A: mostramos Real histórico y Plan futuro. Fase 2B: comparación semanal Plan vs Real con alertas accionables. Fase 2C+: Universo & LOB Mapping (PLAN → REAL).
-          </p>
-          <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-md">
-            <p className="text-blue-800 text-sm">
-              <strong>Fase 2A - Vista ALL:</strong> Cuando no se selecciona país, las métricas monetarias se presentan por país (PE/CO) para evitar mezcla de monedas. Revenue Real = comisión YEGO (comision_empresa_asociada).
-            </p>
-          </div>
+          <button
+            type="button"
+            onClick={() => setShowAdminModal(true)}
+            className="px-4 py-2 rounded-md border border-gray-400 bg-gray-100 text-gray-700 hover:bg-gray-200 font-medium text-sm"
+          >
+            ADMIN
+          </button>
         </header>
 
-        <UploadPlan onUploadSuccess={handleUploadSuccess} />
+        {showAdminModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
+            <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-semibold text-gray-800">Subir Plan</h2>
+                <button
+                  type="button"
+                  onClick={() => setShowAdminModal(false)}
+                  className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+                >
+                  ×
+                </button>
+              </div>
+              <UploadPlan onUploadSuccess={handleUploadSuccess} />
+            </div>
+          </div>
+        )}
 
-        <Filters onFilterChange={handleFilterChange} />
-
-        <KPICards key={`kpis-${refreshKey}`} filters={filters} />
+        <CollapsibleFilters onFilterChange={handleFilterChange} />
 
         <div className="mb-4 border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8">
+          <nav className="-mb-px flex flex-wrap gap-1 sm:space-x-8">
             <button
               onClick={() => setActiveTab('real_lob')}
               className={`py-4 px-1 border-b-2 font-medium text-sm ${
@@ -88,6 +103,16 @@ function App() {
               }`}
             >
               Supply (Real)
+            </button>
+            <button
+              onClick={() => setActiveTab('snapshot')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'snapshot'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Snapshot
             </button>
             <button
               onClick={() => setActiveTab('legacy')}
@@ -120,6 +145,9 @@ function App() {
         )}
         {activeTab === 'supply' && (
           <SupplyView key={`supply-${refreshKey}`} />
+        )}
+        {activeTab === 'snapshot' && (
+          <ExecutiveSnapshotView key={`snapshot-${refreshKey}`} filters={filters} refreshKey={refreshKey} />
         )}
         {activeTab === 'legacy' && (
           <div className="space-y-4">

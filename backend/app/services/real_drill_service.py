@@ -476,24 +476,31 @@ def get_real_drill_by_park(
 
 def refresh_real_drill_mv() -> Dict[str, Any]:
     """
-    Refresca la MV ops.mv_real_rollup_day (CONCURRENTLY si hay índice único).
+    Refresca ops.mv_real_rollup_day si es MV; si es vista (064) solo confirma.
     Uso interno: cron diario o POST /ops/real-drill/refresh.
     """
     try:
         with get_db() as conn:
             cur = conn.cursor()
-            cur.execute("SET statement_timeout = '0'")  # Sin límite para refresh (MV grande)
-            try:
-                cur.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY ops.mv_real_rollup_day")
-            except (ProgrammingError, OperationalError) as e:
-                err = (str(e) or "").lower()
-                if "concurrent" in err or "unique" in err or "unique index" in err:
-                    conn.rollback()
-                    cur.execute("REFRESH MATERIALIZED VIEW ops.mv_real_rollup_day")
-                else:
-                    raise
+            # Desde 064, mv_real_rollup_day es vista sobre real_rollup_day_fact (no MV).
+            cur.execute("""
+                SELECT 1 FROM pg_matviews WHERE schemaname = 'ops' AND matviewname = 'mv_real_rollup_day'
+            """)
+            if cur.fetchone():
+                cur.execute("SET statement_timeout = '0'")
+                try:
+                    cur.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY ops.mv_real_rollup_day")
+                except (ProgrammingError, OperationalError) as e:
+                    err = (str(e) or "").lower()
+                    if "concurrent" in err or "unique" in err or "unique index" in err:
+                        conn.rollback()
+                        cur.execute("REFRESH MATERIALIZED VIEW ops.mv_real_rollup_day")
+                    else:
+                        raise
+                cur.close()
+                return {"ok": True, "message": "MV ops.mv_real_rollup_day refreshed"}
             cur.close()
-        return {"ok": True, "message": "MV ops.mv_real_rollup_day refreshed"}
+        return {"ok": True, "message": "ops.mv_real_rollup_day es vista (064); datos en real_rollup_day_fact. Usar backfill_real_lob_mvs para repoblar."}
     except Exception as e:
         logger.error("Real drill MV refresh: %s", e)
         raise

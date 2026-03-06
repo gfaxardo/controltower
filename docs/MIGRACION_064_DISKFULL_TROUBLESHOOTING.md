@@ -1,8 +1,8 @@
-# Migración 064 — Error DiskFull (No space left on device)
+# Migración 064 y Drill Real LOB — Error DiskFull (No space left on device)
 
 ## Causa
 
-La creación de las MVs de Real LOB es una operación pesada que usa archivos temporales en `base/pgsql_tmp/` para ordenar y agregar millones de filas. Si el disco del servidor PostgreSQL se llena durante la ejecución, aparece:
+La creación de las MVs de Real LOB y las consultas del **Real LOB Drill** son operaciones pesadas que usan archivos temporales en `base/pgsql_tmp/` para ordenar y agregar millones de filas. Si el disco del servidor PostgreSQL se llena durante la ejecución, aparece:
 
 ```
 psycopg2.errors.DiskFull: could not write to file "base/pgsql_tmp/pgsql_tmpXXXXX.X": No space left on device
@@ -76,3 +76,54 @@ La migración crea primero `ops.mv_real_drill_enriched` (1 fila por trip enrique
 - **MV final (dim_agg):** agregación por país/periodo/dimensión (mucho menor).
 
 Se recomienda tener al menos **5–10 GB libres** en el disco de datos de PostgreSQL antes de ejecutar la migración.
+
+---
+
+## Plan B: Mover TEMP a tablespace con más espacio (solo si hay superuser)
+
+Si el host Windows tiene espacio libre pero PostgreSQL (Linux/WSL/Docker) usa un disco lleno para `pgsql_tmp`, puedes redirigir los archivos temporales a un path con espacio (ej. `/mnt/c/` en WSL).
+
+### Requisitos
+
+- Rol con privilegio `CREATE TABLESPACE`
+- Path con espacio suficiente (ej. `C:\pg_temp_ts` en Windows → `/mnt/c/pg_temp_ts` en WSL)
+
+### Pasos
+
+1. **Crear carpeta en el host con espacio:**
+
+   ```bash
+   # En WSL
+   mkdir -p /mnt/c/pg_temp_ts
+   chmod 700 /mnt/c/pg_temp_ts
+   ```
+
+2. **Crear tablespace y configurar PostgreSQL:**
+
+   ```sql
+   -- Conectar como superuser
+   CREATE TABLESPACE pg_temp_ts LOCATION '/mnt/c/pg_temp_ts';
+
+   -- Configurar uso de tablespace para temp
+   ALTER SYSTEM SET temp_tablespaces = 'pg_temp_ts';
+
+   -- Recargar configuración (no requiere restart)
+   SELECT pg_reload_conf();
+   ```
+
+3. **Verificar:**
+
+   ```sql
+   SHOW temp_tablespaces;
+   -- Debe mostrar: pg_temp_ts
+   ```
+
+4. **Revertir (si hace falta):**
+
+   ```sql
+   ALTER SYSTEM RESET temp_tablespaces;
+   SELECT pg_reload_conf();
+   DROP TABLESPACE pg_temp_ts;
+   ```
+
+**Nota:** Si el rol no tiene `CREATE TABLESPACE`, omitir Plan B y usar el modo incremental (ventana reciente + backfill por chunks).

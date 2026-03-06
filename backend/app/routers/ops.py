@@ -57,11 +57,24 @@ from app.services.supply_service import (
 from app.settings import settings
 from fastapi.responses import Response
 from typing import Optional, Literal
+import asyncio
 import csv
 import io
 import logging
+import os
+import json
+import time
 
 logger = logging.getLogger(__name__)
+# #region agent log
+def _debug_log(location: str, message: str, data: dict, hypothesis_id: str):
+    try:
+        log_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "debug-1c8c83.log")
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId": "1c8c83", "timestamp": int(time.time() * 1000), "location": location, "message": message, "data": data, "hypothesisId": hypothesis_id}) + "\n")
+    except Exception:
+        pass
+# #endregion
 
 router = APIRouter(prefix="/ops", tags=["ops"])
 
@@ -620,14 +633,23 @@ async def get_real_lob_drill_pro_endpoint(
     Real LOB Drill PRO: countries[] con coverage, kpis (sobre lo visible), rows por periodo.
     Orden: PE primero, CO segundo; filas periodo más reciente → más antiguo.
     """
+    # #region agent log
+    _debug_log("ops.py:drill_endpoint", "drill request received", {"period": period, "desglose": desglose, "segmento": segmento}, "H1_H2_H3")
+    # #endregion
+    logger.info("Real LOB drill: request received period=%s desglose=%s segmento=%s", period, desglose, segmento)
     try:
-        return get_real_lob_drill_pro(
+        # Ejecutar en thread para no bloquear el event loop; así Ctrl+C responde aunque la consulta tarde.
+        return await asyncio.to_thread(
+            get_real_lob_drill_pro,
             period=period,
             desglose=desglose,
             segmento=segmento,
             country=country,
         )
     except Exception as e:
+        # #region agent log
+        _debug_log("ops.py:drill_endpoint_except", "drill endpoint error", {"error_type": type(e).__name__, "error_msg": str(e)}, "H3_H4")
+        # #endregion
         logger.error("Real LOB drill PRO: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -661,7 +683,8 @@ async def get_real_lob_drill_children_endpoint(
             detail="Incompatible drill params for groupBy=LOB: drill_park_id is not allowed when desglose is LOB.",
         )
     try:
-        data = get_real_lob_drill_pro_children(
+        data = await asyncio.to_thread(
+            get_real_lob_drill_pro_children,
             country=country,
             period=period,
             period_start=period_start,

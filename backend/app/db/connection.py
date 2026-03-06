@@ -12,13 +12,17 @@ connection_pool = None
 
 def _get_connection_params():
     """Parámetros unificados: DB_* desde settings (misma fuente que DATABASE_URL en .env)."""
-    return {
+    params = {
         "host": settings.DB_HOST or "localhost",
         "port": settings.DB_PORT or 5432,
         "database": settings.DB_NAME or "yego_integral",
         "user": settings.DB_USER or "",
         "password": settings.DB_PASSWORD or "",
     }
+    # Rol yego_user suele tener statement_timeout=15s; forzar 180s en cada conexión del pool
+    # para que endpoints pesados (p. ej. real-lob/drill) no se corten.
+    params["options"] = "-c statement_timeout=180000"
+    return params
 
 
 def get_connection_info():
@@ -76,6 +80,39 @@ def get_db():
     finally:
         if conn:
             connection_pool.putconn(conn)
+
+
+@contextmanager
+def get_db_drill():
+    """
+    Conexión dedicada para el Real LOB drill, con statement_timeout=0 en el startup.
+    El pool puede no aplicar options si el rol fuerza 15s; esta conexión nueva sí envía options.
+    """
+    params = _get_connection_params()
+    params["options"] = "-c statement_timeout=0"
+    conn = None
+    try:
+        conn = psycopg2.connect(**params)
+        # #region agent log
+        try:
+            import os, json, time
+            _lp = os.path.join(os.path.dirname(__file__), "..", "..", "..", "debug-1c8c83.log")
+            with open(_lp, "a", encoding="utf-8") as _f:
+                _f.write(json.dumps({"sessionId": "1c8c83", "timestamp": int(time.time() * 1000), "location": "connection.py:get_db_drill", "message": "drill connection opened", "data": {}, "hypothesisId": "H4"}) + "\n")
+        except Exception:
+            pass
+        # #endregion
+        logger.info("Drill connection opened (options=statement_timeout=0)")
+        yield conn
+        conn.commit()
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"Error en transacción de base de datos (drill): {e}")
+        raise
+    finally:
+        if conn:
+            conn.close()
 
 def create_plan_schema():
     with get_db() as conn:
