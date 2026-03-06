@@ -747,38 +747,17 @@ async def get_real_lob_v2_data_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ─── Real LOB Drill PRO (MV ops.mv_real_drill_dim_agg; calendario completo, KPIs por país) ─────────────────
-@router.get("/real-lob/drill")
-async def get_real_lob_drill_pro_endpoint(
-    period: Literal["month", "week"] = Query("month", description="month | week"),
-    desglose: Literal["LOB", "PARK", "SERVICE_TYPE"] = Query("PARK", description="Desglose al expandir: LOB | PARK | SERVICE_TYPE"),
-    segmento: Optional[Literal["all", "b2c", "b2b"]] = Query("all", description="all | b2c | b2b"),
-    country: Optional[Literal["all", "pe", "co"]] = Query("all", description="all | pe | co"),
-    park_id: Optional[str] = Query(None, description="Filtro opcional por park; aplica a timeline y a desglose tipo_servicio"),
+# ─── Real LOB Drill PRO (rutas más específicas primero para evitar 404) ─────────────────
+@router.get("/real-lob/drill/parks")
+async def get_real_lob_drill_parks_endpoint(
+    country: Optional[str] = Query(None, description="Filtrar parks por país (pe | co)"),
 ):
-    """
-    Real LOB Drill PRO: countries[] con coverage, kpis (sobre lo visible), rows por periodo.
-    Si park_id se indica, KPIs y filas se limitan a ese park; el desglose por tipo_servicio respeta ese filtro.
-    Orden: PE primero, CO segundo; filas periodo más reciente → más antiguo.
-    """
-    # #region agent log
-    _debug_log("ops.py:drill_endpoint", "drill request received", {"period": period, "desglose": desglose, "segmento": segmento}, "H1_H2_H3")
-    # #endregion
-    logger.info("Real LOB drill: request received period=%s desglose=%s segmento=%s park_id=%s", period, desglose, segmento, park_id)
+    """Lista de parks para el filtro Park del drill."""
     try:
-        return await _run_sync(
-            get_real_lob_drill_pro,
-            period=period,
-            desglose=desglose,
-            segmento=segmento,
-            country=country,
-            park_id=park_id,
-        )
+        parks = await _run_sync(get_real_lob_drill_parks, country=country)
+        return {"parks": parks}
     except Exception as e:
-        # #region agent log
-        _debug_log("ops.py:drill_endpoint_except", "drill endpoint error", {"error_type": type(e).__name__, "error_msg": str(e)}, "H3_H4")
-        # #endregion
-        logger.error("Real LOB drill PRO: %s", e)
+        logger.error("GET /ops/real-lob/drill/parks: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -831,19 +810,27 @@ async def get_real_lob_drill_children_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/real-lob/drill/parks")
-async def get_real_lob_drill_parks_endpoint(
-    country: Optional[str] = Query(None, description="Filtrar parks por país (pe | co)"),
+@router.get("/real-lob/drill")
+async def get_real_lob_drill_pro_endpoint(
+    period: Literal["month", "week"] = Query("month", description="month | week"),
+    desglose: Literal["LOB", "PARK", "SERVICE_TYPE"] = Query("PARK", description="Desglose al expandir: LOB | PARK | SERVICE_TYPE"),
+    segmento: Optional[Literal["all", "b2c", "b2b"]] = Query("all", description="all | b2c | b2b"),
+    country: Optional[Literal["all", "pe", "co"]] = Query("all", description="all | pe | co"),
+    park_id: Optional[str] = Query(None, description="Filtro opcional por park; aplica a timeline y a desglose tipo_servicio"),
 ):
-    """
-    Lista de parks para el filtro Park del drill. Fuente: real_drill_dim_fact (breakdown=park).
-    El filtro Park es de contexto y debe poblarse siempre, independiente del desglose (LOB / Park / Tipo de servicio).
-    """
+    """Real LOB Drill PRO: countries[] con coverage, kpis, rows por periodo."""
+    logger.info("Real LOB drill: request received period=%s desglose=%s segmento=%s park_id=%s", period, desglose, segmento, park_id)
     try:
-        parks = await _run_sync(get_real_lob_drill_parks, country=country)
-        return {"parks": parks}
+        return await _run_sync(
+            get_real_lob_drill_pro,
+            period=period,
+            desglose=desglose,
+            segmento=segmento,
+            country=country,
+            park_id=park_id,
+        )
     except Exception as e:
-        logger.error("GET /ops/real-lob/drill/parks: %s", e)
+        logger.error("Real LOB drill PRO: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
