@@ -241,8 +241,6 @@ def inspect_real_columns() -> Dict[str, any]:
             except Exception as e:
                 logger.error(f"Error al inspeccionar dim.dim_park: {e}")
             
-            cursor.close()
-            
             try:
                 cursor.execute("""
                     SELECT DISTINCT 
