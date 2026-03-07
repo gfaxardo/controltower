@@ -57,12 +57,12 @@ def main() -> None:
 
             _log_temp_usage(cur)
 
-            # Orden: enriched (base) -> dim_agg (lee de enriched) -> rollup_day -> service_by_park (068)
+            # Orden: enriched (base) -> dim_agg (lee de enriched) -> rollup_day.
+            # ops.mv_real_drill_service_by_park es vista sobre tabla; llenado con scripts/backfill_real_drill_service_by_park.py (ver runbook_real_drill_backfill.md).
             mvs = [
                 ("ops.mv_real_drill_enriched", False),  # sin unique index, no CONCURRENTLY
                 ("ops.mv_real_drill_dim_agg", True),    # con unique index
                 ("ops.mv_real_rollup_day", True),       # con unique index
-                ("ops.mv_real_drill_service_by_park", True),  # 068: desglose tipo_servicio por park
             ]
             for mv_name, use_concurrent in mvs:
                 try:
