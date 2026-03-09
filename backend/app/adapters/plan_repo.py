@@ -362,28 +362,25 @@ def get_plan_data(
                 params.append(f"{year}-%")
             
             where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
-            
+            # plan_long_missing no tiene columna plan_value (son huecos sin plan)
+            if table_name == 'plan_long_missing':
+                columns = "period_type, period, country, city, line_of_business, metric, source_file_name, file_hash"
+            else:
+                columns = "period_type, period, country, city, line_of_business, metric, plan_value, source_file_name, file_hash"
             query = f"""
-                SELECT 
-                    period_type,
-                    period,
-                    country,
-                    city,
-                    line_of_business,
-                    metric,
-                    plan_value,
-                    source_file_name,
-                    file_hash
+                SELECT {columns}
                 FROM plan.{table_name}
                 {where_clause}
                 ORDER BY period, country, city, line_of_business, metric
             """
-            
             cursor.execute(query, params)
             results = cursor.fetchall()
             cursor.close()
-            
-            return [dict(row) for row in results]
+            rows = [dict(row) for row in results]
+            if table_name == 'plan_long_missing':
+                for r in rows:
+                    r['plan_value'] = None
+            return rows
             
     except Exception as e:
         logger.error(f"Error al obtener datos del plan: {e}")

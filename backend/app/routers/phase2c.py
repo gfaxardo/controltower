@@ -111,8 +111,27 @@ async def get_lob_universe_endpoint(
         )
         return summary
     except Exception as e:
-        logger.error(f"Error al obtener universo LOB: {e}")
-        raise HTTPException(status_code=500, detail=f"Error al obtener universo LOB: {str(e)}")
+        logger.warning(f"Universo LOB no disponible (vistas/tablas Phase 2C pueden no existir): {e}")
+        return {
+            "universe": [],
+            "has_plan_catalog": False,
+            "kpis": {
+                "total_lob_plan": 0,
+                "lob_with_real": 0,
+                "lob_without_real": 0,
+                "pct_lob_with_real": 0,
+                "total_real_trips": 0,
+                "pct_unmatched": 0,
+                "total_unmatched": 0,
+                "total_trips": 0,
+                "count_ok": 0,
+                "count_plan_only": 0,
+                "count_real_only": 0,
+                "pct_real_only": 0
+            },
+            "quality_metrics": {"pct_unmatched": 0, "total_unmatched": 0, "total_trips": 0},
+            "hint": "Vistas/tablas Phase 2C no disponibles. Ejecutar migraciones (ej. 019, 021)."
+        }
 
 
 @router.get("/lob-universe/unmatched")
@@ -131,5 +150,11 @@ async def get_unmatched_trips_endpoint(
         )
         return summary
     except Exception as e:
-        logger.error(f"Error al obtener viajes unmatched: {e}")
-        raise HTTPException(status_code=500, detail=f"Error al obtener viajes unmatched: {str(e)}")
+        logger.warning(f"Viajes unmatched no disponibles (vistas Phase 2C pueden no existir): {e}")
+        return {
+            "unmatched_trips": [],
+            "unmatched_by_location": [],
+            "total_unmatched": 0,
+            "total_groups": 0,
+            "hint": "Vistas Phase 2C no disponibles. Ejecutar migraciones."
+        }

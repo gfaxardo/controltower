@@ -49,8 +49,9 @@ async def get_plan_vs_real_weekly_endpoint(
         )
         return {"data": data, "total_records": len(data)}
     except Exception as e:
-        logger.error(f"Error al obtener Plan vs Real semanal: {e}")
-        raise HTTPException(status_code=500, detail=f"Error al obtener Plan vs Real semanal: {str(e)}")
+        logger.warning(f"Plan vs Real semanal (vista ops.v_plan_vs_real_weekly puede no existir): {e}")
+        # Si la vista no existe en la BD, devolver vacío para que la UI no rompa
+        return {"data": [], "total_records": 0, "hint": "Vista ops.v_plan_vs_real_weekly no disponible. Ejecutar migraciones Phase 2B."}
 
 
 @router.get("/weekly/alerts")
@@ -81,8 +82,8 @@ async def get_alerts_weekly_endpoint(
         )
         return {"data": data, "total_alerts": len(data)}
     except Exception as e:
-        logger.error(f"Error al obtener alertas semanales: {e}")
-        raise HTTPException(status_code=500, detail=f"Error al obtener alertas semanales: {str(e)}")
+        logger.warning(f"Alertas semanales (vista ops.v_alerts_2b_weekly puede no existir): {e}")
+        return {"data": [], "total_alerts": 0, "hint": "Vista ops.v_alerts_2b_weekly no disponible. Ejecutar migraciones Phase 2B."}
 
 
 @router.post("/actions", response_model=Phase2BActionResponse)
