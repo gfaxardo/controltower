@@ -3,7 +3,7 @@ Semántica temporal reutilizable: última semana/mes cerrados, semana/mes actual
 Usado por comparativos WoW/MoM, drill y vista diaria. Semana = ISO (lunes a domingo).
 """
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, Dict, Optional
 
 
 def _iso_week_start(d: date) -> date:
@@ -22,26 +22,26 @@ def _iso_year(d: date) -> int:
     return d.isocalendar().year
 
 
-def get_last_closed_day(reference: date | None = None) -> date:
+def get_last_closed_day(reference: Optional[date] = None) -> date:
     """Último día considerado cerrado (p. ej. ayer respecto a reference)."""
     ref = reference or date.today()
     return ref - timedelta(days=1)
 
 
-def get_last_closed_week(reference: date | None = None) -> date:
+def get_last_closed_week(reference: Optional[date] = None) -> date:
     """Lunes de la última semana ISO completamente terminada (semana anterior a la actual)."""
     ref = reference or date.today()
     current_monday = _iso_week_start(ref)
     return current_monday - timedelta(days=7)
 
 
-def get_current_open_week(reference: date | None = None) -> date:
+def get_current_open_week(reference: Optional[date] = None) -> date:
     """Lunes de la semana ISO actual (abierta/parcial)."""
     ref = reference or date.today()
     return _iso_week_start(ref)
 
 
-def get_last_closed_month(reference: date | None = None) -> date:
+def get_last_closed_month(reference: Optional[date] = None) -> date:
     """Primer día del último mes calendario completamente terminado."""
     ref = reference or date.today()
     first_current = ref.replace(day=1)
@@ -51,7 +51,7 @@ def get_last_closed_month(reference: date | None = None) -> date:
     return first_current.replace(month=first_current.month - 1)
 
 
-def get_current_open_month(reference: date | None = None) -> date:
+def get_current_open_month(reference: Optional[date] = None) -> date:
     """Primer día del mes calendario actual (abierto/parcial)."""
     ref = reference or date.today()
     return ref.replace(day=1)
@@ -75,7 +75,7 @@ def format_month_label(month_start: date, closed: bool) -> str:
     return f"{name} {y}{suffix}"
 
 
-def get_period_semantics(reference: date | None = None) -> dict[str, Any]:
+def get_period_semantics(reference: Optional[date] = None) -> Dict[str, Any]:
     """
     Devuelve todas las entidades semánticas y labels para API/UI.
     reference: fecha de referencia (default: hoy).
