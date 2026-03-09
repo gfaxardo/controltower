@@ -69,7 +69,10 @@ def get_universe_lob_summary(
         }
         
     except Exception as e:
-        logger.error(f"Error al obtener resumen universo LOB: {e}")
+        if "does not exist" in str(e).lower():
+            logger.debug("Resumen universo LOB: vistas/tablas Phase 2C no existen aún: %s", e)
+        else:
+            logger.error(f"Error al obtener resumen universo LOB: {e}")
         raise
 
 def get_unmatched_trips_summary(
@@ -97,5 +100,8 @@ def get_unmatched_trips_summary(
         }
         
     except Exception as e:
-        logger.error(f"Error al obtener resumen de viajes unmatched: {e}")
+        if "does not exist" in str(e).lower():
+            logger.debug("Resumen viajes unmatched: vistas Phase 2C no existen aún: %s", e)
+        else:
+            logger.error(f"Error al obtener resumen de viajes unmatched: {e}")
         raise

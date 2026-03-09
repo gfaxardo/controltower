@@ -99,7 +99,10 @@ def get_plan_vs_real_weekly(
 
             return [dict(row) for row in rows]
     except Exception as e:
-        logger.error(f"Error al obtener Plan vs Real semanal: {e}")
+        if "does not exist" in str(e).lower():
+            logger.debug("Plan vs Real semanal: vista ops.v_plan_vs_real_weekly no existe aún: %s", e)
+        else:
+            logger.error(f"Error al obtener Plan vs Real semanal: {e}")
         raise
 
 
@@ -221,5 +224,8 @@ def get_alerts_weekly(
 
             return result
     except Exception as e:
-        logger.error(f"Error al obtener alertas semanales: {e}")
+        if "does not exist" in str(e).lower():
+            logger.debug("Alertas semanales: vista ops.v_alerts_2b_weekly no existe aún: %s", e)
+        else:
+            logger.error(f"Error al obtener alertas semanales: {e}")
         raise

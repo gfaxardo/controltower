@@ -111,7 +111,10 @@ async def get_lob_universe_endpoint(
         )
         return summary
     except Exception as e:
-        logger.warning(f"Universo LOB no disponible (vistas/tablas Phase 2C pueden no existir): {e}")
+        if "does not exist" in str(e).lower():
+            logger.debug("Universo LOB: vistas/tablas no creadas aún, devolviendo vacío. %s", e)
+        else:
+            logger.warning("Universo LOB no disponible: %s", e)
         return {
             "universe": [],
             "has_plan_catalog": False,
@@ -150,7 +153,10 @@ async def get_unmatched_trips_endpoint(
         )
         return summary
     except Exception as e:
-        logger.warning(f"Viajes unmatched no disponibles (vistas Phase 2C pueden no existir): {e}")
+        if "does not exist" in str(e).lower():
+            logger.debug("Viajes unmatched: vistas no creadas aún, devolviendo vacío. %s", e)
+        else:
+            logger.warning("Viajes unmatched no disponibles: %s", e)
         return {
             "unmatched_trips": [],
             "unmatched_by_location": [],

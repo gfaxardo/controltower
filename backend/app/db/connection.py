@@ -75,7 +75,11 @@ def get_db():
     except Exception as e:
         if conn:
             conn.rollback()
-        logger.error(f"Error en transacción de base de datos: {e}")
+        msg = str(e)
+        if "does not exist" in msg.lower():
+            logger.debug("Transacción: relación/vista no existe (ej. vista no creada aún): %s", msg[:200])
+        else:
+            logger.error(f"Error en transacción de base de datos: {e}")
         raise
     finally:
         if conn:
@@ -108,7 +112,11 @@ def get_db_drill():
     except Exception as e:
         if conn:
             conn.rollback()
-        logger.error(f"Error en transacción de base de datos (drill): {e}")
+        msg = str(e)
+        if "does not exist" in msg.lower():
+            logger.debug("Transacción (drill): relación/vista no existe: %s", msg[:200])
+        else:
+            logger.error(f"Error en transacción de base de datos (drill): {e}")
         raise
     finally:
         if conn:

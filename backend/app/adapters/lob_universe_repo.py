@@ -113,7 +113,10 @@ def get_lob_universe_check(
             cursor.close()
             return [dict(row) for row in results]
     except Exception as e:
-        logger.error(f"Error al obtener universo LOB: {e}")
+        if "does not exist" in str(e).lower():
+            logger.debug("Universo LOB: vista/tabla no existe aún: %s", e)
+        else:
+            logger.error(f"Error al obtener universo LOB: {e}")
         raise
 
 def get_real_without_plan_lob(
@@ -163,7 +166,10 @@ def get_real_without_plan_lob(
             return [dict(row) for row in results]
             
     except Exception as e:
-        logger.error(f"Error al obtener viajes sin LOB del plan: {e}")
+        if "does not exist" in str(e).lower():
+            logger.debug("Viajes sin LOB del plan: vista no existe aún: %s", e)
+        else:
+            logger.error(f"Error al obtener viajes sin LOB del plan: {e}")
         raise
 
 def get_lob_mapping_quality_checks() -> Dict:
@@ -192,7 +198,10 @@ def get_lob_mapping_quality_checks() -> Dict:
             return metrics
             
     except Exception as e:
-        logger.error(f"Error al obtener métricas de calidad: {e}")
+        if "does not exist" in str(e).lower():
+            logger.debug("Métricas de calidad LOB: vista no existe aún: %s", e)
+        else:
+            logger.error(f"Error al obtener métricas de calidad: {e}")
         raise
 
 def get_unmatched_by_location() -> List[Dict]:
@@ -221,7 +230,10 @@ def get_unmatched_by_location() -> List[Dict]:
             return [dict(row) for row in results]
             
     except Exception as e:
-        logger.error(f"Error al obtener unmatched por ubicación: {e}")
+        if "does not exist" in str(e).lower():
+            logger.debug("Unmatched por ubicación: vista no existe aún: %s", e)
+        else:
+            logger.error(f"Error al obtener unmatched por ubicación: {e}")
         raise
 
 def get_lob_catalog(
@@ -275,5 +287,8 @@ def get_lob_catalog(
             return [dict(row) for row in results]
             
     except Exception as e:
-        logger.error(f"Error al obtener catálogo LOB: {e}")
+        if "does not exist" in str(e).lower():
+            logger.debug("Catálogo LOB: tabla no existe aún: %s", e)
+        else:
+            logger.error(f"Error al obtener catálogo LOB: {e}")
         raise
