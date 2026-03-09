@@ -432,27 +432,27 @@ def get_supply_alerts(
             """
             params: list[Any] = []
             if week_start_from:
-                q += " AND week_start >= %s::date"
+                q += " AND a.week_start >= %s::date"
                 params.append(week_start_from)
             if week_start_to:
-                q += " AND week_start <= %s::date"
+                q += " AND a.week_start <= %s::date"
                 params.append(week_start_to)
             if park_id:
-                q += " AND park_id = %s"
+                q += " AND a.park_id = %s"
                 params.append(park_id)
             if country:
-                q += " AND LOWER(TRIM(COALESCE(country, ''))) = LOWER(TRIM(%s))"
+                q += " AND LOWER(TRIM(COALESCE(a.country, ''))) = LOWER(TRIM(%s))"
                 params.append(country)
             if city:
-                q += " AND LOWER(TRIM(COALESCE(city, ''))) = LOWER(TRIM(%s))"
+                q += " AND LOWER(TRIM(COALESCE(a.city, ''))) = LOWER(TRIM(%s))"
                 params.append(city)
             if alert_type:
-                q += " AND alert_type = %s"
+                q += " AND a.alert_type = %s"
                 params.append(alert_type)
             if severity:
-                q += " AND severity = %s"
+                q += " AND a.severity = %s"
                 params.append(severity)
-            q += " ORDER BY week_start DESC, park_id, segment_week, alert_type LIMIT %s"
+            q += " ORDER BY a.week_start DESC, a.park_id, a.segment_week, a.alert_type LIMIT %s"
             params.append(limit)
             cur.execute(q, params)
             rows = [dict(r) for r in cur.fetchall()]

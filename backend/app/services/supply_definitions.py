@@ -24,24 +24,36 @@ DEFINITIONS = {
 }
 
 
-def format_iso_week(week_start: Union[date, str, None]) -> str:
+def format_iso_week(week_start: Union[date, str, tuple, None]) -> str:
     """
     Convierte week_start (fecha de inicio de semana, típicamente lunes) a formato S{week}-{year}.
     Ejemplo: 2026-02-03 → S6-2026
+    Acepta date, str ISO, o tupla (year, month, day). No lanza; ante cualquier error devuelve str corto.
     """
-    if week_start is None:
-        return ""
-    if isinstance(week_start, str):
-        try:
-            week_start = date.fromisoformat(week_start[:10])
-        except (ValueError, TypeError):
+    try:
+        if week_start is None:
+            return ""
+        if isinstance(week_start, str):
+            try:
+                week_start = date.fromisoformat(week_start[:10])
+            except (ValueError, TypeError):
+                return str(week_start)[:10]
+        # Tupla (y, m, d) que a veces devuelve psycopg2 para tipo date
+        if isinstance(week_start, (tuple, list)) and len(week_start) >= 3:
+            try:
+                y, m, d = int(week_start[0]), int(week_start[1]), int(week_start[2])
+                week_start = date(y, m, d)
+            except (ValueError, TypeError):
+                return str(week_start)[:10]
+        if not hasattr(week_start, "isocalendar"):
             return str(week_start)[:10]
-    if not hasattr(week_start, "isocalendar"):
-        return str(week_start)[:10]
-    iso = week_start.isocalendar()
-    year = iso.year
-    week = iso.week
-    return f"S{week}-{year}"
+        iso = week_start.isocalendar()
+        # Python 3.8: isocalendar() devuelve tuple (year, week, weekday); 3.9+: objeto con .year/.week
+        year = iso[0] if isinstance(iso, tuple) else iso.year
+        week = iso[1] if isinstance(iso, tuple) else iso.week
+        return f"S{week}-{year}"
+    except Exception:
+        return str(week_start)[:10] if week_start is not None else ""
 
 
 def get_definitions() -> dict[str, str]:
