@@ -110,17 +110,7 @@ INSERT_CTE_SQL = """
         SELECT w.*,
             COALESCE(NULLIF(TRIM(w.city_norm_raw), ''), 'sin_city') AS city_norm,
             COALESCE(d.country, f.country, 'unk') AS country,
-            CASE
-                WHEN LOWER(TRIM(w.tipo_servicio::text)) IN ('economico', 'económico') THEN 'economico'
-                WHEN LOWER(TRIM(w.tipo_servicio::text)) IN ('confort', 'comfort') THEN 'confort'
-                WHEN LOWER(TRIM(w.tipo_servicio::text)) IN ('confort+','confort plus','confort_plus','comfort+','comfort plus','comfort_plus') THEN 'confort_plus'
-                WHEN LOWER(TRIM(w.tipo_servicio::text)) IN ('mensajeria','mensajería') THEN 'mensajería'
-                WHEN LOWER(TRIM(w.tipo_servicio::text)) IN ('exprés','exprs') THEN 'express'
-                WHEN LOWER(TRIM(w.tipo_servicio::text)) IN ('minivan','express','premier','moto','cargo','standard','start') THEN LOWER(TRIM(w.tipo_servicio::text))
-                WHEN LOWER(TRIM(w.tipo_servicio::text)) = 'tuk-tuk' THEN 'tuk-tuk'
-                WHEN LENGTH(TRIM(w.tipo_servicio::text)) > 30 THEN 'UNCLASSIFIED'
-                ELSE LOWER(TRIM(w.tipo_servicio::text))
-            END AS tipo_servicio_norm
+            ops.validated_service_type(w.tipo_servicio::text) AS tipo_servicio_norm
         FROM with_city w
         LEFT JOIN ops.dim_city_country d ON d.city_norm = NULLIF(TRIM(w.city_norm_raw), '')
         LEFT JOIN ops.park_country_fallback f ON f.park_id = w.park_key

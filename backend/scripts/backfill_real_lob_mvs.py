@@ -80,7 +80,8 @@ def _get_conn():
     import psycopg2
     from psycopg2.extras import RealDictCursor
 
-    params = _get_connection_params()
+    params = dict(_get_connection_params())
+    params["options"] = (params.get("options") or "").strip() + " -c application_name=ct_backfill_real_lob"
     conn = psycopg2.connect(
         **params,
         connect_timeout=15,
@@ -88,7 +89,6 @@ def _get_conn():
         keepalives_idle=30,
         keepalives_interval=10,
         keepalives_count=5,
-        options="-c application_name=ct_backfill_real_lob",
     )
     conn.autocommit = False
     cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -169,7 +169,7 @@ def _save_checkpoint(month_str: str) -> None:
 
 
 def _run_month(start_d: date, end_d: date, cur) -> None:
-    """Ejecuta el backfill para un mes (drill_dim + rollup_day)."""
+    """Ejecuta el backfill para un mes (drill_dim + rollup_day). Muestra filas insertadas/actualizadas."""
     cutoff_start = start_d.isoformat()
     cutoff_end = end_d.isoformat()
 
@@ -222,31 +222,14 @@ def _run_month(start_d: date, end_d: date, cur) -> None:
                     COALESCE(NULLIF(TRIM(w.park_name_raw::text), ''), 'Sin nombre') || ' — ' || COALESCE(NULLIF(TRIM(w.park_city_raw::text), ''), 'Sin ciudad')
                     ELSE COALESCE(NULLIF(TRIM(w.park_name_raw::text), ''), 'UNKNOWN_PARK (' || w.park_key::text || ')')
                 END AS park_display_key,
-                CASE
-                    WHEN LOWER(TRIM(w.tipo_servicio::text)) IN ('económico','economico') THEN 'economico'
-                    WHEN LOWER(TRIM(w.tipo_servicio::text)) IN ('confort','comfort') THEN 'confort'
-                    WHEN LOWER(TRIM(w.tipo_servicio::text)) IN ('confort+','confort plus','confort_plus','comfort+','comfort plus','comfort_plus') THEN 'confort_plus'
-                    WHEN LOWER(TRIM(w.tipo_servicio::text)) = 'xl' THEN 'xl'
-                    WHEN LOWER(TRIM(w.tipo_servicio::text)) IN ('premier','premiere') THEN 'premier'
-                    ELSE 'unknown'
-                END AS service_type_norm,
-                CASE
-                    WHEN LOWER(TRIM(w.tipo_servicio::text)) IN ('economico', 'económico') THEN 'economico'
-                    WHEN LOWER(TRIM(w.tipo_servicio::text)) IN ('confort', 'comfort') THEN 'confort'
-                    WHEN LOWER(TRIM(w.tipo_servicio::text)) = 'confort+' THEN 'confort+'
-                    WHEN LOWER(TRIM(w.tipo_servicio::text)) IN ('mensajeria','mensajería') THEN 'mensajería'
-                    WHEN LOWER(TRIM(w.tipo_servicio::text)) IN ('exprés','exprs') THEN 'express'
-                    WHEN LOWER(TRIM(w.tipo_servicio::text)) IN ('minivan','express','premier','moto','cargo','standard','start') THEN LOWER(TRIM(w.tipo_servicio::text))
-                    WHEN LOWER(TRIM(w.tipo_servicio::text)) = 'tuk-tuk' THEN 'tuk-tuk'
-                    WHEN LENGTH(TRIM(w.tipo_servicio::text)) > 30 THEN 'UNCLASSIFIED'
-                    ELSE LOWER(TRIM(w.tipo_servicio::text))
-                END AS tipo_servicio_norm
+                ops.validated_service_type(w.tipo_servicio::text) AS service_type_norm,
+                ops.validated_service_type(w.tipo_servicio::text) AS tipo_servicio_norm
             FROM with_city w
             LEFT JOIN ops.dim_city_country d ON d.city_norm = NULLIF(TRIM(w.city_norm_raw), '')
             LEFT JOIN ops.park_country_fallback f ON f.park_id = w.park_key
         ),
         with_lob AS (
-            SELECT v.fecha_inicio_viaje, v.park_key, v.city_norm, v.park_display_key, v.service_type_norm,
+            SELECT v.fecha_inicio_viaje, v.park_key, v.city_norm, v.park_display_key, v.service_type_norm, v.tipo_servicio_norm,
                 v.comision_empresa_asociada, v.distancia_km, v.pago_corporativo,
                 COALESCE(m.lob_group, 'UNCLASSIFIED') AS lob_group,
                 CASE WHEN v.pago_corporativo IS NOT NULL AND (v.pago_corporativo::numeric) <> 0 THEN 'B2B' ELSE 'B2C' END AS segment,
@@ -290,21 +273,21 @@ def _run_month(start_d: date, end_d: date, cur) -> None:
                 MAX(fecha_inicio_viaje)
             FROM enriched GROUP BY country, segment, city_norm, park_key, park_display_key, DATE_TRUNC('week', fecha_inicio_viaje)::date
             UNION ALL
-            SELECT country, 'month', DATE_TRUNC('month', fecha_inicio_viaje)::date, segment, 'service_type', service_type_norm, NULL, NULL,
+            SELECT country, 'month', DATE_TRUNC('month', fecha_inicio_viaje)::date, segment, 'service_type', tipo_servicio_norm, NULL, NULL,
                 COUNT(*), (-1)*SUM(comision_empresa_asociada)::numeric, (-1)*AVG(comision_empresa_asociada)::numeric,
                 (AVG(distancia_km)::numeric)/1000.0,
                 SUM(CASE WHEN pago_corporativo IS NOT NULL AND (pago_corporativo::numeric)<>0 THEN 1 ELSE 0 END),
                 (SUM(CASE WHEN pago_corporativo IS NOT NULL AND (pago_corporativo::numeric)<>0 THEN 1 ELSE 0 END)::numeric/NULLIF(COUNT(*),0)),
                 MAX(fecha_inicio_viaje)
-            FROM enriched GROUP BY country, segment, service_type_norm, DATE_TRUNC('month', fecha_inicio_viaje)::date
+            FROM enriched GROUP BY country, segment, tipo_servicio_norm, DATE_TRUNC('month', fecha_inicio_viaje)::date
             UNION ALL
-            SELECT country, 'week', DATE_TRUNC('week', fecha_inicio_viaje)::date, segment, 'service_type', service_type_norm, NULL, NULL,
+            SELECT country, 'week', DATE_TRUNC('week', fecha_inicio_viaje)::date, segment, 'service_type', tipo_servicio_norm, NULL, NULL,
                 COUNT(*), (-1)*SUM(comision_empresa_asociada)::numeric, (-1)*AVG(comision_empresa_asociada)::numeric,
                 (AVG(distancia_km)::numeric)/1000.0,
                 SUM(CASE WHEN pago_corporativo IS NOT NULL AND (pago_corporativo::numeric)<>0 THEN 1 ELSE 0 END),
                 (SUM(CASE WHEN pago_corporativo IS NOT NULL AND (pago_corporativo::numeric)<>0 THEN 1 ELSE 0 END)::numeric/NULLIF(COUNT(*),0)),
                 MAX(fecha_inicio_viaje)
-            FROM enriched GROUP BY country, segment, service_type_norm, DATE_TRUNC('week', fecha_inicio_viaje)::date
+            FROM enriched GROUP BY country, segment, tipo_servicio_norm, DATE_TRUNC('week', fecha_inicio_viaje)::date
         )
         INSERT INTO ops.real_drill_dim_fact (
             country, period_grain, period_start, segment, breakdown, dimension_key, dimension_id, city,
@@ -323,6 +306,8 @@ def _run_month(start_d: date, end_d: date, cur) -> None:
             b2b_share = EXCLUDED.b2b_share,
             last_trip_ts = EXCLUDED.last_trip_ts
     """, (cutoff_start, cutoff_end))
+    drill_rows = cur.rowcount
+    logger.info("Mes %s .. %s: real_drill_dim_fact filas insertadas/actualizadas = %s", cutoff_start, cutoff_end, drill_rows)
 
     cur.execute("""
         WITH base AS (
@@ -345,16 +330,7 @@ def _run_month(start_d: date, end_d: date, cur) -> None:
                 CASE WHEN b.park_id_norm IS NULL THEN 'SIN_PARK_ID'
                     WHEN b.park_catalog_id IS NULL THEN 'PARK_NO_CATALOG' ELSE 'OK'
                 END AS park_bucket,
-                CASE WHEN LOWER(TRIM(b.tipo_servicio::text)) IN ('economico', 'económico') THEN 'economico'
-                    WHEN LOWER(TRIM(b.tipo_servicio::text)) IN ('confort', 'comfort') THEN 'confort'
-                    WHEN LOWER(TRIM(b.tipo_servicio::text)) = 'confort+' THEN 'confort+'
-                    WHEN LOWER(TRIM(b.tipo_servicio::text)) IN ('mensajeria','mensajería') THEN 'mensajería'
-                    WHEN LOWER(TRIM(b.tipo_servicio::text)) IN ('exprés','exprs') THEN 'express'
-                    WHEN LOWER(TRIM(b.tipo_servicio::text)) IN ('minivan','express','premier','moto','cargo','standard','start') THEN LOWER(TRIM(b.tipo_servicio::text))
-                    WHEN LOWER(TRIM(b.tipo_servicio::text)) = 'tuk-tuk' THEN 'tuk-tuk'
-                    WHEN LENGTH(TRIM(b.tipo_servicio::text)) > 30 THEN 'UNCLASSIFIED'
-                    ELSE LOWER(TRIM(b.tipo_servicio::text))
-                END AS real_tipo_norm
+                ops.validated_service_type(b.tipo_servicio::text) AS real_tipo_norm
             FROM base b
             LEFT JOIN ops.dim_city_country d ON d.city_norm = b.city_norm
             LEFT JOIN ops.park_country_fallback f ON f.park_id = b.park_id_norm
@@ -389,6 +365,8 @@ def _run_month(start_d: date, end_d: date, cur) -> None:
             margin_unit_pos = EXCLUDED.margin_unit_pos, distance_total_km = EXCLUDED.distance_total_km,
             km_prom = EXCLUDED.km_prom, last_trip_ts = EXCLUDED.last_trip_ts
     """, (cutoff_start, cutoff_end))
+    rollup_rows = cur.rowcount
+    logger.info("Mes %s .. %s: real_rollup_day_fact filas insertadas/actualizadas = %s", cutoff_start, cutoff_end, rollup_rows)
 
 
 def main() -> None:

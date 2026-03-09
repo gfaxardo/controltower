@@ -460,6 +460,7 @@ export default function RealLOBDrillView () {
                         <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Estado</th>
                       </tr>
                     </thead>
+                    {/* Subrow headers: Dimensión | Viajes | Margen total | Margen/trip | Km prom | B2B */}
                     <tbody className="bg-white divide-y divide-gray-200">
                       {rows.map((row) => {
                         const rowId = `${(row.country || countryCode || '').trim()}|${normalizePeriodStart(row.period_start)}`
@@ -536,7 +537,12 @@ export default function RealLOBDrillView () {
                                 <td colSpan={8} className="px-4 py-3">
                                   {sr.loading && <p className="text-sm text-gray-500">Cargando…</p>}
                                   {sr.error && <p className="text-sm text-red-600">{sr.error}</p>}
-                                  {sr.data && sr.data.length > 0 && (
+                                  {sr.data && sr.data.length > 0 && (() => {
+                                    const visibleData = sr.data.filter(r => {
+                                      const key = r.service_type ?? r.lob_group ?? r.dimension_key ?? ''
+                                      return key !== 'LOW_VOLUME'
+                                    })
+                                    return visibleData.length > 0 && (
                                     <table className="min-w-full text-sm">
                                       <thead>
                                         <tr className="text-left text-gray-500">
@@ -551,7 +557,7 @@ export default function RealLOBDrillView () {
                                         </tr>
                                       </thead>
                                       <tbody>
-                                        {sr.data.map((r, i) => {
+                                        {visibleData.map((r, i) => {
                                           const subTrips = r.trips ?? 0
                                           const subMarginTotal = r.margin_total_pos ?? (r.margin_total != null ? Math.abs(r.margin_total) : null)
                                           const subMargin = subTrips > 0 && (r.margin_unit_pos != null || r.margin_unit_avg != null || r.margin_total != null)
@@ -586,7 +592,7 @@ export default function RealLOBDrillView () {
                                         })}
                                       </tbody>
                                     </table>
-                                  )}
+                                  )})()}
                                   {sr.data && sr.data.length === 0 && (
                                     <p className="text-sm text-gray-500">Sin datos para este periodo.</p>
                                   )}

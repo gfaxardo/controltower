@@ -6,7 +6,7 @@ La función se mantiene en BD por compatibilidad; la MV ya no la usa.
 from alembic import op
 
 revision = "067_mv_driver_segments_weekly_join_config"
-down_revision = "066_supply_refresh_log"
+down_revision = "066b_alembic_version_col"
 branch_labels = None
 depends_on = None
 

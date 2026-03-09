@@ -25,6 +25,8 @@ def _debug_log_svc(location: str, message: str, data: dict, hypothesis_id: str):
 
 MV_DIM = "ops.mv_real_drill_dim_agg"
 VIEW_COVERAGE = "ops.v_real_data_coverage"
+LOW_VOLUME_THRESHOLD = 20  # categorías con viajes < 20 se agrupan en LOW_VOLUME
+LOW_SAMPLE_THRESHOLD = 30  # si viajes < 30 no mostrar pct_b2b como significativo (LOW SAMPLE)
 # Drill consulta MV + varias vistas. Rol puede tener 15s: forzar 0 (sin límite) para esta request.
 # Si el rol no permite override, el DBA debe ejecutar: ALTER ROLE yego_user SET statement_timeout TO '300s';
 TIMEOUT_POSTGRES = "0"
@@ -36,6 +38,39 @@ def _segment_filter(segment: Optional[str]) -> str:
     if not segment or segment.lower() == "all":
         return ""
     return " AND segment = %(segment)s "
+
+
+def _apply_low_volume_service_type(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Agrupa filas con viajes < LOW_VOLUME_THRESHOLD en una sola fila 'LOW_VOLUME'."""
+    if not rows:
+        return rows
+    high = [r for r in rows if (r.get("viajes") or 0) >= LOW_VOLUME_THRESHOLD]
+    low = [r for r in rows if (r.get("viajes") or 0) < LOW_VOLUME_THRESHOLD]
+    if not low:
+        return rows
+    total_v = sum(float(r.get("viajes") or 0) for r in low)
+    total_m = sum(float(r.get("margen_total") or 0) for r in low)
+    total_b2b = sum(float(r.get("viajes_b2b") or 0) for r in low)
+    km_weighted = sum(float(r.get("km_prom") or 0) * float(r.get("viajes") or 0) for r in low)
+    agg = {
+        "dimension_key": "LOW_VOLUME",
+        "dimension_id": None,
+        "city": None,
+        "viajes": int(total_v),
+        "margen_total": round(total_m, 4) if total_m else None,
+        "margen_trip": round(total_m / total_v, 4) if total_v else None,
+        "km_prom": round(km_weighted / total_v, 4) if total_v else None,
+        "viajes_b2b": int(total_b2b),
+        "pct_b2b": round(total_b2b / total_v, 4) if total_v else None,
+        "service_type": "LOW_VOLUME",
+        "margin_total_pos": round(total_m, 4) if total_m else None,
+        "margin_unit_pos": round(total_m / total_v, 4) if total_v else None,
+        "trips": total_v,
+        "b2b_trips": total_b2b,
+    }
+    out = high + [agg]
+    out.sort(key=lambda x: x.get("viajes") or 0, reverse=True)
+    return out
 
 
 def get_drill_parks(country: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -309,13 +344,18 @@ def get_drill(
                 total_margen = sum(float(r["margen_total"] or 0) for r in rows)
                 total_b2b = sum(float(r["viajes_b2b"]) for r in rows)
                 total_km_sum = sum(float(r["km_prom"] or 0) * float(r["viajes"]) for r in rows)
+                # pct_b2b solo significativo si viajes >= LOW_SAMPLE_THRESHOLD; si no, LOW SAMPLE
+                pct_b2b_val = round(total_b2b / total_viajes, 4) if total_viajes else None
+                if total_viajes and total_viajes < LOW_SAMPLE_THRESHOLD:
+                    pct_b2b_val = None  # no mostrar % B2B para muestras pequeñas
                 kpis = {
                     "viajes": int(total_viajes),
                     "margen_total": round(total_margen, 4) if total_margen else None,
                     "margen_trip": round(total_margen / total_viajes, 4) if total_viajes else None,
                     "km_prom": round(total_km_sum / total_viajes, 4) if total_viajes else None,
                     "viajes_b2b": int(total_b2b),
-                    "pct_b2b": round(total_b2b / total_viajes, 4) if total_viajes else None,
+                    "pct_b2b": pct_b2b_val,
+                    "pct_b2b_low_sample": bool(total_viajes and total_viajes < LOW_SAMPLE_THRESHOLD),
                     "ultimo_periodo": rows[0]["period_start"] if rows else None,
                 }
                 # Alias para frontend que espera total_trips, margin_total_pos, etc.
@@ -337,11 +377,28 @@ def get_drill(
                     "rows": rows,
                 })
 
+            # Chequeo automático: SUM(viajes) por breakdown debe coincidir con total (lob/park/service_type)
+            breakdown_valid = True
+            try:
+                cur.execute("""
+                    SELECT bool_and(breakdown_valid) AS all_valid
+                    FROM ops.v_audit_breakdown_sum
+                    WHERE country = ANY(%s) AND period_grain = %s
+                """, (countries_to_fetch, period_type))
+                r = cur.fetchone()
+                if r and r.get("all_valid") is False:
+                    breakdown_valid = False
+            except Exception:
+                breakdown_valid = False
             cur.close()
         # #region agent log
         _debug_log_svc("real_lob_drill_pro_service.py:success", "drill completed", {"countries_count": len(countries_out)}, "H4")
         # #endregion
-        return {"countries": countries_out, "lob_coverage": lob_coverage}
+        return {
+            "countries": countries_out,
+            "lob_coverage": lob_coverage,
+            "meta": {"breakdown_valid": breakdown_valid},
+        }
     except Exception as e:
         # #region agent log
         _debug_log_svc("real_lob_drill_pro_service.py:except", "drill failed", {"error_type": type(e).__name__, "error_msg": str(e)}, "H5")
@@ -429,7 +486,7 @@ def get_drill_children(
                     row["b2b_trips"] = row["viajes_b2b"]
                     out.append(row)
                 cur.close()
-            return out
+            return _apply_low_volume_service_type(out)
         except Exception as e:
             logger.exception("Real LOB drill PRO children (SERVICE_TYPE by park from MV): %s", e)
             raise
@@ -478,6 +535,8 @@ def get_drill_children(
                 row["b2b_trips"] = row.get("viajes_b2b")
                 out.append(row)
             cur.close()
+        if desg_upper == "SERVICE_TYPE":
+            out = _apply_low_volume_service_type(out)
         return out
     except Exception as e:
         logger.exception("Real LOB drill PRO children: %s", e)
