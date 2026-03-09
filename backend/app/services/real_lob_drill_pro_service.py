@@ -73,6 +73,109 @@ def _apply_low_volume_service_type(rows: List[Dict[str, Any]]) -> List[Dict[str,
     return out
 
 
+def _prev_period_start(ps: Any, period_type: str) -> Any:
+    """Fecha de inicio del periodo anterior (semana -7d, mes -1 mes)."""
+    if not ps:
+        return None
+    from datetime import date, timedelta
+    if hasattr(ps, "year"):
+        d = ps
+    else:
+        s = str(ps)[:10]
+        d = date(int(s[:4]), int(s[5:7]), int(s[8:10]))
+    if period_type == "week":
+        return d - timedelta(days=7)
+    # month
+    if d.month == 1:
+        return date(d.year - 1, 12, 1)
+    return date(d.year, d.month - 1, 1)
+
+
+def _delta_pct(current: float, previous: float) -> Optional[float]:
+    if previous is None or previous == 0:
+        return None
+    if current is None:
+        return None
+    return round((float(current) - float(previous)) / float(previous) * 100, 2)
+
+
+def _trend(current: float, previous: float) -> str:
+    if previous is None or previous == 0:
+        return "flat" if (current or 0) == 0 else "up"
+    cur = float(current or 0)
+    prev = float(previous)
+    if abs(cur - prev) < 1e-9:
+        return "flat"
+    return "up" if cur > prev else "down"
+
+
+def _add_row_comparative(
+    row: Dict[str, Any],
+    ad: Optional[Dict],
+    prev_ad: Optional[Dict],
+    is_partial: bool,
+    period_type: str,
+) -> None:
+    """Añade campos WoW/MoM por fila: *_prev, *_delta_pct, *_trend, is_partial_comparison."""
+    row["is_partial_comparison"] = is_partial
+    row["comparative_type"] = "WoW" if period_type == "week" else "MoM"
+    if not prev_ad:
+        row["viajes_prev"] = None
+        row["viajes_delta_pct"] = None
+        row["viajes_trend"] = "flat"
+        row["margen_total_prev"] = None
+        row["margen_total_delta_pct"] = None
+        row["margen_total_trend"] = "flat"
+        row["margen_trip_prev"] = None
+        row["margen_trip_delta_pct"] = None
+        row["km_prom_prev"] = None
+        row["km_prom_delta_pct"] = None
+        row["pct_b2b_prev"] = None
+        row["pct_b2b_delta_pp"] = None
+        row["pct_b2b_trend"] = "flat"
+        return
+    viajes_prev = _float(prev_ad.get("viajes"))
+    viajes_cur = _float(ad.get("viajes")) if ad else None
+    row["viajes_prev"] = int(viajes_prev) if viajes_prev is not None else None
+    row["viajes_delta_pct"] = _delta_pct(viajes_cur or 0, viajes_prev)
+    row["viajes_trend"] = _trend(viajes_cur or 0, viajes_prev or 0)
+    margen_prev = _float(prev_ad.get("margen_total"))
+    margen_cur = _float(ad.get("margen_total")) if ad else None
+    row["margen_total_prev"] = round(margen_prev, 4) if margen_prev is not None else None
+    row["margen_total_delta_pct"] = _delta_pct(margen_cur, margen_prev)
+    row["margen_total_trend"] = _trend(margen_cur or 0, margen_prev or 0)
+    mt_prev = _float(prev_ad.get("margen_trip"))
+    mt_cur = _float(ad.get("margen_trip")) if ad else None
+    row["margen_trip_prev"] = round(mt_prev, 4) if mt_prev is not None else None
+    row["margen_trip_delta_pct"] = _delta_pct(mt_cur, mt_prev)
+    row["margen_trip_trend"] = _trend(mt_cur or 0, mt_prev or 0)
+    km_prev = _float(prev_ad.get("km_prom"))
+    km_cur = _float(ad.get("km_prom")) if ad else None
+    row["km_prom_prev"] = round(km_prev, 4) if km_prev is not None else None
+    row["km_prom_delta_pct"] = _delta_pct(km_cur, km_prev)
+    row["km_prom_trend"] = _trend(km_cur or 0, km_prev or 0)
+    b2b_prev = _float(prev_ad.get("viajes_b2b")) or 0
+    trips_prev = _float(prev_ad.get("viajes")) or 0
+    pct_b2b_prev = (b2b_prev / trips_prev * 100) if trips_prev else None
+    # row["pct_b2b"] es ratio 0-1; convertir a % para delta_pp y trend
+    pct_b2b_cur = (float(row.get("pct_b2b")) * 100) if row.get("pct_b2b") is not None else None
+    row["pct_b2b_prev"] = round(pct_b2b_prev, 2) if pct_b2b_prev is not None else None
+    if pct_b2b_prev is not None and pct_b2b_cur is not None:
+        row["pct_b2b_delta_pp"] = round(pct_b2b_cur - pct_b2b_prev, 2)
+    else:
+        row["pct_b2b_delta_pp"] = None
+    row["pct_b2b_trend"] = _trend(pct_b2b_cur or 0, pct_b2b_prev or 0)
+
+
+def _float(v: Any) -> Optional[float]:
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def get_drill_parks(country: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     Lista de parks para el filtro del drill. Fuente: ops.real_drill_dim_fact (breakdown=park).
@@ -337,6 +440,10 @@ def get_drill(
                     row["margin_total_pos"] = row["margen_total"]
                     row["margin_unit_pos"] = row["margen_trip"]
                     row["b2b_trips"] = row["viajes_b2b"]
+                    # WoW / MoM por fila: periodo anterior y deltas
+                    prev_ps = _prev_period_start(ps, period_type)
+                    prev_ad = agg_detail.get(prev_ps) if prev_ps else None
+                    _add_row_comparative(row, ad, prev_ad, is_partial=(estado == "ABIERTO"), period_type=period_type)
                     rows.append(row)
 
                 # KPIs del país = suma de lo visible (rows) (convertir Decimal/float a float para evitar TypeError)
@@ -394,11 +501,33 @@ def get_drill(
         # #region agent log
         _debug_log_svc("real_lob_drill_pro_service.py:success", "drill completed", {"countries_count": len(countries_out)}, "H4")
         # #endregion
-        return {
-            "countries": countries_out,
-            "lob_coverage": lob_coverage,
-            "meta": {"breakdown_valid": breakdown_valid},
+        # Meta con semántica temporal para UI (última cerrada vs actual abierta)
+        from app.services.period_semantics_service import (
+            get_last_closed_week,
+            get_current_open_week,
+            get_last_closed_month,
+            get_current_open_month,
+            format_week_label,
+            format_month_label,
+        )
+        from datetime import date
+        ref = date.today()
+        last_cw = get_last_closed_week(ref)
+        curr_ow = get_current_open_week(ref)
+        last_cm = get_last_closed_month(ref)
+        curr_om = get_current_open_month(ref)
+        meta = {
+            "last_closed_week": last_cw.isoformat(),
+            "last_closed_week_label": format_week_label(last_cw, closed=True),
+            "current_open_week": curr_ow.isoformat(),
+            "current_open_week_label": format_week_label(curr_ow, closed=False),
+            "last_closed_month": last_cm.isoformat(),
+            "last_closed_month_label": format_month_label(last_cm, closed=True),
+            "current_open_month": curr_om.isoformat(),
+            "current_open_month_label": format_month_label(curr_om, closed=False),
+            "breakdown_valid": breakdown_valid,
         }
+        return {"countries": countries_out, "lob_coverage": lob_coverage, "meta": meta}
     except Exception as e:
         # #region agent log
         _debug_log_svc("real_lob_drill_pro_service.py:except", "drill failed", {"error_type": type(e).__name__, "error_msg": str(e)}, "H5")
@@ -435,6 +564,8 @@ def get_drill_children(
         desg_upper = "LOB"
 
     breakdown_map = {"LOB": "lob", "PARK": "park", "SERVICE_TYPE": "service_type"}
+    # LOW_VOLUME no se muestra en UI (solo control interno); excluir cuando desglose = LOB
+    where_low_volume = " AND (dimension_key IS NULL OR dimension_key <> 'LOW_VOLUME') " if desg_upper == "LOB" else ""
 
     # Cuando desglose=SERVICE_TYPE y hay park_id: leer desde MV (068) para respuesta rápida
     if desg_upper == "SERVICE_TYPE" and park_id and str(park_id).strip():
@@ -508,7 +639,7 @@ def get_drill_children(
                     (SUM(b2b_trips)::numeric / NULLIF(SUM(trips), 0)) AS pct_b2b
                 FROM {MV_DIM}
                 WHERE country = %(country)s AND period_grain = %(period_grain)s AND period_start = %(period_start)s::date
-                  AND breakdown = %(breakdown)s {where_seg}
+                  AND breakdown = %(breakdown)s {where_seg}{where_low_volume}
                 GROUP BY dimension_key, dimension_id, city
                 ORDER BY SUM(trips) DESC
             """, {**params, "breakdown": breakdown_map[desg_upper]})

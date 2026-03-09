@@ -175,3 +175,25 @@ SELECT
 - Residual actual explicado: mayormente LOB stale; residual legítimo ~172 trips (basura + UNCLASSIFIED + el_progreso).
 - UI: LOW_VOLUME oculto; drill coherente.
 - Para bajar LOB UNCLASSIFIED a ~0,00 % en línea con service_type es **necesario ejecutar el backfill** indicado arriba; sin ello, el 0,62 % LOB UNCLASSIFIED se mantiene por datos históricos no regenerados.
+
+---
+
+## 8. Referencias
+
+- Tabla mapping: `canon.map_real_tipo_servicio_to_lob_group` (seed en migración 044).
+- Backfill: `backend/scripts/backfill_real_lob_mvs.py`.
+- Vista por viaje (equivalente “base” para diagnóstico): `ops.v_real_trips_with_lob_v2`.
+- Drill API: `real_lob_drill_pro_service.get_drill`, `get_drill_children`.
+
+---
+
+## 9. Resumen ejecutivo (plantilla)
+
+| Sección | Contenido |
+|--------|------------|
+| **1. Estado actual service_type vs LOB** | UNCLASSIFIED service_type ≈ 0%; UNCLASSIFIED LOB ≈ 0,62%. service_type y LOB comparten la misma normalización (tipo_servicio_norm) y mapping; la brecha viene de tipos sin fila en `canon.map_real_tipo_servicio_to_lob_group`. |
+| **2. Explicación exacta de la brecha residual** | Rellenar con resultado de consultas B/C: qué `validated_service_type` (real_tipo_servicio_norm) cae en LOB UNCLASSIFIED y clasificación (legítimo sin mapping / basura / ya UNCLASSIFIED). |
+| **3. Cambios aplicados en mapping LOB** | Solo si se añadieron filas a `canon.map_real_tipo_servicio_to_lob_group`; si no, "Ninguno en esta microfase". |
+| **4. Cambios aplicados en UI** | Drill: breakdown=service_type alineado a tipo_servicio_norm (trazabilidad). LOW_VOLUME oculto en desglose LOB (backend + filtro defensivo frontend). Cabecera: "Totales (periodos listados)"; desglose con título "Desglose de [periodo] por LOB/..."; estado Abierto con tooltip "Mes/semana en curso (datos parciales)". |
+| **5. Pendiente** | Ejecutar SQL de diagnóstico (A–D) en entorno objetivo; clasificar residual y, si hay legítimos, insertar en mapping y re-ejecutar backfill. |
+| **6. Veredicto** | LISTO PARA CERRAR / LISTO CON OBSERVACIONES / NO LISTO — según evidencia SQL y revisión visual. |

@@ -469,6 +469,7 @@ def upgrade() -> None:
                 v.city_norm,
                 v.park_display_key,
                 v.service_type_norm,
+                v.tipo_servicio_norm,
                 v.comision_empresa_asociada,
                 v.distancia_km,
                 v.pago_corporativo,
@@ -536,25 +537,25 @@ def upgrade() -> None:
         service_agg AS (
             SELECT
                 country, 'month', DATE_TRUNC('month', fecha_inicio_viaje)::date, segment,
-                'service_type', service_type_norm, NULL, NULL,
+                'service_type', tipo_servicio_norm, NULL, NULL,
                 COUNT(*), (-1)*SUM(comision_empresa_asociada)::numeric, (-1)*AVG(comision_empresa_asociada)::numeric,
                 (AVG(distancia_km)::numeric)/1000.0,
                 SUM(CASE WHEN pago_corporativo IS NOT NULL AND (pago_corporativo::numeric)<>0 THEN 1 ELSE 0 END),
                 (SUM(CASE WHEN pago_corporativo IS NOT NULL AND (pago_corporativo::numeric)<>0 THEN 1 ELSE 0 END)::numeric/NULLIF(COUNT(*),0)),
                 MAX(fecha_inicio_viaje)
             FROM enriched
-            GROUP BY country, segment, service_type_norm, DATE_TRUNC('month', fecha_inicio_viaje)::date
+            GROUP BY country, segment, tipo_servicio_norm, DATE_TRUNC('month', fecha_inicio_viaje)::date
             UNION ALL
             SELECT
                 country, 'week', DATE_TRUNC('week', fecha_inicio_viaje)::date, segment,
-                'service_type', service_type_norm, NULL, NULL,
+                'service_type', tipo_servicio_norm, NULL, NULL,
                 COUNT(*), (-1)*SUM(comision_empresa_asociada)::numeric, (-1)*AVG(comision_empresa_asociada)::numeric,
                 (AVG(distancia_km)::numeric)/1000.0,
                 SUM(CASE WHEN pago_corporativo IS NOT NULL AND (pago_corporativo::numeric)<>0 THEN 1 ELSE 0 END),
                 (SUM(CASE WHEN pago_corporativo IS NOT NULL AND (pago_corporativo::numeric)<>0 THEN 1 ELSE 0 END)::numeric/NULLIF(COUNT(*),0)),
                 MAX(fecha_inicio_viaje)
             FROM enriched
-            GROUP BY country, segment, service_type_norm, DATE_TRUNC('week', fecha_inicio_viaje)::date
+            GROUP BY country, segment, tipo_servicio_norm, DATE_TRUNC('week', fecha_inicio_viaje)::date
         )
         SELECT * FROM lob_agg
         UNION ALL SELECT * FROM park_agg

@@ -120,3 +120,9 @@ python -m scripts.backfill_real_lob_mvs --from 2025-01-01 --to 2026-04-01 --resu
 - **Mapping LOB para `mensajeria`:** La tabla `canon.map_real_tipo_servicio_to_lob_group` tiene una fila con key `mensajería` (con tilde) que ya no matchea porque el backfill ahora guarda `mensajeria` (sin tilde). Se debe agregar la key `mensajeria` → `delivery`.
 
 **Trazabilidad brecha service_type → LOB:** véase [real_lob_lob_gap_diagnosis.md](real_lob_lob_gap_diagnosis.md) (diagnóstico exacto, clasificación residual, backfill para re-sincronizar LOB).
+
+## Pipeline y variantes
+
+- **Raw:** `tipo_servicio` en `ops.v_trips_real_canon`. **Normalizado:** `ops.normalized_service_type` / `ops.validated_service_type`. **LOB:** `canon.map_real_tipo_servicio_to_lob_group`. **Drill:** breakdown=service_type usa **tipo_servicio_norm** (mismo que el mapping).
+- Variantes con acento: **envíos** → delivery (además de `envios`). Cualquier otra variante con tilde en LOB UNCLASSIFIED debe añadirse al mapping.
+- **ops.real_lob_residual_diagnostic:** agregado últimos 90 días; rellenar con `python scripts/populate_real_lob_residual_diagnostic.py`. No perseguir 0 % UNCLASSIFIED; el residual basura se deja en UNCLASSIFIED.

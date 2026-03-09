@@ -228,6 +228,36 @@ export const getRealLobDrillParks = async (params = {}) => {
   return response.data
 }
 
+// Period semantics: last_closed_week/month, current_open_week/month, labels para UI
+export const getPeriodSemantics = async (params = {}) => {
+  const response = await api.get('/ops/period-semantics', { params, timeout: 10000 })
+  return response.data
+}
+
+// Comparativos oficiales WoW (semanas cerradas) y MoM (meses cerrados)
+export const getRealLobComparativesWeekly = async (params = {}) => {
+  const response = await api.get('/ops/real-lob/comparatives/weekly', { params, timeout: 15000 })
+  return response.data
+}
+export const getRealLobComparativesMonthly = async (params = {}) => {
+  const response = await api.get('/ops/real-lob/comparatives/monthly', { params, timeout: 15000 })
+  return response.data
+}
+
+// Vista diaria Real LOB: summary, comparative (D-1 / same weekday / avg 4w), table
+export const getRealLobDailySummary = async (params = {}) => {
+  const response = await api.get('/ops/real-lob/daily/summary', { params, timeout: 15000 })
+  return response.data
+}
+export const getRealLobDailyComparative = async (params = {}) => {
+  const response = await api.get('/ops/real-lob/daily/comparative', { params, timeout: 15000 })
+  return response.data
+}
+export const getRealLobDailyTable = async (params = {}) => {
+  const response = await api.get('/ops/real-lob/daily/table', { params, timeout: 15000 })
+  return response.data
+}
+
 // Real LOB Drill-down: timeline por país, drill LOB/Park [legacy]
 export const getRealDrillSummary = async (params = {}) => {
   const response = await api.get('/ops/real-drill/summary', { params, timeout: REAL_DRILL_TIMEOUT_MS })

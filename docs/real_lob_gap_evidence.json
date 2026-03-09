@@ -1,0 +1,567 @@
+{
+  "run_at": "2026-03-09T15:31:51.021162Z",
+  "schema_introspection": {
+    "tables": [
+      {
+        "table_schema": "canon",
+        "table_name": "dim_lob"
+      },
+      {
+        "table_schema": "canon",
+        "table_name": "lob_tipo_servicio_map"
+      },
+      {
+        "table_schema": "canon",
+        "table_name": "map_real_tipo_servicio_to_lob_group"
+      },
+      {
+        "table_schema": "canon",
+        "table_name": "map_real_to_lob"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "lob_catalog"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "lob_homologation"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "lob_homologation_final"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "lob_plan_real_mapping"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "mv_real_drill_dim_agg"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "mv_real_drill_service_by_park"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "real_drill_dim_fact"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "real_drill_service_by_park"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "real_lob_residual_diagnostic"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_audit_service_type"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_lob_homologation_suggestions"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_lob_mapping_quality_kpis"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_lob_mapping_quality_kpis_weekly"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_lob_mapping_quality_kpis_weekly_segment"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_plan_lob_agg"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_plan_lob_universe_for_hunt"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_plan_lob_universe_raw"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_plan_lob_without_homologation"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_plan_vs_real_lob_check"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_drill_country_month"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_drill_country_week"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_drill_lob"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_drill_lob_month"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_drill_lob_week"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_drill_park"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_drill_park_month"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_drill_park_week"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_drill_service_type"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_lob_base"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_lob_coverage"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_lob_resolution"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_lob_resolved_final"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_lob_without_homologation"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_tipo_servicio_universe"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_to_plan_lob_resolved"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_trips_base_drill"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_trips_by_lob_month"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_trips_by_lob_week"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_trips_with_lob_v2"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_universe_with_lob"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_universe_with_lob_week"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_without_plan_lob"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_supply_alert_drilldown"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_trip_lob_canonical"
+      }
+    ],
+    "views": [
+      {
+        "table_schema": "ops",
+        "table_name": "mv_real_drill_dim_agg"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "mv_real_drill_service_by_park"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_audit_service_type"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_lob_homologation_suggestions"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_lob_mapping_quality_kpis"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_lob_mapping_quality_kpis_weekly"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_lob_mapping_quality_kpis_weekly_segment"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_plan_lob_agg"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_plan_lob_universe_for_hunt"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_plan_lob_universe_raw"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_plan_lob_without_homologation"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_plan_vs_real_lob_check"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_drill_country_month"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_drill_country_week"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_drill_lob"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_drill_lob_month"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_drill_lob_week"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_drill_park"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_drill_park_month"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_drill_park_week"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_drill_service_type"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_lob_base"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_lob_coverage"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_lob_resolution"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_lob_resolved_final"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_lob_without_homologation"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_tipo_servicio_universe"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_to_plan_lob_resolved"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_trips_base_drill"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_trips_by_lob_month"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_trips_by_lob_week"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_trips_with_lob_v2"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_universe_with_lob"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_universe_with_lob_week"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_real_without_plan_lob"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_supply_alert_drilldown"
+      },
+      {
+        "table_schema": "ops",
+        "table_name": "v_trip_lob_canonical"
+      }
+    ],
+    "functions": [
+      {
+        "schema_name": "ops",
+        "function_name": "normalize_name_basic"
+      },
+      {
+        "schema_name": "ops",
+        "function_name": "normalize_name_tokens_sorted"
+      },
+      {
+        "schema_name": "ops",
+        "function_name": "normalize_person_name"
+      },
+      {
+        "schema_name": "ops",
+        "function_name": "normalize_person_tokens_sorted"
+      },
+      {
+        "schema_name": "ops",
+        "function_name": "normalized_service_type"
+      },
+      {
+        "schema_name": "ops",
+        "function_name": "validated_service_type"
+      }
+    ],
+    "base_candidates_with_lob_and_service_type": [
+      {
+        "schema": "ops",
+        "table_name": "v_real_trips_with_lob_v2",
+        "columns": [
+          "country",
+          "city",
+          "park_id",
+          "park_name",
+          "fecha_inicio_viaje",
+          "real_tipo_servicio_norm",
+          "lob_group",
+          "segment_tag",
+          "revenue",
+          "comision_empresa_asociada",
+          "distancia_km"
+        ]
+      }
+    ],
+    "chosen_base": {
+      "schema": "ops",
+      "table_name": "v_real_trips_with_lob_v2",
+      "service_type_column": "real_tipo_servicio_norm"
+    },
+    "real_drill_dim_fact_columns": [
+      "country",
+      "period_grain",
+      "period_start",
+      "segment",
+      "breakdown",
+      "dimension_key",
+      "dimension_id",
+      "city",
+      "trips",
+      "margin_total",
+      "margin_per_trip",
+      "km_avg",
+      "b2b_trips",
+      "b2b_share",
+      "last_trip_ts"
+    ]
+  },
+  "diagnosis": {
+    "A_residual_drill": [
+      {
+        "breakdown": "lob",
+        "breakdown_value": "UNCLASSIFIED",
+        "trips": 142630
+      },
+      {
+        "breakdown": "service_type",
+        "breakdown_value": "UNCLASSIFIED",
+        "trips": 158
+      }
+    ],
+    "B_top_unclassified_lob": [
+      {
+        "validated_service_type": "envíos",
+        "trips": 3381
+      },
+      {
+        "validated_service_type": "UNCLASSIFIED",
+        "trips": 11
+      },
+      {
+        "validated_service_type": "focos led para auto, moto",
+        "trips": 2
+      }
+    ],
+    "B_source": "ops.real_lob_residual_diagnostic",
+    "C_cross_service_lob": [
+      {
+        "validated_service_type": "economico",
+        "lob_group": "auto taxi",
+        "trips": 1947568
+      },
+      {
+        "validated_service_type": "moto",
+        "lob_group": "taxi moto",
+        "trips": 299579
+      },
+      {
+        "validated_service_type": "confort",
+        "lob_group": "auto taxi",
+        "trips": 183475
+      },
+      {
+        "validated_service_type": "tuk-tuk",
+        "lob_group": "tuk tuk",
+        "trips": 75855
+      },
+      {
+        "validated_service_type": "confort+",
+        "lob_group": "auto taxi",
+        "trips": 41819
+      },
+      {
+        "validated_service_type": "mensajería",
+        "lob_group": "delivery",
+        "trips": 39424
+      },
+      {
+        "validated_service_type": "minivan",
+        "lob_group": "auto taxi",
+        "trips": 24581
+      },
+      {
+        "validated_service_type": "cargo",
+        "lob_group": "delivery",
+        "trips": 16336
+      },
+      {
+        "validated_service_type": "express",
+        "lob_group": "delivery",
+        "trips": 10801
+      },
+      {
+        "validated_service_type": "start",
+        "lob_group": "auto taxi",
+        "trips": 5597
+      },
+      {
+        "validated_service_type": "premier",
+        "lob_group": "auto taxi",
+        "trips": 4480
+      },
+      {
+        "validated_service_type": "envíos",
+        "lob_group": "UNCLASSIFIED",
+        "trips": 3381
+      },
+      {
+        "validated_service_type": "UNCLASSIFIED",
+        "lob_group": "UNCLASSIFIED",
+        "trips": 11
+      },
+      {
+        "validated_service_type": "focos led para auto, moto",
+        "lob_group": "UNCLASSIFIED",
+        "trips": 2
+      }
+    ],
+    "D_totals": {
+      "total_trips": 2652909,
+      "unclassified_lob_trips": 3394,
+      "pct_unclassified_lob": 0.1279
+    }
+  },
+  "residual_classification": [
+    {
+      "validated_service_type": "envíos",
+      "trips": 3381,
+      "category": "LEGIT_NO_MAPPING"
+    },
+    {
+      "validated_service_type": "UNCLASSIFIED",
+      "trips": 11,
+      "category": "ALREADY_UNCLASSIFIED"
+    },
+    {
+      "validated_service_type": "focos led para auto, moto",
+      "trips": 2,
+      "category": "LEGIT_NO_MAPPING"
+    }
+  ],
+  "mappings_added": [],
+  "validation_after": {},
+  "errors": [
+    "canceling statement due to statement timeout\n"
+  ],
+  "current_mapping_keys": [
+    "cargo",
+    "confort",
+    "confort+",
+    "confort_plus",
+    "economico",
+    "economy",
+    "envios",
+    "expres",
+    "express",
+    "focos-led-para-auto,-moto",
+    "mensajeria",
+    "mensajería",
+    "minivan",
+    "moto",
+    "premier",
+    "standard",
+    "start",
+    "taxi_moto",
+    "tuk-tuk",
+    "tuk_tuk",
+    "xl"
+  ]
+}

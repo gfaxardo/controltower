@@ -47,6 +47,16 @@ from app.services.real_lob_drill_pro_service import (
     get_drill_children as get_real_lob_drill_pro_children,
     get_drill_parks as get_real_lob_drill_parks,
 )
+from app.services.period_semantics_service import get_period_semantics
+from app.services.comparative_metrics_service import (
+    get_weekly_comparative,
+    get_monthly_comparative,
+)
+from app.services.real_lob_daily_service import (
+    get_daily_summary,
+    get_daily_comparative,
+    get_daily_table,
+)
 from app.services.supply_service import (
     get_supply_geo,
     get_supply_parks,
@@ -64,6 +74,11 @@ from app.services.supply_service import (
     get_supply_migration_drilldown,
     get_supply_freshness,
 )
+from app.services.data_freshness_service import (
+    get_freshness_audit,
+    get_freshness_alerts,
+    get_freshness_expectations,
+)
 from app.services.supply_definitions import get_definitions
 from app.settings import settings
 from fastapi.responses import Response
@@ -72,9 +87,10 @@ import asyncio
 import functools
 import csv
 import io
+import json
 import logging
 import os
-import json
+import sys
 import time
 
 # Ejecutar función síncrona en thread pool (compatible Python 3.8+; no usar asyncio.to_thread que es 3.9+)
@@ -680,6 +696,67 @@ async def get_supply_freshness_endpoint():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# --- Data Freshness & Coverage (fuentes base + derivados) ---
+@router.get("/data-freshness")
+async def get_data_freshness_endpoint(
+    latest_only: bool = Query(True, description="Solo última ejecución por dataset"),
+):
+    """Auditoría de freshness por dataset: source_max_date, derived_max_date, expected_latest_date, status (OK, PARTIAL_EXPECTED, LAGGING, MISSING_EXPECTED_DATA)."""
+    try:
+        return get_freshness_audit(latest_only=latest_only)
+    except Exception as e:
+        logger.error("GET /ops/data-freshness: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/data-freshness/alerts")
+async def get_data_freshness_alerts_endpoint():
+    """Resumen de alertas accionables: datasets con status distinto de OK y mensaje explicativo."""
+    try:
+        return get_freshness_alerts()
+    except Exception as e:
+        logger.error("GET /ops/data-freshness/alerts: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/data-freshness/expectations")
+async def get_data_freshness_expectations_endpoint():
+    """Configuración de expectativas por dataset (grain, expected_delay_days, source/derived objects)."""
+    try:
+        return get_freshness_expectations()
+    except Exception as e:
+        logger.error("GET /ops/data-freshness/expectations: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/data-freshness/run")
+async def post_data_freshness_run():
+    """Ejecuta el chequeo de freshness y escribe en ops.data_freshness_audit. Uso: cron o admin."""
+    try:
+        import subprocess
+        # __file__ = backend/app/routers/ops.py -> backend = dirname(dirname(dirname(__file__)))
+        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        r = subprocess.run(
+            [sys.executable, "-m", "scripts.run_data_freshness_audit"],
+            cwd=backend_dir,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        return {
+            "ok": r.returncode == 0,
+            "stdout": r.stdout or "",
+            "stderr": r.stderr or "",
+            "returncode": r.returncode,
+        }
+    except subprocess.TimeoutExpired:
+        logger.error("POST /ops/data-freshness/run: timeout")
+        raise HTTPException(status_code=504, detail="Audit run timeout")
+    except Exception as e:
+        logger.error("POST /ops/data-freshness/run: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/supply/refresh")
 async def post_supply_refresh():
     """Refresca MVs de Supply Alerting. CONCURRENTLY."""
@@ -832,6 +909,94 @@ async def get_real_lob_drill_pro_endpoint(
         )
     except Exception as e:
         logger.error("Real LOB drill PRO: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─── Period Semantics & Comparatives ─────────────────
+@router.get("/period-semantics")
+async def get_period_semantics_endpoint(
+    reference: Optional[str] = Query(None, description="Fecha referencia YYYY-MM-DD (default: hoy)"),
+):
+    """Semántica temporal: last_closed_day/week/month, current_open_week/month y labels para UI."""
+    try:
+        ref = None
+        if reference and len(reference.strip()) >= 10:
+            from datetime import date
+            ref = date.fromisoformat(reference.strip()[:10])
+        return await asyncio.to_thread(get_period_semantics, ref)
+    except Exception as e:
+        logger.error("GET /ops/period-semantics: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/real-lob/comparatives/weekly")
+async def get_real_lob_wow_endpoint(
+    country: Optional[str] = Query(None, description="Filtrar por país (pe | co)"),
+):
+    """WoW: última semana cerrada vs semana cerrada anterior. Métricas: viajes, margen_total, margen_trip, km_prom, b2b_pct."""
+    try:
+        return await asyncio.to_thread(get_weekly_comparative, country=country)
+    except Exception as e:
+        logger.error("GET /ops/real-lob/comparatives/weekly: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/real-lob/comparatives/monthly")
+async def get_real_lob_mom_endpoint(
+    country: Optional[str] = Query(None, description="Filtrar por país (pe | co)"),
+):
+    """MoM: último mes cerrado vs mes cerrado anterior. Métricas: viajes, margen_total, margen_trip, km_prom, b2b_pct."""
+    try:
+        return await asyncio.to_thread(get_monthly_comparative, country=country)
+    except Exception as e:
+        logger.error("GET /ops/real-lob/comparatives/monthly: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/real-lob/daily/summary")
+async def get_real_lob_daily_summary_endpoint(
+    day: Optional[str] = Query(None, description="Fecha YYYY-MM-DD (default: último día cerrado = ayer)"),
+    country: Optional[str] = Query(None, description="Filtrar por país (pe | co)"),
+):
+    """Vista diaria: KPIs agregados por día (viajes, margen, km_prom, B2B %)."""
+    try:
+        return await asyncio.to_thread(get_daily_summary, day=day, country=country)
+    except Exception as e:
+        logger.error("GET /ops/real-lob/daily/summary: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/real-lob/daily/comparative")
+async def get_real_lob_daily_comparative_endpoint(
+    day: Optional[str] = Query(None, description="Fecha YYYY-MM-DD (default: último día cerrado)"),
+    country: Optional[str] = Query(None, description="Filtrar por país (pe | co)"),
+    baseline: Literal["D-1", "same_weekday_previous_week", "same_weekday_avg_4w"] = Query(
+        "D-1",
+        description="D-1 = vs día anterior; same_weekday_previous_week = vs mismo día semana pasada; same_weekday_avg_4w = vs promedio 4 mismos días",
+    ),
+):
+    """Comparativo diario: día consultado vs baseline (D-1, mismo día semana pasada, o promedio 4 mismos días)."""
+    try:
+        return await asyncio.to_thread(get_daily_comparative, day=day, country=country, baseline=baseline)
+    except Exception as e:
+        logger.error("GET /ops/real-lob/daily/comparative: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/real-lob/daily/table")
+async def get_real_lob_daily_table_endpoint(
+    day: Optional[str] = Query(None, description="Fecha YYYY-MM-DD (default: último día cerrado)"),
+    country: Optional[str] = Query(None, description="Filtrar por país (pe | co)"),
+    group_by: Literal["lob", "park"] = Query("lob", description="Agrupar por LOB o por Park"),
+    baseline: Optional[Literal["D-1", "same_weekday_previous_week", "same_weekday_avg_4w"]] = Query(
+        None, description="Si se indica, cada fila incluye *_baseline y *_delta_pct (comparativo por fila)",
+    ),
+):
+    """Tabla diaria: filas por LOB o por Park. Con baseline se añaden columnas comparativas por fila."""
+    try:
+        return await asyncio.to_thread(get_daily_table, day=day, country=country, group_by=group_by, baseline=baseline)
+    except Exception as e:
+        logger.error("GET /ops/real-lob/daily/table: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

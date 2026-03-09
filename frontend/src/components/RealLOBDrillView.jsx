@@ -10,8 +10,12 @@ import {
   getRealDrillSummary,
   getRealDrillByLob,
   getRealDrillByPark,
-  getRealLobDrillParks
+  getRealLobDrillParks,
+  getRealLobComparativesWeekly,
+  getRealLobComparativesMonthly,
+  getPeriodSemantics
 } from '../services/api'
+import RealLOBDailyView from './RealLOBDailyView'
 import { buildDimKey, buildDrillKey } from '../utils/dimKey'
 
 const USE_DRILL_PRO = true
@@ -56,6 +60,7 @@ function formatDistanceKm (n, trips) {
 }
 
 export default function RealLOBDrillView () {
+  const [subView, setSubView] = useState('drill') // 'drill' | 'daily'
   const [periodType, setPeriodType] = useState('monthly')
   const [drillBy, setDrillBy] = useState('lob') // 'lob' | 'park' | 'service_type'
   const [segment, setSegment] = useState('Todos')
@@ -63,7 +68,10 @@ export default function RealLOBDrillView () {
   const [parks, setParks] = useState([]) // lista para filtro Park (fuente: drill); siempre poblada, independiente del desglose
   const [countries, setCountries] = useState([]) // [{ country, coverage, kpis, rows }]
   const [meta, setMeta] = useState({ last_period_monthly: null, last_period_weekly: null })
+  const [periodSemantics, setPeriodSemantics] = useState(null) // GET /ops/period-semantics (no depende del drill)
   const [lobCoverage, setLobCoverage] = useState(null) // { min_trip_date_loaded, max_trip_date_loaded, recent_days_config }
+  const [comparative, setComparative] = useState(null) // WoW o MoM payload
+  const [comparativeLoading, setComparativeLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [expanded, setExpanded] = useState(new Set())
@@ -87,6 +95,13 @@ export default function RealLOBDrillView () {
     getRealLobDrillParks()
       .then((res) => setParks(res.parks || []))
       .catch(() => setParks([]))
+  }, [])
+
+  // Semántica temporal: carga independiente del drill para mostrar siempre "última cerrada / actual abierta"
+  useEffect(() => {
+    getPeriodSemantics()
+      .then((data) => setPeriodSemantics(data))
+      .catch(() => setPeriodSemantics(null))
   }, [])
 
   const resetDrillState = useCallback(() => {
@@ -151,6 +166,16 @@ export default function RealLOBDrillView () {
   useEffect(() => {
     loadSummary()
   }, [loadSummary])
+
+  // Cargar comparativo WoW o MoM cuando está en drill y cambia el tipo de periodo
+  useEffect(() => {
+    if (subView !== 'drill') return
+    setComparativeLoading(true)
+    const fetchComparative = periodType === 'weekly' ? getRealLobComparativesWeekly : getRealLobComparativesMonthly
+    fetchComparative()
+      .then((data) => { setComparative(data); setComparativeLoading(false) })
+      .catch(() => { setComparative(null); setComparativeLoading(false) })
+  }, [subView, periodType])
 
   const normalizePeriodStart = (periodStart) => {
     const s = String(periodStart).trim()
@@ -263,10 +288,56 @@ export default function RealLOBDrillView () {
 
   // countries ya viene ordenado PE, CO desde la API
 
+  // ─── Vista diaria: subtab visible al entrar a Real LOB ─────────────────
+  if (subView === 'daily') {
+    return (
+      <div className="bg-white p-6 rounded-lg shadow-md">
+        <div className="flex flex-wrap items-center gap-2 mb-4 border-b border-gray-200 pb-4">
+          <h3 className="text-lg font-semibold text-gray-800">Real LOB</h3>
+          <span className="w-px h-6 bg-gray-300" />
+          <button
+            type="button"
+            onClick={() => setSubView('drill')}
+            className={`px-3 py-1.5 rounded text-sm font-medium ${subView !== 'daily' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+          >
+            Drill (semanal/mensual)
+          </button>
+          <button
+            type="button"
+            onClick={() => setSubView('daily')}
+            className={`px-3 py-1.5 rounded text-sm font-medium ${subView === 'daily' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+          >
+            Vista diaria
+          </button>
+        </div>
+        <RealLOBDailyView />
+      </div>
+    )
+  }
+
   return (
     <div className="bg-white p-6 rounded-lg shadow-md">
+      {/* Fila 1: Título + subtabs Drill | Vista diaria (siempre visibles) */}
+      <div className="flex flex-wrap items-center gap-2 mb-4 border-b border-gray-200 pb-4">
+        <h3 className="text-lg font-semibold text-gray-800">Real LOB</h3>
+        <span className="w-px h-6 bg-gray-300" />
+        <button
+          type="button"
+          onClick={() => setSubView('drill')}
+          className={`px-3 py-1.5 rounded text-sm font-medium ${subView === 'drill' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+        >
+          Drill (semanal/mensual)
+        </button>
+        <button
+          type="button"
+          onClick={() => setSubView('daily')}
+          className={`px-3 py-1.5 rounded text-sm font-medium ${subView === 'daily' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+        >
+          Vista diaria
+        </button>
+      </div>
       <div className="flex flex-wrap justify-between items-center gap-4 mb-4">
-        <h3 className="text-lg font-semibold">Real LOB — Drill por país</h3>
+        <span className="text-sm text-gray-600">Drill por país — Periodo:</span>
         <div className="flex flex-wrap gap-2 items-center">
           <span className="text-sm text-gray-500">Periodo:</span>
           <button
@@ -349,6 +420,22 @@ export default function RealLOBDrillView () {
         </div>
       </div>
 
+      {/* Semántica temporal: siempre visible (fuente: GET /ops/period-semantics, no depende del drill) */}
+      <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg text-slate-800 text-sm mb-4">
+        <div className="font-semibold text-emerald-900 mb-2">Períodos (semántica cerrada / abierta)</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {periodSemantics ? (
+            <>
+              <div><strong>Última semana cerrada:</strong> <span className="font-mono">{periodSemantics.last_closed_week_label || '—'}</span></div>
+              <div><strong>Semana actual (parcial):</strong> <span className="font-mono">{periodSemantics.current_open_week_label || '—'}</span></div>
+              <div><strong>Último mes cerrado:</strong> <span className="font-mono">{periodSemantics.last_closed_month_label || '—'}</span></div>
+              <div><strong>Mes actual (parcial):</strong> <span className="font-mono">{periodSemantics.current_open_month_label || '—'}</span></div>
+            </>
+          ) : (
+            <span className="text-gray-500">Cargando semántica temporal…</span>
+          )}
+        </div>
+      </div>
       {meta.hint && (
         <div className="p-4 bg-amber-50 border border-amber-200 rounded text-amber-800 text-sm mb-4">
           {meta.hint}
@@ -369,6 +456,35 @@ export default function RealLOBDrillView () {
         </div>
       )}
 
+      {/* Comparativo WoW / MoM: siempre visible (cargando, error, sin datos o datos) */}
+      <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+        <div className="text-sm font-semibold text-blue-900 mb-2">
+          {periodType === 'weekly' ? 'Comparativo WoW (última semana cerrada vs anterior)' : 'Comparativo MoM (último mes cerrado vs anterior)'}
+        </div>
+        {comparativeLoading && !comparative && (
+          <p className="text-sm text-blue-700">Cargando comparativo…</p>
+        )}
+        {comparative?.error && (
+          <p className="text-sm text-amber-700">Error: {comparative.error}</p>
+        )}
+        {!comparativeLoading && comparative && !comparative.error && (!comparative.by_country || comparative.by_country.length === 0) && (
+          <p className="text-sm text-gray-600">Sin datos para períodos cerrados (compruebe que real_rollup_day_fact tenga datos).</p>
+        )}
+        {comparative && !comparative.error && comparative.by_country?.length > 0 && (
+          <div className="flex flex-wrap gap-4">
+            {comparative.by_country.map(({ country: c, metrics }) => (
+              <div key={c} className="flex flex-wrap gap-3 items-baseline">
+                <span className="font-medium text-gray-800 uppercase">{c}</span>
+                {metrics && metrics.slice(0, 5).map((m) => (
+                  <span key={m.metric} className="text-sm text-gray-700" title={`Actual: ${m.value_current ?? '—'} | Anterior: ${m.value_previous ?? '—'} | Δ: ${m.delta_abs ?? '—'}`}>
+                    {m.metric}: {m.delta_pct != null ? `${m.delta_pct > 0 ? '↑' : m.delta_pct < 0 ? '↓' : '→'} ${Number(m.delta_pct).toFixed(1)}%` : '—'}
+                  </span>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 rounded text-red-800 text-sm mb-4 flex flex-wrap items-center justify-between gap-2">
           <span>{error}</span>
@@ -407,9 +523,12 @@ export default function RealLOBDrillView () {
                     {periodType === 'weekly' && (<> · última semana <span className="font-mono">{countryCoverage.last_week_with_data || '—'}</span></>)}
                   </div>
                 )}
-                {/* KPI bar por país */}
+                {/* KPI bar por país: totales de los periodos listados (no del drill expandido) */}
                 {kpis && (
                   <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-6 gap-3 mb-3 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                    <div className="col-span-full md:col-span-6 text-xs text-slate-500 mb-1" title="Estas métricas corresponden a la suma de todos los periodos de la tabla inferior">
+                      Totales (periodos listados)
+                    </div>
                     <div>
                       <div className="text-xs text-slate-500">Total viajes</div>
                       <div className="text-lg font-semibold">{formatNumber(kpis.total_trips)}</div>
@@ -453,10 +572,15 @@ export default function RealLOBDrillView () {
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-8" />
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Periodo</th>
                         <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Viajes</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{periodType === 'weekly' ? 'WoW Δ%' : 'MoM Δ%'}</th>
                         <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase" title={MARGIN_TOOLTIP}>Margen total</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{periodType === 'weekly' ? 'WoW Δ%' : 'MoM Δ%'}</th>
                         <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase" title={MARGIN_TOOLTIP}>Margen/trip</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{periodType === 'weekly' ? 'WoW Δ%' : 'MoM Δ%'}</th>
                         <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Km prom</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{periodType === 'weekly' ? 'WoW Δ%' : 'MoM Δ%'}</th>
                         <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Segmento / B2B</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-16">{periodType === 'weekly' ? 'WoW pp' : 'MoM pp'}</th>
                         <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Estado</th>
                       </tr>
                     </thead>
@@ -492,11 +616,42 @@ export default function RealLOBDrillView () {
                               </td>
                               <td className="px-3 py-2 text-sm font-medium text-gray-900">
                                 {formatPeriod(row.period_start, periodType)}
+                                {row.is_partial_comparison && (
+                                  <span className="ml-1 inline-flex px-1.5 py-0.5 rounded text-xs bg-amber-100 text-amber-800" title="Comparativo parcial (periodo abierto)">Parcial</span>
+                                )}
                               </td>
                               <td className="px-3 py-2 text-sm text-right">{formatNumber(row.trips)}</td>
+                              <td className={`px-3 py-2 text-sm text-right ${row.viajes_trend === 'up' ? 'bg-green-50' : row.viajes_trend === 'down' ? 'bg-red-50' : 'bg-gray-50'}`}>
+                                {row.viajes_delta_pct != null ? (
+                                  <span className={row.viajes_trend === 'up' ? 'text-green-700 font-medium' : row.viajes_trend === 'down' ? 'text-red-700 font-medium' : 'text-gray-600'}>
+                                    {row.viajes_trend === 'up' ? '↑' : row.viajes_trend === 'down' ? '↓' : '→'} {Number(row.viajes_delta_pct).toFixed(1)}%
+                                  </span>
+                                ) : '—'}
+                              </td>
                               <td className="px-3 py-2 text-sm text-right">{row.trips ? formatMargin(marginTotalPos, row.trips) : '—'}</td>
+                              <td className={`px-3 py-2 text-sm text-right ${row.margen_total_trend === 'up' ? 'bg-green-50' : row.margen_total_trend === 'down' ? 'bg-red-50' : 'bg-gray-50'}`}>
+                                {row.margen_total_delta_pct != null ? (
+                                  <span className={row.margen_total_trend === 'up' ? 'text-green-700 font-medium' : row.margen_total_trend === 'down' ? 'text-red-700 font-medium' : 'text-gray-600'}>
+                                    {row.margen_total_trend === 'up' ? '↑' : row.margen_total_trend === 'down' ? '↓' : '→'} {Number(row.margen_total_delta_pct).toFixed(1)}%
+                                  </span>
+                                ) : '—'}
+                              </td>
                               <td className="px-3 py-2 text-sm text-right">{marginUnit}</td>
+                              <td className={`px-3 py-2 text-sm text-right ${row.margen_trip_trend === 'up' ? 'bg-green-50' : row.margen_trip_trend === 'down' ? 'bg-red-50' : 'bg-gray-50'}`}>
+                                {row.margen_trip_delta_pct != null ? (
+                                  <span className={row.margen_trip_trend === 'up' ? 'text-green-700 font-medium' : row.margen_trip_trend === 'down' ? 'text-red-700 font-medium' : 'text-gray-600'}>
+                                    {row.margen_trip_trend === 'up' ? '↑' : row.margen_trip_trend === 'down' ? '↓' : '→'} {Number(row.margen_trip_delta_pct).toFixed(1)}%
+                                  </span>
+                                ) : '—'}
+                              </td>
                               <td className="px-3 py-2 text-sm text-right">{distanceKm}</td>
+                              <td className={`px-3 py-2 text-sm text-right ${row.km_prom_trend === 'up' ? 'bg-green-50' : row.km_prom_trend === 'down' ? 'bg-red-50' : 'bg-gray-50'}`}>
+                                {row.km_prom_delta_pct != null ? (
+                                  <span className={row.km_prom_trend === 'up' ? 'text-green-700 font-medium' : row.km_prom_trend === 'down' ? 'text-red-700 font-medium' : 'text-gray-600'}>
+                                    {row.km_prom_trend === 'up' ? '↑' : row.km_prom_trend === 'down' ? '↓' : '→'} {Number(row.km_prom_delta_pct).toFixed(1)}%
+                                  </span>
+                                ) : '—'}
+                              </td>
                               <td className="px-3 py-2 text-sm text-center">
                                 {segment !== 'Todos' ? (
                                   <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-800">
@@ -510,6 +665,13 @@ export default function RealLOBDrillView () {
                                   '—'
                                 )}
                               </td>
+                              <td className={`px-3 py-2 text-sm text-right ${row.pct_b2b_trend === 'up' ? 'bg-green-50' : row.pct_b2b_trend === 'down' ? 'bg-red-50' : 'bg-gray-50'}`}>
+                                {row.pct_b2b_delta_pp != null ? (
+                                  <span className={row.pct_b2b_trend === 'up' ? 'text-green-700 font-medium' : row.pct_b2b_trend === 'down' ? 'text-red-700 font-medium' : 'text-gray-600'}>
+                                    {row.pct_b2b_trend === 'up' ? '↑' : row.pct_b2b_trend === 'down' ? '↓' : '→'} {Number(row.pct_b2b_delta_pp).toFixed(1)} pp
+                                  </span>
+                                ) : '—'}
+                              </td>
                               <td className="px-3 py-2 text-sm text-center">
                                 {(() => {
                                   const estado = row.estado || (open ? 'ABIERTO' : 'CERRADO')
@@ -518,10 +680,10 @@ export default function RealLOBDrillView () {
                                     ? `Falta data hasta cierre de ayer (${expectedDate})`
                                     : 'Falta data hasta cierre de ayer'
                                   const config = {
-                                    CERRADO: { className: 'bg-green-100 text-green-800', label: 'Cerrado' },
-                                    ABIERTO: { className: 'bg-blue-100 text-blue-800', label: 'Abierto' },
+                                    CERRADO: { className: 'bg-green-100 text-green-800', label: 'Cerrado', title: 'Periodo cerrado' },
+                                    ABIERTO: { className: 'bg-blue-100 text-blue-800', label: 'Abierto', title: 'Mes/semana en curso (datos parciales)' },
                                     FALTA_DATA: { className: 'bg-red-100 text-red-800', label: 'Falta data', title: faltaDataTitle },
-                                    VACIO: { className: 'bg-gray-200 text-gray-600', label: 'Vacío' }
+                                    VACIO: { className: 'bg-gray-200 text-gray-600', label: 'Vacío', title: 'Sin datos' }
                                   }
                                   const { className, label, title } = config[estado] || config.ABIERTO
                                   return (
@@ -534,15 +696,20 @@ export default function RealLOBDrillView () {
                             </tr>
                             {isExp && sr && (
                               <tr key={`${rowId}-sub`} className="bg-slate-50">
-                                <td colSpan={8} className="px-4 py-3">
+                                <td colSpan={14} className="px-4 py-3">
                                   {sr.loading && <p className="text-sm text-gray-500">Cargando…</p>}
                                   {sr.error && <p className="text-sm text-red-600">{sr.error}</p>}
                                   {sr.data && sr.data.length > 0 && (() => {
-                                    const visibleData = sr.data.filter(r => {
-                                      const key = r.service_type ?? r.lob_group ?? r.dimension_key ?? ''
-                                      return key !== 'LOW_VOLUME'
-                                    })
-                                    return visibleData.length > 0 && (
+                                    const drillLabel = drillBy === 'lob' ? 'LOB' : drillBy === 'park' ? 'Park' : 'Tipo de servicio'
+                                    const periodLabel = formatPeriod(row.period_start, periodType)
+                                    const filteredData = sr.data.filter(
+                                      (r) => (r.dimension_key || '').toUpperCase() !== 'LOW_VOLUME' && (r.lob_group || '').toUpperCase() !== 'LOW_VOLUME'
+                                    )
+                                    return filteredData.length > 0 ? (
+                                    <div className="border-l-2 border-slate-300 pl-3">
+                                      <p className="text-xs text-slate-500 mb-2">
+                                        Desglose de <strong>{periodLabel}</strong> por {drillLabel}
+                                      </p>
                                     <table className="min-w-full text-sm">
                                       <thead>
                                         <tr className="text-left text-gray-500">
@@ -557,7 +724,7 @@ export default function RealLOBDrillView () {
                                         </tr>
                                       </thead>
                                       <tbody>
-                                        {visibleData.map((r, i) => {
+                                        {filteredData.map((r, i) => {
                                           const subTrips = r.trips ?? 0
                                           const subMarginTotal = r.margin_total_pos ?? (r.margin_total != null ? Math.abs(r.margin_total) : null)
                                           const subMargin = subTrips > 0 && (r.margin_unit_pos != null || r.margin_unit_avg != null || r.margin_total != null)
@@ -592,7 +759,11 @@ export default function RealLOBDrillView () {
                                         })}
                                       </tbody>
                                     </table>
-                                  )})()}
+                                    </div>
+                                    ) : (
+                                      <p className="text-sm text-gray-500">Sin datos para este periodo.</p>
+                                    )
+                                  })()}
                                   {sr.data && sr.data.length === 0 && (
                                     <p className="text-sm text-gray-500">Sin datos para este periodo.</p>
                                   )}

@@ -223,7 +223,7 @@ def _run_month(start_d: date, end_d: date, cur) -> None:
                     ELSE COALESCE(NULLIF(TRIM(w.park_name_raw::text), ''), 'UNKNOWN_PARK (' || w.park_key::text || ')')
                 END AS park_display_key,
                 ops.validated_service_type(w.tipo_servicio::text) AS service_type_norm,
-                ops.validated_service_type(w.tipo_servicio::text) AS tipo_servicio_norm
+                canon.normalize_real_tipo_servicio(w.tipo_servicio::text) AS tipo_servicio_norm
             FROM with_city w
             LEFT JOIN ops.dim_city_country d ON d.city_norm = NULLIF(TRIM(w.city_norm_raw), '')
             LEFT JOIN ops.park_country_fallback f ON f.park_id = w.park_key
@@ -235,7 +235,7 @@ def _run_month(start_d: date, end_d: date, cur) -> None:
                 CASE WHEN v.pago_corporativo IS NOT NULL AND (v.pago_corporativo::numeric) <> 0 THEN 'B2B' ELSE 'B2C' END AS segment,
                 v.country
             FROM with_country v
-            LEFT JOIN canon.map_real_tipo_servicio_to_lob_group m ON m.real_tipo_servicio = v.tipo_servicio_norm
+            LEFT JOIN canon.dim_real_service_type_lob m ON m.service_type_norm = v.tipo_servicio_norm AND m.is_active = true
         ),
         enriched AS (SELECT * FROM with_lob WHERE country IN ('co','pe')),
         all_agg AS (
@@ -330,7 +330,7 @@ def _run_month(start_d: date, end_d: date, cur) -> None:
                 CASE WHEN b.park_id_norm IS NULL THEN 'SIN_PARK_ID'
                     WHEN b.park_catalog_id IS NULL THEN 'PARK_NO_CATALOG' ELSE 'OK'
                 END AS park_bucket,
-                ops.validated_service_type(b.tipo_servicio::text) AS real_tipo_norm
+                canon.normalize_real_tipo_servicio(b.tipo_servicio::text) AS real_tipo_norm
             FROM base b
             LEFT JOIN ops.dim_city_country d ON d.city_norm = b.city_norm
             LEFT JOIN ops.park_country_fallback f ON f.park_id = b.park_id_norm
@@ -343,7 +343,7 @@ def _run_month(start_d: date, end_d: date, cur) -> None:
                 SUM(v.comision_empresa_asociada) AS margin_total_raw, ABS(SUM(v.comision_empresa_asociada)) AS margin_total_pos,
                 SUM(COALESCE(v.distancia_km::numeric, 0)) / 1000.0 AS distance_total_km, MAX(v.trip_ts) AS last_trip_ts
             FROM with_country v
-            LEFT JOIN canon.map_real_tipo_servicio_to_lob_group m ON m.real_tipo_servicio = v.real_tipo_norm
+            LEFT JOIN canon.dim_real_service_type_lob m ON m.service_type_norm = v.real_tipo_norm AND m.is_active = true
             GROUP BY v.trip_day, v.country, v.city, v.park_id_norm, v.park_name_resolved, v.park_bucket,
                 COALESCE(m.lob_group, 'UNCLASSIFIED'), CASE WHEN v.pago_corporativo IS NOT NULL THEN 'B2B' ELSE 'B2C' END
         )
