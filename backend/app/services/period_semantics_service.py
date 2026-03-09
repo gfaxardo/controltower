@@ -13,13 +13,15 @@ def _iso_week_start(d: date) -> date:
 
 
 def _iso_week_number(d: date) -> int:
-    """Número de semana ISO (1-53)."""
-    return d.isocalendar().week
+    """Número de semana ISO (1-53). Compatible Python 3.8 (isocalendar() devuelve tupla)."""
+    iso = d.isocalendar()
+    return iso[1] if isinstance(iso, tuple) else iso.week
 
 
 def _iso_year(d: date) -> int:
-    """Año ISO (puede diferir del año calendario en semana 1)."""
-    return d.isocalendar().year
+    """Año ISO (puede diferir del año calendario en semana 1). Compatible Python 3.8."""
+    iso = d.isocalendar()
+    return iso[0] if isinstance(iso, tuple) else iso.year
 
 
 def get_last_closed_day(reference: Optional[date] = None) -> date:

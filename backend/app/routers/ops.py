@@ -923,7 +923,7 @@ async def get_period_semantics_endpoint(
         if reference and len(reference.strip()) >= 10:
             from datetime import date
             ref = date.fromisoformat(reference.strip()[:10])
-        return await asyncio.to_thread(get_period_semantics, ref)
+        return await _run_sync(get_period_semantics, ref)
     except Exception as e:
         logger.error("GET /ops/period-semantics: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -935,7 +935,7 @@ async def get_real_lob_wow_endpoint(
 ):
     """WoW: última semana cerrada vs semana cerrada anterior. Métricas: viajes, margen_total, margen_trip, km_prom, b2b_pct."""
     try:
-        return await asyncio.to_thread(get_weekly_comparative, country=country)
+        return await _run_sync(get_weekly_comparative, country=country)
     except Exception as e:
         logger.error("GET /ops/real-lob/comparatives/weekly: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -947,7 +947,7 @@ async def get_real_lob_mom_endpoint(
 ):
     """MoM: último mes cerrado vs mes cerrado anterior. Métricas: viajes, margen_total, margen_trip, km_prom, b2b_pct."""
     try:
-        return await asyncio.to_thread(get_monthly_comparative, country=country)
+        return await _run_sync(get_monthly_comparative, country=country)
     except Exception as e:
         logger.error("GET /ops/real-lob/comparatives/monthly: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -960,7 +960,7 @@ async def get_real_lob_daily_summary_endpoint(
 ):
     """Vista diaria: KPIs agregados por día (viajes, margen, km_prom, B2B %)."""
     try:
-        return await asyncio.to_thread(get_daily_summary, day=day, country=country)
+        return await _run_sync(get_daily_summary, day=day, country=country)
     except Exception as e:
         logger.error("GET /ops/real-lob/daily/summary: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -977,7 +977,7 @@ async def get_real_lob_daily_comparative_endpoint(
 ):
     """Comparativo diario: día consultado vs baseline (D-1, mismo día semana pasada, o promedio 4 mismos días)."""
     try:
-        return await asyncio.to_thread(get_daily_comparative, day=day, country=country, baseline=baseline)
+        return await _run_sync(get_daily_comparative, day=day, country=country, baseline=baseline)
     except Exception as e:
         logger.error("GET /ops/real-lob/daily/comparative: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -994,7 +994,7 @@ async def get_real_lob_daily_table_endpoint(
 ):
     """Tabla diaria: filas por LOB o por Park. Con baseline se añaden columnas comparativas por fila."""
     try:
-        return await asyncio.to_thread(get_daily_table, day=day, country=country, group_by=group_by, baseline=baseline)
+        return await _run_sync(get_daily_table, day=day, country=country, group_by=group_by, baseline=baseline)
     except Exception as e:
         logger.error("GET /ops/real-lob/daily/table: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
