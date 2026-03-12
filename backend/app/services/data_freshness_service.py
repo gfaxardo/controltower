@@ -1,9 +1,13 @@
 """
 Servicio de Freshness & Coverage: lectura de ops.data_freshness_audit y ops.data_freshness_expectations.
 Expone la última ejecución por dataset y alertas accionables para UI/API.
+
+Regla global "Falta data": solo mostrar "Falta data" cuando derived_max_date es NULL o <= current_date - 2.
+Es decir: si la última data es ayer -> NO falta data; si es antes de ayer -> SÍ falta data.
 """
 from __future__ import annotations
 
+from datetime import date, timedelta
 from typing import Any
 
 from app.db.connection import get_db
@@ -11,6 +15,12 @@ from psycopg2.extras import RealDictCursor
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Regla global: cutoff = 1 día; "no falta data" cuando derived_max_date >= today - FRESHNESS_CUTOFF_DAYS
+FRESHNESS_CUTOFF_DAYS = 1
+# Primario para el banner global (el que más importa para Control Tower)
+PRIMARY_DATASET = "real_lob_drill"
+FALLBACK_DATASETS = ("real_lob", "trips_2026")
 
 
 def _serialize_date(v: Any) -> str | None:
@@ -157,3 +167,83 @@ def get_freshness_expectations() -> list[dict[str, Any]]:
             return []
         finally:
             cur.close()
+
+
+def get_freshness_global_status() -> dict[str, Any]:
+    """
+    Estado global de frescura para el banner de UI.
+    Usa la última fila de data_freshness_audit del dataset primario (real_lob_drill o fallback).
+    Regla: Falta data solo si derived_max_date es None o <= today - 2.
+    """
+    today = date.today()
+    yesterday = today - timedelta(days=FRESHNESS_CUTOFF_DAYS)
+    cutoff_missing = today - timedelta(days=2)  # derived_max_date <= este día -> falta data
+
+    audit = get_freshness_audit(latest_only=True)
+    # Preferir primary dataset, luego fallbacks
+    row = None
+    for name in (PRIMARY_DATASET,) + FALLBACK_DATASETS:
+        for a in audit:
+            if a.get("dataset_name") == name:
+                row = a
+                break
+        if row is not None:
+            break
+    if not row:
+        row = audit[0] if audit else None
+
+    if not row:
+        return {
+            "status": "sin_datos",
+            "label": "Sin datos",
+            "message": "No hay auditoría de frescura. Ejecute POST /ops/data-freshness/run o scripts.run_data_freshness_audit.",
+            "derived_max_date": None,
+            "source_max_date": None,
+            "expected_latest_date": None,
+            "dataset_name": None,
+        }
+
+    derived = row.get("derived_max_date")
+    if isinstance(derived, str):
+        try:
+            derived = date(int(derived[:4]), int(derived[5:7]), int(derived[8:10]))
+        except (ValueError, TypeError):
+            derived = None
+    source = row.get("source_max_date")
+    expected = row.get("expected_latest_date")
+    audit_status = (row.get("status") or "").strip()
+
+    # Aplicar regla global: falta_data solo si derived_max_date <= today - 2
+    if derived is None:
+        status = "falta_data"
+        label = "Falta data"
+        message = "No hay fecha de datos en el derivado. Ejecute refresh/backfill del dataset."
+    elif derived <= cutoff_missing:
+        status = "falta_data"
+        label = "Falta data"
+        message = f"Última data en vista: {derived.isoformat()}. Se esperaba al menos hasta ayer ({yesterday.isoformat()})."
+    elif derived >= yesterday:
+        if audit_status == "PARTIAL_EXPECTED":
+            status = "parcial_esperada"
+            label = "Parcial esperada"
+            message = f"Última data en vista: {derived.isoformat()}. Periodo actual abierto; datos al día."
+        else:
+            status = "fresca"
+            label = "Fresca"
+            message = f"Última data en vista: {derived.isoformat()}."
+    else:
+        status = "atrasada"
+        label = "Atrasada"
+        message = f"Última data en vista: {derived.isoformat()}. Un día de retraso respecto a lo esperado."
+
+    return {
+        "status": status,
+        "label": label,
+        "message": message,
+        "derived_max_date": row.get("derived_max_date"),
+        "source_max_date": row.get("source_max_date"),
+        "expected_latest_date": row.get("expected_latest_date"),
+        "dataset_name": row.get("dataset_name"),
+        "lag_days": row.get("lag_days"),
+        "last_checked": row.get("checked_at"),
+    }

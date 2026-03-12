@@ -113,7 +113,7 @@ Detalle y estados (OK, PARTIAL_EXPECTED, LAGGING, MISSING_EXPECTED_DATA, SOURCE_
 
 | dataset_name | source_object | derived_object | temporal_column | grain | notes |
 |--------------|---------------|----------------|-----------------|-------|-------|
-| trips_base | public.trips_all | — | fecha_inicio_viaje | day | Fuente legacy; puede estar cortada. |
+| trips_base | public.trips_all | — | fecha_inicio_viaje | day | **Legacy.** No es fuente operativa. Fuente viva: trips_2026; consolidada: ops.v_trips_real_canon. |
 | trips_2026 | public.trips_2026 | — | fecha_inicio_viaje | day | Fuente viva para 2026. |
 | real_lob | ops.v_trips_real_canon (proxy: trips_all+trips_2026) | ops.real_rollup_day_fact | trip_day | day | Drill diario. |
 | real_lob_drill | ops.v_trips_real_canon (proxy: trips_all+trips_2026) | ops.real_drill_dim_fact | period_start | week | Drill semanal/mensual. |

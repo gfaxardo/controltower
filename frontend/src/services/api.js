@@ -405,6 +405,36 @@ export const getSupplyFreshness = async () => {
   return response.data
 }
 
+// Freshness global (banner): estado único para toda la app (fresca / parcial_esperada / atrasada / falta_data / sin_datos)
+export const getDataFreshnessGlobal = async () => {
+  const response = await api.get('/ops/data-freshness/global', { timeout: 8000 })
+  return response.data
+}
+
+// Centro de observabilidad del pipeline: por dataset source_max_date, derived_max_date, lag_days, status
+export const getDataPipelineHealth = async (latestOnly = true) => {
+  const response = await api.get('/ops/data-pipeline-health', { params: { latest_only: latestOnly }, timeout: 10000 })
+  return response.data
+}
+
+// Reporte de integridad (checks: TRIP LOSS, B2B, LOB MAPPING, DUPLICATES, MV STALE, JOIN LOSS, WEEKLY ANOMALY)
+export const getIntegrityReport = async () => {
+  const response = await api.get('/ops/integrity-report', { timeout: 15000 })
+  return response.data
+}
+
+// System Health: integridad, freshness MVs, ingestión, última auditoría (dashboard observabilidad)
+export const getSystemHealth = async () => {
+  const response = await api.get('/ops/system-health', { timeout: 15000 })
+  return response.data
+}
+
+// Ejecutar auditoría de integridad (persiste en ops.data_integrity_audit)
+export const runIntegrityAudit = async () => {
+  const response = await api.post('/ops/integrity-audit/run', {}, { timeout: 130000 })
+  return response.data
+}
+
 // Driver Supply Dynamics — overview enriquecido (trips, shares, WoW, rolling, trend)
 export const getSupplyOverviewEnhanced = async (params = {}) => {
   const response = await api.get('/ops/supply/overview-enhanced', { params, timeout: 20000 })
@@ -428,6 +458,111 @@ export const getSupplyMigration = async (params = {}) => {
 export const getSupplyMigrationDrilldown = async (params = {}) => {
   const response = await api.get('/ops/supply/migration/drilldown', { params, timeout: 15000 })
   return response.data
+}
+
+// Time-first: resumen semanal por segmento (WoW, upgrades, downgrades)
+export const getSupplyMigrationWeeklySummary = async (params = {}) => {
+  const response = await api.get('/ops/supply/migration/weekly-summary', { params, timeout: 15000 })
+  return response.data?.data ?? response.data ?? []
+}
+
+// Time-first: movimientos críticos (drivers > 100 o rate > 15%)
+export const getSupplyMigrationCritical = async (params = {}) => {
+  const response = await api.get('/ops/supply/migration/critical', { params, timeout: 15000 })
+  return response.data?.data ?? response.data ?? []
+}
+
+// Behavioral Alerts (desviación vs línea base del conductor)
+const BEHAVIOR_ALERTS_TIMEOUT_MS = 30000
+export const getBehaviorAlertsSummary = async (params = {}) => {
+  const response = await api.get('/ops/behavior-alerts/summary', { params, timeout: BEHAVIOR_ALERTS_TIMEOUT_MS })
+  return response.data
+}
+export const getBehaviorAlertsInsight = async (params = {}) => {
+  const response = await api.get('/ops/behavior-alerts/insight', { params, timeout: BEHAVIOR_ALERTS_TIMEOUT_MS })
+  return response.data
+}
+export const getBehaviorAlertsDrivers = async (params = {}) => {
+  const response = await api.get('/ops/behavior-alerts/drivers', { params, timeout: BEHAVIOR_ALERTS_TIMEOUT_MS })
+  return response.data
+}
+export const getBehaviorAlertsDriverDetail = async (params = {}) => {
+  const response = await api.get('/ops/behavior-alerts/driver-detail', { params, timeout: BEHAVIOR_ALERTS_TIMEOUT_MS })
+  return response.data
+}
+export const getBehaviorAlertsExportUrl = (params = {}) => {
+  const q = new URLSearchParams()
+  Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') q.set(k, v) })
+  const base = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_API_URL || '/api')
+  return `${base}/ops/behavior-alerts/export?${q.toString()}`
+}
+
+// --- Driver Behavior (deviation engine: time windows, days_since_last_trip) ---
+export const getDriverBehaviorSummary = async (params = {}) => {
+  const response = await api.get('/ops/driver-behavior/summary', { params })
+  return response.data
+}
+export const getDriverBehaviorDrivers = async (params = {}) => {
+  const response = await api.get('/ops/driver-behavior/drivers', { params })
+  return response.data
+}
+export const getDriverBehaviorDriverDetail = async (params = {}) => {
+  const response = await api.get('/ops/driver-behavior/driver-detail', { params })
+  return response.data
+}
+export const getDriverBehaviorExportUrl = (params = {}) => {
+  const q = new URLSearchParams()
+  Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') q.set(k, v) })
+  const base = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_API_URL || '/api')
+  return `${base}/ops/driver-behavior/export?${q.toString()}`
+}
+
+// --- Action Engine (cohorts + recommended actions) ---
+export const getActionEngineSummary = async (params = {}) => {
+  const response = await api.get('/ops/action-engine/summary', { params })
+  return response.data
+}
+export const getActionEngineCohorts = async (params = {}) => {
+  const response = await api.get('/ops/action-engine/cohorts', { params })
+  return response.data
+}
+export const getActionEngineCohortDetail = async (params = {}) => {
+  const response = await api.get('/ops/action-engine/cohort-detail', { params })
+  return response.data
+}
+export const getActionEngineRecommendations = async (params = {}) => {
+  const response = await api.get('/ops/action-engine/recommendations', { params })
+  return response.data
+}
+export const getActionEngineExportUrl = (params = {}) => {
+  const q = new URLSearchParams()
+  Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') q.set(k, v) })
+  const base = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_API_URL || '/api')
+  return `${base}/ops/action-engine/export?${q.toString()}`
+}
+
+// --- Top Driver Behavior ---
+export const getTopDriverBehaviorSummary = async (params = {}) => {
+  const response = await api.get('/ops/top-driver-behavior/summary', { params })
+  return response.data
+}
+export const getTopDriverBehaviorBenchmarks = async (params = {}) => {
+  const response = await api.get('/ops/top-driver-behavior/benchmarks', { params })
+  return response.data
+}
+export const getTopDriverBehaviorPatterns = async (params = {}) => {
+  const response = await api.get('/ops/top-driver-behavior/patterns', { params })
+  return response.data
+}
+export const getTopDriverBehaviorPlaybookInsights = async (params = {}) => {
+  const response = await api.get('/ops/top-driver-behavior/playbook-insights', { params })
+  return response.data
+}
+export const getTopDriverBehaviorExportUrl = (params = {}) => {
+  const q = new URLSearchParams()
+  Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') q.set(k, v) })
+  const base = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_API_URL || '/api')
+  return `${base}/ops/top-driver-behavior/export?${q.toString()}`
 }
 
 export default api

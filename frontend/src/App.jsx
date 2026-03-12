@@ -9,6 +9,11 @@ import LobUniverseView from './components/LobUniverseView'
 import RealLOBDrillView from './components/RealLOBDrillView'
 import DriverLifecycleView from './components/DriverLifecycleView'
 import SupplyView from './components/SupplyView'
+import BehavioralAlertsView from './components/BehavioralAlertsView'
+import DriverBehaviorView from './components/DriverBehaviorView'
+import ActionEngineView from './components/ActionEngineView'
+import SystemHealthView from './components/SystemHealthView'
+import GlobalFreshnessBanner from './components/GlobalFreshnessBanner'
 import UploadPlan from './components/UploadPlan'
 import PlanTabs from './components/PlanTabs'
 
@@ -70,6 +75,8 @@ function App() {
           </div>
         )}
 
+        <GlobalFreshnessBanner />
+
         <CollapsibleFilters onFilterChange={handleFilterChange} />
 
         <div className="mb-4 border-b border-gray-200">
@@ -105,6 +112,36 @@ function App() {
               Driver Supply Dynamics
             </button>
             <button
+              onClick={() => setActiveTab('behavioral_alerts')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'behavioral_alerts'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Behavioral Alerts
+            </button>
+            <button
+              onClick={() => setActiveTab('driver_behavior')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'driver_behavior'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Driver Behavior
+            </button>
+            <button
+              onClick={() => setActiveTab('action_engine')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'action_engine'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Action Engine
+            </button>
+            <button
               onClick={() => setActiveTab('snapshot')}
               className={`py-4 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'snapshot'
@@ -113,6 +150,16 @@ function App() {
               }`}
             >
               Snapshot
+            </button>
+            <button
+              onClick={() => setActiveTab('system_health')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'system_health'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              System Health
             </button>
             <button
               onClick={() => setActiveTab('legacy')}
@@ -146,8 +193,20 @@ function App() {
         {activeTab === 'supply' && (
           <SupplyView key={`supply-${refreshKey}`} />
         )}
+        {activeTab === 'behavioral_alerts' && (
+          <BehavioralAlertsView key={`behavioral-alerts-${refreshKey}`} />
+        )}
+        {activeTab === 'driver_behavior' && (
+          <DriverBehaviorView key={`driver-behavior-${refreshKey}`} />
+        )}
+        {activeTab === 'action_engine' && (
+          <ActionEngineView key={`action-engine-${refreshKey}`} />
+        )}
         {activeTab === 'snapshot' && (
           <ExecutiveSnapshotView key={`snapshot-${refreshKey}`} filters={filters} refreshKey={refreshKey} />
+        )}
+        {activeTab === 'system_health' && (
+          <SystemHealthView key={`system-health-${refreshKey}`} />
         )}
         {activeTab === 'legacy' && (
           <div className="space-y-4">

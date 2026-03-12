@@ -1,9 +1,12 @@
+import logging
+from contextlib import contextmanager
+from typing import Optional
+
 import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
-from contextlib import contextmanager
+
 from app.settings import settings
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +87,42 @@ def get_db():
     finally:
         if conn:
             connection_pool.putconn(conn)
+
+
+def _get_connection_with_timeout(timeout_ms: int):
+    """Conexión nueva (fuera del pool) con statement_timeout fijado al conectar."""
+    params = _get_connection_params()
+    params["options"] = f"-c statement_timeout={timeout_ms}"
+    return psycopg2.connect(**params)
+
+
+def _audit_timeout_ms() -> int:
+    """Timeout para auditoría (ms). Variable de entorno AUDIT_TIMEOUT_MS o AUDIT_STATEMENT_TIMEOUT_MS, default 600000."""
+    import os
+    return int(os.environ.get("AUDIT_TIMEOUT_MS", os.environ.get("AUDIT_STATEMENT_TIMEOUT_MS", "600000")))
+
+
+@contextmanager
+def get_db_audit(timeout_ms: Optional[int] = None):
+    """
+    Conexión dedicada para el script de auditoría (audit_control_tower.py).
+    Usa timeout alto (default desde AUDIT_TIMEOUT_MS, 10 min) para vistas pesadas.
+    Siempre cierra la conexión en finally; en excepción hace rollback antes de re-raise.
+    """
+    timeout_ms = timeout_ms if timeout_ms is not None else _audit_timeout_ms()
+    conn = None
+    try:
+        conn = _get_connection_with_timeout(timeout_ms)
+        yield conn
+        conn.commit()
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error("Error en transacción de auditoría: %s", e)
+        raise
+    finally:
+        if conn:
+            conn.close()
 
 
 @contextmanager

@@ -53,8 +53,10 @@ def upgrade() -> None:
 
     # 3) Vista de auditoría: agrega por tipo raw y normalizado (ventana reciente desde trips)
     #    Fuente: v_trips_real_canon; columnas: service_type_raw, service_type_normalized, viajes, margen_total
+    #    DROP primero: PostgreSQL no permite CREATE OR REPLACE si cambia el número de columnas.
+    op.execute("DROP VIEW IF EXISTS ops.v_audit_service_type CASCADE")
     op.execute("""
-        CREATE OR REPLACE VIEW ops.v_audit_service_type AS
+        CREATE VIEW ops.v_audit_service_type AS
         SELECT
             TRIM(COALESCE(t.tipo_servicio::text, '')) AS service_type_raw,
             ops.validated_service_type(t.tipo_servicio::text) AS service_type_normalized,

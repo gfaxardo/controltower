@@ -72,14 +72,48 @@ from app.services.supply_service import (
     get_supply_composition,
     get_supply_migration,
     get_supply_migration_drilldown,
+    get_supply_migration_weekly_summary,
+    get_supply_migration_critical,
     get_supply_freshness,
 )
 from app.services.data_freshness_service import (
     get_freshness_audit,
     get_freshness_alerts,
     get_freshness_expectations,
+    get_freshness_global_status,
+)
+from app.services.data_integrity_service import (
+    get_integrity_report,
+    get_system_health,
 )
 from app.services.supply_definitions import get_definitions
+from app.services.behavior_alerts_service import (
+    get_behavior_alerts_summary,
+    get_behavior_alerts_drivers,
+    get_behavior_alerts_driver_detail,
+    get_behavior_alerts_export,
+    get_behavior_alerts_insight,
+)
+from app.services.action_engine_service import (
+    get_action_engine_summary,
+    get_action_engine_cohorts,
+    get_action_engine_cohort_detail,
+    get_action_engine_recommendations,
+    get_action_engine_export,
+)
+from app.services.driver_behavior_service import (
+    get_driver_behavior_summary,
+    get_driver_behavior_drivers,
+    get_driver_behavior_driver_detail,
+    get_driver_behavior_export,
+)
+from app.services.top_driver_behavior_service import (
+    get_top_driver_behavior_summary,
+    get_top_driver_behavior_benchmarks,
+    get_top_driver_behavior_patterns,
+    get_top_driver_behavior_playbook_insights,
+    get_top_driver_behavior_export,
+)
 from app.settings import settings
 from fastapi.responses import Response
 from typing import Optional, Literal
@@ -676,6 +710,36 @@ async def get_supply_migration_drilldown_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/supply/migration/weekly-summary")
+async def get_supply_migration_weekly_summary_endpoint(
+    park_id: str = Query(..., description="Park (obligatorio)"),
+    from_: str = Query(..., alias="from", description="YYYY-MM-DD"),
+    to: str = Query(..., description="YYYY-MM-DD"),
+):
+    """Resumen semanal por segmento (time-first): week_label, segment, drivers, wow_delta, wow_percent, upgrades, downgrades. Requiere vista ops.v_driver_segments_weekly_summary (migración 079)."""
+    try:
+        data = get_supply_migration_weekly_summary(park_id=park_id, from_date=from_, to_date=to)
+        return {"data": data, "total": len(data)}
+    except Exception as e:
+        logger.error("GET /ops/supply/migration/weekly-summary: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/supply/migration/critical")
+async def get_supply_migration_critical_endpoint(
+    park_id: str = Query(..., description="Park (obligatorio)"),
+    from_: str = Query(..., alias="from", description="YYYY-MM-DD"),
+    to: str = Query(..., description="YYYY-MM-DD"),
+):
+    """Movimientos críticos (drivers > 100 o rate > 15%). Requiere vista ops.v_driver_segment_critical_movements (migración 079)."""
+    try:
+        data = get_supply_migration_critical(park_id=park_id, from_date=from_, to_date=to)
+        return {"data": data, "total": len(data)}
+    except Exception as e:
+        logger.error("GET /ops/supply/migration/critical: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/supply/definitions")
 async def get_supply_definitions_endpoint():
     """Definiciones oficiales de métricas (active_supply, churned, reactivated, growth_rate, segments, migration)."""
@@ -693,6 +757,576 @@ async def get_supply_freshness_endpoint():
         return get_supply_freshness()
     except Exception as e:
         logger.error("GET /ops/supply/freshness: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Behavioral Alerts (driver-level baseline deviation) ---
+@router.get("/behavior-alerts/summary")
+async def get_behavior_alerts_summary_endpoint(
+    week_start: Optional[str] = Query(None, description="Semana YYYY-MM-DD"),
+    from_: Optional[str] = Query(None, alias="from", description="Desde YYYY-MM-DD"),
+    to: Optional[str] = Query(None, description="Hasta YYYY-MM-DD"),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    park_id: Optional[str] = Query(None),
+    segment_current: Optional[str] = Query(None),
+    movement_type: Optional[str] = Query(None),
+    alert_type: Optional[str] = Query(None),
+    severity: Optional[str] = Query(None),
+    risk_band: Optional[str] = Query(None),
+):
+    """KPIs: drivers_monitored, critical_drops, moderate_drops, strong_recoveries, silent_erosion, high_volatility, high_risk_drivers, medium_risk_drivers."""
+    try:
+        return get_behavior_alerts_summary(
+            week_start=week_start, from_date=from_, to_date=to,
+            country=country, city=city, park_id=park_id,
+            segment_current=segment_current, movement_type=movement_type,
+            alert_type=alert_type, severity=severity, risk_band=risk_band,
+        )
+    except Exception as e:
+        logger.error("GET /ops/behavior-alerts/summary: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/behavior-alerts/insight")
+async def get_behavior_alerts_insight_endpoint(
+    week_start: Optional[str] = Query(None),
+    from_: Optional[str] = Query(None, alias="from"),
+    to: Optional[str] = Query(None),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    park_id: Optional[str] = Query(None),
+    segment_current: Optional[str] = Query(None),
+    movement_type: Optional[str] = Query(None),
+    alert_type: Optional[str] = Query(None),
+    severity: Optional[str] = Query(None),
+    risk_band: Optional[str] = Query(None),
+):
+    """Resumen de texto para el panel de insight (alertas y riesgo)."""
+    try:
+        return get_behavior_alerts_insight(
+            week_start=week_start, from_date=from_, to_date=to,
+            country=country, city=city, park_id=park_id,
+            segment_current=segment_current, movement_type=movement_type,
+            alert_type=alert_type, severity=severity, risk_band=risk_band,
+        )
+    except Exception as e:
+        logger.error("GET /ops/behavior-alerts/insight: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/behavior-alerts/drivers")
+async def get_behavior_alerts_drivers_endpoint(
+    week_start: Optional[str] = Query(None),
+    from_: Optional[str] = Query(None, alias="from"),
+    to: Optional[str] = Query(None),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    park_id: Optional[str] = Query(None),
+    segment_current: Optional[str] = Query(None),
+    movement_type: Optional[str] = Query(None),
+    alert_type: Optional[str] = Query(None),
+    severity: Optional[str] = Query(None),
+    risk_band: Optional[str] = Query(None),
+    limit: int = Query(500, ge=1, le=2000),
+    offset: int = Query(0, ge=0),
+    order_by: str = Query("risk_score", description="risk_score | severity | delta_pct | week_start"),
+    order_dir: str = Query("desc", description="asc | desc"),
+):
+    """Lista de alertas por conductor (tabla). Orden por defecto: risk_score desc, delta_pct asc."""
+    try:
+        return get_behavior_alerts_drivers(
+            week_start=week_start, from_date=from_, to_date=to,
+            country=country, city=city, park_id=park_id,
+            segment_current=segment_current, movement_type=movement_type,
+            alert_type=alert_type, severity=severity, risk_band=risk_band,
+            limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
+        )
+    except Exception as e:
+        logger.error("GET /ops/behavior-alerts/drivers: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/behavior-alerts/driver-detail")
+async def get_behavior_alerts_driver_detail_endpoint(
+    driver_key: str = Query(..., description="ID del conductor"),
+    week_start: Optional[str] = Query(None),
+    from_: Optional[str] = Query(None, alias="from"),
+    to: Optional[str] = Query(None),
+    weeks: int = Query(8, ge=1, le=24),
+):
+    """Timeline del conductor: viajes últimas N semanas, segmento, baseline, desviación, alerta."""
+    try:
+        return get_behavior_alerts_driver_detail(
+            driver_key=driver_key, week_start=week_start, from_date=from_, to_date=to, weeks=weeks,
+        )
+    except Exception as e:
+        logger.error("GET /ops/behavior-alerts/driver-detail: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/behavior-alerts/export")
+async def get_behavior_alerts_export_endpoint(
+    week_start: Optional[str] = Query(None),
+    from_: Optional[str] = Query(None, alias="from"),
+    to: Optional[str] = Query(None),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    park_id: Optional[str] = Query(None),
+    segment_current: Optional[str] = Query(None),
+    movement_type: Optional[str] = Query(None),
+    alert_type: Optional[str] = Query(None),
+    severity: Optional[str] = Query(None),
+    risk_band: Optional[str] = Query(None),
+    format: Optional[str] = Query("csv", description="csv | excel"),
+    max_rows: int = Query(10000, ge=1, le=50000),
+):
+    """Exporta alertas con filtros activos. format: csv (default) o excel."""
+    try:
+        rows = get_behavior_alerts_export(
+            week_start=week_start, from_date=from_, to_date=to,
+            country=country, city=city, park_id=park_id,
+            segment_current=segment_current, movement_type=movement_type,
+            alert_type=alert_type, severity=severity, risk_band=risk_band,
+            max_rows=max_rows,
+        )
+        cols = ["driver_key", "driver_name", "country", "city", "park_name", "week_label", "segment_current", "movement_type", "trips_current_week", "avg_trips_baseline", "delta_abs", "delta_pct", "alert_type", "alert_severity", "risk_score", "risk_band"]
+        if (format or "csv").lower() == "excel":
+            try:
+                import openpyxl
+                from io import BytesIO
+                wb = openpyxl.Workbook()
+                ws = wb.active
+                ws.title = "Behavioral Alerts"
+                ws.append(cols)
+                for r in rows:
+                    ws.append([r.get(c) for c in cols])
+                buf = BytesIO()
+                wb.save(buf)
+                buf.seek(0)
+                return Response(
+                    content=buf.getvalue(),
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": "attachment; filename=behavior_alerts.xlsx"},
+                )
+            except ImportError:
+                body = _to_csv(rows, cols)
+                return Response(content=body, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=behavior_alerts.csv"})
+        body = _to_csv(rows, cols)
+        return Response(content=body, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=behavior_alerts.csv"})
+    except Exception as e:
+        logger.error("GET /ops/behavior-alerts/export: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Action Engine (cohorts + recommended actions) ---
+@router.get("/action-engine/summary")
+async def get_action_engine_summary_endpoint(
+    week_start: Optional[str] = Query(None),
+    from_: Optional[str] = Query(None, alias="from"),
+    to: Optional[str] = Query(None),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    park_id: Optional[str] = Query(None),
+    segment_current: Optional[str] = Query(None),
+    cohort_type: Optional[str] = Query(None),
+    priority: Optional[str] = Query(None),
+):
+    """KPIs: actionable_drivers, cohorts_detected, high_priority_cohorts, recoverable_drivers, high_value_at_risk, near_upgrade_opportunities."""
+    try:
+        return await _run_sync(
+            get_action_engine_summary,
+            week_start=week_start, from_date=from_, to_date=to,
+            country=country, city=city, park_id=park_id,
+            segment_current=segment_current, cohort_type=cohort_type, priority=priority,
+        )
+    except Exception as e:
+        logger.error("GET /ops/action-engine/summary: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/action-engine/cohorts")
+async def get_action_engine_cohorts_endpoint(
+    week_start: Optional[str] = Query(None),
+    from_: Optional[str] = Query(None, alias="from"),
+    to: Optional[str] = Query(None),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    park_id: Optional[str] = Query(None),
+    segment_current: Optional[str] = Query(None),
+    cohort_type: Optional[str] = Query(None),
+    priority: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
+    """Lista de cohortes con filtros."""
+    try:
+        return await _run_sync(
+            get_action_engine_cohorts,
+            week_start=week_start, from_date=from_, to_date=to,
+            country=country, city=city, park_id=park_id,
+            segment_current=segment_current, cohort_type=cohort_type, priority=priority,
+            limit=limit, offset=offset,
+        )
+    except Exception as e:
+        logger.error("GET /ops/action-engine/cohorts: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/action-engine/cohort-detail")
+async def get_action_engine_cohort_detail_endpoint(
+    cohort_type: str = Query(..., description="Tipo de cohorte"),
+    week_start: str = Query(..., description="Semana YYYY-MM-DD"),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    park_id: Optional[str] = Query(None),
+    limit: int = Query(500, ge=1, le=2000),
+    offset: int = Query(0, ge=0),
+):
+    """Drivers en una cohorte para drilldown y export."""
+    try:
+        return await _run_sync(
+            get_action_engine_cohort_detail,
+            cohort_type=cohort_type, week_start=week_start,
+            country=country, city=city, park_id=park_id,
+            limit=limit, offset=offset,
+        )
+    except Exception as e:
+        logger.error("GET /ops/action-engine/cohort-detail: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/action-engine/recommendations")
+async def get_action_engine_recommendations_endpoint(
+    week_start: Optional[str] = Query(None),
+    from_: Optional[str] = Query(None, alias="from"),
+    to: Optional[str] = Query(None),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    park_id: Optional[str] = Query(None),
+    segment_current: Optional[str] = Query(None),
+    top_n: int = Query(5, ge=1, le=20),
+):
+    """Top N acciones recomendadas para el panel."""
+    try:
+        return await _run_sync(
+            get_action_engine_recommendations,
+            week_start=week_start, from_date=from_, to_date=to,
+            country=country, city=city, park_id=park_id,
+            segment_current=segment_current, top_n=top_n,
+        )
+    except Exception as e:
+        logger.error("GET /ops/action-engine/recommendations: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/action-engine/export")
+async def get_action_engine_export_endpoint(
+    week_start: Optional[str] = Query(None),
+    from_: Optional[str] = Query(None, alias="from"),
+    to: Optional[str] = Query(None),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    park_id: Optional[str] = Query(None),
+    segment_current: Optional[str] = Query(None),
+    cohort_type: Optional[str] = Query(None),
+    priority: Optional[str] = Query(None),
+    format: Optional[str] = Query("csv", description="csv | excel"),
+    max_rows: int = Query(10000, ge=1, le=50000),
+):
+    """Exporta conductores accionables con filtros activos."""
+    try:
+        rows = await _run_sync(
+            get_action_engine_export,
+            week_start=week_start, from_date=from_, to_date=to,
+            country=country, city=city, park_id=park_id,
+            segment_current=segment_current, cohort_type=cohort_type, priority=priority,
+            max_rows=max_rows,
+        )
+        cols = ["driver_key", "driver_name", "week_start", "week_label", "country", "city", "park_id", "park_name", "segment_current", "segment_previous", "movement_type", "trips_current_week", "avg_trips_baseline", "delta_abs", "delta_pct", "alert_type", "severity", "risk_score", "risk_band", "cohort_type"]
+        if (format or "csv").lower() == "excel":
+            try:
+                import openpyxl
+                from io import BytesIO
+                wb = openpyxl.Workbook()
+                ws = wb.active
+                ws.title = "Action Engine"
+                ws.append(cols)
+                for r in rows:
+                    ws.append([r.get(c) for c in cols])
+                buf = BytesIO()
+                wb.save(buf)
+                return Response(
+                    content=buf.getvalue(),
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": "attachment; filename=action_engine.xlsx"},
+                )
+            except ImportError:
+                pass
+        body = _to_csv(rows, cols)
+        return Response(content=body, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=action_engine.csv"})
+    except Exception as e:
+        logger.error("GET /ops/action-engine/export: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Driver Behavior (deviation engine: time windows, days_since_last_trip) ---
+@router.get("/driver-behavior/summary")
+async def get_driver_behavior_summary_endpoint(
+    recent_weeks: int = Query(4, ge=1, le=32),
+    baseline_weeks: int = Query(16, ge=1, le=32),
+    as_of_week: Optional[str] = Query(None),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    park_id: Optional[str] = Query(None),
+    segment_current: Optional[str] = Query(None),
+    alert_type: Optional[str] = Query(None),
+    severity: Optional[str] = Query(None),
+    risk_band: Optional[str] = Query(None),
+    inactivity_status: Optional[str] = Query(None),
+):
+    """KPIs: drivers_monitored, sharp_degradation, sustained_degradation, recovery_cases, dormant_risk_cases, high_value_at_risk, avg_days_since_last_trip."""
+    try:
+        return await _run_sync(
+            get_driver_behavior_summary,
+            recent_weeks=recent_weeks,
+            baseline_weeks=baseline_weeks,
+            as_of_week=as_of_week,
+            country=country,
+            city=city,
+            park_id=park_id,
+            segment_current=segment_current,
+            alert_type=alert_type,
+            severity=severity,
+            risk_band=risk_band,
+            inactivity_status=inactivity_status,
+        )
+    except Exception as e:
+        logger.error("GET /ops/driver-behavior/summary: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/driver-behavior/drivers")
+async def get_driver_behavior_drivers_endpoint(
+    recent_weeks: int = Query(4, ge=1, le=32),
+    baseline_weeks: int = Query(16, ge=1, le=32),
+    as_of_week: Optional[str] = Query(None),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    park_id: Optional[str] = Query(None),
+    segment_current: Optional[str] = Query(None),
+    alert_type: Optional[str] = Query(None),
+    severity: Optional[str] = Query(None),
+    risk_band: Optional[str] = Query(None),
+    inactivity_status: Optional[str] = Query(None),
+    min_baseline_trips: Optional[float] = Query(None),
+    limit: int = Query(500, ge=1, le=2000),
+    offset: int = Query(0, ge=0),
+    order_by: str = Query("risk_score"),
+    order_dir: str = Query("desc"),
+):
+    """Lista de conductores con desviación (ventanas reciente/baseline), days_since_last_trip, alert_type, risk_score."""
+    try:
+        return await _run_sync(
+            get_driver_behavior_drivers,
+            recent_weeks=recent_weeks,
+            baseline_weeks=baseline_weeks,
+            as_of_week=as_of_week,
+            country=country,
+            city=city,
+            park_id=park_id,
+            segment_current=segment_current,
+            alert_type=alert_type,
+            severity=severity,
+            risk_band=risk_band,
+            inactivity_status=inactivity_status,
+            min_baseline_trips=min_baseline_trips,
+            limit=limit,
+            offset=offset,
+            order_by=order_by,
+            order_dir=order_dir,
+        )
+    except Exception as e:
+        logger.error("GET /ops/driver-behavior/drivers: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/driver-behavior/driver-detail")
+async def get_driver_behavior_driver_detail_endpoint(
+    driver_key: str = Query(..., description="ID del conductor"),
+    recent_weeks: int = Query(4, ge=1, le=32),
+    baseline_weeks: int = Query(16, ge=1, le=32),
+    as_of_week: Optional[str] = Query(None),
+):
+    """Detalle de un conductor: métricas de desviación + serie semanal para gráfico."""
+    try:
+        return await _run_sync(
+            get_driver_behavior_driver_detail,
+            driver_key=driver_key,
+            recent_weeks=recent_weeks,
+            baseline_weeks=baseline_weeks,
+            as_of_week=as_of_week,
+        )
+    except Exception as e:
+        logger.error("GET /ops/driver-behavior/driver-detail: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/driver-behavior/export")
+async def get_driver_behavior_export_endpoint(
+    recent_weeks: int = Query(4, ge=1, le=32),
+    baseline_weeks: int = Query(16, ge=1, le=32),
+    as_of_week: Optional[str] = Query(None),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    park_id: Optional[str] = Query(None),
+    segment_current: Optional[str] = Query(None),
+    alert_type: Optional[str] = Query(None),
+    severity: Optional[str] = Query(None),
+    risk_band: Optional[str] = Query(None),
+    inactivity_status: Optional[str] = Query(None),
+    max_rows: int = Query(10000, ge=1, le=50000),
+):
+    """Exporta conductores con filtros activos (CSV)."""
+    try:
+        rows = await _run_sync(
+            get_driver_behavior_export,
+            recent_weeks=recent_weeks,
+            baseline_weeks=baseline_weeks,
+            as_of_week=as_of_week,
+            country=country,
+            city=city,
+            park_id=park_id,
+            segment_current=segment_current,
+            alert_type=alert_type,
+            severity=severity,
+            risk_band=risk_band,
+            inactivity_status=inactivity_status,
+            max_rows=max_rows,
+        )
+        rows = rows or []
+        cols = ["driver_key", "driver_name", "country", "city", "park_name", "recent_window_weeks", "baseline_window_weeks", "recent_avg_weekly_trips", "baseline_avg_weekly_trips", "delta_pct", "behavior_direction", "days_since_last_trip", "alert_type", "risk_score", "risk_band", "suggested_action"]
+        body = _to_csv(rows, cols)
+        return Response(content=body, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=driver_behavior.csv"})
+    except Exception as e:
+        logger.error("GET /ops/driver-behavior/export: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Top Driver Behavior (Elite/Legend benchmarks) ---
+@router.get("/top-driver-behavior/summary")
+async def get_top_driver_behavior_summary_endpoint(
+    week_start: Optional[str] = Query(None),
+    from_: Optional[str] = Query(None, alias="from"),
+    to: Optional[str] = Query(None),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    park_id: Optional[str] = Query(None),
+):
+    """Resumen: elite_drivers, legend_drivers, ft_drivers."""
+    try:
+        return await _run_sync(
+            get_top_driver_behavior_summary,
+            week_start=week_start, from_date=from_, to_date=to,
+            country=country, city=city, park_id=park_id,
+        )
+    except Exception as e:
+        logger.error("GET /ops/top-driver-behavior/summary: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/top-driver-behavior/benchmarks")
+async def get_top_driver_behavior_benchmarks_endpoint(
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    park_id: Optional[str] = Query(None),
+):
+    """Benchmarks por segment (ELITE, LEGEND, FT)."""
+    try:
+        return await _run_sync(
+            get_top_driver_behavior_benchmarks,
+            country=country, city=city, park_id=park_id,
+        )
+    except Exception as e:
+        logger.error("GET /ops/top-driver-behavior/benchmarks: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/top-driver-behavior/patterns")
+async def get_top_driver_behavior_patterns_endpoint(
+    segment_current: Optional[str] = Query(None),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    limit: int = Query(200, ge=1, le=1000),
+):
+    """Concentración por segment, ciudad, parque."""
+    try:
+        return await _run_sync(
+            get_top_driver_behavior_patterns,
+            segment_current=segment_current, country=country, city=city, limit=limit,
+        )
+    except Exception as e:
+        logger.error("GET /ops/top-driver-behavior/patterns: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/top-driver-behavior/playbook-insights")
+async def get_top_driver_behavior_playbook_insights_endpoint(
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+):
+    """Insights tipo playbook (Elite vs FT, etc.)."""
+    try:
+        insights = await _run_sync(get_top_driver_behavior_playbook_insights, country=country, city=city)
+        return {"data": insights}
+    except Exception as e:
+        logger.error("GET /ops/top-driver-behavior/playbook-insights: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/top-driver-behavior/export")
+async def get_top_driver_behavior_export_endpoint(
+    segment_current: Optional[str] = Query(None),
+    week_start: Optional[str] = Query(None),
+    from_: Optional[str] = Query(None, alias="from"),
+    to: Optional[str] = Query(None),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    park_id: Optional[str] = Query(None),
+    format: Optional[str] = Query("csv", description="csv | excel"),
+    max_rows: int = Query(10000, ge=1, le=50000),
+):
+    """Exporta lista Elite/Legend/FT con filtros."""
+    try:
+        rows = await _run_sync(
+            get_top_driver_behavior_export,
+            segment_current=segment_current, week_start=week_start, from_date=from_, to_date=to,
+            country=country, city=city, park_id=park_id, max_rows=max_rows,
+        )
+        cols = ["driver_key", "driver_name", "week_start", "week_label", "country", "city", "park_id", "park_name", "segment_current", "trips_current_week", "avg_trips_baseline", "consistency_score", "active_weeks_in_window"]
+        if (format or "csv").lower() == "excel":
+            try:
+                import openpyxl
+                from io import BytesIO
+                wb = openpyxl.Workbook()
+                ws = wb.active
+                ws.title = "Top Driver Behavior"
+                ws.append(cols)
+                for r in rows:
+                    ws.append([r.get(c) for c in cols])
+                buf = BytesIO()
+                wb.save(buf)
+                return Response(
+                    content=buf.getvalue(),
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": "attachment; filename=top_driver_behavior.xlsx"},
+                )
+            except ImportError:
+                pass
+        body = _to_csv(rows, cols)
+        return Response(content=body, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=top_driver_behavior.csv"})
+    except Exception as e:
+        logger.error("GET /ops/top-driver-behavior/export: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -729,6 +1363,79 @@ async def get_data_freshness_expectations_endpoint():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/data-freshness/global")
+async def get_data_freshness_global_endpoint():
+    """Estado global de frescura para el banner de UI: status (fresca/parcial_esperada/atrasada/falta_data/sin_datos), label, message, derived_max_date. Regla: Falta data solo si derived_max_date <= today-2."""
+    try:
+        return get_freshness_global_status()
+    except Exception as e:
+        logger.error("GET /ops/data-freshness/global: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/data-pipeline-health")
+async def get_data_pipeline_health_endpoint(
+    latest_only: bool = Query(True, description="Solo última ejecución por dataset"),
+):
+    """Centro de observabilidad del pipeline: por dataset source_max_date, derived_max_date, lag_days, expected_latest_date, status, alert_reason, last_checked_at."""
+    try:
+        audit = get_freshness_audit(latest_only=latest_only)
+        return {
+            "datasets": audit,
+            "last_checked": audit[0].get("checked_at") if audit else None,
+        }
+    except Exception as e:
+        logger.error("GET /ops/data-pipeline-health: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/integrity-report")
+async def get_integrity_report_endpoint():
+    """Reporte global de integridad: check_name, status, severity, details (TRIP LOSS, B2B, LOB MAPPING, DUPLICATES, MV STALE, JOIN LOSS, WEEKLY ANOMALY)."""
+    try:
+        return get_integrity_report()
+    except Exception as e:
+        logger.error("GET /ops/integrity-report: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/system-health")
+async def get_system_health_endpoint():
+    """Estado del sistema para dashboard System Health: integridad, freshness MVs, ingestión, última auditoría."""
+    try:
+        return get_system_health()
+    except Exception as e:
+        logger.error("GET /ops/system-health: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/integrity-audit/run")
+async def post_integrity_audit_run():
+    """Ejecuta auditoría de integridad (audit_control_tower.py) y persiste en ops.data_integrity_audit. Uso: cron o admin."""
+    try:
+        import subprocess
+        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        r = subprocess.run(
+            [sys.executable, "-m", "scripts.audit_control_tower"],
+            cwd=backend_dir,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        return {
+            "ok": r.returncode == 0,
+            "stdout": r.stdout or "",
+            "stderr": r.stderr or "",
+            "returncode": r.returncode,
+        }
+    except subprocess.TimeoutExpired:
+        logger.error("POST /ops/integrity-audit/run: timeout")
+        raise HTTPException(status_code=504, detail="Audit run timeout")
+    except Exception as e:
+        logger.error("POST /ops/integrity-audit/run: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/data-freshness/run")
 async def post_data_freshness_run():
     """Ejecuta el chequeo de freshness y escribe en ops.data_freshness_audit. Uso: cron o admin."""
@@ -754,6 +1461,46 @@ async def post_data_freshness_run():
         raise HTTPException(status_code=504, detail="Audit run timeout")
     except Exception as e:
         logger.error("POST /ops/data-freshness/run: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/pipeline-refresh")
+async def post_pipeline_refresh(
+    skip_backfill: bool = Query(False, description="Omitir backfill Real LOB"),
+    skip_driver: bool = Query(False, description="Omitir refresh driver lifecycle"),
+    skip_supply: bool = Query(False, description="Omitir refresh supply"),
+    skip_audit: bool = Query(False, description="Omitir auditoría final"),
+):
+    """Ejecuta pipeline unificado: backfill Real LOB (mes actual+anterior), refresh driver lifecycle, refresh supply, auditoría. Uso: cron o admin. Puede tardar varios minutos."""
+    try:
+        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        cmd = [sys.executable, "-m", "scripts.run_pipeline_refresh_and_audit"]
+        if skip_backfill:
+            cmd.append("--skip-backfill")
+        if skip_driver:
+            cmd.append("--skip-driver")
+        if skip_supply:
+            cmd.append("--skip-supply")
+        if skip_audit:
+            cmd.append("--skip-audit")
+        r = subprocess.run(
+            cmd,
+            cwd=backend_dir,
+            capture_output=True,
+            text=True,
+            timeout=3600,
+        )
+        return {
+            "ok": r.returncode == 0,
+            "stdout": r.stdout or "",
+            "stderr": r.stderr or "",
+            "returncode": r.returncode,
+        }
+    except subprocess.TimeoutExpired:
+        logger.error("POST /ops/pipeline-refresh: timeout")
+        raise HTTPException(status_code=504, detail="Pipeline refresh timeout")
+    except Exception as e:
+        logger.error("POST /ops/pipeline-refresh: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -167,6 +167,54 @@ def _add_row_comparative(
     row["pct_b2b_trend"] = _trend(pct_b2b_cur or 0, pct_b2b_prev or 0)
 
 
+def _add_child_comparative(
+    row: Dict[str, Any],
+    prev_row: Optional[Dict[str, Any]],
+    period_type: str,
+) -> None:
+    """Añade campos WoW/MoM por item disgregado: *_delta_pct, *_trend (misma semántica que fila principal)."""
+    row["comparative_type"] = "WoW" if period_type == "week" else "MoM"
+    if not prev_row:
+        row["viajes_delta_pct"] = None
+        row["viajes_trend"] = "flat"
+        row["margen_total_delta_pct"] = None
+        row["margen_total_trend"] = "flat"
+        row["margen_trip_delta_pct"] = None
+        row["margen_trip_trend"] = "flat"
+        row["km_prom_delta_pct"] = None
+        row["km_prom_trend"] = "flat"
+        row["pct_b2b_delta_pp"] = None
+        row["pct_b2b_trend"] = "flat"
+        return
+    viajes_cur = _float(row.get("viajes"))
+    viajes_prev = _float(prev_row.get("viajes"))
+    row["viajes_delta_pct"] = _delta_pct(viajes_cur or 0, viajes_prev)
+    row["viajes_trend"] = _trend(viajes_cur or 0, viajes_prev or 0)
+    margen_cur = _float(row.get("margen_total"))
+    margen_prev = _float(prev_row.get("margen_total"))
+    row["margen_total_delta_pct"] = _delta_pct(margen_cur, margen_prev)
+    row["margen_total_trend"] = _trend(margen_cur or 0, margen_prev or 0)
+    mt_cur = _float(row.get("margen_trip"))
+    mt_prev = _float(prev_row.get("margen_trip"))
+    row["margen_trip_delta_pct"] = _delta_pct(mt_cur, mt_prev)
+    row["margen_trip_trend"] = _trend(mt_cur or 0, mt_prev or 0)
+    km_cur = _float(row.get("km_prom"))
+    km_prev = _float(prev_row.get("km_prom"))
+    row["km_prom_delta_pct"] = _delta_pct(km_cur, km_prev)
+    row["km_prom_trend"] = _trend(km_cur or 0, km_prev or 0)
+    b2b_cur = _float(row.get("viajes_b2b")) or 0
+    trips_cur = _float(row.get("viajes")) or 0
+    b2b_prev = _float(prev_row.get("viajes_b2b")) or 0
+    trips_prev = _float(prev_row.get("viajes")) or 0
+    pct_b2b_cur = (b2b_cur / trips_cur * 100) if trips_cur else None
+    pct_b2b_prev = (b2b_prev / trips_prev * 100) if trips_prev else None
+    if pct_b2b_prev is not None and pct_b2b_cur is not None:
+        row["pct_b2b_delta_pp"] = round(pct_b2b_cur - pct_b2b_prev, 2)
+    else:
+        row["pct_b2b_delta_pp"] = None
+    row["pct_b2b_trend"] = _trend(pct_b2b_cur or 0, pct_b2b_prev or 0)
+
+
 def _float(v: Any) -> Optional[float]:
     if v is None:
         return None
@@ -390,7 +438,9 @@ def get_drill(
                     last_ts = ad.get("last_trip_ts") if ad else None
                     pct_b2b = (viajes_b2b / viajes) if viajes else None
 
-                    # Estado: Falta data / Abierto / Cerrado / Vacío (period_end vs expected_loaded_until)
+                    # Estado: Falta data / Abierto / Cerrado / Vacío.
+                    # Regla global: solo "Falta data" cuando última fecha con data < ayer (derived_max_date <= today-2).
+                    # expected_loaded_until = ayer; si last_day_with_data >= ayer -> no falta data.
                     from datetime import date, timedelta
                     today = date.today()
                     expected_loaded_until = today - timedelta(days=1)
@@ -616,6 +666,33 @@ def get_drill_children(
                     row["trips"] = row["viajes"]
                     row["b2b_trips"] = row["viajes_b2b"]
                     out.append(row)
+                # Comparativos WoW/MoM por item disgregado: periodo anterior
+                period_type = "month" if period_grain == "month" else "week"
+                from datetime import date
+                ps_date = None
+                if period_start and len(str(period_start)) >= 10:
+                    s = str(period_start)[:10]
+                    ps_date = date(int(s[:4]), int(s[5:7]), int(s[8:10]))
+                prev_ps = _prev_period_start(ps_date, period_type) if ps_date else None
+                if prev_ps:
+                    qparams_prev = {**qparams, "period_start": prev_ps.isoformat()[:10]}
+                    cur.execute(f"""
+                        SELECT
+                            tipo_servicio_norm AS dimension_key,
+                            SUM(trips) AS viajes,
+                            SUM(margin_total) AS margen_total,
+                            CASE WHEN SUM(trips) > 0 THEN SUM(margin_total) / SUM(trips) ELSE NULL END AS margen_trip,
+                            CASE WHEN SUM(trips) > 0 THEN SUM(km_avg * trips) / NULLIF(SUM(trips), 0) ELSE NULL END AS km_prom,
+                            SUM(b2b_trips) AS viajes_b2b
+                        FROM {MV_SERVICE_BY_PARK}
+                        WHERE country = %(country)s AND period_grain = %(period_grain)s AND period_start = %(period_start)s::date
+                          AND park_id = %(park_id)s {segment_cond}
+                        GROUP BY tipo_servicio_norm
+                    """, qparams_prev)
+                    prev_rows = cur.fetchall()
+                    prev_by_key = {str(r.get("dimension_key")): r for r in prev_rows}
+                    for row in out:
+                        _add_child_comparative(row, prev_by_key.get(str(row.get("dimension_key"))), period_type)
                 cur.close()
             return _apply_low_volume_service_type(out)
         except Exception as e:
@@ -623,6 +700,14 @@ def get_drill_children(
             raise
 
     try:
+        from datetime import date as _date
+        period_type = "month" if period_grain == "month" else "week"
+        ps_date = None
+        if period_start and len(str(period_start)) >= 10:
+            s = str(period_start)[:10]
+            ps_date = _date(int(s[:4]), int(s[5:7]), int(s[8:10]))
+        prev_ps = _prev_period_start(ps_date, period_type) if ps_date else None
+
         with get_db_drill() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
             cur.execute("SET statement_timeout = %s", (TIMEOUT_POSTGRES,))
@@ -665,6 +750,29 @@ def get_drill_children(
                 row["trips"] = row.get("viajes")
                 row["b2b_trips"] = row.get("viajes_b2b")
                 out.append(row)
+            # Comparativos WoW/MoM por item disgregado
+            if prev_ps:
+                prev_start_str = prev_ps.isoformat()[:10]
+                cur.execute(f"""
+                    SELECT
+                        dimension_key,
+                        dimension_id,
+                        city,
+                        SUM(trips) AS viajes,
+                        SUM(margin_total) AS margen_total,
+                        CASE WHEN SUM(trips) > 0 THEN SUM(margin_total) / SUM(trips) ELSE NULL END AS margen_trip,
+                        CASE WHEN SUM(trips) > 0 THEN SUM(km_avg * trips) / NULLIF(SUM(trips), 0) ELSE NULL END AS km_prom,
+                        SUM(b2b_trips) AS viajes_b2b,
+                        (SUM(b2b_trips)::numeric / NULLIF(SUM(trips), 0)) AS pct_b2b
+                    FROM {MV_DIM}
+                    WHERE country = %(country)s AND period_grain = %(period_grain)s AND period_start = %(period_start)s::date
+                      AND breakdown = %(breakdown)s {where_seg}{where_low_volume}
+                    GROUP BY dimension_key, dimension_id, city
+                """, {**params, "breakdown": breakdown_map[desg_upper], "period_start": prev_start_str})
+                prev_rows = cur.fetchall()
+                prev_by_key = {str(r.get("dimension_key")): r for r in prev_rows}
+                for row in out:
+                    _add_child_comparative(row, prev_by_key.get(str(row.get("dimension_key"))), period_type)
             cur.close()
         if desg_upper == "SERVICE_TYPE":
             out = _apply_low_volume_service_type(out)

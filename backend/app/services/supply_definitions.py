@@ -14,13 +14,13 @@ DEFINITIONS = {
     "active_supply": "Conductores con al menos un viaje en la semana (active_drivers en mv_supply_weekly).",
     "active_drivers": "Conductores con al menos un viaje en la semana; mismo concepto que active_supply.",
     "week_supply": "Suma de viajes realizados por conductores activos en la semana (trips en el periodo).",
-    "churned": "Conductores activos la semana pasada (N-1) que no registraron viajes esta semana (N).",
-    "reactivated": "Conductores que vuelven a registrar viajes tras al menos una semana inactiva.",
+    "churned": "Conductores activos la semana pasada (N-1) que no registraron viajes esta semana (N). No confundir con Dormant (segmento 0 viajes/semana).",
+    "reactivated": "Conductores que vuelven a registrar viajes tras al menos una semana inactiva. En Migration, Revival = vuelta a actividad o primera semana.",
     "growth_rate": "(active_supply_semana_N - active_supply_semana_N-1) / active_supply_semana_N-1. Tasa de crecimiento semanal.",
     "activations": "Conductores que aparecen por primera vez en la semana (primera semana con viajes en el park).",
     "net_growth": "Activations + Reactivated - Churned; variación neta de supply.",
-    "segments": "Clasificación por viajes/semana según ops.driver_segment_config: FT, PT, CASUAL, OCCASIONAL, DORMANT.",
-    "migration": "Cambio de segmento entre semanas: upgrade, downgrade, drop, revival (nuevo), lateral (estable).",
+    "segments": "Clasificación por viajes/semana según ops.driver_segment_config: DORMANT (0), CASUAL/OCCASIONAL (1-29), PT (30-59), FT (60-119), ELITE (120-179), LEGEND (180+). Orden operativo: dormant, casual, pt, ft, elite, legend.",
+    "migration": "Cambio de segmento entre semanas: upgrade, downgrade, drop, revival (vuelta a actividad o primera semana), lateral/stable (mismo segmento). Same-to-same no se considera migración principal.",
 }
 
 

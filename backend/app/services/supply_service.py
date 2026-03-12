@@ -574,7 +574,7 @@ def get_supply_segment_config() -> list[dict[str, Any]]:
                 WHERE is_active
                   AND effective_from <= CURRENT_DATE
                   AND (effective_to IS NULL OR effective_to >= CURRENT_DATE)
-                ORDER BY ordering DESC
+                ORDER BY ordering ASC
             """)
             return [dict(r) for r in cur.fetchall()]
         except Exception as e:
@@ -989,7 +989,7 @@ def get_supply_migration(
     Fuente: ops.mv_driver_segments_weekly; drivers en from_segment semana previa desde mv_supply_segments_weekly.
     """
     if not park_id or not from_date or not to_date:
-        return {"data": [], "summary": {"upgrades": 0, "downgrades": 0, "drops": 0, "revivals": 0}}
+        return {"data": [], "summary": {"upgrades": 0, "downgrades": 0, "drops": 0, "revivals": 0, "stable": 0}}
     with get_db() as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         try:
@@ -1027,7 +1027,7 @@ def get_supply_migration(
                     r["migration_rate"] = round((r["drivers_migrated"] or 0) / den, 6)
                 else:
                     r["migration_rate"] = None
-            summary = {"upgrades": 0, "downgrades": 0, "drops": 0, "revivals": 0}
+            summary = {"upgrades": 0, "downgrades": 0, "drops": 0, "revivals": 0, "stable": 0}
             for r in rows:
                 t = r.get("migration_type")
                 n = r.get("drivers_migrated") or 0
@@ -1039,10 +1039,12 @@ def get_supply_migration(
                     summary["drops"] += n
                 elif t == "revival":
                     summary["revivals"] += n
+                elif t == "lateral":
+                    summary["stable"] += n
             return {"data": rows, "summary": summary}
         except Exception as e:
             logger.warning("get_supply_migration: %s", e)
-            return {"data": [], "summary": {"upgrades": 0, "downgrades": 0, "drops": 0, "revivals": 0}}
+            return {"data": [], "summary": {"upgrades": 0, "downgrades": 0, "drops": 0, "revivals": 0, "stable": 0}}
         finally:
             cur.close()
 
@@ -1085,6 +1087,69 @@ def get_supply_migration_drilldown(
             return rows
         except Exception as e:
             logger.warning("get_supply_migration_drilldown: %s", e)
+            return []
+        finally:
+            cur.close()
+
+
+def get_supply_migration_weekly_summary(
+    park_id: str,
+    from_date: str,
+    to_date: str,
+) -> list[dict[str, Any]]:
+    """
+    Weekly segment summary (time-first): week_label, segment, drivers, wow_delta, wow_percent, upgrades, downgrades.
+    Fuente: ops.v_driver_segments_weekly_summary. Requiere migración 079.
+    """
+    if not park_id or not from_date or not to_date:
+        return []
+    with get_db() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute(
+                """
+                SELECT week_start, week_label, park_id, segment, drivers, drivers_prev_week,
+                       wow_delta, wow_percent, upgrades, downgrades
+                FROM ops.v_driver_segments_weekly_summary
+                WHERE park_id = %s AND week_start >= %s::date AND week_start <= %s::date
+                ORDER BY week_start DESC, segment
+                """,
+                (park_id, from_date, to_date),
+            )
+            return [dict(r) for r in cur.fetchall()]
+        except Exception as e:
+            logger.warning("get_supply_migration_weekly_summary: %s", e)
+            return []
+        finally:
+            cur.close()
+
+
+def get_supply_migration_critical(
+    park_id: str,
+    from_date: str,
+    to_date: str,
+) -> list[dict[str, Any]]:
+    """
+    Critical migration flows (drivers > 100 or rate > 15%). Fuente: ops.v_driver_segment_critical_movements.
+    Requiere migración 079.
+    """
+    if not park_id or not from_date or not to_date:
+        return []
+    with get_db() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute(
+                """
+                SELECT week_label, week_start, park_id, from_segment, to_segment, drivers, rate, transition_type, critical_flag
+                FROM ops.v_driver_segment_critical_movements
+                WHERE park_id = %s AND week_start >= %s::date AND week_start <= %s::date
+                ORDER BY drivers DESC
+                """,
+                (park_id, from_date, to_date),
+            )
+            return [dict(r) for r in cur.fetchall()]
+        except Exception as e:
+            logger.warning("get_supply_migration_critical: %s", e)
             return []
         finally:
             cur.close()

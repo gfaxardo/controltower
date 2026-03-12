@@ -8,6 +8,7 @@ import {
   getRealLobDailyTable,
   getPeriodSemantics
 } from '../services/api'
+import { getComparativeClass, COMPARATIVE_LABELS } from '../constants/gridSemantics'
 
 const BASELINE_OPTIONS = [
   { value: 'D-1', label: 'D-1 (vs día anterior)' },
@@ -171,15 +172,15 @@ export default function RealLOBDailyView () {
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">País</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">LOB / Park</th>
                     <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Viajes</th>
-                    {table.baseline && <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">Δ%</th>}
+                    {table.baseline && <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{COMPARATIVE_LABELS.dailyDeltaPctLabel(baseline)}</th>}
                     <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Margen total</th>
-                    {table.baseline && <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">Δ%</th>}
+                    {table.baseline && <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{COMPARATIVE_LABELS.dailyDeltaPctLabel(baseline)}</th>}
                     <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Margen/trip</th>
-                    {table.baseline && <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">Δ%</th>}
+                    {table.baseline && <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{COMPARATIVE_LABELS.dailyDeltaPctLabel(baseline)}</th>}
                     <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Km prom</th>
-                    {table.baseline && <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">Δ%</th>}
+                    {table.baseline && <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{COMPARATIVE_LABELS.dailyDeltaPctLabel(baseline)}</th>}
                     <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">B2B %</th>
-                    {table.baseline && <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-16">Δ pp</th>}
+                    {table.baseline && <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-16">{COMPARATIVE_LABELS.dailyPpLabel()}</th>}
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -189,50 +190,50 @@ export default function RealLOBDailyView () {
                       <td className="px-3 py-2 text-sm font-medium">{row.dimension_key ?? row.park_name_resolved ?? '—'}</td>
                       <td className="px-3 py-2 text-sm text-right">{formatNum(row.trips)}</td>
                       {table.baseline && (
-                        <td className={`px-3 py-2 text-sm text-right ${row.trips_trend === 'up' ? 'bg-green-50' : row.trips_trend === 'down' ? 'bg-red-50' : 'bg-gray-50'}`}>
+                        <td className={`px-3 py-2 text-sm text-right ${getComparativeClass(row.trips_trend).bg}`}>
                           {row.trips_delta_pct != null ? (
-                            <span className={row.trips_trend === 'up' ? 'text-green-700 font-medium' : row.trips_trend === 'down' ? 'text-red-700 font-medium' : 'text-gray-600'}>
-                              {row.trips_trend === 'up' ? '↑' : row.trips_trend === 'down' ? '↓' : '→'} {Number(row.trips_delta_pct).toFixed(1)}%
+                            <span className={getComparativeClass(row.trips_trend).text}>
+                              {getComparativeClass(row.trips_trend).arrow} {Number(row.trips_delta_pct).toFixed(1)}%
                             </span>
                           ) : '—'}
                         </td>
                       )}
                       <td className="px-3 py-2 text-sm text-right">{row.margin_total != null ? Number(row.margin_total).toFixed(2) : '—'}</td>
                       {table.baseline && (
-                        <td className={`px-3 py-2 text-sm text-right ${row.margin_total_trend === 'up' ? 'bg-green-50' : row.margin_total_trend === 'down' ? 'bg-red-50' : 'bg-gray-50'}`}>
+                        <td className={`px-3 py-2 text-sm text-right ${getComparativeClass(row.margin_total_trend).bg}`}>
                           {row.margin_total_delta_pct != null ? (
-                            <span className={row.margin_total_trend === 'up' ? 'text-green-700 font-medium' : row.margin_total_trend === 'down' ? 'text-red-700 font-medium' : 'text-gray-600'}>
-                              {row.margin_total_trend === 'up' ? '↑' : row.margin_total_trend === 'down' ? '↓' : '→'} {Number(row.margin_total_delta_pct).toFixed(1)}%
+                            <span className={getComparativeClass(row.margin_total_trend).text}>
+                              {getComparativeClass(row.margin_total_trend).arrow} {Number(row.margin_total_delta_pct).toFixed(1)}%
                             </span>
                           ) : '—'}
                         </td>
                       )}
                       <td className="px-3 py-2 text-sm text-right">{row.margin_trip != null ? Number(row.margin_trip).toFixed(2) : '—'}</td>
                       {table.baseline && (
-                        <td className={`px-3 py-2 text-sm text-right ${row.margin_trip_trend === 'up' ? 'bg-green-50' : row.margin_trip_trend === 'down' ? 'bg-red-50' : 'bg-gray-50'}`}>
+                        <td className={`px-3 py-2 text-sm text-right ${getComparativeClass(row.margin_trip_trend).bg}`}>
                           {row.margin_trip_delta_pct != null ? (
-                            <span className={row.margin_trip_trend === 'up' ? 'text-green-700 font-medium' : row.margin_trip_trend === 'down' ? 'text-red-700 font-medium' : 'text-gray-600'}>
-                              {row.margin_trip_trend === 'up' ? '↑' : row.margin_trip_trend === 'down' ? '↓' : '→'} {Number(row.margin_trip_delta_pct).toFixed(1)}%
+                            <span className={getComparativeClass(row.margin_trip_trend).text}>
+                              {getComparativeClass(row.margin_trip_trend).arrow} {Number(row.margin_trip_delta_pct).toFixed(1)}%
                             </span>
                           ) : '—'}
                         </td>
                       )}
                       <td className="px-3 py-2 text-sm text-right">{row.km_prom != null ? Number(row.km_prom).toFixed(2) : '—'}</td>
                       {table.baseline && (
-                        <td className={`px-3 py-2 text-sm text-right ${row.km_prom_trend === 'up' ? 'bg-green-50' : row.km_prom_trend === 'down' ? 'bg-red-50' : 'bg-gray-50'}`}>
+                        <td className={`px-3 py-2 text-sm text-right ${getComparativeClass(row.km_prom_trend).bg}`}>
                           {row.km_prom_delta_pct != null ? (
-                            <span className={row.km_prom_trend === 'up' ? 'text-green-700 font-medium' : row.km_prom_trend === 'down' ? 'text-red-700 font-medium' : 'text-gray-600'}>
-                              {row.km_prom_trend === 'up' ? '↑' : row.km_prom_trend === 'down' ? '↓' : '→'} {Number(row.km_prom_delta_pct).toFixed(1)}%
+                            <span className={getComparativeClass(row.km_prom_trend).text}>
+                              {getComparativeClass(row.km_prom_trend).arrow} {Number(row.km_prom_delta_pct).toFixed(1)}%
                             </span>
                           ) : '—'}
                         </td>
                       )}
                       <td className="px-3 py-2 text-sm text-right">{row.b2b_pct != null ? Number(row.b2b_pct).toFixed(1) + '%' : '—'}</td>
                       {table.baseline && (
-                        <td className={`px-3 py-2 text-sm text-right ${row.b2b_pct_trend === 'up' ? 'bg-green-50' : row.b2b_pct_trend === 'down' ? 'bg-red-50' : 'bg-gray-50'}`}>
+                        <td className={`px-3 py-2 text-sm text-right ${getComparativeClass(row.b2b_pct_trend).bg}`}>
                           {row.b2b_pct_delta_pp != null ? (
-                            <span className={row.b2b_pct_trend === 'up' ? 'text-green-700 font-medium' : row.b2b_pct_trend === 'down' ? 'text-red-700 font-medium' : 'text-gray-600'}>
-                              {row.b2b_pct_trend === 'up' ? '↑' : row.b2b_pct_trend === 'down' ? '↓' : '→'} {Number(row.b2b_pct_delta_pp).toFixed(1)} pp
+                            <span className={getComparativeClass(row.b2b_pct_trend).text}>
+                              {getComparativeClass(row.b2b_pct_trend).arrow} {Number(row.b2b_pct_delta_pp).toFixed(1)} pp
                             </span>
                           ) : '—'}
                         </td>

@@ -17,6 +17,7 @@ import {
 } from '../services/api'
 import RealLOBDailyView from './RealLOBDailyView'
 import { buildDimKey, buildDrillKey } from '../utils/dimKey'
+import { getEstadoConfig, getComparativeClass, GRID_BADGE, GRID_ESTADO, COMPARATIVE_LABELS } from '../constants/gridSemantics'
 
 const USE_DRILL_PRO = true
 
@@ -459,7 +460,7 @@ export default function RealLOBDrillView () {
       {/* Comparativo WoW / MoM: siempre visible (cargando, error, sin datos o datos) */}
       <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
         <div className="text-sm font-semibold text-blue-900 mb-2">
-          {periodType === 'weekly' ? 'Comparativo WoW (última semana cerrada vs anterior)' : 'Comparativo MoM (último mes cerrado vs anterior)'}
+          {COMPARATIVE_LABELS.comparativeTitle(periodType)}
         </div>
         {comparativeLoading && !comparative && (
           <p className="text-sm text-blue-700">Cargando comparativo…</p>
@@ -572,15 +573,15 @@ export default function RealLOBDrillView () {
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-8" />
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Periodo</th>
                         <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Viajes</th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{periodType === 'weekly' ? 'WoW Δ%' : 'MoM Δ%'}</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{COMPARATIVE_LABELS.deltaPctLabel(periodType)}</th>
                         <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase" title={MARGIN_TOOLTIP}>Margen total</th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{periodType === 'weekly' ? 'WoW Δ%' : 'MoM Δ%'}</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{COMPARATIVE_LABELS.deltaPctLabel(periodType)}</th>
                         <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase" title={MARGIN_TOOLTIP}>Margen/trip</th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{periodType === 'weekly' ? 'WoW Δ%' : 'MoM Δ%'}</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{COMPARATIVE_LABELS.deltaPctLabel(periodType)}</th>
                         <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Km prom</th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{periodType === 'weekly' ? 'WoW Δ%' : 'MoM Δ%'}</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{COMPARATIVE_LABELS.deltaPctLabel(periodType)}</th>
                         <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Segmento / B2B</th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-16">{periodType === 'weekly' ? 'WoW pp' : 'MoM pp'}</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-16">{COMPARATIVE_LABELS.ppLabel(periodType)}</th>
                         <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Estado</th>
                       </tr>
                     </thead>
@@ -617,58 +618,54 @@ export default function RealLOBDrillView () {
                               <td className="px-3 py-2 text-sm font-medium text-gray-900">
                                 {formatPeriod(row.period_start, periodType)}
                                 {row.is_partial_comparison && (
-                                  <span className="ml-1 inline-flex px-1.5 py-0.5 rounded text-xs bg-amber-100 text-amber-800" title="Comparativo parcial (periodo abierto)">Parcial</span>
+                                  <span className={`ml-1 inline-flex px-1.5 py-0.5 rounded text-xs font-medium ${GRID_ESTADO.PARCIAL.className}`} title={GRID_ESTADO.PARCIAL.title}>{GRID_ESTADO.PARCIAL.label}</span>
                                 )}
                               </td>
                               <td className="px-3 py-2 text-sm text-right">{formatNumber(row.trips)}</td>
-                              <td className={`px-3 py-2 text-sm text-right ${row.viajes_trend === 'up' ? 'bg-green-50' : row.viajes_trend === 'down' ? 'bg-red-50' : 'bg-gray-50'}`}>
+                              <td className={`px-3 py-2 text-sm text-right ${getComparativeClass(row.viajes_trend).bg}`}>
                                 {row.viajes_delta_pct != null ? (
-                                  <span className={row.viajes_trend === 'up' ? 'text-green-700 font-medium' : row.viajes_trend === 'down' ? 'text-red-700 font-medium' : 'text-gray-600'}>
-                                    {row.viajes_trend === 'up' ? '↑' : row.viajes_trend === 'down' ? '↓' : '→'} {Number(row.viajes_delta_pct).toFixed(1)}%
+                                  <span className={getComparativeClass(row.viajes_trend).text}>
+                                    {getComparativeClass(row.viajes_trend).arrow} {Number(row.viajes_delta_pct).toFixed(1)}%
                                   </span>
                                 ) : '—'}
                               </td>
                               <td className="px-3 py-2 text-sm text-right">{row.trips ? formatMargin(marginTotalPos, row.trips) : '—'}</td>
-                              <td className={`px-3 py-2 text-sm text-right ${row.margen_total_trend === 'up' ? 'bg-green-50' : row.margen_total_trend === 'down' ? 'bg-red-50' : 'bg-gray-50'}`}>
+                              <td className={`px-3 py-2 text-sm text-right ${getComparativeClass(row.margen_total_trend).bg}`}>
                                 {row.margen_total_delta_pct != null ? (
-                                  <span className={row.margen_total_trend === 'up' ? 'text-green-700 font-medium' : row.margen_total_trend === 'down' ? 'text-red-700 font-medium' : 'text-gray-600'}>
-                                    {row.margen_total_trend === 'up' ? '↑' : row.margen_total_trend === 'down' ? '↓' : '→'} {Number(row.margen_total_delta_pct).toFixed(1)}%
+                                  <span className={getComparativeClass(row.margen_total_trend).text}>
+                                    {getComparativeClass(row.margen_total_trend).arrow} {Number(row.margen_total_delta_pct).toFixed(1)}%
                                   </span>
                                 ) : '—'}
                               </td>
                               <td className="px-3 py-2 text-sm text-right">{marginUnit}</td>
-                              <td className={`px-3 py-2 text-sm text-right ${row.margen_trip_trend === 'up' ? 'bg-green-50' : row.margen_trip_trend === 'down' ? 'bg-red-50' : 'bg-gray-50'}`}>
+                              <td className={`px-3 py-2 text-sm text-right ${getComparativeClass(row.margen_trip_trend).bg}`}>
                                 {row.margen_trip_delta_pct != null ? (
-                                  <span className={row.margen_trip_trend === 'up' ? 'text-green-700 font-medium' : row.margen_trip_trend === 'down' ? 'text-red-700 font-medium' : 'text-gray-600'}>
-                                    {row.margen_trip_trend === 'up' ? '↑' : row.margen_trip_trend === 'down' ? '↓' : '→'} {Number(row.margen_trip_delta_pct).toFixed(1)}%
+                                  <span className={getComparativeClass(row.margen_trip_trend).text}>
+                                    {getComparativeClass(row.margen_trip_trend).arrow} {Number(row.margen_trip_delta_pct).toFixed(1)}%
                                   </span>
                                 ) : '—'}
                               </td>
                               <td className="px-3 py-2 text-sm text-right">{distanceKm}</td>
-                              <td className={`px-3 py-2 text-sm text-right ${row.km_prom_trend === 'up' ? 'bg-green-50' : row.km_prom_trend === 'down' ? 'bg-red-50' : 'bg-gray-50'}`}>
+                              <td className={`px-3 py-2 text-sm text-right ${getComparativeClass(row.km_prom_trend).bg}`}>
                                 {row.km_prom_delta_pct != null ? (
-                                  <span className={row.km_prom_trend === 'up' ? 'text-green-700 font-medium' : row.km_prom_trend === 'down' ? 'text-red-700 font-medium' : 'text-gray-600'}>
-                                    {row.km_prom_trend === 'up' ? '↑' : row.km_prom_trend === 'down' ? '↓' : '→'} {Number(row.km_prom_delta_pct).toFixed(1)}%
+                                  <span className={getComparativeClass(row.km_prom_trend).text}>
+                                    {getComparativeClass(row.km_prom_trend).arrow} {Number(row.km_prom_delta_pct).toFixed(1)}%
                                   </span>
                                 ) : '—'}
                               </td>
                               <td className="px-3 py-2 text-sm text-center">
                                 {segment !== 'Todos' ? (
-                                  <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-800">
-                                    {segment}
-                                  </span>
+                                  <span className={GRID_BADGE.segment}>{segment}</span>
                                 ) : b2bRatio != null ? (
-                                  <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                                    B2B {b2bRatio}%
-                                  </span>
+                                  <span className={GRID_BADGE.b2b}>B2B {b2bRatio}%</span>
                                 ) : (
                                   '—'
                                 )}
                               </td>
-                              <td className={`px-3 py-2 text-sm text-right ${row.pct_b2b_trend === 'up' ? 'bg-green-50' : row.pct_b2b_trend === 'down' ? 'bg-red-50' : 'bg-gray-50'}`}>
+                              <td className={`px-3 py-2 text-sm text-right ${getComparativeClass(row.pct_b2b_trend).bg}`}>
                                 {row.pct_b2b_delta_pp != null ? (
-                                  <span className={row.pct_b2b_trend === 'up' ? 'text-green-700 font-medium' : row.pct_b2b_trend === 'down' ? 'text-red-700 font-medium' : 'text-gray-600'}>
-                                    {row.pct_b2b_trend === 'up' ? '↑' : row.pct_b2b_trend === 'down' ? '↓' : '→'} {Number(row.pct_b2b_delta_pp).toFixed(1)} pp
+                                  <span className={getComparativeClass(row.pct_b2b_trend).text}>
+                                    {getComparativeClass(row.pct_b2b_trend).arrow} {Number(row.pct_b2b_delta_pp).toFixed(1)} pp
                                   </span>
                                 ) : '—'}
                               </td>
@@ -679,13 +676,7 @@ export default function RealLOBDrillView () {
                                   const faltaDataTitle = expectedDate
                                     ? `Falta data hasta cierre de ayer (${expectedDate})`
                                     : 'Falta data hasta cierre de ayer'
-                                  const config = {
-                                    CERRADO: { className: 'bg-green-100 text-green-800', label: 'Cerrado', title: 'Periodo cerrado' },
-                                    ABIERTO: { className: 'bg-blue-100 text-blue-800', label: 'Abierto', title: 'Mes/semana en curso (datos parciales)' },
-                                    FALTA_DATA: { className: 'bg-red-100 text-red-800', label: 'Falta data', title: faltaDataTitle },
-                                    VACIO: { className: 'bg-gray-200 text-gray-600', label: 'Vacío', title: 'Sin datos' }
-                                  }
-                                  const { className, label, title } = config[estado] || config.ABIERTO
+                                  const { className, label, title } = getEstadoConfig(estado, { faltaDataTitle })
                                   return (
                                     <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${className}`} title={title || undefined}>
                                       {label}
@@ -695,80 +686,76 @@ export default function RealLOBDrillView () {
                               </td>
                             </tr>
                             {isExp && sr && (
-                              <tr key={`${rowId}-sub`} className="bg-slate-50">
-                                <td colSpan={14} className="px-4 py-3">
-                                  {sr.loading && <p className="text-sm text-gray-500">Cargando…</p>}
-                                  {sr.error && <p className="text-sm text-red-600">{sr.error}</p>}
-                                  {sr.data && sr.data.length > 0 && (() => {
-                                    const drillLabel = drillBy === 'lob' ? 'LOB' : drillBy === 'park' ? 'Park' : 'Tipo de servicio'
-                                    const periodLabel = formatPeriod(row.period_start, periodType)
-                                    const filteredData = sr.data.filter(
-                                      (r) => (r.dimension_key || '').toUpperCase() !== 'LOW_VOLUME' && (r.lob_group || '').toUpperCase() !== 'LOW_VOLUME'
+                              <>
+                                {sr.loading && (
+                                  <tr key={`${rowId}-sub-loading`} className="bg-slate-50">
+                                    <td colSpan={13} className="px-4 py-3 text-sm text-gray-500">Cargando…</td>
+                                  </tr>
+                                )}
+                                {sr.error && (
+                                  <tr key={`${rowId}-sub-err`} className="bg-slate-50">
+                                    <td colSpan={13} className="px-4 py-3 text-sm text-red-600">{sr.error}</td>
+                                  </tr>
+                                )}
+                                {sr.data && sr.data.length > 0 && (() => {
+                                  const filteredData = sr.data.filter(
+                                    (r) => (r.dimension_key || '').toUpperCase() !== 'LOW_VOLUME' && (r.lob_group || '').toUpperCase() !== 'LOW_VOLUME'
+                                  )
+                                  return filteredData.length > 0 ? filteredData.map((r, i) => {
+                                    const subTrips = r.trips ?? 0
+                                    const subMarginTotal = r.margin_total_pos ?? (r.margin_total != null ? Math.abs(r.margin_total) : null)
+                                    const subMargin = subTrips > 0 && (r.margin_unit_pos != null || r.margin_unit_avg != null || r.margin_total != null)
+                                      ? formatMargin(r.margin_unit_pos ?? r.margin_unit_avg ?? (subMarginTotal != null ? subMarginTotal / subTrips : null), subTrips)
+                                      : '—'
+                                    const subKm = subTrips > 0 && (r.km_prom != null || r.distance_km_avg != null || r.distance_total_km != null)
+                                      ? formatDistanceKm(r.km_prom ?? r.distance_km_avg ?? (r.distance_total_km / subTrips), subTrips)
+                                      : '—'
+                                    const dimLabel = drillBy === 'lob' ? (r.lob_group ?? '—') : drillBy === 'park' ? (r.dimension_key ?? r.park_name_resolved ?? r.park_name ?? '—') : (r.service_type ?? r.dimension_key ?? '—')
+                                    return (
+                                      <tr key={`${rowId}-drill-${i}`} className="bg-slate-50">
+                                        <td className="px-3 py-2" />
+                                        <td className="px-3 py-2 text-sm text-gray-900 pl-6">{dimLabel}</td>
+                                        <td className="px-3 py-2 text-sm text-right">{formatNumber(r.trips)}</td>
+                                        <td className={`px-3 py-2 text-sm text-right ${getComparativeClass(r.viajes_trend).bg}`}>
+                                          {r.viajes_delta_pct != null ? <span className={getComparativeClass(r.viajes_trend).text}>{getComparativeClass(r.viajes_trend).arrow} {Number(r.viajes_delta_pct).toFixed(1)}%</span> : '—'}
+                                        </td>
+                                        <td className="px-3 py-2 text-sm text-right">{subTrips ? formatMargin(subMarginTotal, subTrips) : '—'}</td>
+                                        <td className={`px-3 py-2 text-sm text-right ${getComparativeClass(r.margen_total_trend).bg}`}>
+                                          {r.margen_total_delta_pct != null ? <span className={getComparativeClass(r.margen_total_trend).text}>{getComparativeClass(r.margen_total_trend).arrow} {Number(r.margen_total_delta_pct).toFixed(1)}%</span> : '—'}
+                                        </td>
+                                        <td className="px-3 py-2 text-sm text-right">{subMargin}</td>
+                                        <td className={`px-3 py-2 text-sm text-right ${getComparativeClass(r.margen_trip_trend).bg}`}>
+                                          {r.margen_trip_delta_pct != null ? <span className={getComparativeClass(r.margen_trip_trend).text}>{getComparativeClass(r.margen_trip_trend).arrow} {Number(r.margen_trip_delta_pct).toFixed(1)}%</span> : '—'}
+                                        </td>
+                                        <td className="px-3 py-2 text-sm text-right">{subKm}</td>
+                                        <td className={`px-3 py-2 text-sm text-right ${getComparativeClass(r.km_prom_trend).bg}`}>
+                                          {r.km_prom_delta_pct != null ? <span className={getComparativeClass(r.km_prom_trend).text}>{getComparativeClass(r.km_prom_trend).arrow} {Number(r.km_prom_delta_pct).toFixed(1)}%</span> : '—'}
+                                        </td>
+                                        <td className="px-3 py-2 text-sm text-center">
+                                          {segment === 'Todos' && (r.b2b_trips != null || r.pct_b2b != null) ? (
+                                            <span className={GRID_BADGE.b2b}>
+                                              B2B {r.pct_b2b != null ? `${(Number(r.pct_b2b) * 100).toFixed(1)}%` : formatNumber(r.b2b_trips)}
+                                            </span>
+                                          ) : '—'}
+                                        </td>
+                                        <td className={`px-3 py-2 text-sm text-right ${getComparativeClass(r.pct_b2b_trend).bg}`}>
+                                          {r.pct_b2b_delta_pp != null ? <span className={getComparativeClass(r.pct_b2b_trend).text}>{getComparativeClass(r.pct_b2b_trend).arrow} {Number(r.pct_b2b_delta_pp).toFixed(1)} pp</span> : '—'}
+                                        </td>
+                                        <td className="px-3 py-2 text-sm text-center">—</td>
+                                      </tr>
                                     )
-                                    return filteredData.length > 0 ? (
-                                    <div className="border-l-2 border-slate-300 pl-3">
-                                      <p className="text-xs text-slate-500 mb-2">
-                                        Desglose de <strong>{periodLabel}</strong> por {drillLabel}
-                                      </p>
-                                    <table className="min-w-full text-sm">
-                                      <thead>
-                                        <tr className="text-left text-gray-500">
-                                          {drillBy === 'lob' && <th className="pr-4 py-1">LOB</th>}
-                                          {drillBy === 'park' && <th className="pr-4 py-1">Park</th>}
-                                          {drillBy === 'service_type' && <th className="pr-4 py-1">Tipo de servicio</th>}
-                                          <th className="text-right py-1">Viajes</th>
-                                          <th className="text-right py-1" title={MARGIN_TOOLTIP}>Margen total</th>
-                                          <th className="text-right py-1" title={MARGIN_TOOLTIP}>Margen/trip</th>
-                                          <th className="text-right py-1">Km prom</th>
-                                          {segment === 'Todos' && <th className="text-right py-1">B2B</th>}
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {filteredData.map((r, i) => {
-                                          const subTrips = r.trips ?? 0
-                                          const subMarginTotal = r.margin_total_pos ?? (r.margin_total != null ? Math.abs(r.margin_total) : null)
-                                          const subMargin = subTrips > 0 && (r.margin_unit_pos != null || r.margin_unit_avg != null || r.margin_total != null)
-                                            ? formatMargin(r.margin_unit_pos ?? r.margin_unit_avg ?? (subMarginTotal != null ? subMarginTotal / subTrips : null), subTrips)
-                                            : '—'
-                                          const subKm = subTrips > 0 && (r.km_prom != null || r.distance_km_avg != null || r.distance_total_km != null)
-                                            ? formatDistanceKm(r.km_prom ?? r.distance_km_avg ?? (r.distance_total_km / subTrips), subTrips)
-                                            : '—'
-                                          return (
-                                            <tr key={i}>
-                                              {drillBy === 'lob' && (
-                                                <td className="pr-4 py-1 text-gray-900">{r.lob_group ?? '—'}</td>
-                                              )}
-                                          {drillBy === 'service_type' && (
-                                                <td className="pr-4 py-1 text-gray-900">{r.service_type ?? r.dimension_key ?? '—'}</td>
-                                          )}
-                                              {drillBy === 'park' && (
-                                                <td className="pr-4 py-1 text-gray-900">{r.dimension_key ?? r.park_name_resolved ?? r.park_name ?? '—'}</td>
-                                              )}
-                                              <td className="text-right py-1">{formatNumber(r.trips)}</td>
-                                              <td className="text-right py-1">{subTrips ? formatMargin(subMarginTotal, subTrips) : '—'}</td>
-                                              <td className="text-right py-1">{subMargin}</td>
-                                              <td className="text-right py-1">{subKm}</td>
-                                              {segment === 'Todos' && (
-                                                <td className="text-right py-1">
-                                                  {formatNumber(r.b2b_trips)}
-                                                  {r.pct_b2b != null ? ` (${(Number(r.pct_b2b) * 100).toFixed(1)}%)` : ''}
-                                                </td>
-                                              )}
-                                            </tr>
-                                          )
-                                        })}
-                                      </tbody>
-                                    </table>
-                                    </div>
-                                    ) : (
-                                      <p className="text-sm text-gray-500">Sin datos para este periodo.</p>
-                                    )
-                                  })()}
-                                  {sr.data && sr.data.length === 0 && (
-                                    <p className="text-sm text-gray-500">Sin datos para este periodo.</p>
-                                  )}
-                                </td>
-                              </tr>
+                                  }) : (
+                                    <tr key={`${rowId}-sub-empty`} className="bg-slate-50">
+                                      <td colSpan={13} className="px-4 py-3 text-sm text-gray-500">Sin datos para este periodo.</td>
+                                    </tr>
+                                  )
+                                })()}
+                                {sr.data && sr.data.length === 0 && (
+                                  <tr key={`${rowId}-sub-empty`} className="bg-slate-50">
+                                    <td colSpan={13} className="px-4 py-3 text-sm text-gray-500">Sin datos para este periodo.</td>
+                                  </tr>
+                                )}
+                              </>
                             )}
                           </Fragment>
                         )

@@ -5,6 +5,18 @@
 
 ---
 
+## 0. Regla global "Falta data"
+
+**Regla única para todo el sistema:**
+
+- **Solo** mostrar estado **"Falta data"** cuando la **última fecha con data del dataset/objeto derivado** es **menor o igual a `current_date - 2`** (es decir, no llega hasta ayer).
+- Si `derived_max_date` es **ayer** → **NO** falta data (estado Fresca o Parcial esperada).
+- Si `derived_max_date` es **antes de ayer** o NULL → **SÍ** falta data.
+
+Se aplica en: estado por fila (ej. Real LOB drill), indicador global en UI (banner) y cualquier vista que muestre estado de datos. Detalle y auditoría por vista: [system_views_freshness_audit.md](system_views_freshness_audit.md).
+
+---
+
 ## 1. Principios
 
 - **No asumir que `trips_all` es la fuente vigente:** inspeccionar `trips_all`, `trips_2026` (y otras particiones si existen) y la vista canónica `ops.v_trips_real_canon` / `public.trips_unified`.
@@ -71,7 +83,13 @@ cd backend && python -m scripts.run_data_freshness_audit
 - **GET /ops/data-freshness/expectations**  
   Configuración de expectativas (grain, source/derived, alert_threshold_days) para admin/documentación.
 
-Integración en dashboard/admin: consumir `/ops/data-freshness/alerts` para mostrar un indicador de “datos atrasados” o lista de alertas accionables.
+- **GET /ops/data-freshness/global** — Estado global para el banner de UI (fresca | parcial_esperada | atrasada | falta_data | sin_datos). Incluye source_max_date, derived_max_date, lag_days. Regla: Falta data solo si derived_max_date <= today-2. Usado por GlobalFreshnessBanner.
+
+- **GET /ops/data-pipeline-health** — Centro de observabilidad: por dataset source_max_date, derived_max_date, lag_days, expected_latest_date, status, alert_reason, last_checked_at. Parámetro: `latest_only` (default true).
+
+- **POST /ops/pipeline-refresh** — Ejecuta pipeline unificado (backfill Real LOB, refresh driver lifecycle, refresh supply, auditoría). Parámetros opcionales: skip_backfill, skip_driver, skip_supply, skip_audit. Uso: cron o admin. Timeout largo (ej. 1h).
+
+Integración: banner global de frescura en vistas principales (fuente, vista, lag, estado); "Ver salud del pipeline" expande tabla por dataset; detalle con GET /ops/data-freshness/alerts.
 
 ---
 
@@ -120,8 +138,8 @@ Si una tabla no existe (ej. `trips_2026`), el script de auditoría escribirá er
 
 ## 10. Cómo interpretar alertas
 
-- **DERIVED_STALE / LAGGING:** el pipeline de derivado (backfill, REFRESH MV) no ha absorbido la data reciente de la fuente. Ejecutar backfill Real LOB o `REFRESH MATERIALIZED VIEW` de Driver Lifecycle / Supply.
-- **SOURCE_STALE:** la tabla fuente (ej. trips_all) está cortada. Usar trips_2026 o revisar el job que carga trips_all.
+- **DERIVED_STALE / LAGGING:** el pipeline de derivado (backfill, REFRESH MV) no ha absorbido la data reciente de la fuente. Ejecutar backfill Real LOB o `REFRESH MATERIALIZED VIEW` de Driver Lifecycle / Supply. En la UI (tabla "Ver salud del pipeline") se muestra con fondo ámbar (problema de propagación).
+- **SOURCE_STALE:** la tabla fuente (ej. trips_all) está cortada. Más severo: en la UI se muestra con fondo rojo. Para viajes: usar **trips_2026** como fuente viva; **trips_base** (trips_all) está marcada como legacy en expectativas — SOURCE_STALE en trips_base es esperado y no bloquea el estado global del banner (el primario es real_lob_drill).
 - **PARTIAL_EXPECTED:** periodo actual (día/semana/mes) aún abierto; no es error.
 - **MISSING_EXPECTED_DATA:** faltan días/semanas/meses que ya deberían estar cerrados; revisar carga en origen o pipeline.
 
@@ -133,4 +151,25 @@ Si una tabla no existe (ej. `trips_2026`), el script de auditoría escribirá er
 
 ---
 
-*Véase también: [data_freshness_lineage_map.md](data_freshness_lineage_map.md) para el lineage fuente → canónica → derivado.*
+---
+
+## 12. Automatización del audit y del pipeline
+
+- **Solo audit:** `python -m scripts.run_data_freshness_audit` (o `POST /ops/data-freshness/run`). Escribe en `ops.data_freshness_audit`. No refresca derivados.
+- **Pipeline completo (recomendado para reparar atrasos):** `python -m scripts.run_pipeline_refresh_and_audit`. Orden: 1) Backfill Real LOB (mes actual + anterior), 2) `ops.refresh_driver_lifecycle_mvs()`, 3) `ops.refresh_supply_alerting_mvs()`, 4) run_data_freshness_audit. Opciones: `--skip-backfill`, `--skip-driver`, `--skip-supply`, `--skip-audit`, `--backfill-months N`.
+- **Cron sugerido:** Diario tras carga de viajes, ej. `0 6 * * * cd /path/to/backend && python -m scripts.run_pipeline_refresh_and_audit >> /var/log/ct_pipeline.log 2>&1`.
+- **Reejecución manual:** Mismo comando; o `POST /ops/pipeline-refresh` (puede tardar varios minutos).
+
+**Evidencia:** Cada ejecución del audit deja filas en `ops.data_freshness_audit`. La UI muestra la última ejecución en el banner y en "Ver salud del pipeline".
+
+---
+
+## 13. Centro de observabilidad
+
+- **Vista técnica:** GET /ops/data-pipeline-health devuelve la tabla por dataset (dataset_name, source_object, source_max_date, derived_max_date, lag_days, expected_latest_date, status, alert_reason, checked_at).
+- **UI:** El banner global (GlobalFreshnessBanner) muestra estado, última fecha en vista, fuente viva y lag; el botón "Ver salud del pipeline" despliega la tabla completa por dataset.
+- **Mapa del pipeline:** [data_pipeline_observability_map.md](data_pipeline_observability_map.md) documenta fuente viva real, derivado, mecanismo de refresh y punto de rotura por dataset.
+
+---
+
+*Véase también: [data_freshness_lineage_map.md](data_freshness_lineage_map.md), [data_pipeline_observability_map.md](data_pipeline_observability_map.md), [system_views_freshness_audit.md](system_views_freshness_audit.md).*

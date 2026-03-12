@@ -1,9 +1,11 @@
 /**
  * Glosario de definiciones del módulo Driver Supply Dynamics.
- * Muestra definiciones oficiales: Active Supply, Churn, Reactivation, Segments, Migration.
+ * Muestra definiciones oficiales y leyenda de segmentos (7: Dormant, Occasional, Casual, PT, FT, Elite, Legend).
+ * Usa segmentConfig desde API cuando está disponible; si no, fallback a SEGMENT_LEGEND_MINIMAL.
  */
 import { useState, useEffect } from 'react'
-import { getSupplyDefinitions } from '../services/api'
+import { getSupplyDefinitions, getSupplySegmentConfig } from '../services/api'
+import { SEGMENT_LEGEND_MINIMAL } from '../constants/segmentSemantics'
 
 const TERMS = [
   { key: 'active_supply', label: 'Active Supply' },
@@ -18,15 +20,25 @@ const TERMS = [
   { key: 'activations', label: 'Activations' }
 ]
 
+function segmentDesc (c) {
+  if (c.min_trips != null && c.max_trips != null) return `${c.min_trips}–${c.max_trips} viajes/semana`
+  if (c.min_trips != null) return `${c.min_trips}+ viajes/semana`
+  return '0 viajes/semana'
+}
+
 export default function DriverSupplyGlossary () {
   const [open, setOpen] = useState(false)
   const [definitions, setDefinitions] = useState({})
+  const [segmentConfig, setSegmentConfig] = useState([])
 
   useEffect(() => {
-    getSupplyDefinitions()
-      .then(setDefinitions)
-      .catch(() => setDefinitions({}))
+    getSupplyDefinitions().then(setDefinitions).catch(() => setDefinitions({}))
+    getSupplySegmentConfig().then(setSegmentConfig).catch(() => setSegmentConfig([]))
   }, [])
+
+  const segmentList = segmentConfig.length > 0
+    ? segmentConfig.map(c => ({ segment: c.segment, label: c.segment, desc: segmentDesc(c) }))
+    : SEGMENT_LEGEND_MINIMAL.map(({ segment, label, desc }) => ({ segment, label, desc }))
 
   return (
     <div className="inline">
@@ -44,7 +56,16 @@ export default function DriverSupplyGlossary () {
             {TERMS.map(({ key, label }) => (
               <div key={key}>
                 <dt className="font-medium text-slate-700">{label}</dt>
-                <dd className="text-slate-600 ml-0 mt-0.5">{definitions[key] ?? '—'}</dd>
+                <dd className="text-slate-600 ml-0 mt-0.5">
+                  {definitions[key] ?? '—'}
+                  {key === 'segments' && (
+                    <ul className="mt-2 list-disc list-inside text-slate-600 space-y-0.5">
+                      {segmentList.map(({ segment, label: segLabel, desc }) => (
+                        <li key={segment}><strong>{segLabel}</strong>: {desc}</li>
+                      ))}
+                    </ul>
+                  )}
+                </dd>
               </div>
             ))}
           </dl>

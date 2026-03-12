@@ -4,6 +4,8 @@
 **Fase:** Semántica temporal + comparativos WoW/MoM + vista diaria  
 **Estado:** Fase A documentada; Fases B–J en diseño/implementación.
 
+**Nomenclatura comparativa oficial:** MoM (month-over-month), WoW (week-over-week), DoD (day-over-day). Siempre con esta capitalización; nunca MOM, WOW, DOD. Detalle y auditoría: [comparative_semantics_audit.md](comparative_semantics_audit.md).
+
 ---
 
 ## FASE A — Estado actual de la semántica temporal (mapeo)
