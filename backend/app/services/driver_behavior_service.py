@@ -492,10 +492,10 @@ def get_driver_behavior_drivers(
                 having_parts.append("LOWER(TRIM(geo.city)) = LOWER(TRIM(%s))")
                 params.append(city)
             if park_id:
-                having_parts.append("ra.park_id::text = %s")
+                having_parts.append("cls.park_id::text = %s")
                 params.append(str(park_id))
             if segment_current:
-                having_parts.append("ra.current_segment = %s")
+                having_parts.append("cls.current_segment = %s")
                 params.append(segment_current)
             if alert_type:
                 having_parts.append("cls.alert_type = %s")
@@ -519,8 +519,12 @@ def get_driver_behavior_drivers(
                 elif inactivity_status == "churn_risk":
                     having_parts.append("COALESCE(cls.days_since_last_trip, 999) >= 15")
             where_sql = " AND " + " AND ".join(having_parts) if having_parts else ""
-            # Main query selects FROM with_action, so WHERE/ORDER BY must not reference "cls"
-            where_sql_main = where_sql.replace("cls.", "")
+            # Main query selects FROM with_action (no cls/geo); use bare column names
+            where_sql_main = (
+                where_sql.replace("cls.", "")
+                .replace("LOWER(TRIM(geo.country))", "LOWER(TRIM(country))")
+                .replace("LOWER(TRIM(geo.city))", "LOWER(TRIM(city))")
+            )
 
             ob = "risk_score DESC"
             if order_by == "delta_pct":
@@ -656,7 +660,7 @@ def get_driver_behavior_drivers(
             """, params)
             rows = [dict(r) for r in cur.fetchall()]
 
-            # Count total (same filters, no limit/offset). Count query has 5 CTE placeholders: ref, rw, rw, rw, bw
+            # Count total (same filters, no limit/offset). Count query FROM cls; filters already use cls.*
             count_params = params[:5] + params[8:-2]  # CTE params + filter params (skip the 3 extra for main query: rw, rw, bw)
             cur.execute(f"""
                 WITH ref AS (SELECT %s::date AS r),

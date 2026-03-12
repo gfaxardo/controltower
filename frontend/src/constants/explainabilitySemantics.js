@@ -11,6 +11,7 @@ export function getBehaviorDirection (row) {
   const rising = (row.weeks_rising_consecutively ?? 0) | 0
   const alertType = row.alert_type || ''
 
+  if (alertType === 'Sudden Stop') return 'Empeorando'
   if (alertType === 'High Volatility') return 'Volátil'
   if (alertType === 'Strong Recovery' || (deltaPct != null && deltaPct > 0.2 && rising >= 1)) return 'En recuperación'
   if (deltaPct != null && deltaPct > 0.05 && (rising >= 2 || alertType === 'Strong Recovery')) return 'Mejorando'
@@ -57,8 +58,9 @@ export const RISK_BAND_COLORS = {
   stable: 'bg-gray-100 text-gray-700 border-gray-200'
 }
 
-/** Alert type semantic colors (aligned with severity). */
+/** Alert type semantic colors (aligned with severity). Precedence: Sudden Stop, Critical Drop, Moderate Drop, Silent Erosion, High Volatility, Strong Recovery, Stable Performer. */
 export const ALERT_COLORS = {
+  'Sudden Stop': 'bg-red-100 text-red-800 border-red-200',
   'Critical Drop': 'bg-red-100 text-red-800 border-red-200',
   'Moderate Drop': 'bg-amber-100 text-amber-800 border-amber-200',
   'Strong Recovery': 'bg-green-100 text-green-800 border-green-200',

@@ -64,6 +64,52 @@ function trendIcon (deltaPct) {
   return '→'
 }
 
+/** Last trip human-readable: Hoy, Hace N días, o — si no hay dato */
+function formatLastTrip (lastTripDate) {
+  if (!lastTripDate) return '—'
+  const d = new Date(lastTripDate)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  d.setHours(0, 0, 0, 0)
+  const diffDays = Math.floor((today - d) / (24 * 60 * 60 * 1000))
+  if (diffDays === 0) return 'Hoy'
+  if (diffDays === 1) return 'Hace 1 día'
+  if (diffDays <= 31) return `Hace ${diffDays} días`
+  return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+// Leyenda de segmentos (tipos de alerta) — on demand, no sobrecargar UI
+const SEGMENT_LEGEND = [
+  { type: 'Sudden Stop', short: 'Dejó de producir en la semana analizada (tenía actividad previa).', detail: 'Conductor con actividad en baseline que en la semana actual pasa a 0 viajes.' },
+  { type: 'Critical Drop', short: 'Caída abrupta y severa vs baseline.', detail: 'Baseline ≥40 viajes/sem, delta ≤ -30%, al menos 4 semanas activas en ventana.' },
+  { type: 'Moderate Drop', short: 'Caída relevante pero no extrema.', detail: 'Delta entre -30% y -15% vs baseline.' },
+  { type: 'Silent Erosion', short: 'Deterioro progresivo sostenido.', detail: 'Al menos 3 semanas consecutivas en caída (sin ser Critical/Moderate Drop).' },
+  { type: 'High Volatility', short: 'Comportamiento muy irregular entre semanas.', detail: 'Coeficiente de variación (stddev/avg) > 0,5 en baseline.' },
+  { type: 'Strong Recovery', short: 'Recuperación clara vs baseline.', detail: 'Delta ≥ +30% y al menos 3 semanas activas en ventana.' },
+  { type: 'Stable Performer', short: 'Estable dentro del rango esperado.', detail: 'No cumple ninguno de los criterios de alerta anteriores.' }
+]
+
+// Tooltips por columna (alineados al cálculo real del backend)
+const COLUMN_TOOLTIPS = {
+  Conductor: 'Nombre o ID del conductor.',
+  País: 'País del park del conductor.',
+  Ciudad: 'Ciudad del park.',
+  Park: 'Nombre del park.',
+  Segmento: 'Segmento de actividad en la semana analizada (p. ej. ELITE, FT) según viajes/semana.',
+  'Viajes sem.': 'Viajes realizados en la semana analizada (trips_current_week).',
+  'Base avg': 'Promedio de viajes del baseline (N semanas previas, excl. semana actual).',
+  'Δ %': 'Variación porcentual entre semana analizada y baseline. Negativo = caída.',
+  'Estado conductual': 'Resumen: Empeorando, Mejorando, En recuperación, Estable o Volátil (derivado de delta y alerta).',
+  Persistencia: 'Semanas consecutivas en deterioro o en recuperación (weeks_declining/rising_consecutively).',
+  Alerta: 'Clasificación operativa: Sudden Stop, Critical Drop, Moderate Drop, Silent Erosion, High Volatility, Strong Recovery, Stable Performer. Una sola por conductor (precedencia estricta).',
+  Severidad: 'Nivel de urgencia: critical, moderate, positive, neutral.',
+  'Risk Score': 'Puntaje compuesto 0-100 (comportamiento, migración, fragilidad, valor).',
+  'Risk Band': 'Banda categórica: stable (0-24), monitor (25-49), medium risk (50-74), high risk (75-100).',
+  'Last Trip': 'Fecha del último viaje del conductor. Ayuda a distinguir caída reciente vs abandono histórico.',
+  'Último viaje': 'Fecha del último viaje del conductor. Ayuda a distinguir caída reciente vs abandono histórico.',
+  Acción: 'Abre el detalle del conductor.'
+}
+
 /** Minimal line chart: trips over weeks (data ordered oldest first) */
 function DriverTripsLineChart ({ data }) {
   if (!data || data.length === 0) return <div className="text-xs text-gray-500">Sin datos</div>
@@ -235,10 +281,25 @@ export default function BehavioralAlertsView () {
 
   const segments = ['LEGEND', 'ELITE', 'FT', 'PT', 'CASUAL', 'OCCASIONAL', 'DORMANT']
   const movementTypes = ['upshift', 'downshift', 'stable', 'drop', 'new']
-  const alertTypes = ['Critical Drop', 'Moderate Drop', 'Silent Erosion', 'Strong Recovery', 'High Volatility', 'Stable Performer']
+  // Precedencia: Sudden Stop, Critical Drop, Moderate Drop, Silent Erosion, High Volatility, Strong Recovery, Stable Performer
+  const alertTypes = ['Sudden Stop', 'Critical Drop', 'Moderate Drop', 'Silent Erosion', 'High Volatility', 'Strong Recovery', 'Stable Performer']
   const severities = ['critical', 'moderate', 'positive', 'neutral']
   const riskBands = ['high risk', 'medium risk', 'monitor', 'stable']
   const RISK_BAND_COLORS = SEMANTIC_RISK_BAND_COLORS
+  const [showSegmentLegend, setShowSegmentLegend] = useState(false)
+  const columnToOrderKey = { Conductor: 'driver_name', País: 'country', Ciudad: 'city', Park: 'park_name', Segmento: 'segment_current', 'Viajes sem.': 'trips_current_week', 'Base avg': 'avg_trips_baseline', 'Δ %': 'delta_pct', Alerta: 'alert_type', Severidad: 'severity', 'Risk Score': 'risk_score', 'Risk Band': 'risk_band', 'Último viaje': 'last_trip_date' }
+  const handleSort = (col) => {
+    const key = columnToOrderKey[col]
+    if (!key) return
+    if (orderBy === key) setOrderDir((d) => (d === 'desc' ? 'asc' : 'desc'))
+    else { setOrderBy(key); setOrderDir(key === 'risk_score' ? 'desc' : 'asc') }
+    setPage(0)
+  }
+  const sortIcon = (col) => {
+    const key = columnToOrderKey[col]
+    if (!key || orderBy !== key) return <span className="opacity-50 ml-0.5" aria-hidden>↕</span>
+    return orderDir === 'desc' ? <span className="text-blue-600 font-bold ml-0.5" aria-label="Orden descendente">↓</span> : <span className="text-blue-600 font-bold ml-0.5" aria-label="Orden ascendente">↑</span>
+  }
 
   const totalPages = Math.max(1, Math.ceil(drivers.total / pageSize))
 
@@ -318,8 +379,25 @@ export default function BehavioralAlertsView () {
               {movementTypes.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
           </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Tipo alerta</label>
+          <div className="relative">
+            <label className="block text-xs font-medium text-gray-500 mb-1">
+              Tipo alerta
+              <button type="button" onClick={() => setShowSegmentLegend((v) => !v)} className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 text-xs font-medium" title="Leyenda de segmentos" aria-label="Leyenda de segmentos">
+                <span aria-hidden>?</span> Leyenda
+              </button>
+            </label>
+            {showSegmentLegend && (
+              <div className="absolute left-0 top-full z-20 mt-1 w-[320px] max-w-[90vw] rounded-lg border border-gray-200 bg-white shadow-lg p-3 text-sm text-gray-700">
+                <div className="font-medium text-gray-900 mb-2">Leyenda de alertas</div>
+                <ul className="space-y-1.5">
+                  {SEGMENT_LEGEND.map(({ type, short }) => (
+                    <li key={type}><strong>{type}:</strong> {short}</li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-xs text-gray-500">Precedencia estricta: una sola clasificación por conductor.</p>
+                <button type="button" onClick={() => setShowSegmentLegend(false)} className="mt-2 text-xs text-blue-600 hover:underline">Cerrar</button>
+              </div>
+            )}
             <select value={alertType} onChange={(e) => setAlertType(e.target.value)} className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
               <option value="">Todos</option>
               {alertTypes.map((a) => <option key={a} value={a}>{a}</option>)}
@@ -342,17 +420,19 @@ export default function BehavioralAlertsView () {
         </div>
       </div>
 
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4">
+      {/* Risk counters / KPI cards — Total, por tipo de alerta (precedencia), riesgo. Máx 5 columnas para que no queden comprimidas. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
         {[
-          { key: 'drivers_monitored', label: 'Conductores monitoreados', color: 'bg-blue-50 border-blue-200 text-blue-800' },
-          { key: 'high_risk_drivers', label: 'Alto riesgo', color: 'bg-red-50 border-red-200 text-red-800' },
-          { key: 'medium_risk_drivers', label: 'Riesgo medio', color: 'bg-orange-50 border-orange-200 text-orange-800' },
+          { key: 'drivers_monitored', label: 'Total en alertas', color: 'bg-blue-50 border-blue-200 text-blue-800' },
+          { key: 'sudden_stop', label: 'Sudden Stop', color: 'bg-red-50 border-red-200 text-red-800' },
           { key: 'critical_drops', label: 'Caídas críticas', color: 'bg-red-50 border-red-200 text-red-800' },
           { key: 'moderate_drops', label: 'Caídas moderadas', color: 'bg-orange-50 border-orange-200 text-orange-800' },
-          { key: 'strong_recoveries', label: 'Recuperaciones fuertes', color: 'bg-green-50 border-green-200 text-green-800' },
           { key: 'silent_erosion', label: 'Erosión silenciosa', color: 'bg-yellow-50 border-yellow-200 text-yellow-800' },
-          { key: 'high_volatility', label: 'Alta volatilidad', color: 'bg-purple-50 border-purple-200 text-purple-800' }
+          { key: 'strong_recoveries', label: 'Recuperaciones', color: 'bg-green-50 border-green-200 text-green-800' },
+          { key: 'high_volatility', label: 'Alta volatilidad', color: 'bg-purple-50 border-purple-200 text-purple-800' },
+          { key: 'stable_performer', label: 'Estables', color: 'bg-gray-50 border-gray-200 text-gray-800' },
+          { key: 'high_risk_drivers', label: 'Alto riesgo', color: 'bg-red-50 border-red-200 text-red-800' },
+          { key: 'medium_risk_drivers', label: 'Riesgo medio', color: 'bg-orange-50 border-orange-200 text-orange-800' }
         ].map(({ key, label, color }) => (
           <div key={key} className={`rounded-lg border p-3 ${color}`}>
             <div className="text-xs font-medium opacity-90">{label}</div>
@@ -386,72 +466,96 @@ export default function BehavioralAlertsView () {
         )}
       </div>
 
-      {/* Export */}
-      <div className="flex flex-wrap gap-2 items-center">
-        <button
-          type="button"
-          onClick={() => {
-            const rows = drivers.data || []
-            const headers = ['driver_id', 'driver_name', 'park', 'segment', 'alert_type', 'severity', 'trips_last_week', 'trips_baseline', 'delta_percent', 'recommended_action']
-            const toRow = (r) => [
-              r.driver_key ?? '',
-              (r.driver_name || r.driver_key) ?? '',
-              r.park_name ?? r.park_id ?? '',
-              r.segment_current ?? '',
-              r.alert_type ?? '',
-              r.severity ?? '',
-              formatNum(r.trips_current_week),
-              formatNum(r.avg_trips_baseline),
-              r.delta_pct != null ? (Number(r.delta_pct) * 100).toFixed(1) : '',
-              r.recommended_action ?? (r.alert_type ?? '')
-            ]
-            const csv = [headers.join(','), ...rows.map((r) => toRow(r).map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))].join('\r\n')
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-            const url = URL.createObjectURL(blob)
-            const a = document.createElement('a')
-            a.href = url
-            a.download = `conductores_alertas_${from}_${to}.csv`
-            a.click()
-            URL.revokeObjectURL(url)
-          }}
-          className="inline-flex items-center px-3 py-1.5 rounded border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50"
-        >
-          Exportar conductores (CSV filtrado)
-        </button>
-        <a href={getBehaviorAlertsExportUrl({ ...filters, from, to, format: 'csv' })} download className="inline-flex items-center px-3 py-1.5 rounded border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50">
-          Exportar CSV
-        </a>
-        <a href={getBehaviorAlertsExportUrl({ ...filters, from, to, format: 'excel' })} download className="inline-flex items-center px-3 py-1.5 rounded border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50">
-          Exportar Excel
-        </a>
+      {/* Export — Recovery List: lista accionable para call center / recuperación. Visible y destacado. */}
+      <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="text-xs font-medium text-gray-600 mb-2">Exportar datos</div>
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-gray-500 text-sm mr-1">Recovery List (recomendado):</span>
+          <a href={getBehaviorAlertsExportUrl({ ...filters, from, to, format: 'csv' })} download="recovery_list_conductores.csv" className="inline-flex items-center px-4 py-2 rounded-md border-2 border-green-600 bg-green-50 text-green-800 text-sm font-semibold hover:bg-green-100">
+            Export Recovery List (CSV)
+          </a>
+          <a href={getBehaviorAlertsExportUrl({ ...filters, from, to, format: 'excel' })} download="recovery_list_conductores.xlsx" className="inline-flex items-center px-4 py-2 rounded-md border-2 border-green-600 bg-green-50 text-green-800 text-sm font-semibold hover:bg-green-100">
+            Export Recovery List (Excel)
+          </a>
+          <span className="text-gray-400 mx-2">|</span>
+          <a href={getBehaviorAlertsExportUrl({ ...filters, from, to, format: 'csv' })} download="behavior_alerts.csv" className="inline-flex items-center px-3 py-1.5 rounded border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50">
+            CSV genérico
+          </a>
+          <a href={getBehaviorAlertsExportUrl({ ...filters, from, to, format: 'excel' })} download="behavior_alerts.xlsx" className="inline-flex items-center px-3 py-1.5 rounded border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50">
+            Excel genérico
+          </a>
+          <button
+            type="button"
+            onClick={() => {
+              const rows = drivers.data || []
+              const headers = ['driver_id', 'driver_name', 'park', 'segment', 'alert_type', 'severity', 'trips_last_week', 'trips_baseline', 'delta_percent', 'recommended_action']
+              const toRow = (r) => [
+                r.driver_key ?? '',
+                (r.driver_name || r.driver_key) ?? '',
+                r.park_name ?? r.park_id ?? '',
+                r.segment_current ?? '',
+                r.alert_type ?? '',
+                r.severity ?? '',
+                formatNum(r.trips_current_week),
+                formatNum(r.avg_trips_baseline),
+                r.delta_pct != null ? (Number(r.delta_pct) * 100).toFixed(1) : '',
+                r.recommended_action ?? (r.alert_type ?? '')
+              ]
+              const csv = [headers.join(','), ...rows.map((r) => toRow(r).map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))].join('\r\n')
+              const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+              const url = URL.createObjectURL(blob)
+              const a = document.createElement('a')
+              a.href = url
+              a.download = `conductores_alertas_${from}_${to}.csv`
+              a.click()
+              URL.revokeObjectURL(url)
+            }}
+            className="inline-flex items-center px-3 py-1.5 rounded border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50"
+          >
+            Exportar conductores (CSV filtrado)
+          </button>
+        </div>
       </div>
 
       {/* Time context */}
       <p className="text-xs text-gray-500">{getDecisionContextLabel(baselineWindow)} · Semana analizada: semana cerrada en el rango seleccionado.</p>
 
-      {/* Alerts table */}
+      {/* Alerts table — scroll horizontal en móvil/tablet para ver todas las columnas (incl. Último viaje). */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         {error && <div className="p-4 bg-red-50 text-red-700 text-sm">{error}</div>}
         {loading && <div className="p-4 text-gray-500 text-sm">Cargando…</div>}
+        <p className="px-4 py-1 text-xs text-gray-500 bg-gray-50 border-b border-gray-100">Desliza horizontalmente si no ves todas las columnas (p. ej. Último viaje).</p>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-100 border-b border-gray-200">
               <tr>
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Conductor</th>
-                <th className="text-left py-2 px-3 font-medium text-gray-700">País</th>
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Ciudad</th>
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Park</th>
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Segmento</th>
-                <th className="text-right py-2 px-3 font-medium text-gray-700">Viajes sem.</th>
-                <th className="text-right py-2 px-3 font-medium text-gray-700">Base avg</th>
-                <th className="text-right py-2 px-3 font-medium text-gray-700">Δ %</th>
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Estado conductual</th>
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Persistencia</th>
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Alerta</th>
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Severidad</th>
-                <th className="text-right py-2 px-3 font-medium text-gray-700">Risk Score</th>
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Risk Band</th>
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Acción</th>
+                {[
+                  { label: 'Conductor', align: 'left', sortable: true },
+                  { label: 'País', align: 'left', sortable: true },
+                  { label: 'Ciudad', align: 'left', sortable: true },
+                  { label: 'Park', align: 'left', sortable: true },
+                  { label: 'Segmento', align: 'left', sortable: true },
+                  { label: 'Viajes sem.', align: 'right', sortable: true },
+                  { label: 'Base avg', align: 'right', sortable: true },
+                  { label: 'Δ %', align: 'right', sortable: true },
+                  { label: 'Estado conductual', align: 'left', sortable: false },
+                  { label: 'Persistencia', align: 'left', sortable: false },
+                  { label: 'Alerta', align: 'left', sortable: true },
+                  { label: 'Severidad', align: 'left', sortable: true },
+                  { label: 'Risk Score', align: 'right', sortable: true },
+                  { label: 'Risk Band', align: 'left', sortable: true },
+                  { label: 'Último viaje', align: 'left', sortable: true },
+                  { label: 'Acción', align: 'left', sortable: false }
+                ].map(({ label, align, sortable }) => (
+                  <th
+                    key={label}
+                    className={`py-2 px-3 font-medium text-gray-700 ${align === 'right' ? 'text-right' : 'text-left'} ${sortable ? 'cursor-pointer hover:bg-gray-200 select-none' : ''} ${label === 'Último viaje' ? 'min-w-[7rem] whitespace-nowrap' : ''}`}
+                    title={COLUMN_TOOLTIPS[label]}
+                    onClick={sortable ? () => handleSort(label) : undefined}
+                  >
+                    {label}{sortable ? sortIcon(label) : ''}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -489,6 +593,7 @@ export default function BehavioralAlertsView () {
                   <td className="py-2 px-3">
                     <span className={`inline-block px-2 py-0.5 rounded border text-xs ${RISK_BAND_COLORS[r.risk_band] || 'bg-gray-100'}`}>{r.risk_band ?? '—'}</span>
                   </td>
+                  <td className="py-2 px-3 text-left min-w-[7rem]" title={r.last_trip_date ? new Date(r.last_trip_date).toLocaleString('es-ES') : ''}>{formatLastTrip(r.last_trip_date)}</td>
                   <td className="py-2 px-3">
                     <button type="button" className="text-blue-600 hover:underline text-xs" onClick={(ev) => { ev.stopPropagation(); loadDriverDetail(r.driver_key); }}>Ver detalle</button>
                   </td>

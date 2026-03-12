@@ -7,7 +7,7 @@ import KPICards from './KPICards'
 function ExecutiveSnapshotView({ filters = {}, refreshKey = 0 }) {
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-semibold text-gray-800">Snapshot (Plan vs Real)</h2>
+      <h3 className="text-lg font-medium text-gray-700">Plan vs Real — KPIs</h3>
       <KPICards key={`snapshot-kpis-${refreshKey}`} filters={filters} compact />
     </div>
   )

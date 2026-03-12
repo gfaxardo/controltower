@@ -107,6 +107,11 @@ from app.services.driver_behavior_service import (
     get_driver_behavior_driver_detail,
     get_driver_behavior_export,
 )
+from app.services.leakage_service import (
+    get_leakage_summary,
+    get_leakage_drivers,
+    get_leakage_export,
+)
 from app.services.top_driver_behavior_service import (
     get_top_driver_behavior_summary,
     get_top_driver_behavior_benchmarks,
@@ -890,7 +895,7 @@ async def get_behavior_alerts_export_endpoint(
             alert_type=alert_type, severity=severity, risk_band=risk_band,
             max_rows=max_rows,
         )
-        cols = ["driver_key", "driver_name", "country", "city", "park_name", "week_label", "segment_current", "movement_type", "trips_current_week", "avg_trips_baseline", "delta_abs", "delta_pct", "alert_type", "alert_severity", "risk_score", "risk_band"]
+        cols = ["driver_key", "driver_name", "country", "city", "park_name", "week_label", "segment_current", "movement_type", "trips_current_week", "avg_trips_baseline", "delta_abs", "delta_pct", "weeks_declining_consecutively", "weeks_rising_consecutively", "alert_type", "alert_severity", "risk_score", "risk_band", "last_trip_date"]
         if (format or "csv").lower() == "excel":
             try:
                 import openpyxl
@@ -916,6 +921,104 @@ async def get_behavior_alerts_export_endpoint(
         return Response(content=body, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=behavior_alerts.csv"})
     except Exception as e:
         logger.error("GET /ops/behavior-alerts/export: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Fleet Leakage Monitor MVP ---
+@router.get("/leakage/summary")
+async def get_leakage_summary_endpoint(
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    park_id: Optional[str] = Query(None),
+    leakage_status: Optional[str] = Query(None),
+    recovery_priority: Optional[str] = Query(None),
+    top_performers_only: Optional[bool] = Query(None),
+):
+    """KPIs: drivers_under_watch, progressive_leakage, lost_drivers, top_performers_at_risk, cohort_retention_45d."""
+    try:
+        return get_leakage_summary(
+            country=country, city=city, park_id=park_id,
+            leakage_status=leakage_status, recovery_priority=recovery_priority,
+            top_performers_only=top_performers_only,
+        )
+    except Exception as e:
+        logger.error("GET /ops/leakage/summary: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/leakage/drivers")
+async def get_leakage_drivers_endpoint(
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    park_id: Optional[str] = Query(None),
+    leakage_status: Optional[str] = Query(None),
+    recovery_priority: Optional[str] = Query(None),
+    top_performers_only: Optional[bool] = Query(None),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    order_by: str = Query("leakage_score"),
+    order_dir: str = Query("desc"),
+):
+    """Lista de conductores con clasificación de leakage (stable_retained, watchlist, progressive_leakage, lost_driver)."""
+    try:
+        return get_leakage_drivers(
+            country=country, city=city, park_id=park_id,
+            leakage_status=leakage_status, recovery_priority=recovery_priority,
+            top_performers_only=top_performers_only,
+            limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
+        )
+    except Exception as e:
+        logger.error("GET /ops/leakage/drivers: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/leakage/export")
+async def get_leakage_export_endpoint(
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    park_id: Optional[str] = Query(None),
+    leakage_status: Optional[str] = Query(None),
+    recovery_priority: Optional[str] = Query(None),
+    top_performers_only: Optional[bool] = Query(None),
+    format: Optional[str] = Query("csv"),
+    max_rows: int = Query(10000, ge=1, le=50000),
+):
+    """Export Recovery Queue CSV (o Excel si format=excel)."""
+    try:
+        rows = get_leakage_export(
+            country=country, city=city, park_id=park_id,
+            leakage_status=leakage_status, recovery_priority=recovery_priority,
+            top_performers_only=top_performers_only,
+            max_rows=max_rows,
+        )
+        cols = ["driver_key", "driver_name", "country", "city", "park_name", "segment_week", "trips_current_week",
+                "baseline_trips_4w_avg", "delta_pct", "last_trip_date", "days_since_last_trip",
+                "leakage_status", "leakage_score", "recovery_priority", "top_performer_at_risk"]
+        if (format or "csv").lower() == "excel":
+            try:
+                import openpyxl
+                from io import BytesIO
+                wb = openpyxl.Workbook()
+                ws = wb.active
+                ws.title = "Fleet Leakage"
+                ws.append(cols)
+                for r in rows:
+                    ws.append([r.get(c) for c in cols])
+                buf = BytesIO()
+                wb.save(buf)
+                buf.seek(0)
+                return Response(
+                    content=buf.getvalue(),
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": "attachment; filename=fleet_leakage.xlsx"},
+                )
+            except ImportError:
+                body = _to_csv(rows, cols)
+                return Response(content=body, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=fleet_leakage.csv"})
+        body = _to_csv(rows, cols)
+        return Response(content=body, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=fleet_leakage.csv"})
+    except Exception as e:
+        logger.error("GET /ops/leakage/export: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

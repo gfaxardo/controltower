@@ -1,4 +1,9 @@
-import { useState } from 'react'
+/**
+ * YEGO Control Tower — App principal.
+ * Fase 1: Navegación simplificada (Resumen, Real, Supply, Conductores en riesgo, Ciclo de vida, Plan y validación + Diagnósticos).
+ * Identificadores internos de tab se mantienen para no romper lógica; solo cambian labels y jerarquía.
+ */
+import { useState, useRef, useEffect } from 'react'
 import CollapsibleFilters from './components/CollapsibleFilters'
 import ExecutiveSnapshotView from './components/ExecutiveSnapshotView'
 import MonthlySplitView from './components/MonthlySplitView'
@@ -10,6 +15,7 @@ import RealLOBDrillView from './components/RealLOBDrillView'
 import DriverLifecycleView from './components/DriverLifecycleView'
 import SupplyView from './components/SupplyView'
 import BehavioralAlertsView from './components/BehavioralAlertsView'
+import FleetLeakageView from './components/FleetLeakageView'
 import DriverBehaviorView from './components/DriverBehaviorView'
 import ActionEngineView from './components/ActionEngineView'
 import SystemHealthView from './components/SystemHealthView'
@@ -17,9 +23,34 @@ import GlobalFreshnessBanner from './components/GlobalFreshnessBanner'
 import UploadPlan from './components/UploadPlan'
 import PlanTabs from './components/PlanTabs'
 
-const LEGACY_ENABLED = (import.meta.env.VITE_CT_LEGACY_ENABLED || '').toLowerCase() === 'true'
+// Navegación principal (primer nivel) — valores internos estables para no romper
+const TAB_RESUMEN = 'resumen'
+const TAB_REAL = 'real'
+const TAB_SUPPLY = 'supply'
+const TAB_DRIVER_RISK = 'driver_risk'
+const TAB_LIFECYCLE = 'driver_lifecycle'
+const TAB_PLAN_VALIDATION = 'plan_validation'
+const TAB_SYSTEM_HEALTH = 'system_health'
 
-function App() {
+// Sub-tabs de Conductores en riesgo (valores = mismos que antes para contenido)
+const DRIVER_RISK_SUBTABS = [
+  { id: 'behavioral_alerts', label: 'Alertas de conducta' },
+  { id: 'driver_behavior', label: 'Desviación por ventanas' },
+  { id: 'fleet_leakage', label: 'Fuga de flota' },
+  { id: 'action_engine', label: 'Acciones recomendadas' }
+]
+
+// Sub-tabs de Plan y validación (Legacy)
+const PLAN_VALIDATION_SUBTABS = [
+  { id: 'valid', label: 'Plan Válido' },
+  { id: 'out_of_universe', label: 'Expansión' },
+  { id: 'missing', label: 'Huecos' },
+  { id: 'actions', label: 'Fase 2B' },
+  { id: 'accountability', label: 'Fase 2C' },
+  { id: 'lob_universe', label: 'Universo & LOB' }
+]
+
+function App () {
   const [filters, setFilters] = useState({
     country: '',
     city: '',
@@ -28,9 +59,12 @@ function App() {
     year_plan: 2026
   })
   const [refreshKey, setRefreshKey] = useState(0)
-  const [activeTab, setActiveTab] = useState('real_lob')
-  const [legacySubTab, setLegacySubTab] = useState('valid')
+  const [activeTab, setActiveTab] = useState(TAB_RESUMEN)
+  const [driverRiskSubTab, setDriverRiskSubTab] = useState('behavioral_alerts')
+  const [planValidationSubTab, setPlanValidationSubTab] = useState('valid')
   const [showAdminModal, setShowAdminModal] = useState(false)
+  const [showDiagnosticsMenu, setShowDiagnosticsMenu] = useState(false)
+  const diagnosticsRef = useRef(null)
 
   const handleFilterChange = (newFilters) => {
     setFilters(newFilters)
@@ -40,6 +74,41 @@ function App() {
     setRefreshKey(prev => prev + 1)
     setShowAdminModal(false)
   }
+
+  // Cerrar dropdown Diagnósticos al hacer click fuera
+  useEffect(() => {
+    function handleClickOutside (e) {
+      if (diagnosticsRef.current && !diagnosticsRef.current.contains(e.target)) {
+        setShowDiagnosticsMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const openDiagnostics = (tab) => {
+    setActiveTab(tab)
+    setShowDiagnosticsMenu(false)
+  }
+
+  const mainNavTabs = [
+    { id: TAB_RESUMEN, label: 'Resumen' },
+    { id: TAB_REAL, label: 'Real' },
+    { id: TAB_SUPPLY, label: 'Supply' },
+    { id: TAB_DRIVER_RISK, label: 'Conductores en riesgo' },
+    { id: TAB_LIFECYCLE, label: 'Ciclo de vida' },
+    { id: TAB_PLAN_VALIDATION, label: 'Plan y validación' }
+  ]
+
+  const navButtonClass = (isActive) =>
+    `py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
+      isActive
+        ? 'border-blue-500 text-blue-600'
+        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+    }`
+
+  const subNavButtonClass = (isActive) =>
+    `px-3 py-1.5 rounded text-sm ${isActive ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -79,182 +148,165 @@ function App() {
 
         <CollapsibleFilters onFilterChange={handleFilterChange} />
 
+        {/* ========== NAVEGACIÓN PRINCIPAL (primer nivel) ========== */}
         <div className="mb-4 border-b border-gray-200">
-          <nav className="-mb-px flex flex-wrap gap-1 sm:space-x-8">
-            <button
-              onClick={() => setActiveTab('real_lob')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'real_lob'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Real LOB
-            </button>
-            <button
-              onClick={() => setActiveTab('driver_lifecycle')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'driver_lifecycle'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Driver Lifecycle
-            </button>
-            <button
-              onClick={() => setActiveTab('supply')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'supply'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Driver Supply Dynamics
-            </button>
-            <button
-              onClick={() => setActiveTab('behavioral_alerts')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'behavioral_alerts'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Behavioral Alerts
-            </button>
-            <button
-              onClick={() => setActiveTab('driver_behavior')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'driver_behavior'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Driver Behavior
-            </button>
-            <button
-              onClick={() => setActiveTab('action_engine')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'action_engine'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Action Engine
-            </button>
-            <button
-              onClick={() => setActiveTab('snapshot')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'snapshot'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Snapshot
-            </button>
-            <button
-              onClick={() => setActiveTab('system_health')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'system_health'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              System Health
-            </button>
-            <button
-              onClick={() => setActiveTab('legacy')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'legacy'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Legacy
-            </button>
-            {LEGACY_ENABLED && (
-              <>
-                <button onClick={() => { setActiveTab('valid'); setLegacySubTab('valid'); }} className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'valid' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Plan Válido</button>
-                <button onClick={() => { setActiveTab('out_of_universe'); setLegacySubTab('out_of_universe'); }} className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'out_of_universe' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500'}`}>Expansión</button>
-                <button onClick={() => { setActiveTab('missing'); setLegacySubTab('missing'); }} className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'missing' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500'}`}>Huecos</button>
-                <button onClick={() => { setActiveTab('actions'); setLegacySubTab('actions'); }} className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'actions' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500'}`}>Fase 2B</button>
-                <button onClick={() => { setActiveTab('accountability'); setLegacySubTab('accountability'); }} className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'accountability' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500'}`}>Fase 2C</button>
-                <button onClick={() => { setActiveTab('lob_universe'); setLegacySubTab('lob_universe'); }} className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'lob_universe' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500'}`}>Universo & LOB</button>
-              </>
-            )}
+          <nav className="-mb-px flex flex-wrap items-center gap-1 sm:gap-2">
+            {mainNavTabs.map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActiveTab(id)}
+                className={navButtonClass(activeTab === id)}
+              >
+                {label}
+              </button>
+            ))}
+            {/* Diagnósticos (segundo nivel): dropdown */}
+            <div className="relative ml-2 sm:ml-4" ref={diagnosticsRef}>
+              <button
+                type="button"
+                onClick={() => setShowDiagnosticsMenu((v) => !v)}
+                className={`py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap border-transparent text-gray-500 hover:text-gray-700 ${
+                  activeTab === TAB_SYSTEM_HEALTH ? 'border-blue-500 text-blue-600' : ''
+                }`}
+                aria-expanded={showDiagnosticsMenu}
+                aria-haspopup="true"
+              >
+                Diagnósticos ▾
+              </button>
+              {showDiagnosticsMenu && (
+                <div className="absolute right-0 top-full mt-1 py-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 min-w-[10rem]">
+                  <button
+                    type="button"
+                    onClick={() => openDiagnostics(TAB_SYSTEM_HEALTH)}
+                    className={`block w-full text-left px-4 py-2 text-sm ${activeTab === TAB_SYSTEM_HEALTH ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}`}
+                  >
+                    System Health
+                  </button>
+                </div>
+              )}
+            </div>
           </nav>
         </div>
 
-        {activeTab === 'real_lob' && (
-          <RealLOBDrillView key={`real-lob-drill-${refreshKey}`} />
-        )}
-        {activeTab === 'driver_lifecycle' && (
-          <DriverLifecycleView key={`driver-lifecycle-${refreshKey}`} />
-        )}
-        {activeTab === 'supply' && (
-          <SupplyView key={`supply-${refreshKey}`} />
-        )}
-        {activeTab === 'behavioral_alerts' && (
-          <BehavioralAlertsView key={`behavioral-alerts-${refreshKey}`} />
-        )}
-        {activeTab === 'driver_behavior' && (
-          <DriverBehaviorView key={`driver-behavior-${refreshKey}`} />
-        )}
-        {activeTab === 'action_engine' && (
-          <ActionEngineView key={`action-engine-${refreshKey}`} />
-        )}
-        {activeTab === 'snapshot' && (
-          <ExecutiveSnapshotView key={`snapshot-${refreshKey}`} filters={filters} refreshKey={refreshKey} />
-        )}
-        {activeTab === 'system_health' && (
-          <SystemHealthView key={`system-health-${refreshKey}`} />
-        )}
-        {activeTab === 'legacy' && (
-          <div className="space-y-4">
-            <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-2">
-              {['valid', 'out_of_universe', 'missing', 'actions', 'accountability', 'lob_universe'].map((t) => (
+        {/* ========== SUB-NAV: Conductores en riesgo ========== */}
+        {activeTab === TAB_DRIVER_RISK && (
+          <div className="mb-4 pb-2 border-b border-gray-200">
+            <p className="text-xs text-gray-500 mb-2">Quiénes requieren atención</p>
+            <div className="flex flex-wrap gap-2">
+              {DRIVER_RISK_SUBTABS.map(({ id, label }) => (
                 <button
-                  key={t}
-                  onClick={() => setLegacySubTab(t)}
-                  className={`px-3 py-1.5 rounded text-sm ${legacySubTab === t ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}
+                  key={id}
+                  type="button"
+                  onClick={() => setDriverRiskSubTab(id)}
+                  className={subNavButtonClass(driverRiskSubTab === id)}
                 >
-                  {t === 'valid' && 'Plan Válido'}
-                  {t === 'out_of_universe' && 'Expansión'}
-                  {t === 'missing' && 'Huecos'}
-                  {t === 'actions' && 'Fase 2B'}
-                  {t === 'accountability' && 'Fase 2C'}
-                  {t === 'lob_universe' && 'Universo & LOB'}
+                  {label}
                 </button>
               ))}
             </div>
-            {legacySubTab === 'valid' && (
-              <>
-                <MonthlySplitView key={`monthly-${refreshKey}`} filters={filters} />
-                <WeeklyPlanVsRealView key={`weekly-${refreshKey}`} filters={filters} />
-              </>
-            )}
-            {legacySubTab === 'actions' && <Phase2BActionsTrackingView />}
-            {legacySubTab === 'accountability' && <Phase2CAccountabilityView />}
-            {legacySubTab === 'lob_universe' && <LobUniverseView key={`lob-universe-${refreshKey}`} filters={filters} />}
-            {['out_of_universe', 'missing'].includes(legacySubTab) && (
-              <PlanTabs key={`tabs-${refreshKey}`} filters={filters} activeTab={legacySubTab} onTabChange={setLegacySubTab} />
-            )}
           </div>
         )}
-        {LEGACY_ENABLED && activeTab !== 'real_lob' && activeTab !== 'legacy' && (
-          <>
-            {activeTab === 'valid' && (
+
+        {/* ========== SUB-NAV: Plan y validación ========== */}
+        {activeTab === TAB_PLAN_VALIDATION && (
+          <div className="mb-4 pb-2 border-b border-gray-200">
+            <p className="text-xs text-gray-500 mb-2">Plan, validación y accountability</p>
+            <div className="flex flex-wrap gap-2">
+              {PLAN_VALIDATION_SUBTABS.map(({ id, label }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setPlanValidationSubTab(id)}
+                  className={subNavButtonClass(planValidationSubTab === id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ========== CONTENIDO POR TAB PRINCIPAL ========== */}
+        {activeTab === TAB_RESUMEN && (
+          <section className="space-y-4" aria-label="Resumen">
+            <h2 className="text-xl font-semibold text-gray-800">Resumen</h2>
+            <p className="text-sm text-gray-600">Plan vs Real en KPIs (viajes, conductores, revenue).</p>
+            <ExecutiveSnapshotView key={`snapshot-${refreshKey}`} filters={filters} refreshKey={refreshKey} />
+          </section>
+        )}
+
+        {activeTab === TAB_REAL && (
+          <section className="space-y-4" aria-label="Real">
+            <h2 className="text-xl font-semibold text-gray-800">Real</h2>
+            <p className="text-sm text-gray-600">Drill-down por país, periodo, LOB y park.</p>
+            <RealLOBDrillView key={`real-lob-drill-${refreshKey}`} />
+          </section>
+        )}
+
+        {activeTab === TAB_SUPPLY && (
+          <section className="space-y-4" aria-label="Supply">
+            <h2 className="text-xl font-semibold text-gray-800">Supply</h2>
+            <p className="text-sm text-gray-600">Dinámica de supply por park: overview, composición, migración y alertas.</p>
+            <SupplyView key={`supply-${refreshKey}`} />
+          </section>
+        )}
+
+        {activeTab === TAB_DRIVER_RISK && (
+          <section className="space-y-4" aria-label="Conductores en riesgo">
+            {driverRiskSubTab === 'behavioral_alerts' && (
+              <BehavioralAlertsView key={`behavioral-alerts-${refreshKey}`} />
+            )}
+            {driverRiskSubTab === 'driver_behavior' && (
+              <DriverBehaviorView key={`driver-behavior-${refreshKey}`} />
+            )}
+            {driverRiskSubTab === 'fleet_leakage' && (
+              <FleetLeakageView key={`fleet-leakage-${refreshKey}`} />
+            )}
+            {driverRiskSubTab === 'action_engine' && (
+              <ActionEngineView key={`action-engine-${refreshKey}`} />
+            )}
+          </section>
+        )}
+
+        {activeTab === TAB_LIFECYCLE && (
+          <section className="space-y-4" aria-label="Ciclo de vida">
+            <h2 className="text-xl font-semibold text-gray-800">Ciclo de vida</h2>
+            <p className="text-sm text-gray-600">Evolución del parque y cohortes por park.</p>
+            <DriverLifecycleView key={`driver-lifecycle-${refreshKey}`} />
+          </section>
+        )}
+
+        {activeTab === TAB_PLAN_VALIDATION && (
+          <section className="space-y-4" aria-label="Plan y validación">
+            {planValidationSubTab === 'valid' && (
               <>
                 <MonthlySplitView key={`monthly-${refreshKey}`} filters={filters} />
                 <WeeklyPlanVsRealView key={`weekly-${refreshKey}`} filters={filters} />
               </>
             )}
-            {activeTab === 'actions' && <Phase2BActionsTrackingView />}
-            {activeTab === 'accountability' && <Phase2CAccountabilityView />}
-            {activeTab === 'lob_universe' && <LobUniverseView key={`lob-universe-${refreshKey}`} filters={filters} />}
-            {['out_of_universe', 'missing'].includes(activeTab) && (
-              <PlanTabs key={`tabs-${refreshKey}`} filters={filters} activeTab={activeTab} onTabChange={setActiveTab} />
+            {planValidationSubTab === 'actions' && <Phase2BActionsTrackingView />}
+            {planValidationSubTab === 'accountability' && <Phase2CAccountabilityView />}
+            {planValidationSubTab === 'lob_universe' && (
+              <LobUniverseView key={`lob-universe-${refreshKey}`} filters={filters} />
             )}
-          </>
+            {['out_of_universe', 'missing'].includes(planValidationSubTab) && (
+              <PlanTabs
+                key={`tabs-${refreshKey}`}
+                filters={filters}
+                activeTab={planValidationSubTab}
+                onTabChange={setPlanValidationSubTab}
+              />
+            )}
+          </section>
+        )}
+
+        {activeTab === TAB_SYSTEM_HEALTH && (
+          <section className="space-y-4" aria-label="Diagnósticos">
+            <h2 className="text-xl font-semibold text-gray-800">System Health</h2>
+            <p className="text-sm text-gray-600">Integridad de datos, freshness de MVs e ingestión. Uso técnico o de diagnóstico.</p>
+            <SystemHealthView key={`system-health-${refreshKey}`} />
+          </section>
         )}
       </div>
     </div>

@@ -18,21 +18,23 @@
 
 ---
 
-## 2. Alert classification rules
+## 2. Alert classification rules (mutually exclusive)
 
-Evaluation order is **priority order** (first match wins). All conditions must hold unless stated otherwise.
+Evaluation order is **strict precedence** (first match wins; one classification per driver-week). All conditions must hold unless stated otherwise.
 
-| alert_type        | Conditions | severity  |
-|-------------------|------------|-----------|
-| **Critical Drop** | avg_trips_baseline >= 40 AND delta_pct <= -30% AND active_weeks_in_window >= 4 | critical  |
-| **Moderate Drop** | delta_pct > -30% AND delta_pct <= -15% | moderate  |
-| **Silent Erosion** | weeks_declining_consecutively >= 3 (and not already Critical or Moderate Drop) | moderate  |
-| **Strong Recovery** | delta_pct >= +30% AND active_weeks_in_window >= 3 | positive   |
-| **High Volatility** | (stddev_trips_baseline / avg_trips_baseline) > 0.5 (and none of the above) | moderate  |
-| **Stable Performer** | None of the above | neutral   |
+| Precedence | alert_type        | Conditions | severity  |
+|------------|-------------------|------------|-----------|
+| 1 | **Sudden Stop** | trips_current_week = 0 AND avg_trips_baseline > 0 (had activity, this week zero) | critical  |
+| 2 | **Critical Drop** | avg_trips_baseline >= 40 AND delta_pct <= -30% AND active_weeks_in_window >= 4 | critical  |
+| 3 | **Moderate Drop** | delta_pct > -30% AND delta_pct <= -15% | moderate  |
+| 4 | **Silent Erosion** | weeks_declining_consecutively >= 3 (and not already Critical or Moderate Drop) | moderate  |
+| 5 | **High Volatility** | (stddev_trips_baseline / avg_trips_baseline) > 0.5 (and none of the above) | moderate  |
+| 6 | **Strong Recovery** | delta_pct >= +30% AND active_weeks_in_window >= 3 | positive   |
+| 7 | **Stable Performer** | None of the above | neutral   |
 
-- **Severity** is derived from alert_type: Critical Drop → critical; Moderate Drop, Silent Erosion, High Volatility → moderate; Strong Recovery → positive; Stable Performer → neutral.
+- **Severity:** Sudden Stop, Critical Drop → critical; Moderate Drop, Silent Erosion, High Volatility → moderate; Strong Recovery → positive; Stable Performer → neutral.
 - Percentages in conditions are applied to decimal form (e.g. -30% means delta_pct <= -0.30).
+- Implemented in migration **090_behavioral_alerts_sudden_stop_mutually_exclusive** (view `ops.v_driver_behavior_alerts_weekly`).
 
 ---
 

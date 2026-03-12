@@ -11,6 +11,28 @@ const api = axios.create({
   },
 })
 
+// Instrumentación (Fase 1): en dev, log de requests y duración para detectar duplicados
+if (import.meta.env.DEV) {
+  api.interceptors.request.use((config) => {
+    config.metadata = { startTime: Date.now() }
+    return config
+  })
+  api.interceptors.response.use(
+    (response) => {
+      const duration = response.config.metadata ? Date.now() - response.config.metadata.startTime : 0
+      const url = response.config.url || ''
+      const params = response.config.params ? `?${new URLSearchParams(response.config.params).toString()}` : ''
+      console.debug('[API]', response.config.method?.toUpperCase(), url + params, `${duration}ms`)
+      return response
+    },
+    (error) => {
+      const duration = error.config?.metadata ? Date.now() - error.config.metadata.startTime : 0
+      console.debug('[API]', error.config?.method?.toUpperCase(), error.config?.url, 'ERR', error.response?.status, `${duration}ms`)
+      return Promise.reject(error)
+    }
+  )
+}
+
 export const uploadPlan = async (file) => {
   const formData = new FormData()
   formData.append('file', file)
@@ -495,6 +517,23 @@ export const getBehaviorAlertsExportUrl = (params = {}) => {
   Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') q.set(k, v) })
   const base = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_API_URL || '/api')
   return `${base}/ops/behavior-alerts/export?${q.toString()}`
+}
+
+// --- Fleet Leakage Monitor MVP ---
+const LEAKAGE_TIMEOUT_MS = 30000
+export const getLeakageSummary = async (params = {}) => {
+  const response = await api.get('/ops/leakage/summary', { params, timeout: LEAKAGE_TIMEOUT_MS })
+  return response.data
+}
+export const getLeakageDrivers = async (params = {}) => {
+  const response = await api.get('/ops/leakage/drivers', { params, timeout: LEAKAGE_TIMEOUT_MS })
+  return response.data
+}
+export const getLeakageExportUrl = (params = {}) => {
+  const q = new URLSearchParams()
+  Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') q.set(k, v) })
+  const base = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_API_URL || '/api')
+  return `${base}/ops/leakage/export?${q.toString()}`
 }
 
 // --- Driver Behavior (deviation engine: time windows, days_since_last_trip) ---
