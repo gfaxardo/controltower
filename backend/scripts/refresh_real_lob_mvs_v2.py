@@ -21,6 +21,7 @@ except ImportError:
     pass
 
 from app.db.connection import get_db, init_db_pool
+from app.services.observability_service import log_refresh
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -49,15 +50,22 @@ def _refresh_one(cur, conn, mv_name: str) -> None:
 
 def main():
     init_db_pool()
+    script_name = "refresh_real_lob_mvs_v2.py"
     try:
+        log_refresh(MV_MONTHLY, status="running", script_name=script_name, trigger_type="script")
         with get_db() as conn:
             cur = conn.cursor()
             _refresh_one(cur, conn, MV_MONTHLY)
+            log_refresh(MV_MONTHLY, status="ok", script_name=script_name, trigger_type="script")
+            log_refresh(MV_WEEKLY, status="running", script_name=script_name, trigger_type="script")
             _refresh_one(cur, conn, MV_WEEKLY)
+            log_refresh(MV_WEEKLY, status="ok", script_name=script_name, trigger_type="script")
             cur.close()
         logger.info("Refresh de Real LOB v2 MVs completado correctamente.")
     except Exception as e:
         logger.exception("Error al refrescar Real LOB v2 MVs: %s", e)
+        log_refresh(MV_MONTHLY, status="error", script_name=script_name, error_message=str(e)[:500])
+        log_refresh(MV_WEEKLY, status="error", script_name=script_name, error_message=str(e)[:500])
         sys.exit(1)
 
 

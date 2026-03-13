@@ -105,6 +105,54 @@ TIPO_SERVICIO_MAPPING = {
     'moto': 'Moto',
 }
 
+# --- REAL LOB: catálogo canónico (alineado con canon.normalize_real_tipo_servicio / 080) ---
+# Claves internas en snake_case; display en UI puede usar REAL_SERVICE_TYPE_DISPLAY.
+REAL_SERVICE_TYPES = (
+    'economico',
+    'comfort',
+    'comfort_plus',
+    'tuk_tuk',
+    'delivery',
+    'minivan',
+    'premier',
+    'standard',
+    'start',
+    'xl',
+    'economy',
+    'cargo',
+    'moto',
+    'taxi_moto',
+    'UNCLASSIFIED',
+)
+
+# Mapeo canonical_key → etiqueta para UI (evita fragmentación confort+/CONFORT_PLUS en pantalla).
+REAL_SERVICE_TYPE_DISPLAY: Dict[str, str] = {
+    'comfort_plus': 'CONFORT_PLUS',
+    'tuk_tuk': 'TUK_TUK',
+    'delivery': 'DELIVERY',
+    'economico': 'ECONOMY',
+    'comfort': 'COMFORT',
+    'minivan': 'MINIVAN',
+    'premier': 'PREMIER',
+    'standard': 'STANDARD',
+    'start': 'START',
+    'xl': 'XL',
+    'economy': 'ECONOMY',
+    'cargo': 'CARGO',
+    'moto': 'MOTO',
+    'taxi_moto': 'MOTO',
+    'UNCLASSIFIED': 'UNCLASSIFIED',
+}
+
+
+def get_real_service_type_display(canonical_key: Optional[str]) -> str:
+    """Devuelve la etiqueta de visualización para tipo de servicio REAL (ej. CONFORT_PLUS)."""
+    if not canonical_key:
+        return ''
+    k = canonical_key.strip().lower()
+    return REAL_SERVICE_TYPE_DISPLAY.get(k, canonical_key)
+
+
 def normalize_line_of_business(plan_line: str) -> str:
     """
     Normaliza el nombre de línea de negocio del plan al formato usado en dim.dim_park.default_line_of_business.

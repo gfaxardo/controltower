@@ -1,6 +1,6 @@
 """
 Real LOB v2: opciones para dropdowns de filtros (countries, cities, parks, lob_groups, tipo_servicio, years).
-Fuente: ops.mv_real_lob_month_v2 y ops.mv_real_lob_week_v2.
+Fuente: ops.mv_real_lob_month_v2 y ops.mv_real_lob_week_v2 (valores canónicos desde canon.dim_service_type y canon.dim_lob_group).
 Fallback: si parks queda vacío (p. ej. MVs no refrescadas), se rellenan desde ops.real_drill_dim_fact.
 Cache en memoria 5 min para no golpear la DB en cada carga.
 """

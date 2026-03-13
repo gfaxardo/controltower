@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getSystemHealth, runIntegrityAudit, getDataPipelineHealth } from '../services/api'
+import { getSystemHealth, runIntegrityAudit, getDataPipelineHealth, getObservabilityOverview, getObservabilityArtifacts } from '../services/api'
 
 const statusColors = {
   OK: 'bg-green-100 text-green-800',
@@ -12,6 +12,8 @@ const statusColors = {
 function SystemHealthView () {
   const [health, setHealth] = useState(null)
   const [pipeline, setPipeline] = useState(null)
+  const [observability, setObservability] = useState(null)
+  const [observabilityArtifacts, setObservabilityArtifacts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [auditRunning, setAuditRunning] = useState(false)
@@ -31,6 +33,17 @@ function SystemHealthView () {
       setError(e?.message || e?.response?.data?.detail || 'Error al cargar System Health')
     } finally {
       setLoading(false)
+    }
+    try {
+      const [obs, art] = await Promise.all([
+        getObservabilityOverview(),
+        getObservabilityArtifacts()
+      ])
+      setObservability(obs?.error ? null : obs)
+      setObservabilityArtifacts(Array.isArray(art) ? art : [])
+    } catch (_) {
+      setObservability(null)
+      setObservabilityArtifacts([])
     }
   }
 
@@ -237,6 +250,99 @@ function SystemHealthView () {
             </table>
           </div>
         </section>
+      )}
+
+      {/* Fase 1 — Observabilidad E2E */}
+      {observability?.modules?.length === 0 && observability !== null && (
+        <section className="bg-gray-50 rounded-lg border border-gray-200 p-3">
+          <p className="text-sm text-gray-600">Observabilidad: sin módulos registrados (aplicar migración 092 o comprobar backend <code className="text-xs">/ops/observability/overview</code>).</p>
+        </section>
+      )}
+      {observability === null && !loading && (
+        <section className="bg-gray-50 rounded-lg border border-gray-200 p-3">
+          <p className="text-sm text-gray-600">Observabilidad: no cargada (error de red o migración 092 no aplicada).</p>
+        </section>
+      )}
+      {observability?.modules?.length > 0 && (
+        <>
+          <section className="bg-white rounded-lg border border-gray-200 p-4">
+            <h3 className="font-medium text-gray-800 mb-3">Observabilidad por módulo</h3>
+            <p className="text-xs text-gray-500 mb-3">Último refresh y cobertura por módulo. Supply usa supply_refresh_log; Real LOB/Driver Lifecycle pueden registrar en observability_refresh_log.</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 text-left text-gray-600">
+                    <th className="py-2 pr-4">Módulo</th>
+                    <th className="py-2 pr-4">Artefactos</th>
+                    <th className="py-2 pr-4">Con refresh</th>
+                    <th className="py-2 pr-4">Último refresh</th>
+                    <th className="py-2 pr-4">Cobertura</th>
+                    <th className="py-2">Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {observability.modules.map((m, i) => (
+                    <tr key={i} className="border-b border-gray-100">
+                      <td className="py-2 pr-4 font-medium">{m.module_name}</td>
+                      <td className="py-2 pr-4">{m.artifact_count ?? 0}</td>
+                      <td className="py-2 pr-4">{m.with_refresh_count ?? 0}</td>
+                      <td className="py-2 pr-4 text-gray-600">{m.latest_refresh_at ? new Date(m.latest_refresh_at).toLocaleString() : '—'}</td>
+                      <td className="py-2 pr-4">{m.observability_coverage_pct != null ? `${m.observability_coverage_pct}%` : '—'}</td>
+                      <td className="py-2">
+                        <span className={`px-2 py-0.5 rounded ${m.all_fresh ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
+                          {m.all_fresh ? 'fresh' : 'stale/unknown'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {observability.recent_refreshes_7d != null && (
+              <p className="text-xs text-gray-500 mt-2">Refreshes registrados (últimos 7 días): {observability.recent_refreshes_7d}</p>
+            )}
+          </section>
+          <section className="bg-white rounded-lg border border-gray-200 p-4">
+            <h3 className="font-medium text-gray-800 mb-3">Artefactos críticos</h3>
+            <div className="overflow-x-auto max-h-64 overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 text-left text-gray-600">
+                    <th className="py-2 pr-4">Artefacto</th>
+                    <th className="py-2 pr-4">Tipo</th>
+                    <th className="py-2 pr-4">Módulo</th>
+                    <th className="py-2 pr-4">Último refresh</th>
+                    <th className="py-2">Origen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {observabilityArtifacts.map((a, i) => (
+                    <tr key={i} className="border-b border-gray-100">
+                      <td className="py-2 pr-4 font-mono text-xs">{a.artifact_name}</td>
+                      <td className="py-2 pr-4">{a.artifact_type ?? '—'}</td>
+                      <td className="py-2 pr-4">{a.module_name ?? '—'}</td>
+                      <td className="py-2 pr-4 text-gray-600">{a.latest_refresh_at ? new Date(a.latest_refresh_at).toLocaleString() : '—'}</td>
+                      <td className="py-2 text-gray-500">{a.refresh_owner ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+          {observability.modules.some(m => !m.all_fresh || (m.observability_coverage_pct != null && m.observability_coverage_pct < 100)) && (
+            <section className="bg-amber-50 rounded-lg border border-amber-200 p-4">
+              <h3 className="font-medium text-amber-900 mb-2">Riesgos detectados</h3>
+              <ul className="text-sm text-amber-800 list-disc list-inside space-y-1">
+                {observability.modules.filter(m => !m.all_fresh).map((m, i) => (
+                  <li key={i}>Módulo <strong>{m.module_name}</strong>: datos stale o sin trazabilidad de refresh reciente.</li>
+                ))}
+                {observability.modules.filter(m => m.observability_coverage_pct != null && m.observability_coverage_pct < 100 && m.observability_coverage_pct > 0).map((m, i) => (
+                  <li key={`cov-${i}`}>Módulo <strong>{m.module_name}</strong>: solo {m.observability_coverage_pct}% de artefactos con refresh registrado.</li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </>
       )}
     </div>
   )

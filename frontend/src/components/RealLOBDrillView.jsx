@@ -18,6 +18,7 @@ import {
 import RealLOBDailyView from './RealLOBDailyView'
 import { buildDimKey, buildDrillKey } from '../utils/dimKey'
 import { getEstadoConfig, getComparativeClass, GRID_BADGE, GRID_ESTADO, COMPARATIVE_LABELS } from '../constants/gridSemantics'
+import { formatRealServiceTypeDisplay } from '../constants/realServiceTypeDisplay'
 
 const USE_DRILL_PRO = true
 
@@ -710,7 +711,7 @@ export default function RealLOBDrillView () {
                                     const subKm = subTrips > 0 && (r.km_prom != null || r.distance_km_avg != null || r.distance_total_km != null)
                                       ? formatDistanceKm(r.km_prom ?? r.distance_km_avg ?? (r.distance_total_km / subTrips), subTrips)
                                       : '—'
-                                    const dimLabel = drillBy === 'lob' ? (r.lob_group ?? '—') : drillBy === 'park' ? (r.dimension_key ?? r.park_name_resolved ?? r.park_name ?? '—') : (r.service_type ?? r.dimension_key ?? '—')
+                                    const dimLabel = drillBy === 'lob' ? (r.lob_group ?? '—') : drillBy === 'park' ? (r.dimension_key ?? r.park_name_resolved ?? r.park_name ?? '—') : formatRealServiceTypeDisplay(r.service_type ?? r.dimension_key) || '—'
                                     return (
                                       <tr key={`${rowId}-drill-${i}`} className="bg-slate-50">
                                         <td className="px-3 py-2" />

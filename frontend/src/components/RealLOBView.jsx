@@ -13,6 +13,7 @@
  */
 import { useState, useEffect } from 'react'
 import { getRealLobMonthly, getRealLobWeekly, getRealLobMonthlyV2, getRealLobWeeklyV2, getRealStrategyCountry, getRealStrategyLob, getRealLobFilters, getRealLobV2Data } from '../services/api'
+import { formatRealServiceTypeDisplay } from '../constants/realServiceTypeDisplay'
 
 const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 const LOB_GROUPS = ['auto taxi', 'delivery', 'tuk tuk', 'taxi moto', 'UNCLASSIFIED']
@@ -580,7 +581,7 @@ function RealLOBView({ filters = {} }) {
               <select value={v2TipoServicio} onChange={(e) => setV2TipoServicio(e.target.value)} className="border rounded px-2 py-1.5 text-sm w-full">
                 <option value="">Todos</option>
                 {(filterOptions.tipo_servicio || []).map((t) => (
-                  <option key={t} value={t}>{t}</option>
+                  <option key={t} value={t}>{formatRealServiceTypeDisplay(t)}</option>
                 ))}
               </select>
             </div>
@@ -706,7 +707,7 @@ function RealLOBView({ filters = {} }) {
                       {version === 'v2' ? (
                         <>
                           <td className="px-4 py-3 text-sm text-gray-900">{row.lob_group || '-'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-900">{row.real_tipo_servicio_norm || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900">{formatRealServiceTypeDisplay(row.real_tipo_servicio_norm) || '-'}</td>
                           <td className="px-4 py-3 text-sm text-gray-900">{row.segment_tag || '-'}</td>
                         </>
                       ) : (

@@ -457,6 +457,28 @@ export const runIntegrityAudit = async () => {
   return response.data
 }
 
+// Fase 1 — Observabilidad E2E
+export const getObservabilityOverview = async () => {
+  const response = await api.get('/ops/observability/overview', { timeout: 10000 })
+  return response.data
+}
+export const getObservabilityModules = async () => {
+  const response = await api.get('/ops/observability/modules', { timeout: 10000 })
+  return response.data
+}
+export const getObservabilityArtifacts = async () => {
+  const response = await api.get('/ops/observability/artifacts', { timeout: 10000 })
+  return response.data
+}
+export const getObservabilityLineage = async () => {
+  const response = await api.get('/ops/observability/lineage', { timeout: 10000 })
+  return response.data
+}
+export const getObservabilityFreshness = async () => {
+  const response = await api.get('/ops/observability/freshness', { timeout: 10000 })
+  return response.data
+}
+
 // Driver Supply Dynamics — overview enriquecido (trips, shares, WoW, rolling, trend)
 export const getSupplyOverviewEnhanced = async (params = {}) => {
   const response = await api.get('/ops/supply/overview-enhanced', { params, timeout: 20000 })
