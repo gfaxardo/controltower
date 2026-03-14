@@ -58,8 +58,8 @@ MVS_TO_REFRESH = [
     ("ops", "mv_real_lob_week_v2"),
 ]
 
-# Timeout por refresh (ms). 2h por defecto; override con REAL_LOB_REFRESH_TIMEOUT_MS
-REFRESH_TIMEOUT_MS = int(os.environ.get("REAL_LOB_REFRESH_TIMEOUT_MS", "7200000"))
+# Timeout por refresh (ms). 4h por defecto (la MV semanal puede tardar >2h); override con REAL_LOB_REFRESH_TIMEOUT_MS
+REFRESH_TIMEOUT_MS = int(os.environ.get("REAL_LOB_REFRESH_TIMEOUT_MS", "14400000"))
 # Memoria para acelerar agregaciones (opcional; puede requerir permisos)
 REFRESH_WORK_MEM = os.environ.get("REAL_LOB_REFRESH_WORK_MEM", "256MB")
 REFRESH_MAINTENANCE_WORK_MEM = os.environ.get("REAL_LOB_REFRESH_MAINTENANCE_WORK_MEM", "512MB")
@@ -129,29 +129,68 @@ def _set_refresh_session(cur) -> None:
         logger.debug("No se pudo setear work_mem/maintenance_work_mem (ignorado): %s", e)
 
 
+def _mv_is_populated(cur, mv_schema: str, mv_name: str) -> bool:
+    """True si la MV tiene filas (reltuples > 0); entonces se puede usar CONCURRENTLY."""
+    try:
+        cur.execute(
+            "SELECT COALESCE(c.reltuples, 0)::bigint FROM pg_class c "
+            "JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE n.nspname = %s AND c.relname = %s AND c.relkind = 'm'",
+            (mv_schema, mv_name),
+        )
+        r = cur.fetchone()
+        n = r[0] if r and (hasattr(r, "__getitem__") or isinstance(r, (list, tuple))) else 0
+        return (n or 0) > 0
+    except Exception:
+        return False
+
+
+def _safe_rollback(conn) -> None:
+    """Rollback si la conexión sigue abierta."""
+    try:
+        if conn and not conn.closed:
+            conn.rollback()
+    except Exception:
+        pass
+
+
 def refresh_mv_if_exists(cur, conn, mv_schema: str, mv_name: str) -> Tuple[bool, Optional[str]]:
-    """Refresca MV si existe. Retorna (ok, error_message). Timeout y memoria configurables."""
+    """Refresca MV si existe. Vacías → REFRESH sin CONCURRENTLY; pobladas → CONCURRENTLY. Timeout 4h por defecto."""
     if not _object_exists(cur, mv_schema, mv_name, "materialized view"):
         return False, None  # no existe, no error
     full = f"{mv_schema}.{mv_name}"
-    try:
-        _set_refresh_session(cur)
-        cur.execute(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {full}")
-        conn.commit()
-        return True, None
-    except Exception as e:
-        err = str(e).lower()
-        conn.rollback()
-        if "not been populated" in err or "concurrently cannot be used" in err:
-            try:
-                _set_refresh_session(cur)
-                cur.execute(f"REFRESH MATERIALIZED VIEW {mv_schema}.{mv_name}")
-                conn.commit()
-                return True, None
-            except Exception as e2:
-                conn.rollback()
-                return False, str(e2)
-        return False, str(e)
+    use_concurrent = _mv_is_populated(cur, mv_schema, mv_name)
+    if not use_concurrent:
+        logger.info("MV %s vacía o nueva → REFRESH sin CONCURRENTLY (puede tardar mucho)", full)
+    if use_concurrent:
+        try:
+            _set_refresh_session(cur)
+            cur.execute(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {full}")
+            conn.commit()
+            return True, None
+        except Exception as e:
+            _safe_rollback(conn)
+            err = str(e).lower()
+            if "not been populated" in err or "concurrently cannot be used" in err:
+                use_concurrent = False  # fallback abajo
+            else:
+                return False, str(e)
+    if not use_concurrent:
+        try:
+            _set_refresh_session(cur)
+            cur.execute(f"REFRESH MATERIALIZED VIEW {full}")
+            conn.commit()
+            return True, None
+        except Exception as e2:
+            _safe_rollback(conn)
+            msg = str(e2)
+            if "closed" in msg.lower() or "connection" in msg.lower() or "timeout" in msg.lower():
+                msg += (
+                    ". La MV puede ser muy grande; prueba aumentar REAL_LOB_REFRESH_TIMEOUT_MS (ej. 21600000 = 6h) "
+                    "o ejecutar en psql: SET statement_timeout='6h'; REFRESH MATERIALIZED VIEW %s;" % full
+                )
+            return False, msg
+    return False, "Refresh no ejecutado"
 
 
 def run_validations(cur) -> Dict[str, Any]:
