@@ -180,11 +180,15 @@ def log_refresh(
     trigger_type: str = "script",
     error_message: str | None = None,
     rows_affected: int | None = None,
+    rows_before: int | None = None,
+    rows_after: int | None = None,
+    duration_seconds: float | None = None,
 ) -> None:
     """
     Escribe una fila en ops.observability_refresh_log.
     Llamar al INICIO del refresh con status='running', luego al FINAL con status='ok' o 'error'.
-    Para uso desde scripts o wrappers. Si la tabla no existe, no falla.
+    rows_before, rows_after, duration_seconds (STEP 7) permiten detectar degradación.
+    Si la tabla no existe o no tiene columnas nuevas, no falla.
     """
     try:
         with get_db() as conn:
@@ -196,21 +200,42 @@ def log_refresh(
                     VALUES (%s, now(), NULL, 'running', %s, %s, NULL, NULL)
                 """, (artifact_name, trigger_type, script_name or ""))
             else:
-                cur.execute("""
-                    UPDATE ops.observability_refresh_log
-                    SET refresh_finished_at = now(), refresh_status = %s, error_message = %s, rows_affected_if_known = %s
-                    WHERE id = (
-                        SELECT id FROM ops.observability_refresh_log
-                        WHERE artifact_name = %s AND refresh_finished_at IS NULL
-                        ORDER BY id DESC LIMIT 1
-                    )
-                """, (status, (error_message or "")[:500] if error_message else None, rows_affected, artifact_name))
-                if cur.rowcount == 0:
+                try:
                     cur.execute("""
-                        INSERT INTO ops.observability_refresh_log
-                        (artifact_name, refresh_started_at, refresh_finished_at, refresh_status, trigger_type, script_name, error_message, rows_affected_if_known)
-                        VALUES (%s, now(), now(), %s, %s, %s, %s, %s)
-                    """, (artifact_name, status, trigger_type, script_name or "", (error_message or "")[:500] if error_message else None, rows_affected))
+                        UPDATE ops.observability_refresh_log
+                        SET refresh_finished_at = now(), refresh_status = %s, error_message = %s, rows_affected_if_known = %s,
+                            rows_before = COALESCE(%s, rows_before), rows_after = COALESCE(%s, rows_after), duration_seconds = COALESCE(%s, duration_seconds)
+                        WHERE id = (
+                            SELECT id FROM ops.observability_refresh_log
+                            WHERE artifact_name = %s AND refresh_finished_at IS NULL
+                            ORDER BY id DESC LIMIT 1
+                        )
+                    """, (status, (error_message or "")[:500] if error_message else None, rows_affected,
+                          rows_before, rows_after, duration_seconds, artifact_name))
+                except Exception:
+                    cur.execute("""
+                        UPDATE ops.observability_refresh_log
+                        SET refresh_finished_at = now(), refresh_status = %s, error_message = %s, rows_affected_if_known = %s
+                        WHERE id = (
+                            SELECT id FROM ops.observability_refresh_log
+                            WHERE artifact_name = %s AND refresh_finished_at IS NULL
+                            ORDER BY id DESC LIMIT 1
+                        )
+                    """, (status, (error_message or "")[:500] if error_message else None, rows_affected, artifact_name))
+                if cur.rowcount == 0:
+                    try:
+                        cur.execute("""
+                            INSERT INTO ops.observability_refresh_log
+                            (artifact_name, refresh_started_at, refresh_finished_at, refresh_status, trigger_type, script_name, error_message, rows_affected_if_known, rows_before, rows_after, duration_seconds)
+                            VALUES (%s, now(), now(), %s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (artifact_name, status, trigger_type, script_name or "", (error_message or "")[:500] if error_message else None, rows_affected,
+                              rows_before, rows_after, duration_seconds))
+                    except Exception:
+                        cur.execute("""
+                            INSERT INTO ops.observability_refresh_log
+                            (artifact_name, refresh_started_at, refresh_finished_at, refresh_status, trigger_type, script_name, error_message, rows_affected_if_known)
+                            VALUES (%s, now(), now(), %s, %s, %s, %s, %s)
+                        """, (artifact_name, status, trigger_type, script_name or "", (error_message or "")[:500] if error_message else None, rows_affected))
             conn.commit()
     except Exception as e:
-        logger.debug("log_refresh (tabla puede no existir): %s", e)
+        logger.debug("log_refresh (tabla puede no existir o columnas nuevas): %s", e)

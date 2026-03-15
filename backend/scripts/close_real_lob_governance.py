@@ -12,19 +12,27 @@ Uso:
   cd backend && python scripts/close_real_lob_governance.py
   python scripts/close_real_lob_governance.py --refresh-only
   python scripts/close_real_lob_governance.py --skip-refresh
+  python scripts/close_real_lob_governance.py --only-month   # solo mv_real_lob_month_v2
+  python scripts/close_real_lob_governance.py --only-week    # solo mv_real_lob_week_v2
 
-  Timeout por MV (por defecto 2h): REAL_LOB_REFRESH_TIMEOUT_MS=10800000
-  Memoria (opcional): REAL_LOB_REFRESH_WORK_MEM=512MB REAL_LOB_REFRESH_MAINTENANCE_WORK_MEM=1GB
+  Timeout por MV (por defecto 6h): REAL_LOB_REFRESH_TIMEOUT_MS=21600000
+  Memoria: REAL_LOB_REFRESH_WORK_MEM=512MB REAL_LOB_REFRESH_MAINTENANCE_WORK_MEM=1GB
 """
 import argparse
 import os
 import sys
 import logging
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BACKEND_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, BACKEND_DIR)
+
+try:
+    from app.services.observability_service import log_refresh as _log_refresh
+except ImportError:
+    _log_refresh = None
 
 try:
     from dotenv import load_dotenv
@@ -58,11 +66,11 @@ MVS_TO_REFRESH = [
     ("ops", "mv_real_lob_week_v2"),
 ]
 
-# Timeout por refresh (ms). 4h por defecto (la MV semanal puede tardar >2h); override con REAL_LOB_REFRESH_TIMEOUT_MS
-REFRESH_TIMEOUT_MS = int(os.environ.get("REAL_LOB_REFRESH_TIMEOUT_MS", "14400000"))
-# Memoria para acelerar agregaciones (opcional; puede requerir permisos)
-REFRESH_WORK_MEM = os.environ.get("REAL_LOB_REFRESH_WORK_MEM", "256MB")
-REFRESH_MAINTENANCE_WORK_MEM = os.environ.get("REAL_LOB_REFRESH_MAINTENANCE_WORK_MEM", "512MB")
+# Timeout por refresh: 6h por defecto (CT-MV-PERFORMANCE-HARDENING); override con REAL_LOB_REFRESH_TIMEOUT_MS
+REFRESH_TIMEOUT_MS = int(os.environ.get("REAL_LOB_REFRESH_TIMEOUT_MS", "21600000"))  # 6h
+# Memoria para acelerar agregaciones y reducir spills (STEP 5)
+REFRESH_WORK_MEM = os.environ.get("REAL_LOB_REFRESH_WORK_MEM", "512MB")
+REFRESH_MAINTENANCE_WORK_MEM = os.environ.get("REAL_LOB_REFRESH_MAINTENANCE_WORK_MEM", "1GB")
 
 
 def _object_exists(cur, schema: str, name: str, kind: str) -> bool:
@@ -154,6 +162,18 @@ def _safe_rollback(conn) -> None:
         pass
 
 
+def _get_mv_count(cur, schema: str, name: str) -> Optional[int]:
+    """Conteo de filas de una MV; solo para MVs conocidas (whitelist)."""
+    if (schema, name) not in MVS_TO_REFRESH:
+        return None
+    try:
+        cur.execute("SELECT COUNT(*) AS n FROM %s.%s" % (schema, name))
+        row = cur.fetchone()
+        return int(row[0] if hasattr(row, "__getitem__") else row.get("n", 0))
+    except Exception:
+        return None
+
+
 def refresh_mv_if_exists(cur, conn, mv_schema: str, mv_name: str) -> Tuple[bool, Optional[str]]:
     """Refresca MV si existe. Vacías → REFRESH sin CONCURRENTLY; pobladas → CONCURRENTLY. Timeout 4h por defecto."""
     if not _object_exists(cur, mv_schema, mv_name, "materialized view"):
@@ -231,6 +251,8 @@ def main():
     parser = argparse.ArgumentParser(description="Cierre REAL LOB: inspección, refresh seguro, validación")
     parser.add_argument("--refresh-only", action="store_true", help="Solo refrescar MVs existentes")
     parser.add_argument("--skip-refresh", action="store_true", help="No refrescar MVs; solo inspección y validación")
+    parser.add_argument("--only-month", action="store_true", help="Refrescar solo ops.mv_real_lob_month_v2")
+    parser.add_argument("--only-week", action="store_true", help="Refrescar solo ops.mv_real_lob_week_v2")
     args = parser.parse_args()
 
     summary: Dict[str, Any] = {
@@ -278,23 +300,52 @@ def main():
             if summary["objects_missing"]:
                 logger.warning("Objetos ausentes: %s", summary["objects_missing"])
 
-            # Refresh MVs (solo las que existan)
+            # Refresh MVs: orden 1) monthly, 2) weekly (STEP 8); opciones --only-month / --only-week
+            mvs_to_run = list(MVS_TO_REFRESH)
+            if args.only_month:
+                mvs_to_run = [("ops", "mv_real_lob_month_v2")]
+            elif args.only_week:
+                mvs_to_run = [("ops", "mv_real_lob_week_v2")]
+
             if not args.skip_refresh:
                 logger.info("Refresh MVs: timeout=%s ms (~%s min), work_mem=%s, maintenance_work_mem=%s",
                             REFRESH_TIMEOUT_MS, REFRESH_TIMEOUT_MS // 60000, REFRESH_WORK_MEM, REFRESH_MAINTENANCE_WORK_MEM)
-                for schema, name in MVS_TO_REFRESH:
-                    ok, err = refresh_mv_if_exists(cur, conn, schema, name)
+                script_name = "close_real_lob_governance.py"
+                for schema, name in mvs_to_run:
                     key = f"{schema}.{name}"
+                    if not _object_exists(cur, schema, name, "materialized view"):
+                        summary["mvs_skipped_not_exist"].append(key)
+                        logger.info("Omitida (no existe): %s", key)
+                        continue
+                    rows_before = _get_mv_count(cur, schema, name)
+                    t0 = time.monotonic()
+                    if _log_refresh:
+                        _log_refresh(key, status="running", script_name=script_name, trigger_type="script")
+                    ok, err = refresh_mv_if_exists(cur, conn, schema, name)
+                    duration_seconds = round(time.monotonic() - t0, 2)
+                    rows_after = _get_mv_count(cur, schema, name) if ok else None
                     if ok:
                         summary["mvs_refreshed"].append(key)
-                        logger.info("Refrescada: %s", key)
+                        logger.info("Refrescada: %s (%.1fs, rows %s -> %s)", key, duration_seconds, rows_before, rows_after)
+                        if _log_refresh:
+                            _log_refresh(key, status="ok", script_name=script_name, trigger_type="script",
+                                         rows_before=rows_before, rows_after=rows_after, duration_seconds=duration_seconds)
                     elif err:
                         summary["mvs_failed"].append((key, err))
                         logger.warning("Falló refresh %s: %s", key, err)
                         summary["overall_ok"] = False
+                        if _log_refresh:
+                            _log_refresh(key, status="error", script_name=script_name, error_message=err)
                     else:
                         summary["mvs_skipped_not_exist"].append(key)
-                        logger.info("Omitida (no existe): %s", key)
+
+                # Validación rowcount (STEP 9)
+                for key in summary["mvs_refreshed"]:
+                    parts = key.split(".", 1)
+                    if len(parts) == 2:
+                        n = _get_mv_count(cur, parts[0], parts[1])
+                        if n is not None:
+                            logger.info("Validación rowcount %s: %s", key, n)
             else:
                 for schema, name in MVS_TO_REFRESH:
                     if not objs.get(f"{schema}.{name}"):
