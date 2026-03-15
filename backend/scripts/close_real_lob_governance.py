@@ -127,12 +127,12 @@ def inspect_objects(cur) -> Dict[str, bool]:
     return result
 
 
-def _set_refresh_session(cur) -> None:
-    """Ajusta timeout y memoria de sesión para refreshes largos."""
-    cur.execute("SET LOCAL statement_timeout = %s", (str(REFRESH_TIMEOUT_MS),))
+def _set_refresh_session_autocommit(cur) -> None:
+    """Session settings para refresh en conexión dedicada con autocommit. Usar SET (no SET LOCAL)."""
+    cur.execute("SET statement_timeout = %s", (str(REFRESH_TIMEOUT_MS),))
     try:
-        cur.execute("SET LOCAL work_mem = %s", (REFRESH_WORK_MEM,))
-        cur.execute("SET LOCAL maintenance_work_mem = %s", (REFRESH_MAINTENANCE_WORK_MEM,))
+        cur.execute("SET work_mem = %s", (REFRESH_WORK_MEM,))
+        cur.execute("SET maintenance_work_mem = %s", (REFRESH_MAINTENANCE_WORK_MEM,))
     except Exception as e:
         logger.debug("No se pudo setear work_mem/maintenance_work_mem (ignorado): %s", e)
 
@@ -174,48 +174,95 @@ def _get_mv_count(cur, schema: str, name: str) -> Optional[int]:
         return None
 
 
-def refresh_mv_if_exists(cur, conn, mv_schema: str, mv_name: str) -> Tuple[bool, Optional[str]]:
-    """Refresca MV si existe. Vacías → REFRESH sin CONCURRENTLY; pobladas → CONCURRENTLY. Timeout 4h por defecto."""
-    if not _object_exists(cur, mv_schema, mv_name, "materialized view"):
-        return False, None  # no existe, no error
+def _run_bootstrap_for_mv(schema: str, name: str) -> Tuple[bool, Optional[str]]:
+    """
+    Ejecuta bootstrap por bloques para una MV vacía (FASE D).
+    No usa refresh gigante; corre scripts/bootstrap_real_lob_mvs_by_blocks.py.
+    """
+    import subprocess
+    if name == "mv_real_lob_month_v2":
+        cmd = [sys.executable, os.path.join(SCRIPT_DIR, "bootstrap_real_lob_mvs_by_blocks.py"), "--only-month"]
+    elif name == "mv_real_lob_week_v2":
+        cmd = [sys.executable, os.path.join(SCRIPT_DIR, "bootstrap_real_lob_mvs_by_blocks.py"), "--only-week"]
+    else:
+        return False, "MV no soportada para bootstrap"
+    logger.info("MV %s.%s vacía → bootstrap por bloques (no refresh gigante)", schema, name)
+    try:
+        r = subprocess.run(cmd, cwd=BACKEND_DIR, capture_output=True, text=True, timeout=7200)  # 2h max
+        if r.returncode != 0:
+            return False, (r.stderr or r.stdout or "bootstrap falló")[:500]
+        return True, None
+    except subprocess.TimeoutExpired:
+        return False, "Bootstrap superó timeout 2h"
+    except Exception as e:
+        return False, str(e)[:500]
+
+
+def refresh_mv_dedicated_connection(mv_schema: str, mv_name: str, use_concurrent: bool) -> Tuple[bool, Optional[str]]:
+    """
+    Refresca una MV en una conexión dedicada (evita InFailedSqlTransaction).
+    CONCURRENTLY requiere autocommit; se usa SET (no SET LOCAL) para timeout/memoria.
+    Si la MV está vacía (use_concurrent=False), no se hace refresh gigante: se delega a bootstrap por bloques.
+    """
     full = f"{mv_schema}.{mv_name}"
-    use_concurrent = _mv_is_populated(cur, mv_schema, mv_name)
+    if (mv_schema, mv_name) not in MVS_TO_REFRESH:
+        return False, "MV no está en whitelist"
+
     if not use_concurrent:
-        logger.info("MV %s vacía o nueva → REFRESH sin CONCURRENTLY (puede tardar mucho)", full)
-    if use_concurrent:
-        try:
-            _set_refresh_session(cur)
-            cur.execute(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {full}")
-            conn.commit()
-            return True, None
-        except Exception as e:
-            _safe_rollback(conn)
-            err = str(e).lower()
-            if "not been populated" in err or "concurrently cannot be used" in err:
-                use_concurrent = False  # fallback abajo
-            else:
-                return False, str(e)
-    if not use_concurrent:
-        try:
-            _set_refresh_session(cur)
-            cur.execute(f"REFRESH MATERIALIZED VIEW {full}")
-            conn.commit()
-            return True, None
-        except Exception as e2:
-            _safe_rollback(conn)
-            msg = str(e2)
-            if "closed" in msg.lower() or "connection" in msg.lower() or "timeout" in msg.lower():
-                msg += (
-                    ". La MV puede ser muy grande; prueba aumentar REAL_LOB_REFRESH_TIMEOUT_MS (ej. 21600000 = 6h) "
-                    "o ejecutar en psql: SET statement_timeout='6h'; REFRESH MATERIALIZED VIEW %s;" % full
+        return _run_bootstrap_for_mv(mv_schema, mv_name)
+
+    from app.db.connection import get_db
+
+    try:
+        with get_db() as refresh_conn:
+            refresh_conn.autocommit = True
+            cur_refresh = refresh_conn.cursor()
+            try:
+                _set_refresh_session_autocommit(cur_refresh)
+                logger.info(
+                    "Conexión autocommit dedicada para REFRESH MATERIALIZED VIEW CONCURRENTLY: %s",
+                    full,
                 )
-            return False, msg
-    return False, "Refresh no ejecutado"
+                cur_refresh.execute(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {full}")
+                return True, None
+            except Exception as e:
+                _safe_rollback(refresh_conn)
+                msg = str(e)
+                if "timeout" in msg.lower() or "statement_timeout" in msg.lower():
+                    msg += (
+                        " Prueba REAL_LOB_REFRESH_TIMEOUT_MS (ej. 21600000 = 6h) o psql: "
+                        "SET statement_timeout='6h'; REFRESH MATERIALIZED VIEW %s;" % full
+                    )
+                return False, msg
+            finally:
+                try:
+                    cur_refresh.close()
+                except Exception:
+                    pass
+    except Exception as e:
+        return False, str(e)
 
 
-def run_validations(cur) -> Dict[str, Any]:
-    """Validaciones rápidas: dimensiones pobladas, vista consultable."""
+def _real_lob_view_for_validation(cur) -> str:
+    """Vista a usar para validaciones: _120d si existe (post-098, index-friendly), sino la estándar."""
+    try:
+        cur.execute(
+            "SELECT 1 FROM pg_views WHERE schemaname = 'ops' AND viewname = 'v_real_trips_with_lob_v2_120d'"
+        )
+        if cur.fetchone():
+            return "ops.v_real_trips_with_lob_v2_120d"
+    except Exception:
+        pass
+    return "ops.v_real_trips_with_lob_v2"
+
+
+def run_validations(cur, statement_timeout_ms: int = 300000) -> Dict[str, Any]:
+    """Validaciones: dimensiones pobladas, vista consultable. Timeout 5 min por consulta (vista _120d puede ser lenta)."""
     val: Dict[str, Any] = {"dims_populated": False, "view_select_ok": False, "canonical_no_dupes": None}
+    try:
+        cur.execute("SET LOCAL statement_timeout = %s", (str(statement_timeout_ms),))
+    except Exception:
+        pass
     try:
         cur.execute("SELECT COUNT(*) AS n FROM canon.dim_service_type WHERE is_active = true")
         row = cur.fetchone()
@@ -223,17 +270,19 @@ def run_validations(cur) -> Dict[str, Any]:
         val["dims_populated"] = n and int(n) > 0
     except Exception:
         val["dims_populated"] = False
+    view_name = _real_lob_view_for_validation(cur)
     try:
-        cur.execute("SELECT real_tipo_servicio_norm, lob_group FROM ops.v_real_trips_with_lob_v2 LIMIT 1")
+        cur.execute("SELECT real_tipo_servicio_norm, lob_group FROM " + view_name + " LIMIT 1")
         cur.fetchone()
         val["view_select_ok"] = True
-    except Exception:
+    except Exception as e:
+        logger.debug("view_select_ok falló (%s): %s", view_name, e)
         val["view_select_ok"] = False
     # Duplicados: no debe haber confort+ y comfort_plus como distintos en la vista
     try:
         cur.execute("""
             SELECT real_tipo_servicio_norm, COUNT(*) AS c
-            FROM ops.v_real_trips_with_lob_v2
+            FROM """ + view_name + """
             WHERE real_tipo_servicio_norm IS NOT NULL
             GROUP BY real_tipo_servicio_norm
         """)
@@ -317,11 +366,12 @@ def main():
                         summary["mvs_skipped_not_exist"].append(key)
                         logger.info("Omitida (no existe): %s", key)
                         continue
+                    use_concurrent = _mv_is_populated(cur, schema, name)
                     rows_before = _get_mv_count(cur, schema, name)
                     t0 = time.monotonic()
                     if _log_refresh:
                         _log_refresh(key, status="running", script_name=script_name, trigger_type="script")
-                    ok, err = refresh_mv_if_exists(cur, conn, schema, name)
+                    ok, err = refresh_mv_dedicated_connection(schema, name, use_concurrent)
                     duration_seconds = round(time.monotonic() - t0, 2)
                     rows_after = _get_mv_count(cur, schema, name) if ok else None
                     if ok:

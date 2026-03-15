@@ -57,6 +57,18 @@ from app.services.real_lob_daily_service import (
     get_daily_comparative,
     get_daily_table,
 )
+from app.services.real_operational_service import (
+    get_operational_snapshot,
+    get_day_view,
+    get_hourly_view,
+    get_cancellation_view,
+)
+from app.services.real_operational_comparatives_service import (
+    get_today_vs_yesterday,
+    get_today_vs_same_weekday_avg,
+    get_current_hour_vs_historical,
+    get_this_week_vs_comparable,
+)
 from app.services.supply_service import (
     get_supply_geo,
     get_supply_parks,
@@ -1467,10 +1479,12 @@ async def get_data_freshness_expectations_endpoint():
 
 
 @router.get("/data-freshness/global")
-async def get_data_freshness_global_endpoint():
-    """Estado global de frescura para el banner de UI: status (fresca/parcial_esperada/atrasada/falta_data/sin_datos), label, message, derived_max_date. Regla: Falta data solo si derived_max_date <= today-2."""
+async def get_data_freshness_global_endpoint(
+    group: str | None = Query(None, description="operational = solo grupo REAL; legacy = solo legacy; omitir = todos"),
+):
+    """Estado global de frescura para el banner de UI. group=operational para pestaña REAL (no falla por datasets legacy)."""
     try:
-        return get_freshness_global_status()
+        return get_freshness_global_status(group=group)
     except Exception as e:
         logger.error("GET /ops/data-freshness/global: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -1675,7 +1689,143 @@ async def get_real_lob_v2_data_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ─── Real LOB Drill PRO (rutas más específicas primero para evitar 404) ─────────────────
+# ─── Real Operational (hourly-first: today, yesterday, week, day view, hourly view, cancellations, comparatives) ─────────────────
+@router.get("/real-operational/snapshot")
+async def get_real_operational_snapshot_endpoint(
+    window: Literal["today", "yesterday", "this_week"] = Query("today"),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    park_id: Optional[str] = Query(None),
+):
+    """Snapshot operativo: hoy, ayer o esta semana (pedidos, completados, cancelados, revenue, margin, duración, tasas)."""
+    try:
+        return await _run_sync(
+            get_operational_snapshot,
+            window=window,
+            country=country,
+            city=city,
+            park_id=park_id,
+        )
+    except Exception as e:
+        logger.error("GET /ops/real-operational/snapshot: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/real-operational/day-view")
+async def get_real_operational_day_view_endpoint(
+    days_back: int = Query(14, ge=1, le=365),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    group_by: Literal["day", "city", "park", "lob", "service"] = Query("day"),
+):
+    """Vista por día (últimos N días) con drill por día/ciudad/park/lob/servicio."""
+    try:
+        return await _run_sync(
+            get_day_view,
+            days_back=days_back,
+            country=country,
+            city=city,
+            group_by=group_by,
+        )
+    except Exception as e:
+        logger.error("GET /ops/real-operational/day-view: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/real-operational/hourly-view")
+async def get_real_operational_hourly_view_endpoint(
+    days_back: int = Query(7, ge=1, le=90),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    group_by: Literal["hour", "city", "park", "lob", "service"] = Query("hour"),
+):
+    """Vista por hora del día (0-23) con drill opcional por ciudad/park/lob/servicio."""
+    try:
+        return await _run_sync(
+            get_hourly_view,
+            days_back=days_back,
+            country=country,
+            city=city,
+            group_by=group_by,
+        )
+    except Exception as e:
+        logger.error("GET /ops/real-operational/hourly-view: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/real-operational/cancellations")
+async def get_real_operational_cancellations_endpoint(
+    days_back: int = Query(14, ge=1, le=90),
+    country: Optional[str] = Query(None),
+    limit: int = Query(20, ge=5, le=100),
+    by: Literal["reason", "reason_group", "hour", "city", "park", "service"] = Query("reason_group"),
+):
+    """Top motivos de cancelación; agrupado por razón, hora, ciudad, park o servicio."""
+    try:
+        return await _run_sync(
+            get_cancellation_view,
+            days_back=days_back,
+            country=country,
+            limit=limit,
+            by=by,
+        )
+    except Exception as e:
+        logger.error("GET /ops/real-operational/cancellations: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/real-operational/comparatives/today-vs-yesterday")
+async def get_real_operational_today_vs_yesterday_endpoint(
+    country: Optional[str] = Query(None),
+):
+    """Comparativo: hoy vs ayer (pedidos, completados, cancelados, revenue, margin, cancel rate, duración)."""
+    try:
+        return await _run_sync(get_today_vs_yesterday, country=country)
+    except Exception as e:
+        logger.error("GET /ops/real-operational/comparatives/today-vs-yesterday: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/real-operational/comparatives/today-vs-same-weekday")
+async def get_real_operational_today_vs_same_weekday_endpoint(
+    n_weeks: int = Query(4, ge=1, le=12),
+    country: Optional[str] = Query(None),
+):
+    """Comparativo: hoy vs promedio de los últimos N mismos días de semana (ej. últimos 4 lunes)."""
+    try:
+        return await _run_sync(get_today_vs_same_weekday_avg, n_weeks=n_weeks, country=country)
+    except Exception as e:
+        logger.error("GET /ops/real-operational/comparatives/today-vs-same-weekday: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/real-operational/comparatives/current-hour-vs-historical")
+async def get_real_operational_current_hour_vs_historical_endpoint(
+    country: Optional[str] = Query(None),
+    weeks_back: int = Query(4, ge=1, le=12),
+):
+    """Comparativo: hora actual vs mismo tramo horario en semanas anteriores."""
+    try:
+        return await _run_sync(get_current_hour_vs_historical, country=country, weeks_back=weeks_back)
+    except Exception as e:
+        logger.error("GET /ops/real-operational/comparatives/current-hour-vs-historical: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/real-operational/comparatives/this-week-vs-comparable")
+async def get_real_operational_this_week_vs_comparable_endpoint(
+    country: Optional[str] = Query(None),
+    weeks_back: int = Query(4, ge=1, le=12),
+):
+    """Comparativo: esta semana (lunes a hoy) vs promedio de las últimas N semanas."""
+    try:
+        return await _run_sync(get_this_week_vs_comparable, country=country, weeks_back=weeks_back)
+    except Exception as e:
+        logger.error("GET /ops/real-operational/comparatives/this-week-vs-comparable: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─── Real LOB Drill PRO (rutas más específicas primero para evitar 404) [legacy: preferir real-operational] ─────────────────
 @router.get("/real-lob/drill/parks")
 async def get_real_lob_drill_parks_endpoint(
     country: Optional[str] = Query(None, description="Filtrar parks por país (pe | co)"),

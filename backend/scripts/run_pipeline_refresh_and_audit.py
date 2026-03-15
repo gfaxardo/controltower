@@ -1,16 +1,22 @@
 """
 Pipeline unificado: refresca derivados en orden y ejecuta auditoría de freshness.
-Orden: 1) Backfill Real LOB (mes actual + anterior), 2) Refresh Driver Lifecycle MVs,
-       3) Refresh Supply MVs, 4) Run data freshness audit.
+Orden: 1) Refresh cadena hourly-first (hour → day → week → month),
+       2) Poblar real_drill_dim_fact desde day_v2/week_v3 (rollup = vista desde day_v2),
+       3) Refresh Driver Lifecycle MVs, 4) Refresh Supply MVs, 5) Run data freshness audit.
+
+El backfill legacy (backfill_real_lob_mvs) ya no forma parte del camino principal REAL;
+real_rollup_day_fact es vista sobre day_v2; real_drill_dim_fact se puebla desde day_v2/week_v3.
 
 Uso: cd backend && python -m scripts.run_pipeline_refresh_and_audit
 
 Opciones:
-  --skip-backfill     Omitir backfill Real LOB (solo refresh MVs + audit).
-  --skip-driver       Omitir refresh driver lifecycle.
-  --skip-supply       Omitir refresh supply.
-  --skip-audit        Omitir ejecución del audit (solo refrescos).
-  --backfill-months N Meses a backfillar desde hoy hacia atrás (default: 2 = actual + anterior).
+  --skip-hourly-first   Omitir refresh cadena hourly-first (mv_real_lob_*_v2/v3).
+  --skip-drill-populate Omitir población de real_drill_dim_fact desde day_v2/week_v3.
+  --skip-driver         Omitir refresh driver lifecycle.
+  --skip-supply         Omitir refresh supply.
+  --skip-audit          Omitir ejecución del audit (solo refrescos).
+  --drill-days N        Ventana días para drill day (default: 120).
+  --drill-weeks N       Ventana semanas para drill week (default: 18).
 
 Diseñado para cron diario tras carga de viajes. Deja evidencia en ops.data_freshness_audit.
 """
@@ -43,28 +49,23 @@ def _last_day_of_month(d: date) -> date:
     return next_ - timedelta(days=1)
 
 
-def run_backfill(months_back: int = 2) -> bool:
-    """Ejecuta backfill Real LOB para los últimos N meses (incluye mes actual)."""
-    today = date.today()
-    start = _first_day_of_month(today)
-    to_d = _last_day_of_month(today)
-    from_d = start
-    for _ in range(months_back):
-        from_d = _first_day_of_month(from_d - timedelta(days=1))
-    from_str = from_d.strftime("%Y-%m-%d")
-    to_str = to_d.strftime("%Y-%m-%d")
-    logger.info("Backfill Real LOB: --from %s --to %s (resume=true)", from_str, to_str)
+def run_populate_drill(days: int = 120, weeks: int = 18) -> bool:
+    """Pobla real_drill_dim_fact desde mv_real_lob_day_v2 y mv_real_lob_week_v3 (hourly-first)."""
+    logger.info("Poblando real_drill_dim_fact desde day_v2/week_v3 (days=%s, weeks=%s)...", days, weeks)
     r = subprocess.run(
-        [sys.executable, "-m", "scripts.backfill_real_lob_mvs", "--from", from_str, "--to", to_str, "--resume", "true"],
+        [
+            sys.executable, "-m", "scripts.populate_real_drill_from_hourly_chain",
+            "--days", str(days), "--weeks", str(weeks),
+        ],
         cwd=BACKEND_DIR,
         capture_output=True,
         text=True,
         timeout=3600,
     )
     if r.returncode != 0:
-        logger.error("Backfill falló: %s", r.stderr or r.stdout)
+        logger.error("Populate drill falló: %s", r.stderr or r.stdout)
         return False
-    logger.info("Backfill OK")
+    logger.info("Populate drill OK")
     return True
 
 
@@ -111,6 +112,23 @@ def run_refresh_supply() -> bool:
         return False
 
 
+def run_hourly_first_chain() -> bool:
+    """Ejecuta refresh de la cadena hourly-first: hour_v2 → day_v2 → week_v3 → month_v3."""
+    logger.info("Refresh cadena hourly-first (hour → day → week → month)...")
+    r = subprocess.run(
+        [sys.executable, "-m", "scripts.refresh_hourly_first_chain"],
+        cwd=BACKEND_DIR,
+        capture_output=True,
+        text=True,
+        timeout=7200,
+    )
+    if r.returncode != 0:
+        logger.error("Hourly-first chain falló: %s", r.stderr or r.stdout)
+        return False
+    logger.info("Hourly-first chain OK")
+    return True
+
+
 def run_audit() -> bool:
     """Ejecuta run_data_freshness_audit y escribe en ops.data_freshness_audit."""
     logger.info("Ejecutando auditoría de freshness...")
@@ -137,18 +155,24 @@ def main() -> None:
     init_db_pool()
 
     parser = argparse.ArgumentParser(description="Pipeline refresh + audit")
-    parser.add_argument("--skip-backfill", action="store_true", help="No ejecutar backfill Real LOB")
+    parser.add_argument("--skip-hourly-first", action="store_true", help="No ejecutar refresh cadena hourly-first")
+    parser.add_argument("--skip-drill-populate", action="store_true", help="No poblar real_drill_dim_fact desde day_v2/week_v3")
     parser.add_argument("--skip-driver", action="store_true", help="No ejecutar refresh driver lifecycle")
     parser.add_argument("--skip-supply", action="store_true", help="No ejecutar refresh supply")
     parser.add_argument("--skip-audit", action="store_true", help="No ejecutar audit")
-    parser.add_argument("--backfill-months", type=int, default=2, help="Meses a backfillar (default 2)")
+    parser.add_argument("--drill-days", type=int, default=120, help="Ventana días para drill (default 120)")
+    parser.add_argument("--drill-weeks", type=int, default=18, help="Ventana semanas para drill (default 18)")
     args = parser.parse_args()
 
     ok = True
-    if not args.skip_backfill:
-        ok = run_backfill(months_back=args.backfill_months) and ok
+    if not getattr(args, "skip_hourly_first", False):
+        ok = run_hourly_first_chain() and ok
     else:
-        logger.info("Skip backfill (--skip-backfill)")
+        logger.info("Skip hourly-first chain (--skip-hourly-first)")
+    if not getattr(args, "skip_drill_populate", False):
+        ok = run_populate_drill(days=args.drill_days, weeks=args.drill_weeks) and ok
+    else:
+        logger.info("Skip drill populate (--skip-drill-populate)")
 
     if not args.skip_driver:
         ok = run_refresh_driver_lifecycle() and ok

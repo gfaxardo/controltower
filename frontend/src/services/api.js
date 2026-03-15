@@ -280,6 +280,41 @@ export const getRealLobDailyTable = async (params = {}) => {
   return response.data
 }
 
+// Real Operational (hourly-first): snapshot, day view, hourly view, cancellations, comparatives
+const REAL_OPERATIONAL_TIMEOUT_MS = 30000
+export const getRealOperationalSnapshot = async (params = {}) => {
+  const response = await api.get('/ops/real-operational/snapshot', { params, timeout: REAL_OPERATIONAL_TIMEOUT_MS })
+  return response.data
+}
+export const getRealOperationalDayView = async (params = {}) => {
+  const response = await api.get('/ops/real-operational/day-view', { params, timeout: REAL_OPERATIONAL_TIMEOUT_MS })
+  return response.data
+}
+export const getRealOperationalHourlyView = async (params = {}) => {
+  const response = await api.get('/ops/real-operational/hourly-view', { params, timeout: REAL_OPERATIONAL_TIMEOUT_MS })
+  return response.data
+}
+export const getRealOperationalCancellations = async (params = {}) => {
+  const response = await api.get('/ops/real-operational/cancellations', { params, timeout: REAL_OPERATIONAL_TIMEOUT_MS })
+  return response.data
+}
+export const getRealOperationalTodayVsYesterday = async (params = {}) => {
+  const response = await api.get('/ops/real-operational/comparatives/today-vs-yesterday', { params, timeout: 15000 })
+  return response.data
+}
+export const getRealOperationalTodayVsSameWeekday = async (params = {}) => {
+  const response = await api.get('/ops/real-operational/comparatives/today-vs-same-weekday', { params, timeout: 15000 })
+  return response.data
+}
+export const getRealOperationalCurrentHourVsHistorical = async (params = {}) => {
+  const response = await api.get('/ops/real-operational/comparatives/current-hour-vs-historical', { params, timeout: 15000 })
+  return response.data
+}
+export const getRealOperationalThisWeekVsComparable = async (params = {}) => {
+  const response = await api.get('/ops/real-operational/comparatives/this-week-vs-comparable', { params, timeout: 15000 })
+  return response.data
+}
+
 // Real LOB Drill-down: timeline por país, drill LOB/Park [legacy]
 export const getRealDrillSummary = async (params = {}) => {
   const response = await api.get('/ops/real-drill/summary', { params, timeout: REAL_DRILL_TIMEOUT_MS })
@@ -427,9 +462,9 @@ export const getSupplyFreshness = async () => {
   return response.data
 }
 
-// Freshness global (banner): estado único para toda la app (fresca / parcial_esperada / atrasada / falta_data / sin_datos)
-export const getDataFreshnessGlobal = async () => {
-  const response = await api.get('/ops/data-freshness/global', { timeout: 8000 })
+// Freshness global (banner). group=operational para pestaña Real (no falla por datasets legacy).
+export const getDataFreshnessGlobal = async (params = {}) => {
+  const response = await api.get('/ops/data-freshness/global', { params: { group: params.group }, timeout: 8000 })
   return response.data
 }
 
@@ -476,6 +511,36 @@ export const getObservabilityLineage = async () => {
 }
 export const getObservabilityFreshness = async () => {
   const response = await api.get('/ops/observability/freshness', { timeout: 10000 })
+  return response.data
+}
+
+// Fase 2A — Real vs Proyección
+export const getRealVsProjectionOverview = async () => {
+  const response = await api.get('/ops/real-vs-projection/overview', { timeout: 10000 })
+  return response.data
+}
+export const getRealVsProjectionDimensions = async () => {
+  const response = await api.get('/ops/real-vs-projection/dimensions', { timeout: 5000 })
+  return response.data
+}
+export const getRealVsProjectionMappingCoverage = async () => {
+  const response = await api.get('/ops/real-vs-projection/mapping-coverage', { timeout: 5000 })
+  return response.data
+}
+export const getRealVsProjectionRealMetrics = async (params = {}) => {
+  const response = await api.get('/ops/real-vs-projection/real-metrics', { params, timeout: 15000 })
+  return response.data
+}
+export const getRealVsProjectionTemplateContract = async () => {
+  const response = await api.get('/ops/real-vs-projection/projection-template-contract', { timeout: 5000 })
+  return response.data
+}
+export const getRealVsProjectionSystemSegmentation = async (params = {}) => {
+  const response = await api.get('/ops/real-vs-projection/system-segmentation-view', { params, timeout: 15000 })
+  return response.data
+}
+export const getRealVsProjectionProjectionSegmentation = async (params = {}) => {
+  const response = await api.get('/ops/real-vs-projection/projection-segmentation-view', { params, timeout: 15000 })
   return response.data
 }
 

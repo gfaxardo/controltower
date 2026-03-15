@@ -5,7 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from app.settings import settings
 from app.db.connection import init_db_pool, create_plan_schema, create_ingestion_status_schema
 from app.db.schema_verify import verify_schema, inspect_real_columns
-from app.routers import plan, real, core, ops, health, ingestion, phase2b, phase2c, driver_lifecycle, controltower, observability
+from app.routers import plan, real, core, ops, health, ingestion, phase2b, phase2c, driver_lifecycle, controltower, observability, real_vs_projection
 import logging
 import time
 import uuid
@@ -85,6 +85,7 @@ app.include_router(ingestion.router)
 app.include_router(driver_lifecycle.router)
 app.include_router(controltower.router)
 app.include_router(observability.router, prefix="/ops")
+app.include_router(real_vs_projection.router, prefix="/ops")
 
 @app.on_event("startup")
 async def startup_event():

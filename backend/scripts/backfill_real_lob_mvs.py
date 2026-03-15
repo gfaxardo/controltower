@@ -1,10 +1,16 @@
 """
-Backfill Real LOB fact tables por rango (mes a mes) para evitar DiskFull.
+[DEPRECATED — camino principal REAL] Backfill Real LOB fact tables por rango (mes a mes).
 
-Uso:
+El pipeline principal REAL ya no usa este script:
+- real_rollup_day_fact es vista derivada de ops.mv_real_lob_day_v2 (migración 101).
+- real_drill_dim_fact se puebla desde day_v2/week_v3 con scripts.populate_real_drill_from_hourly_chain.
+
+Este script queda para compatibilidad/legacy (p. ej. repoblar drill/rollup desde fact solo si se
+revierte la migración 101 o por recuperación puntual). No se ejecuta en run_pipeline_refresh_and_audit.
+
+Uso (legacy):
   python -m scripts.backfill_real_lob_mvs --from 2025-01-01 --to 2025-12-01
   python -m scripts.backfill_real_lob_mvs --from 2025-01-01 --to 2025-12-01 --resume true --retries 5
-  python -m scripts.backfill_real_lob_mvs --from 2025-06-01 --to 2025-09-01 --resume false
 
 Flags:
   --from YYYY-MM-01   Inicio del rango
@@ -13,7 +19,6 @@ Flags:
   --retries N         Intentos máximos por mes ante errores transitorios (default: 5)
   --sleep-base secs   Base para backoff exponencial en segundos (default: 2)
 
-Inserta/actualiza ops.real_drill_dim_fact y ops.real_rollup_day_fact por chunks.
 Checkpoint: backend/logs/backfill_real_lob_checkpoint.json
 """
 import argparse

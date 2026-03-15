@@ -12,6 +12,7 @@ import Phase2BActionsTrackingView from './components/Phase2BActionsTrackingView'
 import Phase2CAccountabilityView from './components/Phase2CAccountabilityView'
 import LobUniverseView from './components/LobUniverseView'
 import RealLOBDrillView from './components/RealLOBDrillView'
+import RealOperationalView from './components/RealOperationalView'
 import DriverLifecycleView from './components/DriverLifecycleView'
 import SupplyView from './components/SupplyView'
 import BehavioralAlertsView from './components/BehavioralAlertsView'
@@ -22,6 +23,7 @@ import SystemHealthView from './components/SystemHealthView'
 import GlobalFreshnessBanner from './components/GlobalFreshnessBanner'
 import UploadPlan from './components/UploadPlan'
 import PlanTabs from './components/PlanTabs'
+import RealVsProjectionView from './components/RealVsProjectionView'
 
 // Navegación principal (primer nivel) — valores internos estables para no romper
 const TAB_RESUMEN = 'resumen'
@@ -47,7 +49,8 @@ const PLAN_VALIDATION_SUBTABS = [
   { id: 'missing', label: 'Huecos' },
   { id: 'actions', label: 'Fase 2B' },
   { id: 'accountability', label: 'Fase 2C' },
-  { id: 'lob_universe', label: 'Universo & LOB' }
+  { id: 'lob_universe', label: 'Universo & LOB' },
+  { id: 'real_vs_projection', label: 'Real vs Proyección' }
 ]
 
 function App () {
@@ -62,6 +65,7 @@ function App () {
   const [activeTab, setActiveTab] = useState(TAB_RESUMEN)
   const [driverRiskSubTab, setDriverRiskSubTab] = useState('behavioral_alerts')
   const [planValidationSubTab, setPlanValidationSubTab] = useState('valid')
+  const [realSubTab, setRealSubTab] = useState('operational')
   const [showAdminModal, setShowAdminModal] = useState(false)
   const [showDiagnosticsMenu, setShowDiagnosticsMenu] = useState(false)
   const diagnosticsRef = useRef(null)
@@ -144,7 +148,7 @@ function App () {
           </div>
         )}
 
-        <GlobalFreshnessBanner />
+        <GlobalFreshnessBanner activeTab={activeTab} />
 
         <CollapsibleFilters onFilterChange={handleFilterChange} />
 
@@ -236,11 +240,44 @@ function App () {
           </section>
         )}
 
+        {/* SUB-NAV Real: Operativo (principal) vs Drill y diario (avanzado/legacy) */}
+        {activeTab === TAB_REAL && (
+          <div className="mb-4 pb-2 border-b border-gray-200">
+            <p className="text-xs text-gray-500 mb-2">Vista operativa (hourly-first) y drill avanzado</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setRealSubTab('operational')}
+                className={`px-3 py-1.5 rounded text-sm font-medium ${realSubTab === 'operational' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+              >
+                Operativo
+              </button>
+              <button
+                type="button"
+                onClick={() => setRealSubTab('drill')}
+                className={`px-3 py-1.5 rounded text-sm ${realSubTab === 'drill' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
+                title="Drill mensual/semanal y vista diaria (legacy)"
+              >
+                Drill y diario (avanzado)
+              </button>
+            </div>
+          </div>
+        )}
+
         {activeTab === TAB_REAL && (
           <section className="space-y-4" aria-label="Real">
             <h2 className="text-xl font-semibold text-gray-800">Real</h2>
-            <p className="text-sm text-gray-600">Drill-down por país, periodo, LOB y park.</p>
-            <RealLOBDrillView key={`real-lob-drill-${refreshKey}`} />
+            {realSubTab === 'operational' ? (
+              <>
+                <p className="text-sm text-gray-600">Hoy, ayer, esta semana; por día; por hora; cancelaciones y comparativos operativos.</p>
+                <RealOperationalView key={`real-operational-${refreshKey}`} country={filters.country} city={filters.city} />
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-gray-600">Drill-down por país, periodo, LOB y park (vista avanzada).</p>
+                <RealLOBDrillView key={`real-lob-drill-${refreshKey}`} />
+              </>
+            )}
           </section>
         )}
 
@@ -289,6 +326,9 @@ function App () {
             {planValidationSubTab === 'accountability' && <Phase2CAccountabilityView />}
             {planValidationSubTab === 'lob_universe' && (
               <LobUniverseView key={`lob-universe-${refreshKey}`} filters={filters} />
+            )}
+            {planValidationSubTab === 'real_vs_projection' && (
+              <RealVsProjectionView key={`real-vs-projection-${refreshKey}`} />
             )}
             {['out_of_universe', 'missing'].includes(planValidationSubTab) && (
               <PlanTabs

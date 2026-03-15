@@ -14,18 +14,19 @@ const STATUS_STYLES = {
   sin_datos: { bg: 'bg-slate-100 border-slate-300', text: 'text-slate-700', label: 'Sin datos' }
 }
 
-export default function GlobalFreshnessBanner () {
+export default function GlobalFreshnessBanner ({ activeTab } = {}) {
   const [data, setData] = useState(null)
   const [health, setHealth] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [expanded, setExpanded] = useState(false)
+  const group = activeTab === 'real' ? 'operational' : undefined
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setError(null)
-    getDataFreshnessGlobal()
+    getDataFreshnessGlobal({ group })
       .then((res) => {
         if (!cancelled) setData(res)
       })
@@ -39,7 +40,7 @@ export default function GlobalFreshnessBanner () {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [])
+  }, [group])
 
   useEffect(() => {
     if (!expanded) return

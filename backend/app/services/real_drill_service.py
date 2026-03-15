@@ -500,7 +500,7 @@ def refresh_real_drill_mv() -> Dict[str, Any]:
                 cur.close()
                 return {"ok": True, "message": "MV ops.mv_real_rollup_day refreshed"}
             cur.close()
-        return {"ok": True, "message": "ops.mv_real_rollup_day es vista (064); datos en real_rollup_day_fact. Usar backfill_real_lob_mvs para repoblar."}
+        return {"ok": True, "message": "ops.mv_real_rollup_day es vista (064); real_rollup_day_fact es vista desde day_v2. Drill: poblar con scripts.populate_real_drill_from_hourly_chain."}
     except Exception as e:
         logger.error("Real drill MV refresh: %s", e)
         raise

@@ -1,0 +1,8 @@
+﻿python : 2026-03-15 13:58:15,193 INFO \u2550\u2550\u2550 PASO 1/4: Bootstrap HOURLY \u2550\u2550\u2550
+En C:\Users\Gonzalo Fajardo\AppData\Local\Temp\ps-script-f0c1d259-a3c0-479b-bcfa-4afa6c828c53.ps1: 87 Carácter: 70
++ ... T_MS="3600000"; python scripts/bootstrap_hourly_first.py 2>&1 | Out-F ...
++                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (2026-03-15 13:5...550\u2550\u2550:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+2026-03-15 13:58:16,381 INFO Pool de conexiones inicializado correctamente

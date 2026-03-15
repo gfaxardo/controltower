@@ -18,9 +18,15 @@ logger = logging.getLogger(__name__)
 
 # Regla global: cutoff = 1 día; "no falta data" cuando derived_max_date >= today - FRESHNESS_CUTOFF_DAYS
 FRESHNESS_CUTOFF_DAYS = 1
-# Primario para el banner global (el que más importa para Control Tower)
-PRIMARY_DATASET = "real_lob_drill"
-FALLBACK_DATASETS = ("real_lob", "trips_2026")
+# Primario para el banner: REAL operacional (Hoy/Ayer/Semana) y drill; usamos el más reciente entre ambos
+PRIMARY_DATASET = "real_operational"
+FALLBACK_DATASETS = ("real_lob_drill", "real_lob", "trips_2026")
+
+# Grupos para banner por pestaña (Fase CT-HOURLY-FIRST-CLOSURE)
+# operational_group: pestaña REAL; legacy no debe hacer fallar el banner
+FRESHNESS_GROUP_OPERATIONAL = ("real_operational", "real_lob_drill", "real_lob")
+FRESHNESS_GROUP_ANALYTICAL = ("real_operational", "real_lob_drill", "real_lob")  # mismo para REAL
+FRESHNESS_GROUP_LEGACY = ("trips_base",)  # SOURCE_STALE permitido; no usar para estado global REAL
 
 
 def _serialize_date(v: Any) -> str | None:
@@ -169,28 +175,46 @@ def get_freshness_expectations() -> list[dict[str, Any]]:
             cur.close()
 
 
-def get_freshness_global_status() -> dict[str, Any]:
+def get_freshness_global_status(group: str | None = None) -> dict[str, Any]:
     """
     Estado global de frescura para el banner de UI.
-    Usa la última fila de data_freshness_audit del dataset primario (real_lob_drill o fallback).
+    group: "operational" = solo datasets del grupo operativo (REAL tab); None = todos (mejor derived_max_date).
     Regla: Falta data solo si derived_max_date es None o <= today - 2.
+    Los datasets en LEGACY_GROUP no se usan para el estado cuando group=operational.
     """
     today = date.today()
     yesterday = today - timedelta(days=FRESHNESS_CUTOFF_DAYS)
     cutoff_missing = today - timedelta(days=2)  # derived_max_date <= este día -> falta data
 
     audit = get_freshness_audit(latest_only=True)
-    # Preferir primary dataset, luego fallbacks
+    if group == "operational":
+        allowed = set(FRESHNESS_GROUP_OPERATIONAL)
+        audit = [a for a in audit if a.get("dataset_name") in allowed]
+    elif group == "legacy":
+        allowed = set(FRESHNESS_GROUP_LEGACY)
+        audit = [a for a in audit if a.get("dataset_name") in allowed]
+    # Para el banner: entre real_operational y real_lob_drill, usar el que tenga derived_max_date más reciente
+    candidates = (PRIMARY_DATASET,) + FALLBACK_DATASETS
+    by_name = {a.get("dataset_name"): a for a in audit}
     row = None
-    for name in (PRIMARY_DATASET,) + FALLBACK_DATASETS:
-        for a in audit:
-            if a.get("dataset_name") == name:
-                row = a
-                break
-        if row is not None:
-            break
+    best_derived = None
+    for name in candidates:
+        a = by_name.get(name)
+        if not a:
+            continue
+        derived = a.get("derived_max_date")
+        if derived is None:
+            continue
+        if isinstance(derived, str):
+            try:
+                derived = date(int(derived[:4]), int(derived[5:7]), int(derived[8:10]))
+            except (ValueError, TypeError):
+                derived = None
+        if derived is not None and (best_derived is None or derived > best_derived):
+            best_derived = derived
+            row = a
     if not row:
-        row = audit[0] if audit else None
+        row = by_name.get(PRIMARY_DATASET) or (audit[0] if audit else None)
 
     if not row:
         return {

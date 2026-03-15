@@ -180,3 +180,12 @@ Tras aplicar esta fase:
 - **096**: Recreación de `ops.mv_real_lob_month_v2` y `ops.mv_real_lob_week_v2` con filtro `fecha_inicio_viaje >= CURRENT_DATE - INTERVAL '120 days'`.
 
 Si se hace downgrade de 096, las MVs vuelven a la definición sin ventana (histórico completo).
+
+## Causa raíz y guardrails (098+)
+
+A partir de la migración **098** (CT-REAL-LOB-ROOT-CAUSE-FIX) se corrige el cuello de botella en la capa base: índices sobre `fecha_inicio_viaje` en `trips_all`/`trips_2026` y vistas _120d que aplican el filtro en cada rama del UNION. Ver:
+
+- `docs/real_lob_root_cause_diagnosis.md` — diagnóstico
+- `docs/real_lob_execution_plan_validation.md` — validación del plan
+- `docs/query_performance_guardrails.md` — reglas para futuras migraciones
+- `docs/migration_performance_checklist.md` — checklist de performance

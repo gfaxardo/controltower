@@ -159,9 +159,9 @@ def main() -> None:
 
             schema_s, table_s = _parse_object(source_obj)
             # Evitar vistas pesadas (v_trips_real_canon): usar tablas base con bounded query
-            if table_s and ("v_trips_real_canon" in (source_obj or "") or "v_driver_lifecycle_trips" in (source_obj or "")):
+            if table_s and ("v_trips_real_canon" in (source_obj or "") or "v_trips_real_canon_120d" in (source_obj or "") or "v_driver_lifecycle_trips" in (source_obj or "")):
                 # Fuente canónica = max de tablas base (trips_all, trips_2026) o vista liviana
-                if "v_trips_real_canon" in (source_obj or ""):
+                if "v_trips_real_canon" in (source_obj or "") or "v_trips_real_canon_120d" in (source_obj or ""):
                     ma = _safe_max_date(conn, "public", "trips_all", "fecha_inicio_viaje", bounded=True)
                     m6 = _safe_max_date(conn, "public", "trips_2026", "fecha_inicio_viaje", bounded=True)
                     source_max = max(d for d in (ma, m6) if d is not None) if (ma or m6) else None
