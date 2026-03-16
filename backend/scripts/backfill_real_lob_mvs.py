@@ -2,11 +2,14 @@
 [DEPRECATED — camino principal REAL] Backfill Real LOB fact tables por rango (mes a mes).
 
 El pipeline principal REAL ya no usa este script:
-- real_rollup_day_fact es vista derivada de ops.mv_real_lob_day_v2 (migración 101).
+- real_rollup_day_fact es vista derivada de ops.mv_real_lob_day_v2 (migración 101). No se puede insertar.
 - real_drill_dim_fact se puebla desde day_v2/week_v3 con scripts.populate_real_drill_from_hourly_chain.
 
-Este script queda para compatibilidad/legacy (p. ej. repoblar drill/rollup desde fact solo si se
-revierte la migración 101 o por recuperación puntual). No se ejecuta en run_pipeline_refresh_and_audit.
+Guardrails (evitar doble inserción / mezcla de fuentes):
+- Por defecto NO escribe en real_drill_dim_fact. Usar --allow-write-drill solo para recuperación puntual.
+- Si real_rollup_day_fact es vista, se omite el INSERT a rollup (no aplicable tras 101).
+
+No se ejecuta en run_pipeline_refresh_and_audit. Ver docs/REAL_PIPELINE_OFFICIAL_AND_GUARDRAILS.md.
 
 Uso (legacy):
   python -m scripts.backfill_real_lob_mvs --from 2025-01-01 --to 2025-12-01
@@ -173,12 +176,13 @@ def _save_checkpoint(month_str: str) -> None:
         logger.warning("No se pudo guardar checkpoint: %s", e)
 
 
-def _run_month(start_d: date, end_d: date, cur) -> None:
+def _run_month(start_d: date, end_d: date, cur, *, allow_write_drill: bool = False, skip_rollup: bool = True) -> None:
     """Ejecuta el backfill para un mes (drill_dim + rollup_day). Muestra filas insertadas/actualizadas."""
     cutoff_start = start_d.isoformat()
     cutoff_end = end_d.isoformat()
 
-    cur.execute("""
+    if allow_write_drill:
+        cur.execute("""
         WITH base AS (
             SELECT
                 t.fecha_inicio_viaje,
@@ -310,9 +314,15 @@ def _run_month(start_d: date, end_d: date, cur) -> None:
             b2b_trips = EXCLUDED.b2b_trips,
             b2b_share = EXCLUDED.b2b_share,
             last_trip_ts = EXCLUDED.last_trip_ts
-    """, (cutoff_start, cutoff_end))
-    drill_rows = cur.rowcount
-    logger.info("Mes %s .. %s: real_drill_dim_fact filas insertadas/actualizadas = %s", cutoff_start, cutoff_end, drill_rows)
+        """, (cutoff_start, cutoff_end))
+        drill_rows = cur.rowcount
+        logger.info("Mes %s .. %s: real_drill_dim_fact filas insertadas/actualizadas = %s", cutoff_start, cutoff_end, drill_rows)
+    else:
+        logger.warning("Skip real_drill_dim_fact (--allow-write-drill no pasado; ruta oficial: populate_real_drill_from_hourly_chain)")
+
+    if skip_rollup:
+        logger.info("Skip real_rollup_day_fact (es vista desde migración 101)")
+        return
 
     cur.execute("""
         WITH base AS (
@@ -384,6 +394,7 @@ def main() -> None:
     parser.add_argument("--resume", type=lambda x: str(x).lower() in ("true", "1", "yes"), default=True, help="Reanudar desde checkpoint (default: true)")
     parser.add_argument("--retries", type=int, default=5, help="Intentos máximos por mes (default: 5)")
     parser.add_argument("--sleep-base", type=float, default=2.0, help="Base backoff en segundos (default: 2)")
+    parser.add_argument("--allow-write-drill", action="store_true", help="Permitir escritura en real_drill_dim_fact (evitar doble inserción; usar solo recuperación puntual)")
     args = parser.parse_args()
 
     from_d = _parse_date(args.from_date)
@@ -436,7 +447,7 @@ def main() -> None:
 
             try:
                 conn, cur = _get_conn()
-                _run_month(start_d, end_d, cur)
+                _run_month(start_d, end_d, cur, allow_write_drill=getattr(args, "allow_write_drill", False), skip_rollup=True)
                 conn.commit()
                 duration = time.time() - t0
                 _log_temp_or_fallback(cur)

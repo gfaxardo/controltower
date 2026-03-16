@@ -1,4 +1,16 @@
 from fastapi import APIRouter, Query, HTTPException
+import os
+import json
+import time as _time
+
+def _debug_log_ops(location: str, message: str, data: dict, hypothesis_id: str = ""):
+    try:
+        log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "..", "debug-9075f8.log")
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId": "9075f8", "location": location, "message": message, "data": data, "timestamp": int(_time.time() * 1000), "hypothesisId": hypothesis_id}) + "\n")
+    except Exception:
+        pass
+
 from app.services.ops_universe_service import get_ops_universe
 from app.services.territory_quality_service import (
     get_territory_kpis_total,
@@ -98,6 +110,7 @@ from app.services.data_integrity_service import (
     get_integrity_report,
     get_system_health,
 )
+from app.services.real_margin_quality_service import get_margin_quality_full
 from app.services.supply_definitions import get_definitions
 from app.services.behavior_alerts_service import (
     get_behavior_alerts_summary,
@@ -1490,6 +1503,58 @@ async def get_data_freshness_global_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/real-margin-quality")
+@router.get("/real/margin-quality")
+async def get_real_margin_quality_endpoint(
+    days_recent: int = Query(90, ge=1, le=365, description="Días atrás para agregado"),
+    findings_limit: int = Query(20, ge=1, le=100, description="Límite de hallazgos persistidos"),
+):
+    """Estado de calidad de margen en fuente REAL. Alias: GET /ops/real-margin-quality y GET /ops/real/margin-quality."""
+    # #region agent log
+    _debug_log_ops("ops.py:margin-quality", "request_start", {"path": "/real-margin-quality"}, "H1")
+    # #endregion
+    t0 = _time.perf_counter()
+    try:
+        out = await _run_sync(get_margin_quality_full, days_recent=days_recent, findings_limit=findings_limit)
+        # #region agent log
+        _debug_log_ops("ops.py:margin-quality", "request_ok", {"path": "/real-margin-quality", "duration_ms": round((_time.perf_counter() - t0) * 1000)}, "H1")
+        # #endregion
+        return out
+    except Exception as e:
+        # #region agent log
+        _debug_log_ops("ops.py:margin-quality", "request_err", {"path": "/real-margin-quality", "err": str(e), "duration_ms": round((_time.perf_counter() - t0) * 1000)}, "H1")
+        # #endregion
+        logger.error("GET /ops/real/margin-quality: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/real/margin-quality/run")
+async def post_real_margin_quality_run():
+    """Ejecuta auditoría de huecos de margen (audit_real_margin_source_gaps) y persiste en ops.real_margin_quality_audit. Uso: cron o admin."""
+    try:
+        import subprocess
+        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        r = subprocess.run(
+            [sys.executable, "-m", "scripts.audit_real_margin_source_gaps", "--days", "90", "--persist"],
+            cwd=backend_dir,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+        return {
+            "ok": r.returncode == 0,
+            "stdout": r.stdout or "",
+            "stderr": r.stderr or "",
+            "returncode": r.returncode,
+        }
+    except subprocess.TimeoutExpired:
+        logger.error("POST /ops/real/margin-quality/run: timeout")
+        raise HTTPException(status_code=504, detail="Audit run timeout")
+    except Exception as e:
+        logger.error("POST /ops/real/margin-quality/run: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/data-pipeline-health")
 async def get_data_pipeline_health_endpoint(
     latest_only: bool = Query(True, description="Solo última ejecución por dataset"),
@@ -1872,6 +1937,10 @@ async def get_real_lob_drill_children_endpoint(
     effective_park_id = (park_id or drill_park_id)
     if effective_park_id is not None:
         effective_park_id = str(effective_park_id).strip() or None
+    # #region agent log
+    _debug_log_ops("ops.py:children", "request_start", {"path": "/real-lob/drill/children", "desglose": desglose, "period": period}, "H4")
+    # #endregion
+    t0_children = _time.perf_counter()
     try:
         data = await _run_sync(
             get_real_lob_drill_pro_children,
@@ -1882,8 +1951,14 @@ async def get_real_lob_drill_children_endpoint(
             segmento=segmento,
             park_id=effective_park_id,
         )
+        # #region agent log
+        _debug_log_ops("ops.py:children", "request_ok", {"path": "/real-lob/drill/children", "duration_ms": round((_time.perf_counter() - t0_children) * 1000)}, "H4")
+        # #endregion
         return {"data": data}
     except Exception as e:
+        # #region agent log
+        _debug_log_ops("ops.py:children", "request_err", {"path": "/real-lob/drill/children", "err": str(e), "duration_ms": round((_time.perf_counter() - t0_children) * 1000)}, "H4")
+        # #endregion
         logger.error("Real LOB drill PRO children: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1897,9 +1972,13 @@ async def get_real_lob_drill_pro_endpoint(
     park_id: Optional[str] = Query(None, description="Filtro opcional por park; aplica a timeline y a desglose tipo_servicio"),
 ):
     """Real LOB Drill PRO: countries[] con coverage, kpis, rows por periodo."""
+    # #region agent log
+    _debug_log_ops("ops.py:drill", "request_start", {"path": "/real-lob/drill", "period": period, "desglose": desglose}, "H2")
+    # #endregion
     logger.info("Real LOB drill: request received period=%s desglose=%s segmento=%s park_id=%s", period, desglose, segmento, park_id)
+    t0 = _time.perf_counter()
     try:
-        return await _run_sync(
+        out = await _run_sync(
             get_real_lob_drill_pro,
             period=period,
             desglose=desglose,
@@ -1907,7 +1986,14 @@ async def get_real_lob_drill_pro_endpoint(
             country=country,
             park_id=park_id,
         )
+        # #region agent log
+        _debug_log_ops("ops.py:drill", "request_ok", {"path": "/real-lob/drill", "duration_ms": round((_time.perf_counter() - t0) * 1000)}, "H2")
+        # #endregion
+        return out
     except Exception as e:
+        # #region agent log
+        _debug_log_ops("ops.py:drill", "request_err", {"path": "/real-lob/drill", "err": str(e), "duration_ms": round((_time.perf_counter() - t0) * 1000)}, "H2")
+        # #endregion
         logger.error("Real LOB drill PRO: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 

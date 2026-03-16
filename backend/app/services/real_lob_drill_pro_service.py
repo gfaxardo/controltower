@@ -128,6 +128,9 @@ def _add_row_comparative(
         row["margen_total_trend"] = "flat"
         row["margen_trip_prev"] = None
         row["margen_trip_delta_pct"] = None
+        row["cancelaciones_prev"] = None
+        row["cancelaciones_delta_pct"] = None
+        row["cancelaciones_trend"] = "flat"
         row["km_prom_prev"] = None
         row["km_prom_delta_pct"] = None
         row["pct_b2b_prev"] = None
@@ -149,6 +152,11 @@ def _add_row_comparative(
     row["margen_trip_prev"] = round(mt_prev, 4) if mt_prev is not None else None
     row["margen_trip_delta_pct"] = _delta_pct(mt_cur, mt_prev)
     row["margen_trip_trend"] = _trend(mt_cur or 0, mt_prev or 0)
+    canc_prev = _float(prev_ad.get("cancelaciones"))
+    canc_cur = _float(ad.get("cancelaciones")) if ad else None
+    row["cancelaciones_prev"] = int(canc_prev) if canc_prev is not None else None
+    row["cancelaciones_delta_pct"] = _delta_pct(canc_cur or 0, canc_prev)
+    row["cancelaciones_trend"] = _trend(canc_cur or 0, canc_prev or 0)
     km_prev = _float(prev_ad.get("km_prom"))
     km_cur = _float(ad.get("km_prom")) if ad else None
     row["km_prom_prev"] = round(km_prev, 4) if km_prev is not None else None
@@ -181,6 +189,8 @@ def _add_child_comparative(
         row["margen_total_trend"] = "flat"
         row["margen_trip_delta_pct"] = None
         row["margen_trip_trend"] = "flat"
+        row["cancelaciones_delta_pct"] = None
+        row["cancelaciones_trend"] = "flat"
         row["km_prom_delta_pct"] = None
         row["km_prom_trend"] = "flat"
         row["pct_b2b_delta_pp"] = None
@@ -198,6 +208,10 @@ def _add_child_comparative(
     mt_prev = _float(prev_row.get("margen_trip"))
     row["margen_trip_delta_pct"] = _delta_pct(mt_cur, mt_prev)
     row["margen_trip_trend"] = _trend(mt_cur or 0, mt_prev or 0)
+    canc_cur = _float(row.get("cancelaciones"))
+    canc_prev = _float(prev_row.get("cancelaciones"))
+    row["cancelaciones_delta_pct"] = _delta_pct(canc_cur or 0, canc_prev)
+    row["cancelaciones_trend"] = _trend(canc_cur or 0, canc_prev or 0)
     km_cur = _float(row.get("km_prom"))
     km_prev = _float(prev_row.get("km_prom"))
     row["km_prom_delta_pct"] = _delta_pct(km_cur, km_prev)
@@ -256,6 +270,11 @@ def get_drill_parks(country: Optional[str] = None) -> List[Dict[str, Any]]:
                 p = dict(r)
                 if p.get("park_name") is None or (isinstance(p.get("park_name"), str) and not p["park_name"].strip()):
                     p["park_name"] = str(p.get("park_id") or "")
+                # Etiqueta canónica: park_name — city — country (no solo nombre)
+                name = (p.get("park_name") or "").strip() or "Sin park"
+                city = (p.get("city") or "").strip() or "Sin ciudad"
+                country = (p.get("country") or "").strip() or "Sin país"
+                p["park_label"] = f"{name} — {city} — {country}"
                 out.append(p)
             cur.close()
             return out
@@ -405,11 +424,12 @@ def get_drill(
                 """, {**params, "breakdown_use": breakdown_use})
                 agg_rows = {r["period_start"]: dict(r) for r in cur.fetchall()}
 
-                # margen_trip y km_prom a nivel periodo: desde MV dimensional
+                # margen_trip, km_prom y cancelaciones desde fuente real (ops.real_drill_dim_fact.cancelled_trips, mig 103)
                 cur.execute(f"""
                     SELECT
                         period_start,
                         SUM(trips) AS viajes,
+                        COALESCE(SUM(cancelled_trips), 0)::bigint AS cancelaciones,
                         SUM(margin_total) AS margen_total,
                         CASE WHEN SUM(trips) > 0 THEN SUM(margin_total) / SUM(trips) ELSE NULL END AS margen_trip,
                         CASE WHEN SUM(trips) > 0 THEN SUM(km_avg * trips) / NULLIF(SUM(trips), 0) ELSE NULL END AS km_prom,
@@ -420,6 +440,18 @@ def get_drill(
                     GROUP BY period_start
                 """, {**params, "breakdown_use": breakdown_use})
                 agg_detail = {r["period_start"]: dict(r) for r in cur.fetchall()}
+                # Normalizar margen a signo positivo (semántica negocio) para WoW coherente
+                for ad in agg_detail.values():
+                    if ad.get("margen_total") is not None:
+                        try:
+                            ad["margen_total"] = abs(float(ad["margen_total"]))
+                        except (TypeError, ValueError):
+                            pass
+                    if ad.get("margen_trip") is not None:
+                        try:
+                            ad["margen_trip"] = abs(float(ad["margen_trip"]))
+                        except (TypeError, ValueError):
+                            pass
 
                 expected_loaded = "CURRENT_DATE - 1"
                 if period_type == "month":
@@ -473,11 +505,13 @@ def get_drill(
                         estado = "VACIO" if viajes == 0 else "CERRADO"
 
                     period_label = str(ps)[:7] if period_type == "month" and ps else str(ps)[:10] if ps else ""
+                    cancelaciones = int(ad.get("cancelaciones") or 0) if ad else 0
                     row = {
                         "period_start": ps.isoformat()[:10] if hasattr(ps, "isoformat") else str(ps)[:10],
                         "period_label": period_label,
                         "estado": estado,
                         "viajes": viajes,
+                        "cancelaciones": cancelaciones,
                         "margen_total": round(float(margen_total), 4) if margen_total is not None else None,
                         "margen_trip": round(float(margen_trip), 4) if margen_trip is not None else None,
                         "km_prom": round(float(km_prom), 4) if km_prom is not None else None,
@@ -498,6 +532,7 @@ def get_drill(
 
                 # KPIs del país = suma de lo visible (rows) (convertir Decimal/float a float para evitar TypeError)
                 total_viajes = sum(float(r["viajes"]) for r in rows)
+                total_cancelaciones = sum(int(r.get("cancelaciones") or 0) for r in rows)
                 total_margen = sum(float(r["margen_total"] or 0) for r in rows)
                 total_b2b = sum(float(r["viajes_b2b"]) for r in rows)
                 total_km_sum = sum(float(r["km_prom"] or 0) * float(r["viajes"]) for r in rows)
@@ -507,6 +542,7 @@ def get_drill(
                     pct_b2b_val = None  # no mostrar % B2B para muestras pequeñas
                 kpis = {
                     "viajes": int(total_viajes),
+                    "cancelaciones": total_cancelaciones,
                     "margen_total": round(total_margen, 4) if total_margen else None,
                     "margen_trip": round(total_margen / total_viajes, 4) if total_viajes else None,
                     "km_prom": round(total_km_sum / total_viajes, 4) if total_viajes else None,
@@ -649,13 +685,25 @@ def get_drill_children(
                 out = []
                 for r in rows:
                     viajes = r.get("viajes") or 0
+                    _mt = r.get("margen_total")
+                    _mtr = r.get("margen_trip")
+                    if _mt is not None:
+                        try:
+                            _mt = abs(float(_mt))
+                        except (TypeError, ValueError):
+                            pass
+                    if _mtr is not None:
+                        try:
+                            _mtr = abs(float(_mtr))
+                        except (TypeError, ValueError):
+                            pass
                     row = {
                         "dimension_key": r.get("dimension_key"),
                         "dimension_id": None,
                         "city": None,
                         "viajes": viajes,
-                        "margen_total": r.get("margen_total"),
-                        "margen_trip": r.get("margen_trip"),
+                        "margen_total": _mt,
+                        "margen_trip": _mtr,
                         "km_prom": round(float(r["km_prom"]), 4) if r.get("km_prom") is not None else None,
                         "viajes_b2b": r.get("viajes_b2b"),
                         "pct_b2b": (float(r["viajes_b2b"]) / float(viajes)) if viajes else None,
@@ -665,6 +713,8 @@ def get_drill_children(
                     row["margin_unit_pos"] = row["margen_trip"]
                     row["trips"] = row["viajes"]
                     row["b2b_trips"] = row["viajes_b2b"]
+                    # Fallback temporal: ops.mv_real_drill_service_by_park no tiene cancelled_trips; drill principal y children LOB/PARK sí.
+                    row["cancelaciones"] = 0
                     out.append(row)
                 # Comparativos WoW/MoM por item disgregado: periodo anterior
                 period_type = "month" if period_grain == "month" else "week"
@@ -690,6 +740,17 @@ def get_drill_children(
                         GROUP BY tipo_servicio_norm
                     """, qparams_prev)
                     prev_rows = cur.fetchall()
+                    for pr in prev_rows:
+                        if pr.get("margen_total") is not None:
+                            try:
+                                pr["margen_total"] = abs(float(pr["margen_total"]))
+                            except (TypeError, ValueError):
+                                pass
+                        if pr.get("margen_trip") is not None:
+                            try:
+                                pr["margen_trip"] = abs(float(pr["margen_trip"]))
+                            except (TypeError, ValueError):
+                                pass
                     prev_by_key = {str(r.get("dimension_key")): r for r in prev_rows}
                     for row in out:
                         _add_child_comparative(row, prev_by_key.get(str(row.get("dimension_key"))), period_type)
@@ -711,12 +772,14 @@ def get_drill_children(
         with get_db_drill() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
             cur.execute("SET statement_timeout = %s", (TIMEOUT_POSTGRES,))
+            # Cancelaciones desde fuente real (ops.real_drill_dim_fact.cancelled_trips, mig 103)
             cur.execute(f"""
                 SELECT
                     dimension_key,
                     dimension_id,
                     city,
                     SUM(trips) AS viajes,
+                    COALESCE(SUM(cancelled_trips), 0)::bigint AS cancelaciones,
                     SUM(margin_total) AS margen_total,
                     CASE WHEN SUM(trips) > 0 THEN SUM(margin_total) / SUM(trips) ELSE NULL END AS margen_trip,
                     CASE WHEN SUM(trips) > 0 THEN SUM(km_avg * trips) / NULLIF(SUM(trips), 0) ELSE NULL END AS km_prom,
@@ -732,6 +795,17 @@ def get_drill_children(
             out = []
             for r in rows:
                 row = dict(r)
+                # Margen en positivo (semántica negocio)
+                if row.get("margen_total") is not None:
+                    try:
+                        row["margen_total"] = abs(float(row["margen_total"]))
+                    except (TypeError, ValueError):
+                        pass
+                if row.get("margen_trip") is not None:
+                    try:
+                        row["margen_trip"] = abs(float(row["margen_trip"]))
+                    except (TypeError, ValueError):
+                        pass
                 if desg_upper == "PARK":
                     if row.get("city") is None or (isinstance(row.get("city"), str) and str(row.get("city")).lower() == "sin_city"):
                         row["city"] = "SIN_CITY"
@@ -740,6 +814,12 @@ def get_drill_children(
                     else:
                         row["park_name"] = row["dimension_key"]
                     row["park_name_resolved"] = row.get("park_name")
+                    # country para etiqueta canónica (params tiene country del request)
+                    row["country"] = params.get("country") or ""
+                    name = (row.get("park_name") or "").strip() or "Sin park"
+                    city = (row.get("city") or "").strip() or "Sin ciudad"
+                    country = (row.get("country") or "").strip() or "Sin país"
+                    row["park_label"] = f"{name} — {city} — {country}"
                 elif desg_upper == "LOB":
                     row["lob_group"] = row.get("dimension_key")
                 elif desg_upper == "SERVICE_TYPE":
@@ -759,6 +839,7 @@ def get_drill_children(
                         dimension_id,
                         city,
                         SUM(trips) AS viajes,
+                        COALESCE(SUM(cancelled_trips), 0)::bigint AS cancelaciones,
                         SUM(margin_total) AS margen_total,
                         CASE WHEN SUM(trips) > 0 THEN SUM(margin_total) / SUM(trips) ELSE NULL END AS margen_trip,
                         CASE WHEN SUM(trips) > 0 THEN SUM(km_avg * trips) / NULLIF(SUM(trips), 0) ELSE NULL END AS km_prom,
@@ -770,6 +851,17 @@ def get_drill_children(
                     GROUP BY dimension_key, dimension_id, city
                 """, {**params, "breakdown": breakdown_map[desg_upper], "period_start": prev_start_str})
                 prev_rows = cur.fetchall()
+                for pr in prev_rows:
+                    if pr.get("margen_total") is not None:
+                        try:
+                            pr["margen_total"] = abs(float(pr["margen_total"]))
+                        except (TypeError, ValueError):
+                            pass
+                    if pr.get("margen_trip") is not None:
+                        try:
+                            pr["margen_trip"] = abs(float(pr["margen_trip"]))
+                        except (TypeError, ValueError):
+                            pass
                 prev_by_key = {str(r.get("dimension_key")): r for r in prev_rows}
                 for row in out:
                     _add_child_comparative(row, prev_by_key.get(str(row.get("dimension_key"))), period_type)

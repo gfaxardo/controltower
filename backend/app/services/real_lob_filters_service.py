@@ -90,6 +90,11 @@ def get_real_lob_filters(
                     pass
                 else:
                     p["park_name"] = str(p.get("park_id") or "")
+                # Etiqueta canónica: park_name — city — country
+                name = (p.get("park_name") or "").strip() if p.get("park_name") else "Sin park"
+                city = (p.get("city") or "").strip() if p.get("city") else "Sin ciudad"
+                country = (p.get("country") or "").strip() if p.get("country") else "Sin país"
+                p["park_label"] = f"{name} — {city} — {country}"
             # Fallback: si las MVs no tienen parks (p. ej. no refrescadas), usar fuente del drill
             if not parks:
                 try:

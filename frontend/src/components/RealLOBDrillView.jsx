@@ -13,7 +13,8 @@ import {
   getRealLobDrillParks,
   getRealLobComparativesWeekly,
   getRealLobComparativesMonthly,
-  getPeriodSemantics
+  getPeriodSemantics,
+  getRealMarginQuality
 } from '../services/api'
 import RealLOBDailyView from './RealLOBDailyView'
 import { buildDimKey, buildDrillKey } from '../utils/dimKey'
@@ -78,6 +79,7 @@ export default function RealLOBDrillView () {
   const [error, setError] = useState(null)
   const [expanded, setExpanded] = useState(new Set())
   const [subrows, setSubrows] = useState({}) // key -> { loading, data, error }
+  const [marginQualityAffected, setMarginQualityAffected] = useState({ week: new Set(), month: new Set() })
 
   const abortControllerRef = useRef(null)
   const summaryAbortRef = useRef(null)
@@ -94,16 +96,57 @@ export default function RealLOBDrillView () {
 
   // Parks para filtro de contexto: misma fuente que el drill (real_drill_dim_fact). No depende del tipo de desglose.
   useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/7a567dae-1f05-4a4a-89fa-ed1b37ba03a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9075f8'},body:JSON.stringify({sessionId:'9075f8',location:'RealLOBDrillView.jsx:parks',message:'fetch_start',data:{fetch:'drill/parks'},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{})
+    // #endregion
     getRealLobDrillParks()
-      .then((res) => setParks(res.parks || []))
-      .catch(() => setParks([]))
+      .then((res) => {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/7a567dae-1f05-4a4a-89fa-ed1b37ba03a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9075f8'},body:JSON.stringify({sessionId:'9075f8',location:'RealLOBDrillView.jsx:parks_then',message:'fetch_ok',data:{fetch:'drill/parks'},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{})
+        // #endregion
+        setParks(res.parks || [])
+      })
+      .catch(() => {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/7a567dae-1f05-4a4a-89fa-ed1b37ba03a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9075f8'},body:JSON.stringify({sessionId:'9075f8',location:'RealLOBDrillView.jsx:parks_catch',message:'fetch_err',data:{fetch:'drill/parks'},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{})
+        // #endregion
+        setParks([])
+      })
   }, [])
 
   // Semántica temporal: carga independiente del drill para mostrar siempre "última cerrada / actual abierta"
   useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/7a567dae-1f05-4a4a-89fa-ed1b37ba03a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9075f8'},body:JSON.stringify({sessionId:'9075f8',location:'RealLOBDrillView.jsx:periodSemantics',message:'fetch_start',data:{fetch:'period-semantics'},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{})
+    // #endregion
     getPeriodSemantics()
-      .then((data) => setPeriodSemantics(data))
-      .catch(() => setPeriodSemantics(null))
+      .then((data) => {
+        fetch('http://127.0.0.1:7243/ingest/7a567dae-1f05-4a4a-89fa-ed1b37ba03a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9075f8'},body:JSON.stringify({sessionId:'9075f8',location:'RealLOBDrillView.jsx:periodSemantics_then',message:'fetch_ok',data:{fetch:'period-semantics'},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{})
+        setPeriodSemantics(data)
+      })
+      .catch(() => {
+        fetch('http://127.0.0.1:7243/ingest/7a567dae-1f05-4a4a-89fa-ed1b37ba03a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9075f8'},body:JSON.stringify({sessionId:'9075f8',location:'RealLOBDrillView.jsx:periodSemantics_catch',message:'fetch_err',data:{fetch:'period-semantics'},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{})
+        setPeriodSemantics(null)
+      })
+  }, [])
+
+  // Periodos con cobertura de margen incompleta (para badge en drill)
+  useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/7a567dae-1f05-4a4a-89fa-ed1b37ba03a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9075f8'},body:JSON.stringify({sessionId:'9075f8',location:'RealLOBDrillView.jsx:marginQuality',message:'fetch_start',data:{fetch:'real-margin-quality'},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{})
+    // #endregion
+    getRealMarginQuality({ days_recent: 90 })
+      .then((data) => {
+        fetch('http://127.0.0.1:7243/ingest/7a567dae-1f05-4a4a-89fa-ed1b37ba03a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9075f8'},body:JSON.stringify({sessionId:'9075f8',location:'RealLOBDrillView.jsx:marginQuality_then',message:'fetch_ok',data:{fetch:'real-margin-quality'},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{})
+        setMarginQualityAffected({
+          week: new Set((data.affected_week_dates || []).map((d) => String(d).slice(0, 10))),
+          month: new Set((data.affected_month_dates || []).map((d) => String(d).slice(0, 10)))
+        })
+      })
+      .catch(() => {
+        fetch('http://127.0.0.1:7243/ingest/7a567dae-1f05-4a4a-89fa-ed1b37ba03a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9075f8'},body:JSON.stringify({sessionId:'9075f8',location:'RealLOBDrillView.jsx:marginQuality_catch',message:'fetch_err',data:{fetch:'real-margin-quality'},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{})
+        setMarginQualityAffected({ week: new Set(), month: new Set() })
+      })
   }, [])
 
   const resetDrillState = useCallback(() => {
@@ -122,6 +165,9 @@ export default function RealLOBDrillView () {
     setLoading(true)
     setError(null)
     const t0 = Date.now()
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/7a567dae-1f05-4a4a-89fa-ed1b37ba03a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9075f8'},body:JSON.stringify({sessionId:'9075f8',location:'RealLOBDrillView.jsx:loadSummary',message:'fetch_start',data:{fetch:'drill_pro'},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{})
+    // #endregion
     try {
       if (USE_DRILL_PRO) {
         const res = await getRealLobDrillPro({
@@ -145,6 +191,9 @@ export default function RealLOBDrillView () {
         setLobCoverage(null)
       }
     } catch (e) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/7a567dae-1f05-4a4a-89fa-ed1b37ba03a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9075f8'},body:JSON.stringify({sessionId:'9075f8',location:'RealLOBDrillView.jsx:loadSummary_catch',message:'fetch_err',data:{err:String(e?.message||e),code:e?.code},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{})
+      // #endregion
       if (e?.name === 'CanceledError' || e?.name === 'AbortError' || ac.signal.aborted) return
       let msg = 'Error al cargar timeline'
       if (e?.response?.data?.detail) {
@@ -161,6 +210,9 @@ export default function RealLOBDrillView () {
       setError(msg)
       setCountries([])
     } finally {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/7a567dae-1f05-4a4a-89fa-ed1b37ba03a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9075f8'},body:JSON.stringify({sessionId:'9075f8',location:'RealLOBDrillView.jsx:loadSummary_finally',message:'fetch_end',data:{durationMs:Date.now()-t0},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{})
+      // #endregion
       setLoading(false)
     }
   }, [periodType, segment, limitPeriods, drillBy, parkId])
@@ -173,10 +225,17 @@ export default function RealLOBDrillView () {
   useEffect(() => {
     if (subView !== 'drill') return
     setComparativeLoading(true)
+    fetch('http://127.0.0.1:7243/ingest/7a567dae-1f05-4a4a-89fa-ed1b37ba03a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9075f8'},body:JSON.stringify({sessionId:'9075f8',location:'RealLOBDrillView.jsx:comparative',message:'fetch_start',data:{fetch:'comparatives'},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{})
     const fetchComparative = periodType === 'weekly' ? getRealLobComparativesWeekly : getRealLobComparativesMonthly
     fetchComparative()
-      .then((data) => { setComparative(data); setComparativeLoading(false) })
-      .catch(() => { setComparative(null); setComparativeLoading(false) })
+      .then((data) => {
+        fetch('http://127.0.0.1:7243/ingest/7a567dae-1f05-4a4a-89fa-ed1b37ba03a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9075f8'},body:JSON.stringify({sessionId:'9075f8',location:'RealLOBDrillView.jsx:comparative_then',message:'fetch_ok',data:{fetch:'comparatives'},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{})
+        setComparative(data); setComparativeLoading(false)
+      })
+      .catch(() => {
+        fetch('http://127.0.0.1:7243/ingest/7a567dae-1f05-4a4a-89fa-ed1b37ba03a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9075f8'},body:JSON.stringify({sessionId:'9075f8',location:'RealLOBDrillView.jsx:comparative_catch',message:'fetch_err',data:{fetch:'comparatives'},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{})
+        setComparative(null); setComparativeLoading(false)
+      })
   }, [subView, periodType])
 
   const normalizePeriodStart = (periodStart) => {
@@ -394,9 +453,14 @@ export default function RealLOBDrillView () {
             <option value="">Todos</option>
             {parks.map((p) => {
               const id = p.park_id ?? p.id ?? ''
-              const name = p.park_name || p.park_id || p.id || '—'
-              const city = p.city && String(p.city).trim() && String(p.city).toLowerCase() !== 'sin_city' ? p.city : null
-              const label = city ? `${name} — ${city}` : name
+              const label = p.park_label || (() => {
+                const name = p.park_name || p.park_id || p.id || '—'
+                const city = (p.city && String(p.city).trim() && String(p.city).toLowerCase() !== 'sin_city') ? p.city : ''
+                const country = (p.country && String(p.country).trim()) ? p.country : ''
+                if (city && country) return `${name} — ${city} — ${country}`
+                if (city) return `${name} — ${city}`
+                return name
+              })()
               return (
                 <option key={id} value={id}>
                   {label}
@@ -575,6 +639,8 @@ export default function RealLOBDrillView () {
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Periodo</th>
                         <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Viajes</th>
                         <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{COMPARATIVE_LABELS.deltaPctLabel(periodType)}</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Cancel.</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{COMPARATIVE_LABELS.deltaPctLabel(periodType)}</th>
                         <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase" title={MARGIN_TOOLTIP}>Margen total</th>
                         <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{COMPARATIVE_LABELS.deltaPctLabel(periodType)}</th>
                         <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase" title={MARGIN_TOOLTIP}>Margen/trip</th>
@@ -621,12 +687,31 @@ export default function RealLOBDrillView () {
                                 {row.is_partial_comparison && (
                                   <span className={`ml-1 inline-flex px-1.5 py-0.5 rounded text-xs font-medium ${GRID_ESTADO.PARCIAL.className}`} title={GRID_ESTADO.PARCIAL.title}>{GRID_ESTADO.PARCIAL.label}</span>
                                 )}
+                                {(() => {
+                                  const norm = normalizePeriodStart(row.period_start)
+                                  const normStr = String(norm).slice(0, 10)
+                                  const set = periodType === 'monthly' ? marginQualityAffected.month : marginQualityAffected.week
+                                  if (set.has(normStr)) {
+                                    return (
+                                      <span className="ml-1 inline-flex px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300" title="Este periodo tiene viajes completados sin margen en fuente; el margen mostrado puede ser incompleto.">Cobertura incompleta</span>
+                                    )
+                                  }
+                                  return null
+                                })()}
                               </td>
                               <td className="px-3 py-2 text-sm text-right">{formatNumber(row.trips)}</td>
                               <td className={`px-3 py-2 text-sm text-right ${getComparativeClass(row.viajes_trend).bg}`}>
                                 {row.viajes_delta_pct != null ? (
                                   <span className={getComparativeClass(row.viajes_trend).text}>
                                     {getComparativeClass(row.viajes_trend).arrow} {Number(row.viajes_delta_pct).toFixed(1)}%
+                                  </span>
+                                ) : '—'}
+                              </td>
+                              <td className="px-3 py-2 text-sm text-right">{formatNumber(row.cancelaciones ?? 0)}</td>
+                              <td className={`px-3 py-2 text-sm text-right ${getComparativeClass(row.cancelaciones_trend).bg}`}>
+                                {row.cancelaciones_delta_pct != null ? (
+                                  <span className={getComparativeClass(row.cancelaciones_trend).text}>
+                                    {getComparativeClass(row.cancelaciones_trend).arrow} {Number(row.cancelaciones_delta_pct).toFixed(1)}%
                                   </span>
                                 ) : '—'}
                               </td>
@@ -690,12 +775,12 @@ export default function RealLOBDrillView () {
                               <>
                                 {sr.loading && (
                                   <tr key={`${rowId}-sub-loading`} className="bg-slate-50">
-                                    <td colSpan={13} className="px-4 py-3 text-sm text-gray-500">Cargando…</td>
+                                    <td colSpan={15} className="px-4 py-3 text-sm text-gray-500">Cargando…</td>
                                   </tr>
                                 )}
                                 {sr.error && (
                                   <tr key={`${rowId}-sub-err`} className="bg-slate-50">
-                                    <td colSpan={13} className="px-4 py-3 text-sm text-red-600">{sr.error}</td>
+                                    <td colSpan={15} className="px-4 py-3 text-sm text-red-600">{sr.error}</td>
                                   </tr>
                                 )}
                                 {sr.data && sr.data.length > 0 && (() => {
@@ -711,7 +796,7 @@ export default function RealLOBDrillView () {
                                     const subKm = subTrips > 0 && (r.km_prom != null || r.distance_km_avg != null || r.distance_total_km != null)
                                       ? formatDistanceKm(r.km_prom ?? r.distance_km_avg ?? (r.distance_total_km / subTrips), subTrips)
                                       : '—'
-                                    const dimLabel = drillBy === 'lob' ? (r.lob_group ?? '—') : drillBy === 'park' ? (r.dimension_key ?? r.park_name_resolved ?? r.park_name ?? '—') : formatRealServiceTypeDisplay(r.service_type ?? r.dimension_key) || '—'
+                                    const dimLabel = drillBy === 'lob' ? (r.lob_group ?? '—') : drillBy === 'park' ? (r.park_label ?? r.dimension_key ?? r.park_name_resolved ?? r.park_name ?? '—') : formatRealServiceTypeDisplay(r.service_type ?? r.dimension_key) || '—'
                                     return (
                                       <tr key={`${rowId}-drill-${i}`} className="bg-slate-50">
                                         <td className="px-3 py-2" />
@@ -719,6 +804,10 @@ export default function RealLOBDrillView () {
                                         <td className="px-3 py-2 text-sm text-right">{formatNumber(r.trips)}</td>
                                         <td className={`px-3 py-2 text-sm text-right ${getComparativeClass(r.viajes_trend).bg}`}>
                                           {r.viajes_delta_pct != null ? <span className={getComparativeClass(r.viajes_trend).text}>{getComparativeClass(r.viajes_trend).arrow} {Number(r.viajes_delta_pct).toFixed(1)}%</span> : '—'}
+                                        </td>
+                                        <td className="px-3 py-2 text-sm text-right">{formatNumber(r.cancelaciones ?? 0)}</td>
+                                        <td className={`px-3 py-2 text-sm text-right ${(getComparativeClass(r.cancelaciones_trend) || getComparativeClass('flat')).bg}`}>
+                                          {r.cancelaciones_delta_pct != null ? <span className={(getComparativeClass(r.cancelaciones_trend) || getComparativeClass('flat')).text}>{getComparativeClass(r.cancelaciones_trend)?.arrow ?? ''} {Number(r.cancelaciones_delta_pct).toFixed(1)}%</span> : '—'}
                                         </td>
                                         <td className="px-3 py-2 text-sm text-right">{subTrips ? formatMargin(subMarginTotal, subTrips) : '—'}</td>
                                         <td className={`px-3 py-2 text-sm text-right ${getComparativeClass(r.margen_total_trend).bg}`}>
@@ -747,13 +836,13 @@ export default function RealLOBDrillView () {
                                     )
                                   }) : (
                                     <tr key={`${rowId}-sub-empty`} className="bg-slate-50">
-                                      <td colSpan={13} className="px-4 py-3 text-sm text-gray-500">Sin datos para este periodo.</td>
+                                      <td colSpan={15} className="px-4 py-3 text-sm text-gray-500">Sin datos para este periodo.</td>
                                     </tr>
                                   )
                                 })()}
                                 {sr.data && sr.data.length === 0 && (
                                   <tr key={`${rowId}-sub-empty`} className="bg-slate-50">
-                                    <td colSpan={13} className="px-4 py-3 text-sm text-gray-500">Sin datos para este periodo.</td>
+                                    <td colSpan={15} className="px-4 py-3 text-sm text-gray-500">Sin datos para este periodo.</td>
                                   </tr>
                                 )}
                               </>

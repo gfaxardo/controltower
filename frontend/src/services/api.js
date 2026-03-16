@@ -474,6 +474,12 @@ export const getDataPipelineHealth = async (latestOnly = true) => {
   return response.data
 }
 
+// Calidad de margen en fuente REAL (ruta estable: /ops/real-margin-quality; /ops/real/margin-quality puede 404 en algunos despliegues)
+export const getRealMarginQuality = async (params = {}) => {
+  const response = await api.get('/ops/real-margin-quality', { params: { days_recent: params.days_recent ?? 90, findings_limit: params.findings_limit ?? 20 }, timeout: 15000 })
+  return response.data
+}
+
 // Reporte de integridad (checks: TRIP LOSS, B2B, LOB MAPPING, DUPLICATES, MV STALE, JOIN LOSS, WEEKLY ANOMALY)
 export const getIntegrityReport = async () => {
   const response = await api.get('/ops/integrity-report', { timeout: 15000 })

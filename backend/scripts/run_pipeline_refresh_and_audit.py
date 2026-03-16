@@ -49,13 +49,13 @@ def _last_day_of_month(d: date) -> date:
     return next_ - timedelta(days=1)
 
 
-def run_populate_drill(days: int = 120, weeks: int = 18) -> bool:
-    """Pobla real_drill_dim_fact desde mv_real_lob_day_v2 y mv_real_lob_week_v3 (hourly-first)."""
-    logger.info("Poblando real_drill_dim_fact desde day_v2/week_v3 (days=%s, weeks=%s)...", days, weeks)
+def run_populate_drill(days: int = 120, weeks: int = 18, months: int = 6) -> bool:
+    """Pobla real_drill_dim_fact desde mv_real_lob_day_v2, week_v3 y month_v3 (hourly-first)."""
+    logger.info("Poblando real_drill_dim_fact desde day_v2/week_v3/month_v3 (days=%s, weeks=%s, months=%s)...", days, weeks, months)
     r = subprocess.run(
         [
             sys.executable, "-m", "scripts.populate_real_drill_from_hourly_chain",
-            "--days", str(days), "--weeks", str(weeks),
+            "--days", str(days), "--weeks", str(weeks), "--months", str(months),
         ],
         cwd=BACKEND_DIR,
         capture_output=True,
@@ -149,6 +149,42 @@ def run_audit() -> bool:
     return True
 
 
+def run_trips_2026_coverage_audit() -> bool:
+    """Auditoría de cobertura comercial trips_2026 (comision_empresa_asociada, pago_corporativo). Falla si cae bajo umbral."""
+    logger.info("Ejecutando auditoría de cobertura comercial trips_2026...")
+    r = subprocess.run(
+        [sys.executable, "-m", "scripts.audit_trips_2026_commercial_coverage", "--weeks", "4"],
+        cwd=BACKEND_DIR,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if r.returncode != 0:
+        logger.error("Cobertura comercial trips_2026 FAIL: %s", r.stderr or r.stdout)
+        return False
+    logger.info("Cobertura comercial trips_2026 OK")
+    return True
+
+
+def run_margin_quality_audit() -> bool:
+    """Ejecuta auditoría de huecos de margen en fuente REAL y escribe en ops.real_margin_quality_audit."""
+    logger.info("Ejecutando auditoría de calidad de margen (REAL)...")
+    r = subprocess.run(
+        [sys.executable, "-m", "scripts.audit_real_margin_source_gaps", "--days", "90", "--persist"],
+        cwd=BACKEND_DIR,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    if r.returncode not in (0, 1, 2):
+        logger.warning("Margin quality audit terminó con código %s: %s", r.returncode, r.stderr or r.stdout)
+    if r.stdout:
+        for line in r.stdout.strip().split("\n")[-15:]:
+            logger.info("  %s", line)
+    logger.info("Auditoría de margen ejecutada (ops.real_margin_quality_audit si existe tabla)")
+    return True
+
+
 def main() -> None:
     from app.db.connection import init_db_pool
 
@@ -160,8 +196,10 @@ def main() -> None:
     parser.add_argument("--skip-driver", action="store_true", help="No ejecutar refresh driver lifecycle")
     parser.add_argument("--skip-supply", action="store_true", help="No ejecutar refresh supply")
     parser.add_argument("--skip-audit", action="store_true", help="No ejecutar audit")
+    parser.add_argument("--skip-coverage-audit", action="store_true", help="No ejecutar auditoría cobertura trips_2026")
     parser.add_argument("--drill-days", type=int, default=120, help="Ventana días para drill (default 120)")
     parser.add_argument("--drill-weeks", type=int, default=18, help="Ventana semanas para drill (default 18)")
+    parser.add_argument("--drill-months", type=int, default=6, help="Ventana meses para drill (default 6)")
     args = parser.parse_args()
 
     ok = True
@@ -170,7 +208,7 @@ def main() -> None:
     else:
         logger.info("Skip hourly-first chain (--skip-hourly-first)")
     if not getattr(args, "skip_drill_populate", False):
-        ok = run_populate_drill(days=args.drill_days, weeks=args.drill_weeks) and ok
+        ok = run_populate_drill(days=args.drill_days, weeks=args.drill_weeks, months=args.drill_months) and ok
     else:
         logger.info("Skip drill populate (--skip-drill-populate)")
 
@@ -186,6 +224,9 @@ def main() -> None:
 
     if not args.skip_audit:
         ok = run_audit() and ok
+        if not getattr(args, "skip_coverage_audit", False):
+            ok = run_trips_2026_coverage_audit() and ok
+        ok = run_margin_quality_audit() and ok
     else:
         logger.info("Skip audit (--skip-audit)")
 

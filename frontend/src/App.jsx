@@ -21,6 +21,7 @@ import DriverBehaviorView from './components/DriverBehaviorView'
 import ActionEngineView from './components/ActionEngineView'
 import SystemHealthView from './components/SystemHealthView'
 import GlobalFreshnessBanner from './components/GlobalFreshnessBanner'
+import RealMarginQualityCard from './components/RealMarginQualityCard'
 import UploadPlan from './components/UploadPlan'
 import PlanTabs from './components/PlanTabs'
 import RealVsProjectionView from './components/RealVsProjectionView'
@@ -149,6 +150,8 @@ function App () {
         )}
 
         <GlobalFreshnessBanner activeTab={activeTab} />
+
+        {activeTab === 'real' && <RealMarginQualityCard />}
 
         <CollapsibleFilters onFilterChange={handleFilterChange} />
 
