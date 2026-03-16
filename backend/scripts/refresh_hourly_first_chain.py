@@ -33,24 +33,56 @@ CHAIN = [
 ]
 
 
+def _refresh_one(conn, full_name: str, timeout_sec: int, concurrent: bool) -> None:
+    cur = conn.cursor()
+    cur.execute("SET statement_timeout = %s", (str(timeout_sec * 1000),))
+    if concurrent:
+        cur.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY " + full_name)
+    else:
+        cur.execute("REFRESH MATERIALIZED VIEW " + full_name)
+    cur.close()
+
+
 def run_refresh(skip_hour: bool, timeout_sec: int) -> bool:
-    from app.db.connection import get_db, init_db_pool
+    import psycopg2
+    from app.db.connection import init_db_pool, _get_connection_params
+
     init_db_pool()
+    params = dict(_get_connection_params())
+    params["options"] = (params.get("options") or "").strip()
     start = 0 if not skip_hour else 1
     for name, mv in CHAIN[start:]:
         full_name = mv
         logger.info("REFRESH MATERIALIZED VIEW CONCURRENTLY %s (timeout=%ss)", full_name, timeout_sec)
+        conn = None
         try:
-            with get_db() as conn:
-                conn.autocommit = True
-                cur = conn.cursor()
-                cur.execute("SET statement_timeout = %s", (str(timeout_sec * 1000),))
-                cur.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY " + full_name)
-                cur.close()
-            logger.info("OK %s", full_name)
+            conn = psycopg2.connect(**params)
+            conn.autocommit = True
+            _refresh_one(conn, full_name, timeout_sec, concurrent=True)
+            logger.info("OK %s (concurrent)", full_name)
         except Exception as e:
-            logger.exception("FAIL %s: %s", full_name, e)
-            return False
+            err_msg = str(e).lower()
+            if "concurrently" in err_msg and ("unique index" in err_msg or "objectnotinprerequisitestate" in err_msg or "create a unique index" in err_msg):
+                logger.warning("CONCURRENTLY no disponible para %s (índice único requerido), intentando REFRESH sin CONCURRENTLY: %s", full_name, e)
+                try:
+                    if conn is None:
+                        conn = psycopg2.connect(**params)
+                        conn.autocommit = True
+                    _refresh_one(conn, full_name, timeout_sec, concurrent=False)
+                    logger.info("OK %s (no concurrent)", full_name)
+                except Exception as e2:
+                    logger.exception("FAIL %s: %s", full_name, e2)
+                    if conn:
+                        conn.close()
+                    return False
+            else:
+                logger.exception("FAIL %s: %s", full_name, e)
+                if conn:
+                    conn.close()
+                return False
+        finally:
+            if conn:
+                conn.close()
     return True
 
 
