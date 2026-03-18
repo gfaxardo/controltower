@@ -5,6 +5,7 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 import { getSupplyGeo, getLeakageSummary, getLeakageDrivers, getLeakageExportUrl } from '../services/api'
+import DataStateBadge from './DataStateBadge'
 
 function formatNum (n) {
   if (n == null || n === '') return '—'
@@ -139,9 +140,15 @@ export default function FleetLeakageView () {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-lg font-semibold text-gray-800">Fleet Leakage</h2>
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-lg font-semibold text-gray-800">Fleet Leakage</h2>
+        <DataStateBadge state="under_review" />
+      </div>
       <p className="text-sm text-gray-600">
         Monitor de posible fuga/robo de conductores. Cohorte ancla 45 días. No sustituye Behavioral Alerts.
+      </p>
+      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+        Pantalla en revisión. Validar estabilidad en runtime antes de tomar decisiones.
       </p>
 
       {/* Filtros */}

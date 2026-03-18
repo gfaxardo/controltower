@@ -424,7 +424,7 @@ def get_drill(
                 """, {**params, "breakdown_use": breakdown_use})
                 agg_rows = {r["period_start"]: dict(r) for r in cur.fetchall()}
 
-                # margen_trip, km_prom y cancelaciones desde fuente real (ops.real_drill_dim_fact.cancelled_trips, mig 103)
+                # margen_trip, km_prom, cancelaciones (mig 103), segmentación conductores (mig 106)
                 cur.execute(f"""
                     SELECT
                         period_start,
@@ -434,7 +434,13 @@ def get_drill(
                         CASE WHEN SUM(trips) > 0 THEN SUM(margin_total) / SUM(trips) ELSE NULL END AS margen_trip,
                         CASE WHEN SUM(trips) > 0 THEN SUM(km_avg * trips) / NULLIF(SUM(trips), 0) ELSE NULL END AS km_prom,
                         SUM(b2b_trips) AS viajes_b2b,
-                        MAX(last_trip_ts) AS last_trip_ts
+                        MAX(last_trip_ts) AS last_trip_ts,
+                        SUM(COALESCE(active_drivers, 0))::bigint AS active_drivers,
+                        SUM(COALESCE(cancel_only_drivers, 0))::bigint AS cancel_only_drivers,
+                        SUM(COALESCE(activity_drivers, 0))::bigint AS activity_drivers,
+                        CASE WHEN SUM(COALESCE(activity_drivers, 0)) > 0
+                             THEN ROUND(100.0 * SUM(COALESCE(cancel_only_drivers, 0)) / SUM(COALESCE(activity_drivers, 0)), 4)
+                             ELSE NULL END AS cancel_only_pct
                     FROM {MV_DIM}
                     WHERE country = %(country)s AND period_grain = %(period_grain)s AND breakdown = %(breakdown_use)s {where_seg} {where_park}
                     GROUP BY period_start
@@ -506,6 +512,10 @@ def get_drill(
 
                     period_label = str(ps)[:7] if period_type == "month" and ps else str(ps)[:10] if ps else ""
                     cancelaciones = int(ad.get("cancelaciones") or 0) if ad else 0
+                    active_drivers = int(ad.get("active_drivers") or 0) if ad else 0
+                    cancel_only_drivers = int(ad.get("cancel_only_drivers") or 0) if ad else 0
+                    activity_drivers = int(ad.get("activity_drivers") or 0) if ad else 0
+                    cancel_only_pct = round(float(ad.get("cancel_only_pct")), 4) if ad and ad.get("cancel_only_pct") is not None else None
                     row = {
                         "period_start": ps.isoformat()[:10] if hasattr(ps, "isoformat") else str(ps)[:10],
                         "period_label": period_label,
@@ -517,6 +527,10 @@ def get_drill(
                         "km_prom": round(float(km_prom), 4) if km_prom is not None else None,
                         "viajes_b2b": viajes_b2b,
                         "pct_b2b": round(float(pct_b2b), 4) if pct_b2b is not None else None,
+                        "active_drivers": active_drivers,
+                        "cancel_only_drivers": cancel_only_drivers,
+                        "activity_drivers": activity_drivers,
+                        "cancel_only_pct": cancel_only_pct,
                         "expected_last_date": expected_loaded_until.isoformat()[:10] if expected_loaded_until and hasattr(expected_loaded_until, "isoformat") else (str(expected_loaded_until)[:10] if expected_loaded_until else None),
                         "children": [],
                     }
@@ -536,10 +550,14 @@ def get_drill(
                 total_margen = sum(float(r["margen_total"] or 0) for r in rows)
                 total_b2b = sum(float(r["viajes_b2b"]) for r in rows)
                 total_km_sum = sum(float(r["km_prom"] or 0) * float(r["viajes"]) for r in rows)
+                total_active_drivers = sum(int(r.get("active_drivers") or 0) for r in rows)
+                total_cancel_only_drivers = sum(int(r.get("cancel_only_drivers") or 0) for r in rows)
+                total_activity_drivers = sum(int(r.get("activity_drivers") or 0) for r in rows)
                 # pct_b2b solo significativo si viajes >= LOW_SAMPLE_THRESHOLD; si no, LOW SAMPLE
                 pct_b2b_val = round(total_b2b / total_viajes, 4) if total_viajes else None
                 if total_viajes and total_viajes < LOW_SAMPLE_THRESHOLD:
                     pct_b2b_val = None  # no mostrar % B2B para muestras pequeñas
+                cancel_only_pct_val = round(100.0 * total_cancel_only_drivers / total_activity_drivers, 4) if total_activity_drivers else None
                 kpis = {
                     "viajes": int(total_viajes),
                     "cancelaciones": total_cancelaciones,
@@ -550,6 +568,10 @@ def get_drill(
                     "pct_b2b": pct_b2b_val,
                     "pct_b2b_low_sample": bool(total_viajes and total_viajes < LOW_SAMPLE_THRESHOLD),
                     "ultimo_periodo": rows[0]["period_start"] if rows else None,
+                    "active_drivers": total_active_drivers,
+                    "cancel_only_drivers": total_cancel_only_drivers,
+                    "activity_drivers": total_activity_drivers,
+                    "cancel_only_pct": cancel_only_pct_val,
                 }
                 # Alias para frontend que espera total_trips, margin_total_pos, etc.
                 kpis["total_trips"] = kpis["viajes"]
@@ -713,8 +735,12 @@ def get_drill_children(
                     row["margin_unit_pos"] = row["margen_trip"]
                     row["trips"] = row["viajes"]
                     row["b2b_trips"] = row["viajes_b2b"]
-                    # Fallback temporal: ops.mv_real_drill_service_by_park no tiene cancelled_trips; drill principal y children LOB/PARK sí.
+                    # Fallback: mv_real_drill_service_by_park no tiene cancelled_trips ni segmentación conductores
                     row["cancelaciones"] = 0
+                    row["active_drivers"] = None
+                    row["cancel_only_drivers"] = None
+                    row["activity_drivers"] = None
+                    row["cancel_only_pct"] = None
                     out.append(row)
                 # Comparativos WoW/MoM por item disgregado: periodo anterior
                 period_type = "month" if period_grain == "month" else "week"
@@ -772,7 +798,7 @@ def get_drill_children(
         with get_db_drill() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
             cur.execute("SET statement_timeout = %s", (TIMEOUT_POSTGRES,))
-            # Cancelaciones desde fuente real (ops.real_drill_dim_fact.cancelled_trips, mig 103)
+            # Cancelaciones (mig 103), segmentación conductores (mig 106)
             cur.execute(f"""
                 SELECT
                     dimension_key,
@@ -784,7 +810,13 @@ def get_drill_children(
                     CASE WHEN SUM(trips) > 0 THEN SUM(margin_total) / SUM(trips) ELSE NULL END AS margen_trip,
                     CASE WHEN SUM(trips) > 0 THEN SUM(km_avg * trips) / NULLIF(SUM(trips), 0) ELSE NULL END AS km_prom,
                     SUM(b2b_trips) AS viajes_b2b,
-                    (SUM(b2b_trips)::numeric / NULLIF(SUM(trips), 0)) AS pct_b2b
+                    (SUM(b2b_trips)::numeric / NULLIF(SUM(trips), 0)) AS pct_b2b,
+                    SUM(COALESCE(active_drivers, 0))::bigint AS active_drivers,
+                    SUM(COALESCE(cancel_only_drivers, 0))::bigint AS cancel_only_drivers,
+                    SUM(COALESCE(activity_drivers, 0))::bigint AS activity_drivers,
+                    CASE WHEN SUM(COALESCE(activity_drivers, 0)) > 0
+                         THEN ROUND(100.0 * SUM(COALESCE(cancel_only_drivers, 0)) / SUM(COALESCE(activity_drivers, 0)), 4)
+                         ELSE NULL END AS cancel_only_pct
                 FROM {MV_DIM}
                 WHERE country = %(country)s AND period_grain = %(period_grain)s AND period_start = %(period_start)s::date
                   AND breakdown = %(breakdown)s {where_seg}{where_low_volume}

@@ -1,5 +1,8 @@
 """
 Servicio para obtener Plan y Real por separado, y comparación solo donde hay overlap.
+LEGACY: Real mensual desde ops.mv_real_trips_monthly. La canonical se invoca solo vía endpoint
+GET /ops/real/monthly?source=canonical (Resumen). New consumers must use canonical only.
+Ver docs/REAL_CANONICAL_CHAIN.md.
 """
 
 from app.db.connection import get_db
@@ -30,8 +33,8 @@ def get_real_monthly(
     year: int = 2025
 ) -> List[Dict]:
     """
-    Obtiene datos REAL mensuales agregados desde ops.mv_real_trips_monthly (sin proxies).
-    FASE 2A: Revenue real = revenue_real_yego (comision_empresa_asociada).
+    Obtiene datos REAL mensuales desde ops.mv_real_trips_monthly (LEGACY).
+    Para cadena canónica usar GET /ops/real/monthly?source=canonical o get_real_monthly_canonical.
     Retorna currency_code basado en country (PE=PEN, CO=COP).
     """
     try:

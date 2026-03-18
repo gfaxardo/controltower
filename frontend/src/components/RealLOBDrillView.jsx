@@ -20,6 +20,7 @@ import RealLOBDailyView from './RealLOBDailyView'
 import { buildDimKey, buildDrillKey } from '../utils/dimKey'
 import { getEstadoConfig, getComparativeClass, GRID_BADGE, GRID_ESTADO, COMPARATIVE_LABELS } from '../constants/gridSemantics'
 import { formatRealServiceTypeDisplay } from '../constants/realServiceTypeDisplay'
+import DataStateBadge from './DataStateBadge'
 
 const USE_DRILL_PRO = true
 
@@ -355,6 +356,7 @@ export default function RealLOBDrillView () {
       <div className="bg-white p-6 rounded-lg shadow-md">
         <div className="flex flex-wrap items-center gap-2 mb-4 border-b border-gray-200 pb-4">
           <h3 className="text-lg font-semibold text-gray-800">Real LOB</h3>
+          <DataStateBadge state="canonical" />
           <span className="w-px h-6 bg-gray-300" />
           <button
             type="button"
@@ -381,6 +383,7 @@ export default function RealLOBDrillView () {
       {/* Fila 1: Título + subtabs Drill | Vista diaria (siempre visibles) */}
       <div className="flex flex-wrap items-center gap-2 mb-4 border-b border-gray-200 pb-4">
         <h3 className="text-lg font-semibold text-gray-800">Real LOB</h3>
+        <DataStateBadge state="canonical" />
         <span className="w-px h-6 bg-gray-300" />
         <button
           type="button"
@@ -621,6 +624,18 @@ export default function RealLOBDrillView () {
                       </div>
                     )}
                     <div>
+                      <div className="text-xs text-slate-500">Activos</div>
+                      <div className="text-lg font-semibold">{formatNumber(kpis.active_drivers)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-500">Solo cancelan</div>
+                      <div className="text-lg font-semibold">{formatNumber(kpis.cancel_only_drivers)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-500">% Solo cancelan</div>
+                      <div className="text-lg font-semibold">{kpis.cancel_only_pct != null ? `${Number(kpis.cancel_only_pct).toFixed(2)}%` : '—'}</div>
+                    </div>
+                    <div>
                       <div className="text-xs text-slate-500">Último periodo</div>
                       <div className="text-sm font-medium">{kpis.last_period || '—'}</div>
                     </div>
@@ -641,6 +656,9 @@ export default function RealLOBDrillView () {
                         <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{COMPARATIVE_LABELS.deltaPctLabel(periodType)}</th>
                         <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Cancel.</th>
                         <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{COMPARATIVE_LABELS.deltaPctLabel(periodType)}</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Activos</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Solo cancelan</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">% Solo cancelan</th>
                         <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase" title={MARGIN_TOOLTIP}>Margen total</th>
                         <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{COMPARATIVE_LABELS.deltaPctLabel(periodType)}</th>
                         <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase" title={MARGIN_TOOLTIP}>Margen/trip</th>
@@ -715,6 +733,9 @@ export default function RealLOBDrillView () {
                                   </span>
                                 ) : '—'}
                               </td>
+                              <td className="px-3 py-2 text-sm text-right">{formatNumber(row.active_drivers ?? 0)}</td>
+                              <td className="px-3 py-2 text-sm text-right">{formatNumber(row.cancel_only_drivers ?? 0)}</td>
+                              <td className="px-3 py-2 text-sm text-right">{row.cancel_only_pct != null ? `${Number(row.cancel_only_pct).toFixed(2)}%` : '—'}</td>
                               <td className="px-3 py-2 text-sm text-right">{row.trips ? formatMargin(marginTotalPos, row.trips) : '—'}</td>
                               <td className={`px-3 py-2 text-sm text-right ${getComparativeClass(row.margen_total_trend).bg}`}>
                                 {row.margen_total_delta_pct != null ? (
@@ -775,12 +796,12 @@ export default function RealLOBDrillView () {
                               <>
                                 {sr.loading && (
                                   <tr key={`${rowId}-sub-loading`} className="bg-slate-50">
-                                    <td colSpan={15} className="px-4 py-3 text-sm text-gray-500">Cargando…</td>
+                                    <td colSpan={18} className="px-4 py-3 text-sm text-gray-500">Cargando…</td>
                                   </tr>
                                 )}
                                 {sr.error && (
                                   <tr key={`${rowId}-sub-err`} className="bg-slate-50">
-                                    <td colSpan={15} className="px-4 py-3 text-sm text-red-600">{sr.error}</td>
+                                    <td colSpan={18} className="px-4 py-3 text-sm text-red-600">{sr.error}</td>
                                   </tr>
                                 )}
                                 {sr.data && sr.data.length > 0 && (() => {
@@ -809,6 +830,9 @@ export default function RealLOBDrillView () {
                                         <td className={`px-3 py-2 text-sm text-right ${(getComparativeClass(r.cancelaciones_trend) || getComparativeClass('flat')).bg}`}>
                                           {r.cancelaciones_delta_pct != null ? <span className={(getComparativeClass(r.cancelaciones_trend) || getComparativeClass('flat')).text}>{getComparativeClass(r.cancelaciones_trend)?.arrow ?? ''} {Number(r.cancelaciones_delta_pct).toFixed(1)}%</span> : '—'}
                                         </td>
+                                        <td className="px-3 py-2 text-sm text-right">{formatNumber(r.active_drivers ?? 0)}</td>
+                                        <td className="px-3 py-2 text-sm text-right">{formatNumber(r.cancel_only_drivers ?? 0)}</td>
+                                        <td className="px-3 py-2 text-sm text-right">{r.cancel_only_pct != null ? `${Number(r.cancel_only_pct).toFixed(2)}%` : '—'}</td>
                                         <td className="px-3 py-2 text-sm text-right">{subTrips ? formatMargin(subMarginTotal, subTrips) : '—'}</td>
                                         <td className={`px-3 py-2 text-sm text-right ${getComparativeClass(r.margen_total_trend).bg}`}>
                                           {r.margen_total_delta_pct != null ? <span className={getComparativeClass(r.margen_total_trend).text}>{getComparativeClass(r.margen_total_trend).arrow} {Number(r.margen_total_delta_pct).toFixed(1)}%</span> : '—'}
@@ -834,15 +858,15 @@ export default function RealLOBDrillView () {
                                         <td className="px-3 py-2 text-sm text-center">—</td>
                                       </tr>
                                     )
-                                  }) : (
+                                  }                                  ) : (
                                     <tr key={`${rowId}-sub-empty`} className="bg-slate-50">
-                                      <td colSpan={15} className="px-4 py-3 text-sm text-gray-500">Sin datos para este periodo.</td>
+                                      <td colSpan={18} className="px-4 py-3 text-sm text-gray-500">Sin datos para este periodo.</td>
                                     </tr>
                                   )
                                 })()}
                                 {sr.data && sr.data.length === 0 && (
                                   <tr key={`${rowId}-sub-empty`} className="bg-slate-50">
-                                    <td colSpan={15} className="px-4 py-3 text-sm text-gray-500">Sin datos para este periodo.</td>
+                                    <td colSpan={18} className="px-4 py-3 text-sm text-gray-500">Sin datos para este periodo.</td>
                                   </tr>
                                 )}
                               </>

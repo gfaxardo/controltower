@@ -246,23 +246,27 @@ async def get_plan_vs_real_monthly_endpoint(
     city: Optional[str] = Query(None, description="Filtrar por ciudad"),
     real_tipo_servicio: Optional[str] = Query(None, description="Filtrar por tipo de servicio (dimensión real)"),
     park_id: Optional[str] = Query(None, description="Filtrar por park_id"),
-    month: Optional[str] = Query(None, description="Filtrar por mes (formato: YYYY-MM o YYYY-MM-DD)")
+    month: Optional[str] = Query(None, description="Filtrar por mes (formato: YYYY-MM o YYYY-MM-DD)"),
+    source: Optional[str] = Query(None, description="Fuente: 'canonical' para real desde v_trips_real_canon; omitir = legacy")
 ):
     """
-    Obtiene comparación Plan vs Real mensual desde ops.v_plan_vs_real_realkey_final.
-    Llave: (country, city, park_id, real_tipo_servicio, period_date). Sin LOB/homologación.
+    Obtiene comparación Plan vs Real mensual. Llave: (country, city, park_id, real_tipo_servicio, period_date).
+    source=canonical usa v_plan_vs_real_realkey_canonical (real canónica); por defecto legacy.
     """
+    use_canonical = (source or "").strip().lower() == "canonical"
     try:
         data = get_plan_vs_real_monthly(
             country=country,
             city=city,
             real_tipo_servicio=real_tipo_servicio,
             park_id=park_id,
-            month=month
+            month=month,
+            use_canonical=use_canonical
         )
         return {
             "data": data,
-            "total_records": len(data)
+            "total_records": len(data),
+            "source_status": "canonical" if use_canonical else "legacy"
         }
     except Exception as e:
         logger.error(f"Error al obtener comparación Plan vs Real: {e}")
@@ -272,21 +276,25 @@ async def get_plan_vs_real_monthly_endpoint(
 async def get_plan_vs_real_alerts_endpoint(
     country: Optional[str] = Query(None, description="Filtrar por país"),
     month: Optional[str] = Query(None, description="Filtrar por mes (formato: YYYY-MM o YYYY-MM-DD)"),
-    alert_level: Optional[str] = Query(None, description="Filtrar por nivel de alerta (CRITICO, MEDIO, OK)")
+    alert_level: Optional[str] = Query(None, description="Filtrar por nivel de alerta (CRITICO, MEDIO, OK)"),
+    source: Optional[str] = Query(None, description="Fuente: 'canonical' para real canónica; omitir = legacy")
 ):
     """
-    Obtiene alertas Plan vs Real desde ops.v_plan_vs_real_realkey_final (solo matched).
+    Obtiene alertas Plan vs Real (solo matched). source=canonical usa real canónica.
     Alertas ordenadas por severidad: CRITICO > MEDIO > OK.
     """
+    use_canonical = (source or "").strip().lower() == "canonical"
     try:
         data = get_alerts_monthly(
             country=country,
             month=month,
-            alert_level=alert_level
+            alert_level=alert_level,
+            use_canonical=use_canonical
         )
         return {
             "data": data,
             "total_alerts": len(data),
+            "source_status": "canonical" if use_canonical else "legacy",
             "by_level": {
                 "CRITICO": len([a for a in data if a.get("alert_level") == "CRITICO"]),
                 "MEDIO": len([a for a in data if a.get("alert_level") == "MEDIO"]),
@@ -1555,6 +1563,67 @@ async def post_real_margin_quality_run():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/real-source-status")
+async def get_real_source_status_endpoint():
+    """
+    Gobierno: estado de fuente REAL por pantalla/feature.
+    source_status: canonical | legacy | migrating | source_incomplete.
+    Resumen usa canónica (mv_real_monthly_canonical_hist) desde cierre Fase 1.
+    """
+    try:
+        screens = [
+            {
+                "screen_id": "performance_resumen",
+                "screen_name": "Performance > Resumen",
+                "source_status": "canonical",
+                "message": "Fuente canónica (mv_real_monthly_canonical_hist)",
+            },
+            {
+                "screen_id": "performance_real_daily",
+                "screen_name": "Performance > Real (diario)",
+                "source_status": "canonical",
+                "message": "Fuente canónica",
+            },
+            {
+                "screen_id": "operacion_drill",
+                "screen_name": "Operación > Drill",
+                "source_status": "canonical",
+                "message": "Fuente canónica",
+            },
+            {
+                "screen_id": "performance_plan_vs_real",
+                "screen_name": "Performance > Plan vs Real",
+                "source_status": "migrating",
+                "message": "Migrando a fuente canónica",
+            },
+            {
+                "screen_id": "proyeccion_real_vs_projection",
+                "screen_name": "Proyección > Real vs Proyección",
+                "source_status": "source_incomplete",
+                "message": "Vista temporalmente limitada; puede depender de objetos faltantes",
+            },
+            {
+                "screen_id": "risk_behavioral_alerts",
+                "screen_name": "Riesgo > Alertas de conducta",
+                "source_status": "under_review",
+                "message": "En revisión; tiempos de respuesta pueden ser elevados",
+            },
+            {
+                "screen_id": "risk_fleet_leakage",
+                "screen_name": "Riesgo > Fuga de flota",
+                "source_status": "under_review",
+                "message": "En revisión; validar estabilidad en runtime",
+            },
+        ]
+        return {
+            "screens": screens,
+            "resumen_uses_canonical": True,
+        }
+    except Exception as e:
+        logger.error("GET /ops/real-source-status: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/data-pipeline-health")
 async def get_data_pipeline_health_endpoint(
     latest_only: bool = Query(True, description="Solo última ejecución por dataset"),
@@ -2323,24 +2392,37 @@ async def get_real_monthly_endpoint(
     city: Optional[str] = Query(None, description="Filtrar por ciudad"),
     lob_base: Optional[str] = Query(None, description="Filtrar por línea de negocio base"),
     segment: Optional[str] = Query(None, description="Filtrar por segmento (b2b, b2c)"),
-    year: int = Query(2025, description="Año del Real")
+    year: int = Query(2025, description="Año del Real"),
+    source: Optional[str] = Query(None, description="Si es 'canonical', usa cadena hourly-first (solo Resumen). Por defecto legacy."),
 ):
     """
-    Obtiene datos REAL mensuales agregados desde ops.mv_real_trips_monthly (sin proxies).
+    Obtiene datos REAL mensuales. Con source=canonical usa real_drill_dim_fact (cadena hourly-first).
+    Sin source o source distinto de canonical usa ops.mv_real_trips_monthly (legacy).
     Retorna month, trips_real_completed, revenue_real_yego, active_drivers_real, avg_ticket_real.
     """
     try:
-        data = get_real_monthly(
-            country=country,
-            city=city,
-            lob_base=lob_base,
-            segment=segment,
-            year=year
-        )
+        if source and str(source).strip().lower() == "canonical":
+            from app.services.canonical_real_monthly_service import get_real_monthly_canonical
+            data = get_real_monthly_canonical(
+                country=country,
+                city=city,
+                lob_base=lob_base,
+                segment=segment,
+                year=year,
+            )
+        else:
+            data = get_real_monthly(
+                country=country,
+                city=city,
+                lob_base=lob_base,
+                segment=segment,
+                year=year,
+            )
         return {
             "data": data,
             "total_periods": len(data),
-            "year": year
+            "year": year,
+            "source_used": "canonical" if (source and str(source).strip().lower() == "canonical") else "legacy",
         }
     except Exception as e:
         logger.error(f"Error al obtener Real monthly: {e}")

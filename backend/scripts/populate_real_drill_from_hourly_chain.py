@@ -259,10 +259,46 @@ def run(days: int, weeks: int, months: int, timeout_sec: int) -> bool:
 
         conn.commit()
         cur.close()
+    # Fin del bloque: INSERTs ya guardados. El UPDATE de segmentación se hace en otra conexión
+    # para que, si el servidor cierra por timeout/memoria, no se pierdan los INSERTs.
 
     logger.info("real_drill_dim_fact: day lob=%s park=%s svc=%s; week lob=%s park=%s svc=%s; month lob=%s park=%s svc=%s",
                 ins_lob_day, ins_park_day, ins_svc_day, ins_lob_week, ins_park_week, ins_svc_week,
                 ins_lob_month, ins_park_month, ins_svc_month)
+
+    # 5) Actualizar segmentación en conexión aparte (vista pesada; si falla no perdemos los INSERTs)
+    seg_timeout_sec = min(900, max(120, timeout_sec // 4))  # entre 2 y 15 min
+    try:
+        with get_db() as conn2:
+            cur2 = conn2.cursor(cursor_factory=RealDictCursor)
+            cur2.execute("SET statement_timeout = %s", (str(seg_timeout_sec * 1000),))
+            cur2.execute("""
+                UPDATE ops.real_drill_dim_fact d
+                SET
+                    active_drivers = a.active_drivers,
+                    cancel_only_drivers = a.cancel_only_drivers,
+                    activity_drivers = a.activity_drivers,
+                    cancel_only_pct = a.cancel_only_pct
+                FROM ops.v_real_driver_segment_agg a
+                WHERE d.country = a.country
+                  AND d.period_grain = a.period_grain
+                  AND d.period_start = a.period_start
+                  AND d.segment = a.segment_tag
+                  AND d.breakdown = a.breakdown
+                  AND COALESCE(TRIM(d.dimension_key), '') = COALESCE(TRIM(a.dimension_key), '')
+                  AND COALESCE(TRIM(d.dimension_id), '') = COALESCE(TRIM(a.dimension_id), '')
+                  AND COALESCE(TRIM(d.city), '') = COALESCE(TRIM(a.city), '')
+            """)
+            updated_seg = cur2.rowcount
+            logger.info("real_drill_dim_fact: segmentación conductores actualizada en %s filas (timeout %ss)", updated_seg, seg_timeout_sec)
+            cur2.close()
+    except Exception as e:
+        logger.warning(
+            "Segmentación conductores (v_real_driver_segment_agg) no aplicada: %s. "
+            "Los datos de viajes/cancelaciones ya están guardados. Puedes volver a ejecutar solo el UPDATE más tarde o aumentar timeout en el servidor.",
+            e
+        )
+
     return True
 
 

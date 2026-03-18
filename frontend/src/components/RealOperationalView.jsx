@@ -14,6 +14,7 @@ import {
   getRealOperationalCurrentHourVsHistorical,
   getRealOperationalThisWeekVsComparable
 } from '../services/api'
+import DataStateBadge from './DataStateBadge'
 
 const SUB_VIEWS = [
   { id: 'snapshot', label: 'Hoy / Ayer / Semana' },
@@ -142,7 +143,7 @@ export default function RealOperationalView ({ country = '', city = '' }) {
 
   return (
     <div className="bg-white rounded-lg shadow p-4">
-      <div className="flex flex-wrap gap-2 mb-4 border-b pb-2">
+      <div className="flex flex-wrap items-center gap-2 mb-4 border-b pb-2">
         {SUB_VIEWS.map(({ id, label }) => (
           <button
             key={id}
@@ -153,6 +154,7 @@ export default function RealOperationalView ({ country = '', city = '' }) {
             {label}
           </button>
         ))}
+        <DataStateBadge state="canonical" className="ml-auto" />
       </div>
 
       {error && <div className="mb-4 p-2 bg-red-100 text-red-800 rounded text-sm">{error}</div>}

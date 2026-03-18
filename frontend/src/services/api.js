@@ -119,6 +119,12 @@ export const getRealMonthlySplit = async (filters = {}) => {
   return response.data
 }
 
+/** Real mensual desde cadena canónica (hourly-first). Solo para Resumen. Plan vs Real sigue con getRealMonthlySplit (legacy). */
+export const getRealMonthlySplitCanonical = async (filters = {}) => {
+  const response = await api.get('/ops/real/monthly', { params: { ...filters, source: 'canonical' } })
+  return response.data
+}
+
 export const getPlanMonthlySplit = async (filters = {}) => {
   const response = await api.get('/ops/plan/monthly', { params: filters })
   return response.data
@@ -547,6 +553,12 @@ export const getRealVsProjectionSystemSegmentation = async (params = {}) => {
 }
 export const getRealVsProjectionProjectionSegmentation = async (params = {}) => {
   const response = await api.get('/ops/real-vs-projection/projection-segmentation-view', { params, timeout: 15000 })
+  return response.data
+}
+
+// Gobierno: estado de fuente REAL por pantalla (canonical | legacy | migrating)
+export const getRealSourceStatus = async () => {
+  const response = await api.get('/ops/real-source-status', { timeout: 8000 })
   return response.data
 }
 

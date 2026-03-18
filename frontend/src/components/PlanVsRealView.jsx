@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { getPlanVsRealMonthly, getPlanVsRealAlerts } from '../services/api'
+import { getPlanVsRealMonthly, getPlanVsRealAlerts, getRealSourceStatus } from '../services/api'
+import DataStateBadge from './DataStateBadge'
 
 const MARGEN_UNITARIO_TOOLTIP = "Ingreso promedio real de YEGO por cada viaje completado.\nFórmula: Comisión YEGO real / Viajes reales."
 
@@ -8,6 +9,7 @@ function PlanVsRealView({ filters = {} }) {
   const [alertsData, setAlertsData] = useState([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('comparison') // 'comparison' o 'alerts'
+  const [sourceStatus, setSourceStatus] = useState('migrating')
 
   useEffect(() => {
     if (activeTab === 'comparison') {
@@ -16,6 +18,15 @@ function PlanVsRealView({ filters = {} }) {
       loadAlertsData()
     }
   }, [filters, activeTab])
+
+  useEffect(() => {
+    getRealSourceStatus()
+      .then((res) => {
+        const screen = (res?.screens || []).find((s) => s.screen_id === 'performance_plan_vs_real')
+        setSourceStatus(screen?.source_status || 'migrating')
+      })
+      .catch(() => setSourceStatus('migrating'))
+  }, [])
 
   const loadComparisonData = async () => {
     try {
@@ -134,8 +145,11 @@ function PlanVsRealView({ filters = {} }) {
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-md">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-semibold">Plan vs Real - Comparación Mensual</h3>
+      <div className="flex flex-wrap items-center gap-2 justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <h3 className="text-lg font-semibold">Plan vs Real — Comparación Mensual</h3>
+          <DataStateBadge state={sourceStatus} />
+        </div>
         <div className="flex gap-2">
           <button
             onClick={() => setActiveTab('comparison')}

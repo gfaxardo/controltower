@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getPlanMonthlySummary, getRealMonthlySummary, getPlanMonthlySplit, getRealMonthlySplit } from '../services/api'
+import { getPlanMonthlySummary, getRealMonthlySummary, getPlanMonthlySplit, getRealMonthlySplit, getRealMonthlySplitCanonical } from '../services/api'
 
 function KPICards({ filters = {}, compact = false }) {
   const [kpis, setKpis] = useState({
@@ -37,7 +37,7 @@ function KPICards({ filters = {}, compact = false }) {
             lob_base: filters.line_of_business || undefined,
             year: yearPlan
           }),
-          getRealMonthlySplit({
+          getRealMonthlySplitCanonical({
             country: undefined,
             city: filters.city || undefined,
             lob_base: filters.line_of_business || undefined,
@@ -49,7 +49,7 @@ function KPICards({ filters = {}, compact = false }) {
             lob_base: filters.line_of_business || undefined,
             year: yearPlan
           }),
-          getRealMonthlySplit({
+          getRealMonthlySplitCanonical({
             country: 'PE',
             city: filters.city || undefined,
             lob_base: filters.line_of_business || undefined,
@@ -61,7 +61,7 @@ function KPICards({ filters = {}, compact = false }) {
             lob_base: filters.line_of_business || undefined,
             year: yearPlan
           }),
-          getRealMonthlySplit({
+          getRealMonthlySplitCanonical({
             country: 'CO',
             city: filters.city || undefined,
             lob_base: filters.line_of_business || undefined,
@@ -118,7 +118,7 @@ function KPICards({ filters = {}, compact = false }) {
             lob_base: filters.line_of_business || undefined,
             year: yearPlan
           }),
-          getRealMonthlySplit({
+          getRealMonthlySplitCanonical({
             country: filters.country || undefined,
             city: filters.city || undefined,
             lob_base: filters.line_of_business || undefined,

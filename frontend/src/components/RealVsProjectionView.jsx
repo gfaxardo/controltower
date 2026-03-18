@@ -11,6 +11,7 @@ import {
   getRealVsProjectionRealMetrics,
   getRealVsProjectionTemplateContract
 } from '../services/api'
+import DataStateBadge from './DataStateBadge'
 
 function RealVsProjectionView () {
   const [overview, setOverview] = useState(null)
@@ -79,7 +80,10 @@ function RealVsProjectionView () {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h2 className="text-xl font-semibold text-gray-800">Real vs Proyección</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-xl font-semibold text-gray-800">Real vs Proyección</h2>
+          <DataStateBadge state="source_incomplete" />
+        </div>
         <button type="button" onClick={load} className="px-3 py-1.5 rounded border border-gray-300 bg-white text-gray-700 text-sm hover:bg-gray-50">
           Actualizar
         </button>
@@ -87,6 +91,9 @@ function RealVsProjectionView () {
 
       <p className="text-sm text-gray-600">
         Base analítica para comparar resultados reales con metas/proyección. Cuando se cargue la plantilla Excel de proyección, aquí se mostrará el comparativo por segmentación del sistema y por segmentación de la proyección.
+      </p>
+      <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">
+        Vista temporalmente limitada; puede depender de objetos faltantes. No confundir 0 con dato no disponible.
       </p>
 
       {/* Readiness */}

@@ -1,8 +1,9 @@
 """
 Tests coherencia REAL: drill por park no 500, etiqueta canónica park, parks con park_label.
+Segmentación conductores (mig 106): drill y children exponen active_drivers, cancel_only_drivers, activity_drivers, cancel_only_pct.
 """
 import pytest
-from app.services.real_lob_drill_pro_service import get_drill_parks, get_drill_children
+from app.services.real_lob_drill_pro_service import get_drill_parks, get_drill_children, get_drill
 
 
 def test_get_drill_parks_returns_list():
@@ -59,3 +60,23 @@ def test_get_drill_children_park_rows_have_park_label():
         assert "park_label" in row, "Cada fila PARK debe incluir park_label"
         if row.get("park_label"):
             assert " — " in row["park_label"], "park_label debe ser formato 'nombre — ciudad — país'"
+        # Segmentación conductores (mig 106): cada fila debe exponer las 4 métricas (pueden ser null/0)
+        for key in ("active_drivers", "cancel_only_drivers", "activity_drivers", "cancel_only_pct"):
+            assert key in row, f"Children debe incluir {key}"
+
+
+def test_get_drill_returns_driver_segmentation_metrics():
+    """get_drill debe devolver active_drivers, cancel_only_drivers, activity_drivers, cancel_only_pct en kpis y en cada row."""
+    try:
+        out = get_drill(period="month", desglose="LOB", segmento=None, country=None, park_id=None)
+    except Exception:
+        pytest.skip("DB no disponible")
+    assert "countries" in out
+    seg_keys = ("active_drivers", "cancel_only_drivers", "activity_drivers", "cancel_only_pct")
+    for c in out["countries"]:
+        assert "kpis" in c
+        for k in seg_keys:
+            assert k in c["kpis"], f"kpis debe incluir {k}"
+        for row in c.get("rows", []):
+            for k in seg_keys:
+                assert k in row, f"cada row debe incluir {k}"

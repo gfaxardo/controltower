@@ -77,6 +77,10 @@ class Settings(BaseSettings):
     
     DATABASE_URL: str = ""
 
+    # Fuente REAL mensual: True = cadena canónica (real_drill_dim_fact); False = legacy (mv_real_trips_monthly).
+    # New consumers must use canonical only. Ver docs/REAL_CANONICAL_CHAIN.md y CONTROL_TOWER_REAL_CANONICALIZATION_PLAN.md.
+    USE_CANONICAL_REAL_MONTHLY: bool = Field(default=False, description="Usar real mensual desde cadena hourly-first")
+
     # Real LOB modo incremental: ventana reciente (días) para migración/refresh inicial.
     # Backfill histórico: python -m scripts.backfill_real_lob_mvs --from YYYY-MM-01 --to YYYY-MM-01
     REAL_LOB_RECENT_DAYS: int = 90

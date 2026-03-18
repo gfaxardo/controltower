@@ -6,9 +6,11 @@ from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
-# Vista oficial: ops.v_plan_vs_real_realkey_final
+# Vista legacy: ops.v_plan_vs_real_realkey_final
+# Vista canónica (real desde v_trips_real_canon): ops.v_plan_vs_real_realkey_canonical
 # Llave: (country, city, park_id, real_tipo_servicio, period_date)
 VIEW_REALKEY = "ops.v_plan_vs_real_realkey_final"
+VIEW_REALKEY_CANONICAL = "ops.v_plan_vs_real_realkey_canonical"
 
 
 def get_plan_vs_real_monthly(
@@ -17,14 +19,17 @@ def get_plan_vs_real_monthly(
     real_tipo_servicio: Optional[str] = None,
     park_id: Optional[str] = None,
     month: Optional[str] = None,
+    use_canonical: bool = False,
 ) -> List[Dict[str, Any]]:
     """
     Obtiene comparación Plan vs Real mensual desde ops.v_plan_vs_real_realkey_final.
     Sin LOB: dimensión es real_tipo_servicio (y park_name), no lob_base/segment.
     Filtros opcionales: country, city, real_tipo_servicio, park_id, month (YYYY-MM o YYYY-MM-DD).
+    use_canonical: si True, lee de v_plan_vs_real_realkey_canonical (real desde v_trips_real_canon).
     Retorna filas con: country, city, park_id, park_name, real_tipo_servicio, period_date (como month),
     trips_plan, trips_real, revenue_plan, revenue_real, gap_trips, gap_revenue, status_bucket.
     """
+    view = VIEW_REALKEY_CANONICAL if use_canonical else VIEW_REALKEY
     try:
         with get_db() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -73,7 +78,7 @@ def get_plan_vs_real_monthly(
                         WHEN trips_plan IS NULL AND trips_real IS NOT NULL THEN 'real_only'
                         ELSE 'unknown'
                     END AS status_bucket
-                FROM {VIEW_REALKEY}
+                FROM {view}
                 {where_clause}
                 ORDER BY period_date DESC NULLS LAST, country, city, park_id, real_tipo_servicio
             """
@@ -102,11 +107,13 @@ def get_alerts_monthly(
     country: Optional[str] = None,
     month: Optional[str] = None,
     alert_level: Optional[str] = None,
+    use_canonical: bool = False,
 ) -> List[Dict[str, Any]]:
     """
-    Alertas Plan vs Real desde ops.v_plan_vs_real_realkey_final.
+    Alertas Plan vs Real desde ops.v_plan_vs_real_realkey_final (o _canonical si use_canonical).
     Solo filas matched (trips_plan AND trips_real no null). Calcula gap_trips_pct, gap_revenue_pct y alert_level.
     """
+    view = VIEW_REALKEY_CANONICAL if use_canonical else VIEW_REALKEY
     try:
         with get_db() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -142,7 +149,7 @@ def get_alerts_monthly(
                         (revenue_plan - revenue_real) AS gap_revenue,
                         CASE WHEN trips_plan > 0 THEN (trips_plan - trips_real)::NUMERIC / trips_plan * 100 ELSE NULL END AS gap_trips_pct,
                         CASE WHEN revenue_plan > 0 AND revenue_plan IS NOT NULL THEN (revenue_plan - revenue_real)::NUMERIC / revenue_plan * 100 ELSE NULL END AS gap_revenue_pct
-                    FROM {VIEW_REALKEY}
+                    FROM {view}
                     WHERE {where_clause}
                 )
                 SELECT
