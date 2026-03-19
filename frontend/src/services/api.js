@@ -562,6 +562,12 @@ export const getRealSourceStatus = async () => {
   return response.data
 }
 
+// Data Trust Layer: estado de confianza por vista (ok | warning | blocked)
+export const getDataTrustStatus = async (view) => {
+  const response = await api.get('/ops/data-trust', { params: { view }, timeout: 5000 })
+  return response.data?.data_trust || { status: 'warning', message: 'Estado de data no disponible', last_update: null }
+}
+
 // Driver Supply Dynamics — overview enriquecido (trips, shares, WoW, rolling, trend)
 export const getSupplyOverviewEnhanced = async (params = {}) => {
   const response = await api.get('/ops/supply/overview-enhanced', { params, timeout: 20000 })

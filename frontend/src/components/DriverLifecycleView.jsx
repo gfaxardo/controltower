@@ -12,8 +12,10 @@ import {
   getDriverLifecycleParksSummary,
   getDriverLifecycleBaseMetricsDrilldown,
   getDriverLifecycleCohorts,
-  getDriverLifecycleCohortDrilldown
+  getDriverLifecycleCohortDrilldown,
+  getDataTrustStatus
 } from '../services/api'
+import DataTrustBadge from './DataTrustBadge'
 
 function formatNum (n) {
   if (n == null || n === '') return '—'
@@ -71,6 +73,11 @@ export default function DriverLifecycleView () {
   const [cohorts, setCohorts] = useState([])
   const [cohortsLoading, setCohortsLoading] = useState(false)
   const [cohortsError, setCohortsError] = useState(null)
+  const [dataTrust, setDataTrust] = useState({ status: 'warning', message: 'Estado de data no disponible', last_update: null })
+
+  useEffect(() => {
+    getDataTrustStatus('driver_lifecycle').then(setDataTrust).catch(() => setDataTrust({ status: 'warning', message: 'Estado de data no disponible', last_update: null }))
+  }, [])
 
   const loadParksList = useCallback(async () => {
     try {
@@ -262,7 +269,10 @@ export default function DriverLifecycleView () {
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
-      <h2 className="text-xl font-semibold text-gray-800 mb-4">Driver Lifecycle (por Park)</h2>
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <h2 className="text-xl font-semibold text-gray-800">Driver Lifecycle (por Park)</h2>
+        <DataTrustBadge status={dataTrust.status} message={dataTrust.message} last_update={dataTrust.last_update} />
+      </div>
 
       <div className="flex flex-wrap gap-4 mb-4">
         <label className="flex items-center gap-2">

@@ -20,6 +20,7 @@ v_trips_real_canon_120d
 - **NEW REAL CONSUMERS MUST USE CANONICAL HOURLY-FIRST ONLY.**
 - No añadir nuevos consumidores a legacy: `mv_real_trips_monthly`, `mv_real_trips_weekly`, `mv_real_trips_by_lob_*`, `v_real_metrics_monthly`, vistas plan-vs-real que lean de esas MVs.
 - Cualquier feature o pantalla nueva que necesite datos REAL debe leer de la cadena canónica (vía `GET /ops/real/monthly?source=canonical` cuando exista paridad, o desde `real_drill_dim_fact` / `real_rollup_day_fact` / `mv_real_lob_day_v2` según grano). Consultar `CONTROL_TOWER_REAL_GOVERNANCE_STATUS.md` y `CONTROL_TOWER_REAL_CANONICALIZATION_PLAN.md`.
+- El registro formal de qué fuente manda por dominio y el motor de confianza central están en `SOURCE_OF_TRUTH_REGISTRY.md` y `CONFIDENCE_ENGINE.md`.
 
 ---
 

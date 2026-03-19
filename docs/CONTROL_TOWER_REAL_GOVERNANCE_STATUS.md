@@ -69,6 +69,13 @@ El frontend usa este endpoint (o valor fijo cuando aplica) para mostrar `DataSta
 
 ---
 
+## 7.1 Registry y Confidence Engine (gobierno central)
+
+- **Source of Truth Registry:** `app.config.source_of_truth_registry` — define qué fuente manda por dominio (real_lob, resumen, plan_vs_real, supply, driver_lifecycle, etc.). Ninguna vista nueva debe salir a UI sin estar registrada. Ver `docs/SOURCE_OF_TRUTH_REGISTRY.md`.
+- **Confidence Engine:** `app.services.confidence_engine` — calcula freshness, completeness, consistency y confidence_score (0–100); Data Trust delega aquí. Observabilidad: `GET /ops/data-confidence?view=...`, `GET /ops/data-confidence/registry`, `GET /ops/data-confidence/summary`. Ver `docs/CONFIDENCE_ENGINE.md`.
+
+---
+
 ## 8. Checklist visual por pantalla
 
 | Pantalla | Badge/estado | Color |

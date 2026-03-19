@@ -21,6 +21,8 @@ import {
 } from '../services/api'
 import DriverSupplyGlossary from './DriverSupplyGlossary'
 import { SEGMENT_LEGEND_MINIMAL } from '../constants/segmentSemantics'
+import { getDataTrustStatus } from '../services/api'
+import DataTrustBadge from './DataTrustBadge'
 
 function formatNum (n) {
   if (n == null || n === '') return '—'
@@ -114,6 +116,7 @@ export default function SupplyView () {
   const [refreshMvsLoading, setRefreshMvsLoading] = useState(false)
 
   const [freshness, setFreshness] = useState({ last_week_available: null, last_refresh: null, status: 'unknown' })
+  const [dataTrust, setDataTrust] = useState({ status: 'warning', message: 'Estado de data no disponible', last_update: null })
   const [definitions, setDefinitions] = useState({})
   const [segmentConfig, setSegmentConfig] = useState([])
   const [migrationSummary, setMigrationSummary] = useState(null)
@@ -335,6 +338,7 @@ export default function SupplyView () {
   useEffect(() => {
     getSupplyDefinitions().then(setDefinitions).catch(() => setDefinitions({}))
     getSupplySegmentConfig().then(setSegmentConfig).catch(() => setSegmentConfig([]))
+    getDataTrustStatus('supply').then(setDataTrust).catch(() => setDataTrust({ status: 'warning', message: 'Estado de data no disponible', last_update: null }))
   }, [])
 
   const handleRefreshMvs = useCallback(async () => {
@@ -473,6 +477,7 @@ export default function SupplyView () {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-4">
         <h2 className="text-xl font-semibold text-gray-800">Driver Supply Dynamics</h2>
+        <DataTrustBadge status={dataTrust.status} message={dataTrust.message} last_update={dataTrust.last_update} />
         <DriverSupplyGlossary />
       </div>
       <p className="text-gray-600 text-sm">Overview, composición, migración y alertas por park. Elige país → ciudad → park para cargar datos.</p>

@@ -44,7 +44,7 @@ v_trips_real_canon_120d
   → week/month derivados de la misma cadena
 ```
 
-**Regla de gobierno:** **NEW REAL CONSUMERS MUST USE CANONICAL HOURLY-FIRST ONLY.** No añadir nuevos consumidores a legacy. Ver `docs/REAL_CANONICAL_CHAIN.md` y `docs/CONTROL_TOWER_REAL_GOVERNANCE_STATUS.md`.
+**Regla de gobierno:** **NEW REAL CONSUMERS MUST USE CANONICAL HOURLY-FIRST ONLY.** No añadir nuevos consumidores a legacy. Ver `docs/REAL_CANONICAL_CHAIN.md` y `docs/CONTROL_TOWER_REAL_GOVERNANCE_STATUS.md`. Registro Source of Truth y Confidence Engine: `docs/SOURCE_OF_TRUTH_REGISTRY.md`, `docs/CONFIDENCE_ENGINE.md`.
 
 ### Política de nuevos consumidores (bloqueo de legacy)
 
@@ -69,12 +69,12 @@ v_trips_real_canon_120d
    - Contrato: mismo formato de respuesta (period, trips_real_completed, revenue_real_yego, active_drivers_real, etc.).  
    - Revenue canónico = margin_total (mismo concepto que revenue_real_yego).
 
-2. **Performance > Plan vs Real (mensual — implementado)**  
+2. **Performance > Plan vs Real (mensual — implementado y paridad cerrada)**  
    - **Real canónica:** desde **ops.v_trips_real_canon** (misma fuente que `mv_real_monthly_canonical_hist`), sin 120d.  
    - Vistas: `ops.v_real_universe_by_park_realkey_canon` (agregado por country, city, park_id, real_tipo_servicio, period_date; revenue = SUM(ABS(comision_empresa_asociada))) y `ops.v_plan_vs_real_realkey_canonical` (FULL OUTER JOIN plan + real canónica; mismo contrato que legacy).  
    - **Switch:** `GET /ops/plan-vs-real/monthly?source=canonical` y `GET /ops/plan-vs-real/alerts?source=canonical` leen la vista canónica; sin parámetro = legacy.  
-   - Contrato: idéntico (country, city, park_id, park_name, real_tipo_servicio, period_date, trips_plan, trips_real, revenue_plan, revenue_real, etc.).  
-   - Validación: `scripts/validate_plan_vs_real_parity.py` (paridad legacy vs canónico por month+country).  
+   - **Paridad ejecutada (2026-03-18):** global, PE, CO 2025 → MATCH (trips 0% diff; revenue por diseño: legacy signed, canónica ABS). **Veredicto: PLAN_VS_REAL_CANONICALIZED.** Canónica no activada por defecto por requisito; activación reversible con `USE_CANONICAL_PLAN_VS_REAL_DEFAULT`.  
+   - Performance: filtro `year` en servicio (scan acotado) y `statement_timeout` 10 min cuando se usa year (paridad). Ver **docs/CONTROL_TOWER_REAL_CANONICALIZATION_PHASE2_REPORT.md**.  
    - Semanal: sin cambios; sigue legacy.
 
 3. **Proyección > Real vs Proyección**  
@@ -96,10 +96,10 @@ v_trips_real_canon_120d
 
 **Canónica mensual histórica (post 107):** Para Resumen con año completo se usa **ops.mv_real_monthly_canonical_hist**, alimentada desde **v_trips_real_canon** (sin 120d). Una sola MV con trips, margin_total y active_drivers_core por (month_start, country). Refresco: `scripts/refresh_real_monthly_canonical_hist.py`. El servicio `canonical_real_monthly_service` lee solo de esta MV; ya no depende de 120d para el histórico mensual.
 
-### Estado de implementación (post ejecución paridad 2025-03-17)
+### Estado de implementación (post ejecución paridad 2026-03-18)
 
-- **Resumen:** **Vuelto a legacy.** Tras corrección mínima (filtro país PE/CO y conductores desde vista de segmentación), PE y CO ya devuelven filas canónicas; conductores pueden seguir en 0 si la vista hace timeout o el batch de segmentación no ha poblado la fact. Oct/nov dependen de la ventana de `populate_real_drill_from_hourly_chain`. Paridad sigue MAJOR_DIFF; Resumen se mantiene en legacy. Ver **docs/CONTROL_TOWER_REAL_CANONICALIZATION_PHASE1_REPORT.md** (sección 17).
-- **Plan vs Real:** Sigue en legacy. Siguiente migración solo cuando Fase 1 esté cerrada.
+- **Resumen:** Sin cambios en esta fase. Ver **docs/CONTROL_TOWER_REAL_CANONICALIZATION_PHASE1_REPORT.md**.
+- **Plan vs Real:** **PLAN_VS_REAL_CANONICALIZED.** Paridad real ejecutada (global, PE, CO 2025): MATCH, DATA_COMPLETENESS FULL. Canónica disponible con `?source=canonical`; por requisito no se activa por defecto. Ver **docs/CONTROL_TOWER_REAL_CANONICALIZATION_PHASE2_REPORT.md**.
 - **Real vs Proyección:** Sigue en legacy; marcada en UI como **source_incomplete**. No tratada como completa.
 
 ---

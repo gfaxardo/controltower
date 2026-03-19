@@ -1,15 +1,27 @@
 import { useState, useEffect } from 'react'
-import { getPlanVsRealMonthly, getPlanVsRealAlerts, getRealSourceStatus } from '../services/api'
-import DataStateBadge from './DataStateBadge'
+import { getPlanVsRealMonthly, getPlanVsRealAlerts, getDataTrustStatus } from '../services/api'
+import DataTrustBadge from './DataTrustBadge'
 
 const MARGEN_UNITARIO_TOOLTIP = "Ingreso promedio real de YEGO por cada viaje completado.\nFórmula: Comisión YEGO real / Viajes reales."
+
+const SOURCE_TOOLTIP = 'Fuente: Canonical = datos históricos completos desde v_trips_real_canon (sin ventana 120d). Legacy = vista anterior. Paridad validada con MATCH / MINOR_DIFF permite usar canonical de forma segura.'
 
 function PlanVsRealView({ filters = {} }) {
   const [comparisonData, setComparisonData] = useState([])
   const [alertsData, setAlertsData] = useState([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('comparison') // 'comparison' o 'alerts'
-  const [sourceStatus, setSourceStatus] = useState('migrating')
+  const [activeTab, setActiveTab] = useState('comparison')
+  const [sourceStatus, setSourceStatus] = useState('legacy')
+  const [parityStatus, setParityStatus] = useState('UNKNOWN')
+  const [dataCompleteness, setDataCompleteness] = useState('FULL')
+  const [debugSource, setDebugSource] = useState(null) // null = automático, 'canonical' | 'legacy'
+  const [dataTrust, setDataTrust] = useState({ status: 'warning', message: 'Estado de data no disponible', last_update: null })
+
+  useEffect(() => {
+    getDataTrustStatus('plan_vs_real')
+      .then(setDataTrust)
+      .catch(() => setDataTrust({ status: 'warning', message: 'Estado de data no disponible', last_update: null }))
+  }, [])
 
   useEffect(() => {
     if (activeTab === 'comparison') {
@@ -17,28 +29,25 @@ function PlanVsRealView({ filters = {} }) {
     } else {
       loadAlertsData()
     }
-  }, [filters, activeTab])
+  }, [filters, activeTab, debugSource])
 
-  useEffect(() => {
-    getRealSourceStatus()
-      .then((res) => {
-        const screen = (res?.screens || []).find((s) => s.screen_id === 'performance_plan_vs_real')
-        setSourceStatus(screen?.source_status || 'migrating')
-      })
-      .catch(() => setSourceStatus('migrating'))
-  }, [])
+  const buildMonthlyParams = () => ({
+    country: filters.country || undefined,
+    city: filters.city || undefined,
+    real_tipo_servicio: filters.real_tipo_servicio || filters.line_of_business || undefined,
+    park_id: filters.park_id || undefined,
+    month: filters.month || undefined,
+    ...(debugSource ? { source: debugSource } : {})
+  })
 
   const loadComparisonData = async () => {
     try {
       setLoading(true)
-      const response = await getPlanVsRealMonthly({
-        country: filters.country || undefined,
-        city: filters.city || undefined,
-        real_tipo_servicio: filters.real_tipo_servicio || filters.line_of_business || undefined,
-        park_id: filters.park_id || undefined,
-        month: filters.month || undefined
-      })
-      setComparisonData(response.data || [])
+      const response = await getPlanVsRealMonthly(buildMonthlyParams())
+      setComparisonData(response?.data || [])
+      setSourceStatus(response?.source_status || 'legacy')
+      setParityStatus(response?.parity_status || 'UNKNOWN')
+      setDataCompleteness(response?.data_completeness || 'FULL')
     } catch (error) {
       console.error('Error al cargar comparación Plan vs Real:', error)
       setComparisonData([])
@@ -50,12 +59,17 @@ function PlanVsRealView({ filters = {} }) {
   const loadAlertsData = async () => {
     try {
       setLoading(true)
-      const response = await getPlanVsRealAlerts({
+      const params = {
         country: filters.country || undefined,
         month: filters.month || undefined,
-        alert_level: filters.alert_level || undefined
-      })
-      setAlertsData(response.data || [])
+        alert_level: filters.alert_level || undefined,
+        ...(debugSource ? { source: debugSource } : {})
+      }
+      const response = await getPlanVsRealAlerts(params)
+      setAlertsData(response?.data || [])
+      setSourceStatus(response?.source_status || 'legacy')
+      setParityStatus(response?.parity_status || 'UNKNOWN')
+      setDataCompleteness(response?.data_completeness || 'FULL')
     } catch (error) {
       console.error('Error al cargar alertas Plan vs Real:', error)
       setAlertsData([])
@@ -143,12 +157,50 @@ function PlanVsRealView({ filters = {} }) {
     )
   }
 
+  const sourceLabel = sourceStatus === 'canonical'
+    ? (parityStatus === 'MINOR_DIFF' ? '🟡 Canonical (minor diff)' : '🟢 Canonical')
+    : '🔴 Legacy (fallback)'
+
   return (
     <div className="bg-white p-6 rounded-lg shadow-md">
       <div className="flex flex-wrap items-center gap-2 justify-between mb-4">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <h3 className="text-lg font-semibold">Plan vs Real — Comparación Mensual</h3>
-          <DataStateBadge state={sourceStatus} />
+          <DataTrustBadge status={dataTrust.status} message={dataTrust.message} last_update={dataTrust.last_update} />
+          <span
+            className="px-2 py-1 rounded text-xs font-medium border border-gray-300 bg-gray-50"
+            title={SOURCE_TOOLTIP}
+          >
+            {sourceLabel}
+          </span>
+          <span className="text-xs text-gray-500" title={SOURCE_TOOLTIP}>ℹ️</span>
+          <span className="text-xs text-gray-400">
+            Paridad: {parityStatus} · {dataCompleteness}
+          </span>
+          <div className="flex items-center gap-1 text-xs text-gray-500">
+            <span>Modo:</span>
+            <button
+              type="button"
+              onClick={() => setDebugSource(null)}
+              className={`px-2 py-0.5 rounded ${debugSource === null ? 'bg-gray-200 font-medium' : ''}`}
+            >
+              Auto
+            </button>
+            <button
+              type="button"
+              onClick={() => setDebugSource('canonical')}
+              className={`px-2 py-0.5 rounded ${debugSource === 'canonical' ? 'bg-gray-200 font-medium' : ''}`}
+            >
+              Canonical
+            </button>
+            <button
+              type="button"
+              onClick={() => setDebugSource('legacy')}
+              className={`px-2 py-0.5 rounded ${debugSource === 'legacy' ? 'bg-gray-200 font-medium' : ''}`}
+            >
+              Legacy
+            </button>
+          </div>
         </div>
         <div className="flex gap-2">
           <button

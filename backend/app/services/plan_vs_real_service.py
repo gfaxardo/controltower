@@ -6,11 +6,67 @@ from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
+# @deprecated — Prefer VIEW_REALKEY_CANONICAL cuando parity sea MATCH o MINOR_DIFF. No añadir nuevos consumidores.
 # Vista legacy: ops.v_plan_vs_real_realkey_final
 # Vista canónica (real desde v_trips_real_canon): ops.v_plan_vs_real_realkey_canonical
 # Llave: (country, city, park_id, real_tipo_servicio, period_date)
 VIEW_REALKEY = "ops.v_plan_vs_real_realkey_final"
 VIEW_REALKEY_CANONICAL = "ops.v_plan_vs_real_realkey_canonical"
+
+
+def get_latest_parity_audit(scope: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """
+    Lee el último registro de ops.plan_vs_real_parity_audit.
+    scope: 'global', 'pe', 'co' o None (usa el más reciente de cualquier scope).
+    Retorna dict con diagnosis, data_completeness, max_diff_pct, run_at; o None si no hay datos.
+    """
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            if scope:
+                cursor.execute(
+                    """
+                    SELECT scope, diagnosis, data_completeness, max_diff_pct, run_at
+                    FROM ops.plan_vs_real_parity_audit
+                    WHERE scope = %s
+                    ORDER BY run_at DESC
+                    LIMIT 1
+                    """,
+                    (scope.strip().lower(),),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT scope, diagnosis, data_completeness, max_diff_pct, run_at
+                    FROM ops.plan_vs_real_parity_audit
+                    ORDER BY run_at DESC
+                    LIMIT 1
+                    """
+                )
+            row = cursor.fetchone()
+            cursor.close()
+            return dict(row) if row else None
+    except Exception as e:
+        logger.warning(f"plan_vs_real: no se pudo leer parity audit: {e}")
+        return None
+
+
+def log_plan_vs_real_source_usage(source: str, endpoint: str, request_params: Optional[Dict[str, Any]] = None) -> None:
+    """Registra uso de fuente (legacy/canonical) en ops.plan_vs_real_source_usage_log."""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO ops.plan_vs_real_source_usage_log (used_at, source, endpoint, request_params, created_at)
+                VALUES (NOW(), %s, %s, %s, NOW())
+                """,
+                (source, endpoint, __import__("json").dumps(request_params or {})),
+            )
+            conn.commit()
+            cursor.close()
+    except Exception as e:
+        logger.debug(f"plan_vs_real: log usage no escrito: {e}")
 
 
 def get_plan_vs_real_monthly(
@@ -19,23 +75,34 @@ def get_plan_vs_real_monthly(
     real_tipo_servicio: Optional[str] = None,
     park_id: Optional[str] = None,
     month: Optional[str] = None,
+    year: Optional[int] = None,
     use_canonical: bool = False,
 ) -> List[Dict[str, Any]]:
     """
     Obtiene comparación Plan vs Real mensual desde ops.v_plan_vs_real_realkey_final.
     Sin LOB: dimensión es real_tipo_servicio (y park_name), no lob_base/segment.
-    Filtros opcionales: country, city, real_tipo_servicio, park_id, month (YYYY-MM o YYYY-MM-DD).
+    Filtros opcionales: country, city, real_tipo_servicio, park_id, month (YYYY-MM o YYYY-MM-DD), year (empuja filtro a DB).
     use_canonical: si True, lee de v_plan_vs_real_realkey_canonical (real desde v_trips_real_canon).
+    year: si se pasa, filtra period_date en ese año (reduce scan; recomendado para paridad).
     Retorna filas con: country, city, park_id, park_name, real_tipo_servicio, period_date (como month),
     trips_plan, trips_real, revenue_plan, revenue_real, gap_trips, gap_revenue, status_bucket.
     """
     view = VIEW_REALKEY_CANONICAL if use_canonical else VIEW_REALKEY
     try:
         with get_db() as conn:
+            # Parity/audit: con year se hace scan acotado pero vistas pueden ser pesadas; alargar timeout solo para esta sesión.
+            if year is not None:
+                try:
+                    conn.cursor().execute("SET statement_timeout = '600000'")  # 10 min (ms)
+                except Exception:
+                    pass
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             where_conditions = []
             params: List[Any] = []
 
+            if year is not None:
+                where_conditions.append("period_date >= %s::DATE AND period_date < %s::DATE")
+                params.extend([f"{year}-01-01", f"{year + 1}-01-01"])
             if country:
                 where_conditions.append("LOWER(TRIM(country)) = LOWER(TRIM(%s))")
                 params.append(country)

@@ -21,6 +21,8 @@ import { buildDimKey, buildDrillKey } from '../utils/dimKey'
 import { getEstadoConfig, getComparativeClass, GRID_BADGE, GRID_ESTADO, COMPARATIVE_LABELS } from '../constants/gridSemantics'
 import { formatRealServiceTypeDisplay } from '../constants/realServiceTypeDisplay'
 import DataStateBadge from './DataStateBadge'
+import DataTrustBadge from './DataTrustBadge'
+import { getDataTrustStatus } from '../services/api'
 
 const USE_DRILL_PRO = true
 
@@ -81,6 +83,11 @@ export default function RealLOBDrillView () {
   const [expanded, setExpanded] = useState(new Set())
   const [subrows, setSubrows] = useState({}) // key -> { loading, data, error }
   const [marginQualityAffected, setMarginQualityAffected] = useState({ week: new Set(), month: new Set() })
+  const [dataTrust, setDataTrust] = useState({ status: 'warning', message: 'Estado de data no disponible', last_update: null })
+
+  useEffect(() => {
+    getDataTrustStatus('real_lob').then(setDataTrust).catch(() => setDataTrust({ status: 'warning', message: 'Estado de data no disponible', last_update: null }))
+  }, [])
 
   const abortControllerRef = useRef(null)
   const summaryAbortRef = useRef(null)
@@ -356,6 +363,7 @@ export default function RealLOBDrillView () {
       <div className="bg-white p-6 rounded-lg shadow-md">
         <div className="flex flex-wrap items-center gap-2 mb-4 border-b border-gray-200 pb-4">
           <h3 className="text-lg font-semibold text-gray-800">Real LOB</h3>
+          <DataTrustBadge status={dataTrust.status} message={dataTrust.message} last_update={dataTrust.last_update} />
           <DataStateBadge state="canonical" />
           <span className="w-px h-6 bg-gray-300" />
           <button
@@ -383,6 +391,7 @@ export default function RealLOBDrillView () {
       {/* Fila 1: Título + subtabs Drill | Vista diaria (siempre visibles) */}
       <div className="flex flex-wrap items-center gap-2 mb-4 border-b border-gray-200 pb-4">
         <h3 className="text-lg font-semibold text-gray-800">Real LOB</h3>
+        <DataTrustBadge status={dataTrust.status} message={dataTrust.message} last_update={dataTrust.last_update} />
         <DataStateBadge state="canonical" />
         <span className="w-px h-6 bg-gray-300" />
         <button

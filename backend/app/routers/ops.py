@@ -19,8 +19,11 @@ from app.services.territory_quality_service import (
 )
 from app.services.plan_vs_real_service import (
     get_plan_vs_real_monthly,
-    get_alerts_monthly
+    get_alerts_monthly,
+    get_latest_parity_audit,
+    log_plan_vs_real_source_usage,
 )
+from app.settings import settings
 from app.services.plan_real_split_service import (
     get_real_monthly,
     get_plan_monthly,
@@ -240,6 +243,45 @@ async def get_unmapped_parks_endpoint(
         logger.error(f"Error al obtener parks unmapped: {e}")
         raise HTTPException(status_code=500, detail=f"Error al obtener parks unmapped: {str(e)}")
 
+def _plan_vs_real_resolve_source(
+    source: Optional[str],
+    country: Optional[str],
+) -> tuple[bool, str, str]:
+    """
+    Resuelve si usar canonical o legacy.
+    - source=canonical → canonical (forzado).
+    - source=legacy → legacy (forzado).
+    - USE_CANONICAL_PLAN_VS_REAL_DEFAULT y parity MATCH/MINOR → canonical; si MAJOR → fallback a legacy.
+    - Resto → legacy.
+    Retorna (use_canonical, parity_status, data_completeness).
+    """
+    src = (source or "").strip().lower()
+    if src == "legacy":
+        audit = get_latest_parity_audit(scope=country.strip().lower() if country else None)
+        parity = (audit or {}).get("diagnosis") or "UNKNOWN"
+        completeness = (audit or {}).get("data_completeness") or "FULL"
+        return False, parity, completeness
+    forced_canonical = src == "canonical"
+    if forced_canonical:
+        audit = get_latest_parity_audit(scope=country.strip().lower() if country else None)
+        parity = (audit or {}).get("diagnosis") or "UNKNOWN"
+        completeness = (audit or {}).get("data_completeness") or "FULL"
+        return True, parity, completeness
+
+    if not getattr(settings, "USE_CANONICAL_PLAN_VS_REAL_DEFAULT", False):
+        return False, "UNKNOWN", "FULL"
+
+    scope = (country or "").strip().lower() or "global"
+    audit = get_latest_parity_audit(scope=scope)
+    if not audit:
+        return False, "UNKNOWN", "FULL"
+    diagnosis = (audit.get("diagnosis") or "").upper()
+    completeness = audit.get("data_completeness") or "FULL"
+    if diagnosis in ("MATCH", "MINOR_DIFF"):
+        return True, diagnosis, completeness
+    return False, diagnosis, completeness
+
+
 @router.get("/plan-vs-real/monthly")
 async def get_plan_vs_real_monthly_endpoint(
     country: Optional[str] = Query(None, description="Filtrar por país"),
@@ -247,13 +289,13 @@ async def get_plan_vs_real_monthly_endpoint(
     real_tipo_servicio: Optional[str] = Query(None, description="Filtrar por tipo de servicio (dimensión real)"),
     park_id: Optional[str] = Query(None, description="Filtrar por park_id"),
     month: Optional[str] = Query(None, description="Filtrar por mes (formato: YYYY-MM o YYYY-MM-DD)"),
-    source: Optional[str] = Query(None, description="Fuente: 'canonical' para real desde v_trips_real_canon; omitir = legacy")
+    source: Optional[str] = Query(None, description="Fuente: 'canonical' para real canónica; omitir = según parity y flag")
 ):
     """
-    Obtiene comparación Plan vs Real mensual. Llave: (country, city, park_id, real_tipo_servicio, period_date).
-    source=canonical usa v_plan_vs_real_realkey_canonical (real canónica); por defecto legacy.
+    Comparación Plan vs Real mensual. source=canonical fuerza canónica; si no, se usa canonical solo cuando
+    parity es MATCH o MINOR_DIFF y USE_CANONICAL_PLAN_VS_REAL_DEFAULT=True; si no, legacy.
     """
-    use_canonical = (source or "").strip().lower() == "canonical"
+    use_canonical, parity_status, data_completeness = _plan_vs_real_resolve_source(source, country)
     try:
         data = get_plan_vs_real_monthly(
             country=country,
@@ -263,10 +305,18 @@ async def get_plan_vs_real_monthly_endpoint(
             month=month,
             use_canonical=use_canonical
         )
+        if not use_canonical:
+            log_plan_vs_real_source_usage(
+                "legacy",
+                "/ops/plan-vs-real/monthly",
+                {"country": country, "city": city, "month": month},
+            )
         return {
             "data": data,
             "total_records": len(data),
-            "source_status": "canonical" if use_canonical else "legacy"
+            "source_status": "canonical" if use_canonical else "legacy",
+            "parity_status": parity_status,
+            "data_completeness": data_completeness,
         }
     except Exception as e:
         logger.error(f"Error al obtener comparación Plan vs Real: {e}")
@@ -277,13 +327,12 @@ async def get_plan_vs_real_alerts_endpoint(
     country: Optional[str] = Query(None, description="Filtrar por país"),
     month: Optional[str] = Query(None, description="Filtrar por mes (formato: YYYY-MM o YYYY-MM-DD)"),
     alert_level: Optional[str] = Query(None, description="Filtrar por nivel de alerta (CRITICO, MEDIO, OK)"),
-    source: Optional[str] = Query(None, description="Fuente: 'canonical' para real canónica; omitir = legacy")
+    source: Optional[str] = Query(None, description="Fuente: 'canonical' para real canónica; omitir = según parity")
 ):
     """
-    Obtiene alertas Plan vs Real (solo matched). source=canonical usa real canónica.
-    Alertas ordenadas por severidad: CRITICO > MEDIO > OK.
+    Alertas Plan vs Real (solo matched). Misma lógica de source/parity que /plan-vs-real/monthly.
     """
-    use_canonical = (source or "").strip().lower() == "canonical"
+    use_canonical, parity_status, data_completeness = _plan_vs_real_resolve_source(source, country)
     try:
         data = get_alerts_monthly(
             country=country,
@@ -291,10 +340,18 @@ async def get_plan_vs_real_alerts_endpoint(
             alert_level=alert_level,
             use_canonical=use_canonical
         )
+        if not use_canonical:
+            log_plan_vs_real_source_usage(
+                "legacy",
+                "/ops/plan-vs-real/alerts",
+                {"country": country, "month": month, "alert_level": alert_level},
+            )
         return {
             "data": data,
             "total_alerts": len(data),
             "source_status": "canonical" if use_canonical else "legacy",
+            "parity_status": parity_status,
+            "data_completeness": data_completeness,
             "by_level": {
                 "CRITICO": len([a for a in data if a.get("alert_level") == "CRITICO"]),
                 "MEDIO": len([a for a in data if a.get("alert_level") == "MEDIO"]),
@@ -1560,6 +1617,82 @@ async def post_real_margin_quality_run():
         raise HTTPException(status_code=504, detail="Audit run timeout")
     except Exception as e:
         logger.error("POST /ops/real/margin-quality/run: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/data-trust")
+async def get_data_trust_endpoint(
+    view: str = Query(..., description="Vista: plan_vs_real | real_lob | driver_lifecycle | supply | resumen"),
+):
+    """
+    Capa Data Trust: estado de confianza de data por vista.
+    Retorna { data_trust: { status: ok|warning|blocked, message, last_update } }.
+    Si falla el cálculo → status warning, message "Estado de data no disponible".
+    """
+    try:
+        from app.services.data_trust_service import get_data_trust_status
+        data_trust = get_data_trust_status(view_name=view.strip().lower())
+        return {"data_trust": data_trust}
+    except Exception as e:
+        logger.debug("GET /ops/data-trust: %s", e)
+        return {
+            "data_trust": {
+                "status": "warning",
+                "message": "Estado de data no disponible",
+                "last_update": None,
+            }
+        }
+
+
+@router.get("/data-confidence")
+async def get_data_confidence_endpoint(
+    view: str = Query(..., description="Vista: real_lob | resumen | plan_vs_real | supply | driver_lifecycle | real_vs_projection | behavioral_alerts | leakage | real_margin_quality"),
+):
+    """
+    Observabilidad: detalle del Confidence Engine por vista.
+    Retorna source_of_truth, source_mode, freshness_status, completeness_status, consistency_status,
+    confidence_score, trust_status, message, last_update, details.
+    """
+    try:
+        from app.services.confidence_engine import get_confidence_status
+        return get_confidence_status(view.strip().lower(), None)
+    except Exception as e:
+        logger.debug("GET /ops/data-confidence: %s", e)
+        from app.services.confidence_engine import _fallback_response
+        return _fallback_response(
+            view.strip().lower(),
+            "Estado de data no disponible",
+            source_of_truth=None,
+            source_mode="unknown",
+        )
+
+
+@router.get("/data-confidence/registry")
+async def get_data_confidence_registry_endpoint():
+    """
+    Observabilidad: registro Source of Truth. Qué fuente manda hoy por dominio.
+    """
+    try:
+        from app.config.source_of_truth_registry import SOURCE_OF_TRUTH, REGISTERED_VIEWS
+        return {
+            "registry": SOURCE_OF_TRUTH,
+            "registered_views": list(REGISTERED_VIEWS),
+        }
+    except Exception as e:
+        logger.error("GET /ops/data-confidence/registry: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/data-confidence/summary")
+async def get_data_confidence_summary_endpoint():
+    """
+    Observabilidad: resumen de confianza de todas las vistas registradas.
+    """
+    try:
+        from app.services.confidence_engine import get_confidence_summary
+        return get_confidence_summary()
+    except Exception as e:
+        logger.error("GET /ops/data-confidence/summary: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
