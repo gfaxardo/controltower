@@ -147,6 +147,17 @@ from app.services.top_driver_behavior_service import (
     get_top_driver_behavior_playbook_insights,
     get_top_driver_behavior_export,
 )
+from app.services.business_slice_service import (
+    get_business_slice_filters,
+    get_business_slice_monthly,
+    get_business_slice_coverage,
+    get_business_slice_unmatched,
+    get_business_slice_conflicts,
+    get_business_slice_subfleets,
+    get_plan_business_slice_stub,
+    get_business_slice_weekly,
+    get_business_slice_daily,
+)
 from app.settings import settings
 from fastapi.responses import Response
 from typing import Optional, Literal
@@ -1696,6 +1707,35 @@ async def get_data_confidence_summary_endpoint():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/decision-signal")
+async def get_decision_signal_endpoint(
+    view: str = Query(..., description="Vista: real_lob | resumen | plan_vs_real | supply | driver_lifecycle | ..."),
+):
+    """
+    Decision Layer: señal operativa por vista (action, priority, message, reason).
+    Fuente única: Confidence Engine + view_criticality.
+    """
+    try:
+        from app.services.decision_engine import get_decision_signal
+        return get_decision_signal(view.strip().lower(), None)
+    except Exception as e:
+        logger.debug("GET /ops/decision-signal: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/decision-signal/summary")
+async def get_decision_signal_summary_endpoint():
+    """
+    Resumen de decisiones por vista: view, action, priority.
+    """
+    try:
+        from app.services.decision_engine import get_decision_signal_summary
+        return get_decision_signal_summary()
+    except Exception as e:
+        logger.error("GET /ops/decision-signal/summary: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/real-source-status")
 async def get_real_source_status_endpoint():
     """
@@ -2624,3 +2664,157 @@ async def get_overlap_monthly_endpoint(
             "has_overlap": False,
             "error": str(e)
         }
+
+
+# --- BUSINESS_SLICE (capa ejecutiva; REAL-only) --------------------------------
+
+
+@router.get("/business-slice/filters")
+async def business_slice_filters():
+    try:
+        return await _run_sync(get_business_slice_filters)
+    except Exception as e:
+        logger.error("business-slice/filters: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/business-slice/monthly")
+async def business_slice_monthly(
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    business_slice: Optional[str] = Query(None, description="Nombre de tajada (business_slice_name)"),
+    fleet: Optional[str] = Query(None, description="fleet_display_name"),
+    subfleet: Optional[str] = Query(None, description="subfleet_name"),
+    year: Optional[int] = Query(None),
+    month: Optional[int] = Query(None, ge=1, le=12),
+    limit: int = Query(2000, ge=1, le=10000),
+):
+    try:
+        data = await _run_sync(
+            get_business_slice_monthly,
+            country=country,
+            city=city,
+            business_slice=business_slice,
+            fleet=fleet,
+            subfleet=subfleet,
+            year=year,
+            month=month,
+            limit=limit,
+        )
+        return {"data": data, "total": len(data)}
+    except Exception as e:
+        logger.error("business-slice/monthly: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/business-slice/coverage")
+async def business_slice_coverage(
+    year: Optional[int] = Query(None),
+    limit_months: int = Query(36, ge=1, le=120),
+):
+    try:
+        return await _run_sync(get_business_slice_coverage, year=year, limit_months=limit_months)
+    except Exception as e:
+        logger.error("business-slice/coverage: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/business-slice/unmatched")
+async def business_slice_unmatched(
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    limit: int = Query(80, ge=1, le=500),
+):
+    try:
+        data = await _run_sync(
+            get_business_slice_unmatched, country=country, city=city, limit=limit
+        )
+        return {"data": data, "total": len(data)}
+    except Exception as e:
+        logger.error("business-slice/unmatched: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/business-slice/conflicts")
+async def business_slice_conflicts(
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    limit: int = Query(80, ge=1, le=500),
+):
+    try:
+        data = await _run_sync(
+            get_business_slice_conflicts, country=country, city=city, limit=limit
+        )
+        return {"data": data, "total": len(data)}
+    except Exception as e:
+        logger.error("business-slice/conflicts: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/business-slice/subfleets")
+async def business_slice_subfleets():
+    try:
+        data = await _run_sync(get_business_slice_subfleets)
+        return {"data": data, "total": len(data)}
+    except Exception as e:
+        logger.error("business-slice/subfleets: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/business-slice/weekly")
+async def business_slice_weekly(
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    business_slice: Optional[str] = Query(None),
+    year: Optional[int] = Query(None),
+    limit: int = Query(1500, ge=1, le=10000),
+):
+    try:
+        data = await _run_sync(
+            get_business_slice_weekly,
+            country=country,
+            city=city,
+            business_slice=business_slice,
+            year=year,
+            limit=limit,
+        )
+        return {"data": data, "total": len(data)}
+    except Exception as e:
+        logger.error("business-slice/weekly: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/business-slice/daily")
+async def business_slice_daily(
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    business_slice: Optional[str] = Query(None),
+    year: Optional[int] = Query(None),
+    month: Optional[int] = Query(None, ge=1, le=12),
+    limit: int = Query(2000, ge=1, le=10000),
+):
+    try:
+        data = await _run_sync(
+            get_business_slice_daily,
+            country=country,
+            city=city,
+            business_slice=business_slice,
+            year=year,
+            month=month,
+            limit=limit,
+        )
+        return {"data": data, "total": len(data)}
+    except Exception as e:
+        logger.error("business-slice/daily: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/business-slice/plan-join-stub")
+async def business_slice_plan_join_stub(limit: int = Query(500, ge=1, le=2000)):
+    """Contrato futuro Plan vs Real por business_slice (sin datos Plan)."""
+    try:
+        data = await _run_sync(get_plan_business_slice_stub, limit=limit)
+        return {"data": data, "total": len(data)}
+    except Exception as e:
+        logger.error("business-slice/plan-join-stub: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))

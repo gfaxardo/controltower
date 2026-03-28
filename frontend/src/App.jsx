@@ -12,6 +12,7 @@ import Phase2BActionsTrackingView from './components/Phase2BActionsTrackingView'
 import Phase2CAccountabilityView from './components/Phase2CAccountabilityView'
 import LobUniverseView from './components/LobUniverseView'
 import RealLOBDrillView from './components/RealLOBDrillView'
+import BusinessSliceView from './components/BusinessSliceView'
 import RealOperationalView from './components/RealOperationalView'
 import DriverLifecycleView from './components/DriverLifecycleView'
 import SupplyView from './components/SupplyView'
@@ -72,6 +73,11 @@ const PLAN_SUBTABS = [
   { id: 'validacion', label: 'Validación' }
 ]
 
+const OPERACION_SUBTABS = [
+  { id: 'lob_drill', label: 'Real LOB / Drill' },
+  { id: 'business_slice', label: 'Business Slice' }
+]
+
 function App () {
   const [filters, setFilters] = useState({
     country: '',
@@ -87,6 +93,7 @@ function App () {
   const [riskSubTab, setRiskSubTab] = useState('driver_behavior')
   const [enRevisionSubTab, setEnRevisionSubTab] = useState('real_vs_projection')
   const [planSubTab, setPlanSubTab] = useState('acciones')
+  const [operacionSubTab, setOperacionSubTab] = useState('lob_drill')
   const [planValidacionInner, setPlanValidacionInner] = useState('out_of_universe')
   const [showAdminModal, setShowAdminModal] = useState(false)
   const [showDiagnosticsMenu, setShowDiagnosticsMenu] = useState(false)
@@ -370,12 +377,41 @@ function App () {
           </section>
         )}
 
+        {/* ========== SUB-NAV: Operación ========== */}
+        {activeTab === TAB_OPERACION && (
+          <div className="mb-4 pb-2 border-b border-gray-200">
+            <p className="text-xs text-gray-500 mb-2">Desglose operativo y tajadas ejecutivas (Business Slice)</p>
+            <div className="flex flex-wrap gap-2">
+              {OPERACION_SUBTABS.map(({ id, label }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setOperacionSubTab(id)}
+                  className={subNavButtonClass(operacionSubTab === id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* ========== CONTENIDO: Operación (desglose por LOB, park, tipo de servicio) ========== */}
         {activeTab === TAB_OPERACION && (
           <section className="space-y-4" aria-label="Operación">
             <h2 className="text-xl font-semibold text-gray-800">Operación</h2>
-            <p className="text-sm text-gray-600">Desglose semanal y mensual por país, LOB, parque y tipo de servicio.</p>
-            <RealLOBDrillView key={`real-lob-drill-${refreshKey}`} />
+            {operacionSubTab === 'lob_drill' && (
+              <>
+                <p className="text-sm text-gray-600">Desglose semanal y mensual por país, LOB, parque y tipo de servicio.</p>
+                <RealLOBDrillView key={`real-lob-drill-${refreshKey}`} />
+              </>
+            )}
+            {operacionSubTab === 'business_slice' && (
+              <>
+                <p className="text-sm text-gray-600">Tajadas de negocio (Business Slice): matriz mensual REAL y auditoría de cobertura.</p>
+                <BusinessSliceView key={`business-slice-${refreshKey}`} />
+              </>
+            )}
           </section>
         )}
 

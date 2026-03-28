@@ -568,6 +568,18 @@ export const getDataTrustStatus = async (view) => {
   return response.data?.data_trust || { status: 'warning', message: 'Estado de data no disponible', last_update: null }
 }
 
+// Decision Layer: señal operativa por vista (action, priority, message, reason)
+export const getDecisionSignal = async (view) => {
+  const response = await api.get('/ops/decision-signal', { params: { view }, timeout: 5000 })
+  return response.data
+}
+
+// Resumen de decisiones por vista (view, action, priority)
+export const getDecisionSignalSummary = async () => {
+  const response = await api.get('/ops/decision-signal/summary', { timeout: 8000 })
+  return Array.isArray(response.data) ? response.data : []
+}
+
 // Driver Supply Dynamics — overview enriquecido (trips, shares, WoW, rolling, trend)
 export const getSupplyOverviewEnhanced = async (params = {}) => {
   const response = await api.get('/ops/supply/overview-enhanced', { params, timeout: 20000 })
@@ -713,6 +725,40 @@ export const getTopDriverBehaviorExportUrl = (params = {}) => {
   Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') q.set(k, v) })
   const base = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_API_URL || '/api')
   return `${base}/ops/top-driver-behavior/export?${q.toString()}`
+}
+
+// --- Business Slice (REAL, capa ejecutiva) ---
+export const getBusinessSliceFilters = async () => {
+  const response = await api.get('/ops/business-slice/filters')
+  return response.data
+}
+export const getBusinessSliceMonthly = async (params = {}) => {
+  const response = await api.get('/ops/business-slice/monthly', { params })
+  return response.data
+}
+export const getBusinessSliceCoverage = async (params = {}) => {
+  const response = await api.get('/ops/business-slice/coverage', { params })
+  return response.data
+}
+export const getBusinessSliceUnmatched = async (params = {}) => {
+  const response = await api.get('/ops/business-slice/unmatched', { params })
+  return response.data
+}
+export const getBusinessSliceConflicts = async (params = {}) => {
+  const response = await api.get('/ops/business-slice/conflicts', { params })
+  return response.data
+}
+export const getBusinessSliceSubfleets = async () => {
+  const response = await api.get('/ops/business-slice/subfleets')
+  return response.data
+}
+export const getBusinessSliceWeekly = async (params = {}) => {
+  const response = await api.get('/ops/business-slice/weekly', { params })
+  return response.data
+}
+export const getBusinessSliceDaily = async (params = {}) => {
+  const response = await api.get('/ops/business-slice/daily', { params })
+  return response.data
 }
 
 export default api
