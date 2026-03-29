@@ -7,6 +7,15 @@ Ya no ejecuta REFRESH MATERIALIZED VIEW (la “MV” mensual es vista sobre la t
 Requisito: migración 116_business_slice_incremental_facts aplicada:
   cd backend && alembic upgrade head
 
+En PowerShell, escriba el comando en **una sola línea**; si aparece el prompt ``>>``, está en continuación
+de línea (Ctrl+C y reintente).
+
+Si aparece "No space left on device" en base/pgsql_tmp: liberar disco en el **host donde corre PostgreSQL**
+(no en la carpeta del proyecto). Opcional: más RAM para sorts en sesión, p. ej.
+  $env:BUSINESS_SLICE_LOAD_WORK_MEM='512MB'   # PowerShell
+  export BUSINESS_SLICE_LOAD_WORK_MEM=512MB  # bash
+(0 u off desactiva el ajuste.)
+
 Uso:
   cd backend && python -m scripts.refresh_business_slice_mvs
   python -m scripts.refresh_business_slice_mvs --month 2025-03
@@ -22,6 +31,8 @@ import sys
 from datetime import date, datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import psycopg2.errors
 
 from app.db.connection import get_db_audit
 from app.services.business_slice_incremental_load import (
@@ -103,7 +114,7 @@ def main() -> int:
             end = _parse_ym(args.backfill_to)
             start = month_first_day(start.year, start.month)
             end = month_first_day(end.year, end.month)
-            total, months = backfill_business_slice_months(cur, start, end)
+            total, months = backfill_business_slice_months(cur, start, end, conn)
             conn.commit()
             cur.close()
             print(f"OK: backfill {len(months)} meses, filas insertadas (suma)={total}")
@@ -115,7 +126,7 @@ def main() -> int:
             today = date.today()
             target = month_first_day(today.year, today.month)
 
-        n = load_business_slice_month(cur, target)
+        n = load_business_slice_month(cur, target, conn)
         conn.commit()
         cur.close()
         print(f"OK: month_fact mes={target} filas insertadas={n}")
@@ -129,10 +140,26 @@ if __name__ == "__main__":
     except RuntimeError as e:
         print("ERROR:", e)
         raise SystemExit(2)
+    except psycopg2.errors.DiskFull as e:
+        print("ERROR: PostgreSQL sin espacio en disco (suele ser pgsql_tmp bajo el data_directory del servidor).")
+        print("  Libere espacio o amplíe el volumen donde está Postgres; el cliente Windows no es ese disco.")
+        print("  Tras liberar espacio, reintente. Opcional: BUSINESS_SLICE_LOAD_WORK_MEM=512MB reduce ficheros temporales.")
+        print(str(e))
+        raise SystemExit(3)
     except Exception as e:
+        msg = str(e)
         print("ERROR:", e)
-        if "real_business_slice_month_fact" in str(e) and "does not exist" in str(e):
+        if "already closed" in msg.lower():
             print(
-                "Sugerencia: ejecute desde la carpeta backend: alembic upgrade head"
+                "Sugerencia: conexión cortada (red, reinicio de Postgres, Ctrl+C o timeout). "
+                "La carga por país hace COMMIT por chunk: puede reejecutar el mismo --month para rellenar lo que falte "
+                "tras borrar el mes (o dejar que DELETE + chunks lo repueblen entero)."
             )
+        if "No space left on device" in msg or "could not write to file" in msg.lower():
+            print(
+                "Sugerencia: espacio en disco del servidor PostgreSQL (pgsql_tmp). "
+                "Libere disco en ese host; opcional BUSINESS_SLICE_LOAD_WORK_MEM=512MB."
+            )
+        if "real_business_slice_month_fact" in msg and "does not exist" in msg:
+            print("Sugerencia: desde backend ejecute: alembic upgrade head")
         raise SystemExit(1)

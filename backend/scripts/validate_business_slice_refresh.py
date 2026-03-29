@@ -50,7 +50,7 @@ def main() -> int:
         with get_db() as conn:
             cur = conn.cursor()
             cur.execute("SET statement_timeout = '7200000'")
-            load_business_slice_month(cur, target)
+            load_business_slice_month(cur, target, conn)
             conn.commit()
             cur.close()
         elapsed = time.perf_counter() - t0

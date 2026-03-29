@@ -26,3 +26,17 @@ Tras migración **116**, hay que **poblar** `month_fact` (backfill o mes a mes);
 
 - **No** incluye Plan, targets ni `plan_vs_real` (fuera de alcance).
 - `ops.v_real_trips_business_slice_resolved_mv12` sigue existiendo para auditoría en ventana 12m; la carga mensual usa la vista **resolved completa** para no perder histórico fuera de esa ventana.
+
+## Entorno
+
+- El venv del proyecto suele estar en **`backend\venv`**: activar desde la carpeta `backend`, no desde la raíz del repo.
+- Pasar el mes en **una sola línea**: `--month 2026-03-01` (si PowerShell parte el comando en dos líneas, falla el parseo).
+
+## Problemas frecuentes
+
+| Síntoma | Acción |
+|--------|--------|
+| `relation "ops.real_business_slice_month_fact" does not exist` | En `backend`: `alembic upgrade head` (revisión 116). |
+| `No space left on device` / `base/pgsql_tmp/...` | Espacio en el **disco del servidor PostgreSQL** (donde está el `data_directory`), no en el PC del cliente. Liberar espacio o mover/ampliar volumen. Mitigaciones en carga: `BUSINESS_SLICE_LOAD_WORK_MEM` (p. ej. `512MB`); la carga mensual va **por país** por defecto (`BUSINESS_SLICE_MONTH_LOAD_CHUNK_BY_COUNTRY=1`) para bajar el pico de temporales. `=0` vuelve a un solo `INSERT` grande. |
+| Carga “larga” sin salida / `connection already closed` | Desde el script CLI se hace **COMMIT tras cada chunk** y se imprime progreso en consola. Por defecto el grano es **país+ciudad** (`BUSINESS_SLICE_MONTH_CHUNK_GRAIN=city`); `=country` usa menos commits pero más pico en temporales. Si falla a mitad, vuelva a lanzar el mismo `--month`. El prompt `>>` en PowerShell indica línea incompleta: Ctrl+C y un solo renglón con el comando. |
+| Reintentos con disco lleno | **No sirven** hasta liberar espacio en el volumen de PostgreSQL. Salida **3** del script `refresh_business_slice_mvs` = `DiskFull`. |
