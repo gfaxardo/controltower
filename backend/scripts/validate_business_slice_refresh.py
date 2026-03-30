@@ -6,7 +6,7 @@ Validación operativa BUSINESS_SLICE (sin API/UI):
 - La relación ops.mv_real_business_slice_monthly es vista de compatibilidad (no REFRESH).
 - Comprueba desambiguación works_terms vs park_only en v_real_trips_business_slice_resolved_mv12.
 
-Uso: cd backend && python -m scripts.validate_business_slice_refresh [--run-month-load] [--light]
+Uso: cd backend && python -m scripts.validate_business_slice_refresh [--run-month-load] [--light] [--check-loader-contract]
 """
 from __future__ import annotations
 
@@ -21,7 +21,11 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 from app.db.connection import get_db, init_db_pool
-from app.services.business_slice_incremental_load import load_business_slice_month, month_first_day
+from app.services.business_slice_incremental_load import (
+    describe_month_load_sql_contract,
+    load_business_slice_month,
+    month_first_day,
+)
 
 
 def main() -> int:
@@ -36,7 +40,32 @@ def main() -> int:
         action="store_true",
         help="Sin consultas pesadas sobre resolved_mv12.",
     )
+    ap.add_argument(
+        "--check-loader-contract",
+        action="store_true",
+        help="Comprueba (sin ejecutar SQL de mes) que la agregación mensual usa fn subset, no la vista resolved.",
+    )
+    ap.add_argument(
+        "--chunk-grain",
+        choices=("country", "city", "city_week", "city_day"),
+        default=None,
+        help="Si se usa --run-month-load, grano de chunk (mismo significado que refresh_business_slice_mvs).",
+    )
     args = ap.parse_args()
+
+    if args.check_loader_contract:
+        c = describe_month_load_sql_contract()
+        print("Contrato SQL carga mensual (estático):")
+        for k, v in c.items():
+            print(f"  {k}: {v}")
+        if not c["month_path_uses_fn_subset"] or not c["month_path_avoids_global_resolved_view"]:
+            print("ERROR: contrato mensual incumplido.")
+            return 2
+        if not c["hour_block_still_uses_resolved_view"]:
+            print("WARN: hour_fact debería seguir leyendo la vista resolved acotada por rango.")
+        print("OK: --check-loader-contract")
+        if not args.run_month_load:
+            return 0
 
     init_db_pool()
     fact = "ops.real_business_slice_month_fact"
@@ -50,7 +79,7 @@ def main() -> int:
         with get_db() as conn:
             cur = conn.cursor()
             cur.execute("SET statement_timeout = '7200000'")
-            load_business_slice_month(cur, target, conn)
+            load_business_slice_month(cur, target, conn, chunk_grain=args.chunk_grain)
             conn.commit()
             cur.close()
         elapsed = time.perf_counter() - t0

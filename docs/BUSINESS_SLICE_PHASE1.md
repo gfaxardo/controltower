@@ -6,20 +6,22 @@ Capa ejecutiva de clasificación y agregación sobre **REAL** (PostgreSQL). No s
 
 ## Pipeline REAL (orden)
 
-`trips_all` ∪ `trips_2026` (canon) → **`ops.v_real_trips_enriched_base`** (join `dim.dim_park` + `drivers`) → **`ops.v_real_trips_business_slice_base`** (alias `SELECT *` desde enriched) → **`ops.v_real_trips_business_slice_resolved`** (reglas) → **`ops.mv_real_business_slice_monthly`** (agregado; **ventana 36 meses** en el `REFRESH`).
+`trips_all` ∪ `trips_2026` (canon) → **`ops.v_real_trips_enriched_base`** (join `dim.dim_park` + `drivers`) → **`ops.v_real_trips_business_slice_base`** (alias `SELECT *` desde enriched) → **`ops.v_real_trips_business_slice_resolved`** (reglas; auditoría y vistas de cobertura) → **`ops.mv_real_business_slice_monthly`** (hoy: **vista** sobre **`ops.real_business_slice_month_fact`**, no MV refrescable).
 
-La MV no vuelve a hacer joins raw: consume **`ops.v_real_trips_business_slice_resolved_mv12`** (misma lógica que `resolved`, con **base limitada a 12 meses** para reducir temporales en `REFRESH`). La vista **`v_real_trips_business_slice_resolved`** sigue siendo la referencia completa para auditoría/coverage.
+**Carga mensual canónica (post-117):** `enriched` (subconjunto por mes / país / ciudad / subchunk temporal) → **`ops.fn_real_trips_business_slice_resolved_subset`** (misma lógica de reglas que la vista resolved, pero **filtrando la CTE `base` antes** de unir mapping) → agregación → **`ops.real_business_slice_month_fact`**. Así se evita el patrón costoso “materializar/evaluar `resolved` global y filtrar al final”.
+
+La vista **`ops.v_real_trips_business_slice_resolved_mv12`** sigue siendo útil para auditoría en ventana 12m (misma lógica con base acotada). La vista global **`v_real_trips_business_slice_resolved`** permanece como referencia para unmatched/conflicts/coverage.
 
 ## Flujo operativo
 
-1. Migraciones Alembic: hasta **`115_business_slice_mv_feed_resolved_12m`** (ventana 12m + vista `v_real_trips_business_slice_resolved_mv12` que acota la CTE base antes de clasificar, para aliviar temporales en `REFRESH`).
+1. Migraciones Alembic: **116** (`real_business_slice_month_fact` / `hour_fact` + vistas) y **117** (`ops.fn_real_trips_business_slice_resolved_subset` para carga mensual incremental).
 2. Importar reglas: `python -m scripts.import_business_slice_mapping_from_xlsx --replace` (Excel en `backend/exports/Plantillas_Control_Tower_Simplificadas_final.xlsx`).
-3. Refrescar agregado: `python -m scripts.refresh_business_slice_mvs` (timeout de sesión 2h; no ejecutar otro `REFRESH`/`DROP` concurrente sobre la misma MV).
-4. Validación opcional: `python -m scripts.validate_business_slice_refresh` (tiempo de refresh, tamaño MV, muestra de `works_terms`). Con disco o temp limitado: `--skip-refresh --light`.
+3. Poblar / actualizar agregado mensual: `python -m scripts.refresh_business_slice_mvs --month YYYY-MM` (opcional `--chunk-grain city|country|city_week|city_day`). Timeout de sesión largo en el script de carga.
+4. Validación opcional: `python -m scripts.validate_business_slice_refresh` (tamaño `month_fact`, muestra `works_terms` vía `resolved_mv12` si no es `--light`). Contrato del loader: `--check-loader-contract`.
 
-**Disco en el servidor PostgreSQL:** si `REFRESH` falla con `No space left on device`, hay que **liberar espacio** en el volumen de datos/temp de Postgres; no lo resuelve solo el código.
+**Disco en el servidor PostgreSQL:** si la carga falla con `No space left on device` en `pgsql_tmp`, hay que **liberar espacio** en el volumen de datos/temp de Postgres; además usar chunks más finos (`city_week` / `city_day`) y/o más `work_mem` de sesión (`BUSINESS_SLICE_LOAD_WORK_MEM`).
 
-La MV se crea con `WITH NO DATA`; hasta hacer `REFRESH` los endpoints mensuales pueden devolver lista vacía.
+Hasta poblar `month_fact`, la vista `mv_real_business_slice_monthly` puede devolver conjunto vacío.
 
 ## Métricas (MV mensual)
 

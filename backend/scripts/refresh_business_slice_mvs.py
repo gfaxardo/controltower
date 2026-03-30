@@ -4,7 +4,7 @@ Carga incremental BUSINESS_SLICE (ops.real_business_slice_month_fact y opcional 
 
 Ya no ejecuta REFRESH MATERIALIZED VIEW (la “MV” mensual es vista sobre la tabla fact).
 
-Requisito: migración 116_business_slice_incremental_facts aplicada:
+Requisito: migraciones 116_business_slice_incremental_facts y 117_business_slice_resolved_subset_fn:
   cd backend && alembic upgrade head
 
 En PowerShell, escriba el comando en **una sola línea**; si aparece el prompt ``>>``, está en continuación
@@ -20,8 +20,13 @@ Uso:
   cd backend && python -m scripts.refresh_business_slice_mvs
   python -m scripts.refresh_business_slice_mvs --month 2025-03
   python -m scripts.refresh_business_slice_mvs --month 2025-03-15
+  python -m scripts.refresh_business_slice_mvs --month 2026-03 --chunk-grain city
+  python -m scripts.refresh_business_slice_mvs --month 2026-03 --chunk-grain city_week
+  python -m scripts.refresh_business_slice_mvs --month 2026-03 --chunk-grain city_day
   python -m scripts.refresh_business_slice_mvs --backfill-from 2023-01 --backfill-to 2025-12
   python -m scripts.refresh_business_slice_mvs --hour-from "2025-03-01 00:00:00" --hour-to "2025-03-08 00:00:00"
+
+Requiere migración 117 (función ops.fn_real_trips_business_slice_resolved_subset) además de 116.
 """
 from __future__ import annotations
 
@@ -51,6 +56,19 @@ def _require_business_slice_facts(cur) -> None:
         raise RuntimeError(
             "No existe ops.real_business_slice_month_fact. Aplique migraciones desde backend: "
             "alembic upgrade head  (revisión 116_business_slice_incremental_facts)."
+        )
+    cur.execute(
+        """
+        SELECT 1 FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'ops'
+          AND p.proname = 'fn_real_trips_business_slice_resolved_subset'
+        """
+    )
+    if cur.fetchone() is None:
+        raise RuntimeError(
+            "No existe ops.fn_real_trips_business_slice_resolved_subset. "
+            "Ejecute alembic upgrade head (migración 117_business_slice_resolved_subset_fn)."
         )
 
 
@@ -93,6 +111,15 @@ def main() -> int:
         "--hour-to",
         help="Fin exclusivo bloque horario",
     )
+    ap.add_argument(
+        "--chunk-grain",
+        choices=("country", "city", "city_week", "city_day"),
+        default=None,
+        help=(
+            "Grano de la carga mensual (sobrescribe BUSINESS_SLICE_MONTH_CHUNK_GRAIN). "
+            "city_week / city_day fragmentan por ciudad en semanas ISO o días con calco en staging."
+        ),
+    )
     args = ap.parse_args()
 
     with get_db_audit(timeout_ms=_LOAD_TIMEOUT_MS) as conn:
@@ -114,7 +141,9 @@ def main() -> int:
             end = _parse_ym(args.backfill_to)
             start = month_first_day(start.year, start.month)
             end = month_first_day(end.year, end.month)
-            total, months = backfill_business_slice_months(cur, start, end, conn)
+            total, months = backfill_business_slice_months(
+                cur, start, end, conn, chunk_grain=args.chunk_grain
+            )
             conn.commit()
             cur.close()
             print(f"OK: backfill {len(months)} meses, filas insertadas (suma)={total}")
@@ -126,7 +155,7 @@ def main() -> int:
             today = date.today()
             target = month_first_day(today.year, today.month)
 
-        n = load_business_slice_month(cur, target, conn)
+        n = load_business_slice_month(cur, target, conn, chunk_grain=args.chunk_grain)
         conn.commit()
         cur.close()
         print(f"OK: month_fact mes={target} filas insertadas={n}")
