@@ -766,4 +766,16 @@ export const getBusinessSliceOmniview = async (params = {}) => {
   return response.data
 }
 
+/** Omniview: unifica monthly / weekly / daily según `grain` (no se envía al backend). */
+export const getBusinessSliceOmniview = async (params = {}) => {
+  const { grain = 'monthly', ...rest } = params
+  if (grain === 'weekly') {
+    return getBusinessSliceWeekly(rest)
+  }
+  if (grain === 'daily') {
+    return getBusinessSliceDaily(rest)
+  }
+  return getBusinessSliceMonthly(rest)
+}
+
 export default api

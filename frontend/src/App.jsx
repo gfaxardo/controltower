@@ -14,6 +14,7 @@ import LobUniverseView from './components/LobUniverseView'
 import RealLOBDrillView from './components/RealLOBDrillView'
 import BusinessSliceView from './components/BusinessSliceView'
 import BusinessSliceOmniview from './components/BusinessSliceOmniview'
+import BusinessSliceOmniviewMatrix from './components/BusinessSliceOmniviewMatrix'
 import RealOperationalView from './components/RealOperationalView'
 import DriverLifecycleView from './components/DriverLifecycleView'
 import SupplyView from './components/SupplyView'
@@ -77,7 +78,8 @@ const PLAN_SUBTABS = [
 const OPERACION_SUBTABS = [
   { id: 'lob_drill', label: 'Real LOB / Drill' },
   { id: 'business_slice', label: 'Business Slice' },
-  { id: 'business_slice_omniview', label: 'Omniview' }
+  { id: 'business_slice_omniview', label: 'Omniview' },
+  { id: 'omniview_matrix', label: 'Omniview Matrix' }
 ]
 
 function App () {
@@ -421,6 +423,9 @@ function App () {
                 </p>
                 <BusinessSliceOmniview key={`business-slice-omniview-${refreshKey}`} />
               </>
+            )}
+            {operacionSubTab === 'omniview_matrix' && (
+              <BusinessSliceOmniviewMatrix key={`bs-omniview-matrix-${refreshKey}`} />
             )}
           </section>
         )}
