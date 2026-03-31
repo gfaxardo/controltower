@@ -13,6 +13,7 @@ import Phase2CAccountabilityView from './components/Phase2CAccountabilityView'
 import LobUniverseView from './components/LobUniverseView'
 import RealLOBDrillView from './components/RealLOBDrillView'
 import BusinessSliceView from './components/BusinessSliceView'
+import BusinessSliceOmniview from './components/BusinessSliceOmniview'
 import RealOperationalView from './components/RealOperationalView'
 import DriverLifecycleView from './components/DriverLifecycleView'
 import SupplyView from './components/SupplyView'
@@ -75,7 +76,8 @@ const PLAN_SUBTABS = [
 
 const OPERACION_SUBTABS = [
   { id: 'lob_drill', label: 'Real LOB / Drill' },
-  { id: 'business_slice', label: 'Business Slice' }
+  { id: 'business_slice', label: 'Business Slice' },
+  { id: 'business_slice_omniview', label: 'Omniview' }
 ]
 
 function App () {
@@ -380,7 +382,7 @@ function App () {
         {/* ========== SUB-NAV: Operación ========== */}
         {activeTab === TAB_OPERACION && (
           <div className="mb-4 pb-2 border-b border-gray-200">
-            <p className="text-xs text-gray-500 mb-2">Desglose operativo y tajadas ejecutivas (Business Slice)</p>
+            <p className="text-xs text-gray-500 mb-2">Desglose operativo, Business Slice y comparativo Omniview (REAL)</p>
             <div className="flex flex-wrap gap-2">
               {OPERACION_SUBTABS.map(({ id, label }) => (
                 <button
@@ -410,6 +412,14 @@ function App () {
               <>
                 <p className="text-sm text-gray-600">Tajadas de negocio (Business Slice): matriz mensual REAL y auditoría de cobertura.</p>
                 <BusinessSliceView key={`business-slice-${refreshKey}`} />
+              </>
+            )}
+            {operacionSubTab === 'business_slice_omniview' && (
+              <>
+                <p className="text-sm text-gray-600">
+                  Omniview: comparativo periodo vs anterior (MoM / WoW / día −7), jerarquía operativa y KPIs. No sustituye la vista Business Slice clásica.
+                </p>
+                <BusinessSliceOmniview key={`business-slice-omniview-${refreshKey}`} />
               </>
             )}
           </section>
