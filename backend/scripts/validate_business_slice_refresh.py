@@ -43,7 +43,7 @@ def main() -> int:
     ap.add_argument(
         "--check-loader-contract",
         action="store_true",
-        help="Comprueba (sin ejecutar SQL de mes) que la agregación mensual usa fn subset, no la vista resolved.",
+        help="Comprueba que la agregación mensual usa temp table inline, no la vista resolved.",
     )
     ap.add_argument(
         "--chunk-grain",
@@ -58,10 +58,11 @@ def main() -> int:
         print("Contrato SQL carga mensual (estático):")
         for k, v in c.items():
             print(f"  {k}: {v}")
-        if not c["month_path_uses_fn_subset"] or not c["month_path_avoids_global_resolved_view"]:
+        ok = c.get("month_path_uses_temp_table", False) and c.get("month_path_avoids_global_resolved_view", False)
+        if not ok:
             print("ERROR: contrato mensual incumplido.")
             return 2
-        if not c["hour_block_still_uses_resolved_view"]:
+        if not c.get("hour_block_still_uses_resolved_view", False):
             print("WARN: hour_fact debería seguir leyendo la vista resolved acotada por rango.")
         print("OK: --check-loader-contract")
         if not args.run_month_load:

@@ -26,19 +26,24 @@ export default function GlobalFreshnessBanner ({ activeTab } = {}) {
     let cancelled = false
     setLoading(true)
     setError(null)
-    getDataFreshnessGlobal({ group })
-      .then((res) => {
-        if (!cancelled) setData(res)
-      })
-      .catch((e) => {
-        if (!cancelled) {
-          setError(e?.message || 'Error al cargar estado de frescura')
-          setData(null)
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
+    const fetchWithRetry = (attempt = 1) => {
+      getDataFreshnessGlobal({ group })
+        .then((res) => {
+          if (!cancelled) setData(res)
+          if (!cancelled) setLoading(false)
+        })
+        .catch((e) => {
+          if (cancelled) return
+          if (attempt < 2) {
+            setTimeout(() => fetchWithRetry(attempt + 1), 1500)
+          } else {
+            setError(e?.message || 'Error al cargar estado de frescura')
+            setData(null)
+            setLoading(false)
+          }
+        })
+    }
+    fetchWithRetry()
     return () => { cancelled = true }
   }, [group])
 

@@ -482,7 +482,7 @@ export const getDataPipelineHealth = async (latestOnly = true) => {
 
 // Calidad de margen en fuente REAL (ruta estable: /ops/real-margin-quality; /ops/real/margin-quality puede 404 en algunos despliegues)
 export const getRealMarginQuality = async (params = {}) => {
-  const response = await api.get('/ops/real-margin-quality', { params: { days_recent: params.days_recent ?? 90, findings_limit: params.findings_limit ?? 20 }, timeout: 15000 })
+  const response = await api.get('/ops/real-margin-quality', { params: { days_recent: params.days_recent ?? 90, findings_limit: params.findings_limit ?? 20 }, timeout: 18000 })
   return response.data
 }
 
@@ -758,6 +758,11 @@ export const getBusinessSliceWeekly = async (params = {}) => {
 }
 export const getBusinessSliceDaily = async (params = {}) => {
   const response = await api.get('/ops/business-slice/daily', { params })
+  return response.data
+}
+/** Omniview: comparativo current/previous, deltas y rollups (REAL). Requiere country en weekly/daily. */
+export const getBusinessSliceOmniview = async (params = {}) => {
+  const response = await api.get('/ops/business-slice/omniview', { params })
   return response.data
 }
 

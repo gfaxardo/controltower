@@ -161,6 +161,31 @@ def get_db_drill():
         if conn:
             conn.close()
 
+@contextmanager
+def get_db_quick(timeout_ms: int = 12000):
+    """
+    Conexión dedicada con statement_timeout corto para queries de dashboard/UI.
+    Falla rápido en lugar de bloquear minutos cuando la vista es pesada.
+    """
+    conn = None
+    try:
+        conn = _get_connection_with_timeout(timeout_ms)
+        yield conn
+        conn.commit()
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        msg = str(e)
+        if "does not exist" in msg.lower():
+            logger.debug("Transacción (quick): relación/vista no existe: %s", msg[:200])
+        else:
+            logger.warning("Query excedió timeout (%dms): %s", timeout_ms, str(e)[:200])
+        raise
+    finally:
+        if conn:
+            conn.close()
+
+
 def create_plan_schema():
     with get_db() as conn:
         cursor = conn.cursor()

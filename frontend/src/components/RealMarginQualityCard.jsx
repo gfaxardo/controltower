@@ -22,24 +22,18 @@ export default function RealMarginQualityCard () {
     let cancelled = false
     setLoading(true)
     setError(null)
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/7a567dae-1f05-4a4a-89fa-ed1b37ba03a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9075f8'},body:JSON.stringify({sessionId:'9075f8',location:'RealMarginQualityCard.jsx:effect',message:'fetch_start',data:{fetch:'real-margin-quality-card'},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{})
-    // #endregion
     getRealMarginQuality({ days_recent: 90 })
       .then((res) => {
         if (!cancelled) setData(res)
-        fetch('http://127.0.0.1:7243/ingest/7a567dae-1f05-4a4a-89fa-ed1b37ba03a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9075f8'},body:JSON.stringify({sessionId:'9075f8',location:'RealMarginQualityCard.jsx:then',message:'fetch_ok',data:{fetch:'real-margin-quality-card'},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{})
       })
       .catch((e) => {
         if (!cancelled) {
           setError(e?.message || 'Error al cargar calidad de margen')
           setData(null)
         }
-        fetch('http://127.0.0.1:7243/ingest/7a567dae-1f05-4a4a-89fa-ed1b37ba03a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9075f8'},body:JSON.stringify({sessionId:'9075f8',location:'RealMarginQualityCard.jsx:catch',message:'fetch_err',data:{fetch:'real-margin-quality-card',err:String(e?.message||e)},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{})
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
-        fetch('http://127.0.0.1:7243/ingest/7a567dae-1f05-4a4a-89fa-ed1b37ba03a6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9075f8'},body:JSON.stringify({sessionId:'9075f8',location:'RealMarginQualityCard.jsx:finally',message:'fetch_end',data:{fetch:'real-margin-quality-card'},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{})
       })
     return () => { cancelled = true }
   }, [])

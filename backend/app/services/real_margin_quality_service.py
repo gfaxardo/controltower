@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from app.db.connection import get_db
+from app.db.connection import get_db, get_db_quick
 from app.services.real_margin_quality_constants import (
     severity_cancelled_with_margin,
     severity_completed_without_margin,
@@ -49,7 +49,7 @@ def get_margin_quality_summary(days_recent: int = DEFAULT_DAYS_RECENT) -> dict[s
         "end_date": _serialize_date(today),
     }
     try:
-        with get_db() as conn:
+        with get_db_quick(timeout_ms=8000) as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
             cur.execute("""
                 SELECT
@@ -151,7 +151,7 @@ def get_affected_period_dates(days_recent: int = DEFAULT_DAYS_RECENT) -> dict[st
     start_date = today - timedelta(days=days_recent)
     out: dict[str, list[str]] = {"affected_days": [], "affected_week_dates": [], "affected_month_dates": []}
     try:
-        with get_db() as conn:
+        with get_db_quick(timeout_ms=8000) as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
             cur.execute("""
                 SELECT
@@ -198,10 +198,16 @@ def get_margin_quality_full(days_recent: int = DEFAULT_DAYS_RECENT, findings_lim
     """
     Payload completo para GET /ops/real/margin-quality:
     summary (resumen + flags) + findings (últimos hallazgos) + affected period dates para badges en drill.
+    Si el summary falla (timeout en v_real_trip_fact_v2), skip affected_period_dates (misma vista).
     """
     summary = get_margin_quality_summary(days_recent=days_recent)
     findings = get_margin_quality_findings(limit=findings_limit)
-    affected = get_affected_period_dates(days_recent=days_recent)
+
+    summary_ok = summary.get("aggregate") is not None
+    affected = get_affected_period_dates(days_recent=days_recent) if summary_ok else {
+        "affected_days": [], "affected_week_dates": [], "affected_month_dates": [],
+    }
+
     return {
         **summary,
         "findings": findings,

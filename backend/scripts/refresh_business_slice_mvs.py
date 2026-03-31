@@ -16,6 +16,10 @@ Si aparece "No space left on device" en base/pgsql_tmp: liberar disco en el **ho
   export BUSINESS_SLICE_LOAD_WORK_MEM=512MB  # bash
 (0 u off desactiva el ajuste.)
 
+  Temporales en disco grande (tras crear TABLESPACE en p. ej. /mnt/HC_Volume_...):
+  $env:BUSINESS_SLICE_LOAD_TEMP_TABLESPACES='pg_big_tmp'
+  Opcional: $env:BUSINESS_SLICE_LOAD_JIT_OFF='1'
+
 Uso:
   cd backend && python -m scripts.refresh_business_slice_mvs
   python -m scripts.refresh_business_slice_mvs --month 2025-03
@@ -26,7 +30,8 @@ Uso:
   python -m scripts.refresh_business_slice_mvs --backfill-from 2023-01 --backfill-to 2025-12
   python -m scripts.refresh_business_slice_mvs --hour-from "2025-03-01 00:00:00" --hour-to "2025-03-08 00:00:00"
 
-Requiere migración 117 (función ops.fn_real_trips_business_slice_resolved_subset) además de 116.
+Requiere migraciones 116 (tablas fact) y 117 (función SQL para auditorías).
+La carga mensual usa estrategia "materializar enriched una vez, resolver+agregar N veces".
 """
 from __future__ import annotations
 
@@ -117,7 +122,7 @@ def main() -> int:
         default=None,
         help=(
             "Grano de la carga mensual (sobrescribe BUSINESS_SLICE_MONTH_CHUNK_GRAIN). "
-            "city_week / city_day fragmentan por ciudad en semanas ISO o días con calco en staging."
+            "city_week / city_day se comportan como city (la materialización elimina el cuello)."
         ),
     )
     args = ap.parse_args()

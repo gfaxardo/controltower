@@ -158,6 +158,7 @@ from app.services.business_slice_service import (
     get_business_slice_weekly,
     get_business_slice_daily,
 )
+from app.services.business_slice_omniview_service import get_business_slice_omniview
 from app.settings import settings
 from fastapi.responses import Response
 from typing import Optional, Literal
@@ -2817,4 +2818,61 @@ async def business_slice_plan_join_stub(limit: int = Query(500, ge=1, le=2000)):
         return {"data": data, "total": len(data)}
     except Exception as e:
         logger.error("business-slice/plan-join-stub: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/business-slice/omniview")
+async def business_slice_omniview(
+    granularity: Literal["monthly", "weekly", "daily"] = Query(
+        ...,
+        description="Granularidad temporal: monthly (MoM), weekly (WoW), daily (vs mismo día -7).",
+    ),
+    period: Optional[str] = Query(
+        None,
+        description="Ancla: YYYY-MM (mensual/semanal) o YYYY-MM-DD (diario obligatorio). Opcional = defecto según granularidad.",
+    ),
+    country: Optional[str] = Query(None, description="Obligatorio para weekly y daily."),
+    city: Optional[str] = Query(None),
+    business_slice: Optional[str] = Query(None, description="Filtro business_slice_name"),
+    fleet: Optional[str] = Query(None, description="Filtro fleet_display_name"),
+    subfleet: Optional[str] = Query(None, description="Filtro subfleet_name"),
+    include_subfleets: bool = Query(False, description="Si false, excluye filas is_subfleet"),
+    daily_window_days: int = Query(
+        90,
+        ge=1,
+        le=120,
+        description="Tope validado (1–120); reservado para extensiones; V1 diario compara un solo día.",
+    ),
+    limit_rows: int = Query(2000, ge=1, le=10000),
+    include_previous_only_rows: bool = Query(
+        False,
+        description="Incluye dimensiones solo presentes en el periodo anterior (current vacío).",
+    ),
+):
+    """
+    Omniview Business Slice (REAL): periodo actual vs anterior, métricas V1, deltas y señales.
+
+    No reemplaza `/business-slice/monthly|weekly|daily`; agrega comparativo y rollups listos para UI.
+    Weekly/daily están acotados: `country` obligatorio (guardrail de performance sobre la vista resuelta).
+    Mensual: detalle desde `ops.real_business_slice_month_fact`; subtotales/totales desde vista resuelta.
+    """
+    try:
+        return await _run_sync(
+            get_business_slice_omniview,
+            granularity=granularity,
+            period=period,
+            country=country,
+            city=city,
+            business_slice=business_slice,
+            fleet=fleet,
+            subfleet=subfleet,
+            include_subfleets=include_subfleets,
+            daily_window_days=daily_window_days,
+            limit_rows=limit_rows,
+            include_previous_only_rows=include_previous_only_rows,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        logger.exception("business-slice/omniview")
         raise HTTPException(status_code=500, detail=str(e))

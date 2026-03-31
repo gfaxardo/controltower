@@ -4,11 +4,14 @@ BUSINESS_SLICE — lecturas REAL desde vistas/MV ops (sin mezclar Plan).
 from __future__ import annotations
 
 import logging
+import math
+import numbers
+from decimal import Decimal
 from typing import Any, Optional
 
 from psycopg2.extras import RealDictCursor
 
-from app.db.connection import get_db
+from app.db.connection import get_db, get_db_drill
 
 logger = logging.getLogger(__name__)
 
@@ -64,13 +67,34 @@ def _where_clauses(
     return w, p
 
 
+def _json_safe_scalar(v: Any) -> Any:
+    """Evita NaN/inf y Decimal no finitos: json.dumps de Starlette no los admite.
+
+    psycopg2/pandas pueden devolver numpy.float64 (no es isinstance(..., float)).
+    """
+    if v is None:
+        return None
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, Decimal):
+        if not v.is_finite():
+            return None
+        return float(v)
+    if isinstance(v, numbers.Integral):
+        return int(v)
+    if isinstance(v, numbers.Real):
+        x = float(v)
+        return None if not math.isfinite(x) else x
+    return v
+
+
 def _serialize_row(row: dict) -> dict:
     out: dict[str, Any] = {}
     for k, v in row.items():
         if hasattr(v, "isoformat") and getattr(v, "day", None):
             out[k] = v.isoformat()[:10]
         else:
-            out[k] = v
+            out[k] = _json_safe_scalar(v)
     return out
 
 
@@ -152,7 +176,9 @@ def get_business_slice_coverage(
         w.append("EXTRACT(YEAR FROM month)::int = %s")
         params.append(int(year))
     where_cov = ("WHERE " + " AND ".join(w)) if w else ""
-    with get_db() as conn:
+    # Misma estrategia que real-lob drill: conexión dedicada con statement_timeout=0
+    # (el pool/rol a menudo corta ~15s y SET LOCAL no siempre puede subirlo).
+    with get_db_drill() as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(
             f"""
@@ -231,7 +257,7 @@ def get_business_slice_unmatched(
         LIMIT %s
     """
     params.append(min(max(limit, 1), 500))
-    with get_db() as conn:
+    with get_db_drill() as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(sql, params)
         data = [_serialize_row(dict(r)) for r in cur.fetchall()]
@@ -256,7 +282,7 @@ def get_business_slice_conflicts(
         LIMIT %s
     """
     params.append(min(max(limit, 1), 500))
-    with get_db() as conn:
+    with get_db_drill() as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(sql, params)
         data = [_serialize_row(dict(r)) for r in cur.fetchall()]
