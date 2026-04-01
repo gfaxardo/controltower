@@ -13,8 +13,8 @@ export default defineConfig({
         target: process.env.VITE_API_URL || 'http://127.0.0.1:8000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
-        // Drill puede tardar hasta 5 min (statement_timeout 300s); proxy debe esperar 6 min
-        timeout: 360000
+        // Weekly/margin-quality pueden superar 6 min (evidencia ~361s); proxy alineado con LONG_HTTP_TIMEOUT_MS en api.js
+        timeout: 900000
       }
     }
   }

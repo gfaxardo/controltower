@@ -233,8 +233,20 @@ export const getRealLobV2Data = async (params = {}) => {
   return response.data
 }
 
-// Real LOB Drill PRO. BD tiene statement_timeout 300s → cliente debe esperar más (6 min).
-const REAL_DRILL_TIMEOUT_MS = 360000
+// Debe ser ≤ vite.config proxy timeout. Margen + weekly pueden pasar de 6 min (logs ~361s una sola query).
+const LONG_HTTP_TIMEOUT_MS = 900000
+
+// Real LOB Drill PRO y rutas igual de pesadas.
+const REAL_DRILL_TIMEOUT_MS = LONG_HTTP_TIMEOUT_MS
+
+// Business Slice weekly/daily/coverage: vistas resueltas pesadas.
+const BUSINESS_SLICE_HEAVY_TIMEOUT_MS = LONG_HTTP_TIMEOUT_MS
+
+// GET /ops/real-margin-quality: 2 consultas secuenciales sobre v_real_trip_fact_v2.
+const REAL_MARGIN_QUALITY_CLIENT_TIMEOUT_MS = LONG_HTTP_TIMEOUT_MS
+
+// Banner / shell: BD lenta pero sin full scan de hechos; más que 8s, menos que rutas “drill”.
+const OPS_SHELL_TIMEOUT_MS = 120000
 export const getRealLobDrillPro = async (params = {}) => {
   const { signal, ...queryParams } = params
   const config = { params: queryParams, timeout: REAL_DRILL_TIMEOUT_MS }
@@ -470,19 +482,22 @@ export const getSupplyFreshness = async () => {
 
 // Freshness global (banner). group=operational para pestaña Real (no falla por datasets legacy).
 export const getDataFreshnessGlobal = async (params = {}) => {
-  const response = await api.get('/ops/data-freshness/global', { params: { group: params.group }, timeout: 8000 })
+  const response = await api.get('/ops/data-freshness/global', { params: { group: params.group }, timeout: OPS_SHELL_TIMEOUT_MS })
   return response.data
 }
 
 // Centro de observabilidad del pipeline: por dataset source_max_date, derived_max_date, lag_days, status
 export const getDataPipelineHealth = async (latestOnly = true) => {
-  const response = await api.get('/ops/data-pipeline-health', { params: { latest_only: latestOnly }, timeout: 10000 })
+  const response = await api.get('/ops/data-pipeline-health', { params: { latest_only: latestOnly }, timeout: OPS_SHELL_TIMEOUT_MS })
   return response.data
 }
 
 // Calidad de margen en fuente REAL (ruta estable: /ops/real-margin-quality; /ops/real/margin-quality puede 404 en algunos despliegues)
 export const getRealMarginQuality = async (params = {}) => {
-  const response = await api.get('/ops/real-margin-quality', { params: { days_recent: params.days_recent ?? 90, findings_limit: params.findings_limit ?? 20 }, timeout: 18000 })
+  const response = await api.get('/ops/real-margin-quality', {
+    params: { days_recent: params.days_recent ?? 90, findings_limit: params.findings_limit ?? 20 },
+    timeout: REAL_MARGIN_QUALITY_CLIENT_TIMEOUT_MS,
+  })
   return response.data
 }
 
@@ -558,25 +573,25 @@ export const getRealVsProjectionProjectionSegmentation = async (params = {}) => 
 
 // Gobierno: estado de fuente REAL por pantalla (canonical | legacy | migrating)
 export const getRealSourceStatus = async () => {
-  const response = await api.get('/ops/real-source-status', { timeout: 8000 })
+  const response = await api.get('/ops/real-source-status', { timeout: OPS_SHELL_TIMEOUT_MS })
   return response.data
 }
 
 // Data Trust Layer: estado de confianza por vista (ok | warning | blocked)
 export const getDataTrustStatus = async (view) => {
-  const response = await api.get('/ops/data-trust', { params: { view }, timeout: 5000 })
+  const response = await api.get('/ops/data-trust', { params: { view }, timeout: OPS_SHELL_TIMEOUT_MS })
   return response.data?.data_trust || { status: 'warning', message: 'Estado de data no disponible', last_update: null }
 }
 
 // Decision Layer: señal operativa por vista (action, priority, message, reason)
 export const getDecisionSignal = async (view) => {
-  const response = await api.get('/ops/decision-signal', { params: { view }, timeout: 5000 })
+  const response = await api.get('/ops/decision-signal', { params: { view }, timeout: OPS_SHELL_TIMEOUT_MS })
   return response.data
 }
 
 // Resumen de decisiones por vista (view, action, priority)
 export const getDecisionSignalSummary = async () => {
-  const response = await api.get('/ops/decision-signal/summary', { timeout: 8000 })
+  const response = await api.get('/ops/decision-signal/summary', { timeout: OPS_SHELL_TIMEOUT_MS })
   return Array.isArray(response.data) ? response.data : []
 }
 
@@ -729,15 +744,15 @@ export const getTopDriverBehaviorExportUrl = (params = {}) => {
 
 // --- Business Slice (REAL, capa ejecutiva) ---
 export const getBusinessSliceFilters = async () => {
-  const response = await api.get('/ops/business-slice/filters')
+  const response = await api.get('/ops/business-slice/filters', { timeout: OPS_SHELL_TIMEOUT_MS })
   return response.data
 }
 export const getBusinessSliceMonthly = async (params = {}) => {
-  const response = await api.get('/ops/business-slice/monthly', { params })
+  const response = await api.get('/ops/business-slice/monthly', { params, timeout: OPS_SHELL_TIMEOUT_MS })
   return response.data
 }
 export const getBusinessSliceCoverage = async (params = {}) => {
-  const response = await api.get('/ops/business-slice/coverage', { params })
+  const response = await api.get('/ops/business-slice/coverage', { params, timeout: BUSINESS_SLICE_HEAVY_TIMEOUT_MS })
   return response.data
 }
 export const getBusinessSliceUnmatched = async (params = {}) => {
@@ -753,19 +768,13 @@ export const getBusinessSliceSubfleets = async () => {
   return response.data
 }
 export const getBusinessSliceWeekly = async (params = {}) => {
-  const response = await api.get('/ops/business-slice/weekly', { params })
+  const response = await api.get('/ops/business-slice/weekly', { params, timeout: BUSINESS_SLICE_HEAVY_TIMEOUT_MS })
   return response.data
 }
 export const getBusinessSliceDaily = async (params = {}) => {
-  const response = await api.get('/ops/business-slice/daily', { params })
+  const response = await api.get('/ops/business-slice/daily', { params, timeout: BUSINESS_SLICE_HEAVY_TIMEOUT_MS })
   return response.data
 }
-/** Omniview: comparativo current/previous, deltas y rollups (REAL). Requiere country en weekly/daily. */
-export const getBusinessSliceOmniview = async (params = {}) => {
-  const response = await api.get('/ops/business-slice/omniview', { params })
-  return response.data
-}
-
 /** Omniview: unifica monthly / weekly / daily según `grain` (no se envía al backend). */
 export const getBusinessSliceOmniview = async (params = {}) => {
   const { grain = 'monthly', ...rest } = params

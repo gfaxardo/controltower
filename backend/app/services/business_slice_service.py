@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 # Tabla canónica mensual (carga incremental). La vista homónima sigue existiendo por compat.
 FACT_MONTHLY = "ops.real_business_slice_month_fact"
 MV_MONTHLY = FACT_MONTHLY
+FACT_DAILY = "ops.real_business_slice_day_fact"
+FACT_WEEKLY = "ops.real_business_slice_week_fact"
 V_RESOLVED = "ops.v_real_trips_business_slice_resolved"
 V_COVERAGE = "ops.v_business_slice_coverage_month"
 V_UNMATCHED = "ops.v_business_slice_unmatched_trips"
@@ -324,6 +326,22 @@ def get_plan_business_slice_stub(limit: int = 500) -> list[dict[str, Any]]:
     return data
 
 
+def _fact_table_has_data(conn, table: str) -> bool:
+    """Comprueba rápidamente si una tabla fact existe y tiene filas."""
+    try:
+        cur = conn.cursor()
+        cur.execute(f"SELECT 1 FROM {table} LIMIT 1")
+        has = cur.fetchone() is not None
+        cur.close()
+        return has
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return False
+
+
 def get_business_slice_weekly(
     country: Optional[str] = None,
     city: Optional[str] = None,
@@ -331,7 +349,62 @@ def get_business_slice_weekly(
     year: Optional[int] = None,
     limit: int = 1500,
 ) -> list[dict[str, Any]]:
-    """Agregado semanal desde vista resuelta (puede ser pesado; filtrar por año recomendado)."""
+    """Agregado semanal desde fact table pre-calculada (rápido) con fallback a vista resolved."""
+    with get_db() as conn:
+        if _fact_table_has_data(conn, FACT_WEEKLY):
+            return _weekly_from_fact(conn, country, city, business_slice, year, limit)
+    logger.warning("week_fact vacío o no existe — fallback a vista resolved (lento)")
+    return _weekly_from_resolved(country, city, business_slice, year, limit)
+
+
+def _weekly_from_fact(
+    conn,
+    country: Optional[str] = None,
+    city: Optional[str] = None,
+    business_slice: Optional[str] = None,
+    year: Optional[int] = None,
+    limit: int = 1500,
+) -> list[dict[str, Any]]:
+    w: list[str] = []
+    params: list[Any] = []
+    if country and str(country).strip():
+        w.append("country IS NOT NULL AND LOWER(TRIM(country::text)) = LOWER(TRIM(%s))")
+        params.append(str(country).strip())
+    if city and str(city).strip():
+        w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
+        params.append(str(city).strip())
+    if business_slice and str(business_slice).strip():
+        w.append("business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) = LOWER(TRIM(%s))")
+        params.append(str(business_slice).strip())
+    if year is not None:
+        w.append("EXTRACT(YEAR FROM week_start)::int = %s")
+        params.append(int(year))
+    where_sql = ("WHERE " + " AND ".join(w)) if w else ""
+    sql = f"""
+        SELECT week_start, country, city, business_slice_name, fleet_display_name,
+               is_subfleet, subfleet_name,
+               trips_completed, trips_cancelled, active_drivers,
+               avg_ticket, revenue_yego_net, commission_pct, trips_per_driver, cancel_rate_pct
+        FROM {FACT_WEEKLY}
+        {where_sql}
+        ORDER BY week_start DESC
+        LIMIT %s
+    """
+    params.append(min(max(limit, 1), 10000))
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute(sql, params)
+    data = [_serialize_row(dict(r)) for r in cur.fetchall()]
+    cur.close()
+    return data
+
+
+def _weekly_from_resolved(
+    country: Optional[str] = None,
+    city: Optional[str] = None,
+    business_slice: Optional[str] = None,
+    year: Optional[int] = None,
+    limit: int = 1500,
+) -> list[dict[str, Any]]:
     w: list[str] = ["resolution_status = 'resolved'", "trip_week IS NOT NULL"]
     params: list[Any] = []
     if country and str(country).strip():
@@ -341,37 +414,28 @@ def get_business_slice_weekly(
         w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
         params.append(str(city).strip())
     if business_slice and str(business_slice).strip():
-        w.append(
-            "business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) = LOWER(TRIM(%s))"
-        )
+        w.append("business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) = LOWER(TRIM(%s))")
         params.append(str(business_slice).strip())
     if year is not None:
         w.append("EXTRACT(YEAR FROM trip_week)::int = %s")
         params.append(int(year))
     where_sql = "WHERE " + " AND ".join(w)
     sql = f"""
-        SELECT
-            trip_week AS week_start,
-            country,
-            city,
-            business_slice_name,
-            fleet_display_name,
-            is_subfleet,
-            subfleet_name,
-            COUNT(*) FILTER (WHERE completed_flag) AS trips_completed,
-            COUNT(*) FILTER (WHERE cancelled_flag) AS trips_cancelled,
-            COUNT(DISTINCT driver_id) FILTER (WHERE completed_flag) AS active_drivers,
-            AVG(ticket) FILTER (WHERE completed_flag AND ticket IS NOT NULL) AS avg_ticket,
-            SUM(revenue_yego_net) FILTER (WHERE completed_flag) AS revenue_yego_net
+        SELECT trip_week AS week_start, country, city, business_slice_name, fleet_display_name,
+               is_subfleet, subfleet_name,
+               COUNT(*) FILTER (WHERE completed_flag) AS trips_completed,
+               COUNT(*) FILTER (WHERE cancelled_flag) AS trips_cancelled,
+               COUNT(DISTINCT driver_id) FILTER (WHERE completed_flag) AS active_drivers,
+               AVG(ticket) FILTER (WHERE completed_flag AND ticket IS NOT NULL) AS avg_ticket,
+               SUM(revenue_yego_net) FILTER (WHERE completed_flag) AS revenue_yego_net
         FROM {V_RESOLVED}
         {where_sql}
-        GROUP BY trip_week, country, city, business_slice_name, fleet_display_name,
-                 is_subfleet, subfleet_name
+        GROUP BY trip_week, country, city, business_slice_name, fleet_display_name, is_subfleet, subfleet_name
         ORDER BY week_start DESC
         LIMIT %s
     """
     params.append(min(max(limit, 1), 10000))
-    with get_db() as conn:
+    with get_db_drill() as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(sql, params)
         data = [_serialize_row(dict(r)) for r in cur.fetchall()]
@@ -387,7 +451,67 @@ def get_business_slice_daily(
     month: Optional[int] = None,
     limit: int = 2000,
 ) -> list[dict[str, Any]]:
-    """Agregado diario desde vista resuelta (filtrar año/mes recomendado por coste)."""
+    """Agregado diario desde fact table pre-calculada (rápido) con fallback a vista resolved."""
+    with get_db() as conn:
+        if _fact_table_has_data(conn, FACT_DAILY):
+            return _daily_from_fact(conn, country, city, business_slice, year, month, limit)
+    logger.warning("day_fact vacío o no existe — fallback a vista resolved (lento)")
+    return _daily_from_resolved(country, city, business_slice, year, month, limit)
+
+
+def _daily_from_fact(
+    conn,
+    country: Optional[str] = None,
+    city: Optional[str] = None,
+    business_slice: Optional[str] = None,
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    limit: int = 2000,
+) -> list[dict[str, Any]]:
+    w: list[str] = []
+    params: list[Any] = []
+    if country and str(country).strip():
+        w.append("country IS NOT NULL AND LOWER(TRIM(country::text)) = LOWER(TRIM(%s))")
+        params.append(str(country).strip())
+    if city and str(city).strip():
+        w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
+        params.append(str(city).strip())
+    if business_slice and str(business_slice).strip():
+        w.append("business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) = LOWER(TRIM(%s))")
+        params.append(str(business_slice).strip())
+    if year is not None:
+        w.append("EXTRACT(YEAR FROM trip_date)::int = %s")
+        params.append(int(year))
+    if month is not None:
+        w.append("EXTRACT(MONTH FROM trip_date)::int = %s")
+        params.append(int(month))
+    where_sql = ("WHERE " + " AND ".join(w)) if w else ""
+    sql = f"""
+        SELECT trip_date, country, city, business_slice_name, fleet_display_name,
+               is_subfleet, subfleet_name,
+               trips_completed, trips_cancelled, active_drivers,
+               avg_ticket, revenue_yego_net, commission_pct, trips_per_driver, cancel_rate_pct
+        FROM {FACT_DAILY}
+        {where_sql}
+        ORDER BY trip_date DESC
+        LIMIT %s
+    """
+    params.append(min(max(limit, 1), 10000))
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute(sql, params)
+    data = [_serialize_row(dict(r)) for r in cur.fetchall()]
+    cur.close()
+    return data
+
+
+def _daily_from_resolved(
+    country: Optional[str] = None,
+    city: Optional[str] = None,
+    business_slice: Optional[str] = None,
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    limit: int = 2000,
+) -> list[dict[str, Any]]:
     w: list[str] = ["resolution_status = 'resolved'", "trip_date IS NOT NULL"]
     params: list[Any] = []
     if country and str(country).strip():
@@ -397,9 +521,7 @@ def get_business_slice_daily(
         w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
         params.append(str(city).strip())
     if business_slice and str(business_slice).strip():
-        w.append(
-            "business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) = LOWER(TRIM(%s))"
-        )
+        w.append("business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) = LOWER(TRIM(%s))")
         params.append(str(business_slice).strip())
     if year is not None:
         w.append("EXTRACT(YEAR FROM trip_date)::int = %s")
@@ -409,28 +531,21 @@ def get_business_slice_daily(
         params.append(int(month))
     where_sql = "WHERE " + " AND ".join(w)
     sql = f"""
-        SELECT
-            trip_date,
-            country,
-            city,
-            business_slice_name,
-            fleet_display_name,
-            is_subfleet,
-            subfleet_name,
-            COUNT(*) FILTER (WHERE completed_flag) AS trips_completed,
-            COUNT(*) FILTER (WHERE cancelled_flag) AS trips_cancelled,
-            COUNT(DISTINCT driver_id) FILTER (WHERE completed_flag) AS active_drivers,
-            AVG(ticket) FILTER (WHERE completed_flag AND ticket IS NOT NULL) AS avg_ticket,
-            SUM(revenue_yego_net) FILTER (WHERE completed_flag) AS revenue_yego_net
+        SELECT trip_date, country, city, business_slice_name, fleet_display_name,
+               is_subfleet, subfleet_name,
+               COUNT(*) FILTER (WHERE completed_flag) AS trips_completed,
+               COUNT(*) FILTER (WHERE cancelled_flag) AS trips_cancelled,
+               COUNT(DISTINCT driver_id) FILTER (WHERE completed_flag) AS active_drivers,
+               AVG(ticket) FILTER (WHERE completed_flag AND ticket IS NOT NULL) AS avg_ticket,
+               SUM(revenue_yego_net) FILTER (WHERE completed_flag) AS revenue_yego_net
         FROM {V_RESOLVED}
         {where_sql}
-        GROUP BY trip_date, country, city, business_slice_name, fleet_display_name,
-                 is_subfleet, subfleet_name
+        GROUP BY trip_date, country, city, business_slice_name, fleet_display_name, is_subfleet, subfleet_name
         ORDER BY trip_date DESC
         LIMIT %s
     """
     params.append(min(max(limit, 1), 10000))
-    with get_db() as conn:
+    with get_db_drill() as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(sql, params)
         data = [_serialize_row(dict(r)) for r in cur.fetchall()]

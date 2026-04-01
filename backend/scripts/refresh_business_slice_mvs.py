@@ -47,8 +47,10 @@ import psycopg2.errors
 from app.db.connection import get_db_audit
 from app.services.business_slice_incremental_load import (
     backfill_business_slice_months,
+    load_business_slice_day_for_month,
     load_business_slice_hour_block,
     load_business_slice_month,
+    load_business_slice_week_for_month,
     month_first_day,
 )
 
@@ -101,7 +103,7 @@ def _parse_ym(s: str) -> date:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Carga incremental business_slice (month_fact / hour_fact)")
+    ap = argparse.ArgumentParser(description="Carga incremental business_slice (month_fact / day_fact / week_fact / hour_fact)")
     ap.add_argument(
         "--month",
         help="Mes objetivo: YYYY-MM o YYYY-MM-DD (se recalcula todo el mes civil)",
@@ -117,11 +119,16 @@ def main() -> int:
         help="Fin exclusivo bloque horario",
     )
     ap.add_argument(
+        "--with-daily", action="store_true", default=True,
+        help="Cargar también day_fact y week_fact (default: sí). --no-daily para omitir.",
+    )
+    ap.add_argument("--no-daily", dest="with_daily", action="store_false")
+    ap.add_argument(
         "--chunk-grain",
         choices=("country", "city", "city_week", "city_day"),
         default=None,
         help=(
-            "Grano de la carga mensual (sobrescribe BUSINESS_SLICE_MONTH_CHUNK_GRAIN). "
+            "Grano de la carga (sobrescribe BUSINESS_SLICE_MONTH_CHUNK_GRAIN). "
             "city_week / city_day se comportan como city (la materialización elimina el cuello)."
         ),
     )
@@ -162,8 +169,19 @@ def main() -> int:
 
         n = load_business_slice_month(cur, target, conn, chunk_grain=args.chunk_grain)
         conn.commit()
+
+        if args.with_daily:
+            print(f"\n--- Cargando day_fact para {target} ---")
+            nd = load_business_slice_day_for_month(cur, target, conn, chunk_grain=args.chunk_grain)
+            conn.commit()
+            print(f"\n--- Cargando week_fact (rollup desde day_fact) ---")
+            nw = load_business_slice_week_for_month(cur, target, conn)
+            conn.commit()
+            print(f"OK: month_fact={n}, day_fact={nd}, week_fact={nw} para mes={target}")
+        else:
+            print(f"OK: month_fact mes={target} filas insertadas={n}")
+
         cur.close()
-        print(f"OK: month_fact mes={target} filas insertadas={n}")
         print("Opcional: python -m scripts.validate_business_slice_refresh")
         return 0
 

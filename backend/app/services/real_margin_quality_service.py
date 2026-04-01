@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from app.db.connection import get_db, get_db_quick
+from app.db.connection import get_db, get_db_drill
 from app.services.real_margin_quality_constants import (
     severity_cancelled_with_margin,
     severity_completed_without_margin,
@@ -49,7 +49,8 @@ def get_margin_quality_summary(days_recent: int = DEFAULT_DAYS_RECENT) -> dict[s
         "end_date": _serialize_date(today),
     }
     try:
-        with get_db_quick(timeout_ms=8000) as conn:
+        # Vista pesada: el pool corta a ~180s; esta agregación puede tardar varios minutos (evidencia runtime >180s).
+        with get_db_drill() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
             cur.execute("""
                 SELECT
@@ -151,7 +152,7 @@ def get_affected_period_dates(days_recent: int = DEFAULT_DAYS_RECENT) -> dict[st
     start_date = today - timedelta(days=days_recent)
     out: dict[str, list[str]] = {"affected_days": [], "affected_week_dates": [], "affected_month_dates": []}
     try:
-        with get_db_quick(timeout_ms=8000) as conn:
+        with get_db_drill() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
             cur.execute("""
                 SELECT
