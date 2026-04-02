@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { fmtValue, fmtDelta, signalColor, signalArrow, buildCellTooltip } from './omniview/omniviewMatrixUtils.js'
+import { fmtValue, fmtDelta, signalColorForKpi, signalArrow, buildCellTooltip } from './omniview/omniviewMatrixUtils.js'
 
 export default memo(function BusinessSliceOmniviewMatrixCell ({
   kpiKey,
@@ -41,7 +41,7 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
 
   const val = fmtValue(delta.value, kpiKey)
   const deltaTxt = fmtDelta(delta)
-  const color = signalColor(delta.signal)
+  const color = signalColorForKpi(delta.signal, kpiKey)
   const arrow = signalArrow(delta.signal)
   const tooltip = buildCellTooltip(kpi, delta, cityName, lineName, periodLbl)
 

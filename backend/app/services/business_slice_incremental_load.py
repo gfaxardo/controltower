@@ -646,7 +646,13 @@ def _materialize_enriched_for_month(
     Pre-materializa ops.v_real_trips_enriched_base del mes objetivo
     en un TEMP TABLE ``_bs_enriched_month``, con índices.
     Retorna filas materializadas.
+
+    Incluye filtro explícito por trip_date (rango del mes) para que
+    PostgreSQL pueda descartar particiones/filas antes del DISTINCT ON
+    del view subyacente.
     """
+    import calendar
+
     print(
         f"  materializando enriched base para {target_month} ...",
         flush=True,
@@ -654,14 +660,23 @@ def _materialize_enriched_for_month(
     t0 = time.perf_counter()
     apply_business_slice_load_session_settings(cur)
     cur.execute("DROP TABLE IF EXISTS _bs_enriched_month")
+
+    last_day = calendar.monthrange(target_month.year, target_month.month)[1]
+    month_end_exclusive = date(
+        target_month.year + (1 if target_month.month == 12 else 0),
+        1 if target_month.month == 12 else target_month.month + 1,
+        1,
+    )
     cur.execute(
         """
         CREATE TEMP TABLE _bs_enriched_month AS
         SELECT *
         FROM ops.v_real_trips_enriched_base
         WHERE trip_month = %s::date
+          AND trip_date >= %s::date
+          AND trip_date < %s::date
         """,
-        (target_month,),
+        (target_month, target_month, month_end_exclusive),
     )
     mat_rows = cur.rowcount
     cur.execute(
@@ -1001,11 +1016,13 @@ def backfill_business_slice_months(
     end: date,
     conn: Optional[Any] = None,
     chunk_grain: Optional[str] = None,
+    with_daily: bool = True,
 ) -> Tuple[int, list[date]]:
     """
     Recorre meses civiles [start, end] (inclusive en mes de inicio y fin).
     Normaliza a primer día de cada mes.
-    Retorna (total_filas_insertadas, lista_meses_procesados).
+    Con with_daily=True (default) también genera day_fact y week_fact.
+    Retorna (total_filas_insertadas_month, lista_meses_procesados).
     """
     if start > end:
         start, end = end, start
@@ -1017,6 +1034,13 @@ def backfill_business_slice_months(
         d = month_first_day(y, m)
         months.append(d)
         total_rows += load_business_slice_month(cur, d, conn, chunk_grain=chunk_grain)
+        if with_daily:
+            nd = load_business_slice_day_for_month(cur, d, conn, chunk_grain=chunk_grain)
+            nw = load_business_slice_week_for_month(cur, d, conn)
+            logger.info(
+                "backfill day/week: month=%s day_rows=%s week_rows=%s",
+                d, nd, nw,
+            )
         if m == 12:
             y += 1
             m = 1

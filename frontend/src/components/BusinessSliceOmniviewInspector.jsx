@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { MATRIX_KPIS, fmtValue, fmtRaw, fmtDelta, signalColor, signalArrow, periodLabel } from './omniview/omniviewMatrixUtils.js'
+import { MATRIX_KPIS, fmtValue, fmtRaw, fmtDelta, signalColorForKpi, signalArrow, periodLabel } from './omniview/omniviewMatrixUtils.js'
 
 export default function BusinessSliceOmniviewInspector ({ selection, grain, compact, onClose, insightForSelection, insightTransparency }) {
   const w = compact ? 'w-72' : 'w-80'
@@ -61,7 +61,7 @@ export default function BusinessSliceOmniviewInspector ({ selection, grain, comp
         {MATRIX_KPIS.map((kpi) => {
           const d = periodDeltas?.[kpi.key]
           const currentVal = d?.value
-          const color = d ? signalColor(d.signal) : '#9ca3af'
+          const color = d ? signalColorForKpi(d.signal, kpi.key) : '#9ca3af'
           const arrow = d ? signalArrow(d.signal) : '—'
           const deltaText = d ? fmtDelta(d) : null
           const isHighlighted = selectedKpiKey === kpi.key

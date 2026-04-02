@@ -326,11 +326,25 @@ def get_plan_business_slice_stub(limit: int = 500) -> list[dict[str, Any]]:
     return data
 
 
-def _fact_table_has_data(conn, table: str) -> bool:
-    """Comprueba rápidamente si una tabla fact existe y tiene filas."""
+def _fact_table_has_data(conn, table: str, date_col: str = "trip_date",
+                         year: int | None = None, month: int | None = None) -> bool:
+    """Comprueba si la tabla fact tiene filas relevantes para el rango solicitado.
+
+    Si year/month se pasan, verifica que haya datos en ese periodo concreto.
+    Si no, basta con que haya alguna fila.
+    """
     try:
         cur = conn.cursor()
-        cur.execute(f"SELECT 1 FROM {table} LIMIT 1")
+        clauses = []
+        params: list = []
+        if year is not None:
+            clauses.append(f"EXTRACT(YEAR FROM {date_col})::int = %s")
+            params.append(int(year))
+        if month is not None:
+            clauses.append(f"EXTRACT(MONTH FROM {date_col})::int = %s")
+            params.append(int(month))
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        cur.execute(f"SELECT 1 FROM {table} {where} LIMIT 1", params)
         has = cur.fetchone() is not None
         cur.close()
         return has
@@ -351,9 +365,12 @@ def get_business_slice_weekly(
 ) -> list[dict[str, Any]]:
     """Agregado semanal desde fact table pre-calculada (rápido) con fallback a vista resolved."""
     with get_db() as conn:
-        if _fact_table_has_data(conn, FACT_WEEKLY):
+        if _fact_table_has_data(conn, FACT_WEEKLY, date_col="week_start", year=year):
+            logger.info("weekly: usando week_fact (year=%s)", year)
             return _weekly_from_fact(conn, country, city, business_slice, year, limit)
-    logger.warning("week_fact vacío o no existe — fallback a vista resolved (lento)")
+    logger.warning(
+        "week_fact sin datos para year=%s — fallback a vista resolved (lento)", year,
+    )
     return _weekly_from_resolved(country, city, business_slice, year, limit)
 
 
@@ -453,9 +470,14 @@ def get_business_slice_daily(
 ) -> list[dict[str, Any]]:
     """Agregado diario desde fact table pre-calculada (rápido) con fallback a vista resolved."""
     with get_db() as conn:
-        if _fact_table_has_data(conn, FACT_DAILY):
+        if _fact_table_has_data(conn, FACT_DAILY, date_col="trip_date",
+                                year=year, month=month):
+            logger.info("daily: usando day_fact (year=%s month=%s)", year, month)
             return _daily_from_fact(conn, country, city, business_slice, year, month, limit)
-    logger.warning("day_fact vacío o no existe — fallback a vista resolved (lento)")
+    logger.warning(
+        "day_fact sin datos para year=%s month=%s — fallback a vista resolved (lento)",
+        year, month,
+    )
     return _daily_from_resolved(country, city, business_slice, year, month, limit)
 
 

@@ -26,6 +26,8 @@ export function periodKey (row, grain) {
 }
 
 const MONTH_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
+const DAYS_ES = ['DOMINGO', 'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO']
+const DAYS_ES_SHORT = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB']
 
 export function periodLabel (key, grain) {
   if (!key) return '—'
@@ -37,9 +39,11 @@ export function periodLabel (key, grain) {
   if (grain === 'weekly') {
     const d = new Date(key + 'T00:00:00')
     if (isNaN(d)) return String(key).slice(0, 10)
-    return `S${getISOWeek(d)} ${d.getFullYear()}`
+    return `S${getISOWeek(d)}-${getISOWeekYear(d)}`
   }
-  return String(key).slice(0, 10)
+  const dd = new Date(key + 'T00:00:00')
+  if (isNaN(dd)) return String(key).slice(0, 10)
+  return `${DAYS_ES[dd.getDay()]} S${getISOWeek(dd)}-${getISOWeekYear(dd)}`
 }
 
 export function periodLabelShort (key, grain) {
@@ -52,9 +56,11 @@ export function periodLabelShort (key, grain) {
   if (grain === 'weekly') {
     const d = new Date(key + 'T00:00:00')
     if (isNaN(d)) return key
-    return `S${getISOWeek(d)}`
+    return `S${getISOWeek(d)}-${getISOWeekYear(d)}`
   }
-  return String(key).slice(5, 10)
+  const dd = new Date(key + 'T00:00:00')
+  if (isNaN(dd)) return String(key).slice(5, 10)
+  return `${DAYS_ES_SHORT[dd.getDay()]} S${getISOWeek(dd)}`
 }
 
 function getISOWeek (d) {
@@ -62,6 +68,12 @@ function getISOWeek (d) {
   copy.setUTCDate(copy.getUTCDate() + 4 - (copy.getUTCDay() || 7))
   const yearStart = new Date(Date.UTC(copy.getUTCFullYear(), 0, 1))
   return Math.ceil(((copy - yearStart) / 86400000 + 1) / 7)
+}
+
+function getISOWeekYear (d) {
+  const copy = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+  copy.setUTCDate(copy.getUTCDate() + 4 - (copy.getUTCDay() || 7))
+  return copy.getUTCFullYear()
 }
 
 // ─── Derived metrics ────────────────────────────────────────────────────────
@@ -269,15 +281,20 @@ function sumMetric (periods, key) {
 
 // ─── Format helpers ─────────────────────────────────────────────────────────
 export function fmtValue (v, kpiKey) {
-  if (v == null || (typeof v === 'number' && isNaN(v))) return '—'
+  if (v == null) return '—'
   const n = Number(v)
+  if (!isFinite(n)) return '—'
   const kpi = MATRIX_KPIS.find(k => k.key === kpiKey)
   if (kpi?.showAsPct) return `${(n * 100).toFixed(1)}%`
-  if (kpi?.unit === 'currency') return n >= 1e6
-    ? `${(n / 1e6).toFixed(1)}M`
-    : n >= 1e3
-      ? `${(n / 1e3).toFixed(1)}K`
-      : n.toLocaleString(undefined, { maximumFractionDigits: 1 })
+  if (kpi?.unit === 'currency') {
+    const abs = Math.abs(n)
+    const sign = n < 0 ? '-' : ''
+    return abs >= 1e6
+      ? `${sign}${(abs / 1e6).toFixed(1)}M`
+      : abs >= 1e3
+        ? `${sign}${(abs / 1e3).toFixed(1)}K`
+        : n.toLocaleString(undefined, { maximumFractionDigits: 1 })
+  }
   return n.toLocaleString(undefined, { maximumFractionDigits: 1 })
 }
 
@@ -297,6 +314,17 @@ export function signalColor (signal) {
   if (signal === 'up') return '#22c55e'
   if (signal === 'down') return '#ef4444'
   return '#9ca3af'
+}
+
+const INVERTED_SIGNAL_KPIS = new Set(['cancel_rate_pct', 'trips_cancelled'])
+
+export function signalColorForKpi (signal, kpiKey) {
+  if (INVERTED_SIGNAL_KPIS.has(kpiKey)) {
+    if (signal === 'up') return '#ef4444'
+    if (signal === 'down') return '#22c55e'
+    return '#9ca3af'
+  }
+  return signalColor(signal)
 }
 
 export function signalArrow (signal) {

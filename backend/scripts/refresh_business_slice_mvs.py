@@ -154,11 +154,15 @@ def main() -> int:
             start = month_first_day(start.year, start.month)
             end = month_first_day(end.year, end.month)
             total, months = backfill_business_slice_months(
-                cur, start, end, conn, chunk_grain=args.chunk_grain
+                cur, start, end, conn,
+                chunk_grain=args.chunk_grain,
+                with_daily=args.with_daily,
             )
             conn.commit()
             cur.close()
-            print(f"OK: backfill {len(months)} meses, filas insertadas (suma)={total}")
+            print(f"OK: backfill {len(months)} meses, filas insertadas month_fact (suma)={total}")
+            if args.with_daily:
+                print("  (day_fact + week_fact también cargados por mes)")
             return 0
 
         if args.month:

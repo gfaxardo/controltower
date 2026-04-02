@@ -14,7 +14,7 @@ import {
   computeDeltas as computeDeltasFn,
   MATRIX_KPIS,
   fmtValue,
-  signalColor,
+  signalColorForKpi,
   signalArrow,
   fmtDelta,
   exportMatrixCsv,
@@ -356,7 +356,7 @@ export default function BusinessSliceOmniviewMatrix () {
                 <p className={`font-bold text-gray-900 leading-tight ${compact ? 'text-base' : 'text-lg'}`}>{fmtValue(card.val, card.key)}</p>
                 {card.delta && (
                   <div className="flex items-baseline gap-1">
-                    <span className="text-[11px] font-semibold" style={{ color: signalColor(card.signal) }}>{signalArrow(card.signal)} {fmtDelta(card.delta)}</span>
+                    <span className="text-[11px] font-semibold" style={{ color: signalColorForKpi(card.signal, card.key) }}>{signalArrow(card.signal)} {fmtDelta(card.delta)}</span>
                     <span className="text-[9px] text-gray-400">vs ant.</span>
                   </div>
                 )}

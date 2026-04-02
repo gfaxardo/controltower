@@ -1,7 +1,7 @@
 import { useMemo, useState, memo } from 'react'
 import BusinessSliceOmniviewMatrixHeader, { COL1_W, COL2_W, HEADER_H_COMFORTABLE, HEADER_H_COMPACT } from './BusinessSliceOmniviewMatrixHeader.jsx'
 import BusinessSliceOmniviewMatrixCell from './BusinessSliceOmniviewMatrixCell.jsx'
-import { MATRIX_KPIS, computeDeltas, computeTotalsDeltas, fmtValue, fmtDelta, signalColor, signalArrow, sortLineEntries, periodLabel as periodLabelFn } from './omniview/omniviewMatrixUtils.js'
+import { MATRIX_KPIS, computeDeltas, computeTotalsDeltas, fmtValue, fmtDelta, signalColorForKpi, signalArrow, sortLineEntries, periodLabel as periodLabelFn } from './omniview/omniviewMatrixUtils.js'
 
 export default function BusinessSliceOmniviewMatrixTable ({
   matrix,
@@ -122,7 +122,7 @@ const TotalsRow = memo(function TotalsRow ({ allPeriods, totalsDeltas, compact, 
           if (!d) return <td key={`t-${pk}-${kpi.key}`} className={`px-1 ${py} text-center ${valSize} text-gray-300 border-r border-gray-200/60`} style={bgStyle}>—</td>
           const val = fmtValue(d.value, kpi.key)
           const dt = fmtDelta(d)
-          const color = signalColor(d.signal)
+          const color = signalColorForKpi(d.signal, kpi.key)
           return (
             <td key={`t-${pk}-${kpi.key}`} className={`px-1 ${py} text-center whitespace-nowrap border-r border-gray-200/60`} style={bgStyle}>
               <div className={`${valSize} font-bold text-slate-700 leading-none`}>{val}</div>

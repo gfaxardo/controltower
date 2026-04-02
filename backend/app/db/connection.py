@@ -130,27 +130,25 @@ def get_db_drill():
     """
     Conexión dedicada para el Real LOB drill, con statement_timeout=0 en el startup.
     El pool puede no aplicar options si el rol fuerza 15s; esta conexión nueva sí envía options.
+
+    Tras SELECT muy largos el servidor o el balanceador puede cerrar el socket; los datos ya están
+    leídos pero commit() fallaba con "connection already closed" y anulaba la respuesta (500).
     """
     params = _get_connection_params()
     params["options"] = "-c statement_timeout=0"
     conn = None
+    body_exc: Optional[BaseException] = None
     try:
         conn = psycopg2.connect(**params)
-        # #region agent log
-        try:
-            import os, json, time
-            _lp = os.path.join(os.path.dirname(__file__), "..", "..", "..", "debug-1c8c83.log")
-            with open(_lp, "a", encoding="utf-8") as _f:
-                _f.write(json.dumps({"sessionId": "1c8c83", "timestamp": int(time.time() * 1000), "location": "connection.py:get_db_drill", "message": "drill connection opened", "data": {}, "hypothesisId": "H4"}) + "\n")
-        except Exception:
-            pass
-        # #endregion
         logger.info("Drill connection opened (options=statement_timeout=0)")
         yield conn
-        conn.commit()
-    except Exception as e:
-        if conn:
-            conn.rollback()
+    except BaseException as e:
+        body_exc = e
+        if conn and not conn.closed:
+            try:
+                conn.rollback()
+            except psycopg2.Error:
+                pass
         msg = str(e)
         if "does not exist" in msg.lower():
             logger.debug("Transacción (drill): relación/vista no existe: %s", msg[:200])
@@ -159,7 +157,19 @@ def get_db_drill():
         raise
     finally:
         if conn:
-            conn.close()
+            if body_exc is None:
+                try:
+                    if not conn.closed:
+                        conn.commit()
+                except psycopg2.Error as ce:
+                    logger.warning(
+                        "get_db_drill: commit omitido (conexión cerrada o inestable tras lectura): %s",
+                        ce,
+                    )
+            try:
+                conn.close()
+            except psycopg2.Error:
+                pass
 
 @contextmanager
 def get_db_quick(timeout_ms: int = 12000):
