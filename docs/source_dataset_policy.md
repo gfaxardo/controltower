@@ -1,10 +1,12 @@
-# Política de datasets fuente — trips_base y trips_2026
+# Política de datasets fuente — trips_2025, trips_2026 y trips_base (legacy)
 
-## Estado actual
+## Estado actual (actualizado 2026-04-02)
 
-- **trips_base** (public.trips_all): en data_freshness_expectations está marcado como **legacy** (migración 074). Fuente histórica con viajes &lt; 2026-01-01. Ya no es la fuente viva de datos recientes.
-- **trips_2026** (public.trips_2026): fuente viva para viajes >= 2026-01-01. Recibe la ingestión actual.
-- **v_trips_real_canon** / **v_trips_real_canon_120d**: unión de trips_all y trips_2026 con corte por fecha para evitar duplicados. Es la fuente canónica para REAL (fact → hourly → day → week → month).
+- **trips_2025** (public.trips_2025): fuente oficial para viajes de 2025-01-01 a 2025-12-31.
+- **trips_2026** (public.trips_2026): fuente oficial/viva para viajes >= 2026-01-01. Recibe la ingestión actual.
+- **trips_base** (public.trips_all): **LEGACY / compatibilidad temporal**. En data_freshness_expectations está marcado como legacy (migración 074). NO es fuente oficial para auditoría ni reconstrucción. Ver `docs/SOURCE_OF_TRUTH_REAL_AUDIT_V2.md`.
+- **v_trips_real_canon** / **v_trips_real_canon_120d**: unión legacy (trips_all + trips_2026) con corte por fecha. Pendiente migración a trips_2025 + trips_2026.
+- **ops.v_real_trips_enriched_base**: unión oficial trips_2025 + trips_2026 (migración 118). Usada por Business Slice.
 
 ## Decisión: trips_base
 

@@ -6,14 +6,17 @@
 
 Define las columnas mínimas que cualquier fuente de viajes debe proveer para alimentar `ops.v_real_trip_fact_v2`. Permite cambiar la fuente base (trips_all, trips_2026, otra tabla, otra flota, otra operación) sin modificar las capas de agregación ni el frontend.
 
-## Fuente actual
+## Fuente actual (actualizado 2026-04-02)
 
-| Tabla | Rango temporal |
-|-------|---------------|
-| `public.trips_all` | Histórico < 2026 |
-| `public.trips_2026` | >= 2026-01-01 |
+| Tabla | Rango temporal | Estado |
+|-------|---------------|--------|
+| `public.trips_2025` | 2025-01-01 a 2025-12-31 | **OFICIAL** |
+| `public.trips_2026` | >= 2026-01-01 | **OFICIAL** |
+| `public.trips_all` | Histórico (legacy) | **LEGACY — NO usar para auditoría/reconstrucción** |
 
-Unificadas por `ops.v_trips_real_canon_120d` (ventana 120 días, index-friendly).
+**Fuente oficial para nuevos consumidores:** `ops.v_real_trips_enriched_base` (trips_2025 + trips_2026, migración 118).
+**Legacy aún en uso:** `ops.v_trips_real_canon_120d` (trips_all + trips_2026), pendiente migración.
+Ver `docs/SOURCE_OF_TRUTH_REAL_AUDIT_V2.md` para la definición completa.
 
 ## Columnas mínimas requeridas
 

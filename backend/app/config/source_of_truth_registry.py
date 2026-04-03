@@ -35,7 +35,9 @@ SOURCE_OF_TRUTH: Dict[str, DomainEntry] = {
         "source_mode": "canonical",
         "freshness_dataset": "real_lob_drill",
         "parity_audit_applies": False,
-        "notes": "Drill y Real diario: cadena hourly-first canónica (real_drill_dim_fact, rollup desde day_v2).",
+        "notes": "Drill y Real diario: cadena hourly-first canónica (real_drill_dim_fact, rollup desde day_v2). "
+                 "Revenue consolidado: gross_revenue/margin_total alimentados por COALESCE(real, proxy) desde mig 121. "
+                 "Canon 120d migrado a trips_2025+trips_2026 (sin trips_all).",
     },
     "resumen": {
         "primary": "ops.mv_real_monthly_canonical_hist",
@@ -143,6 +145,20 @@ SOURCE_OF_TRUTH: Dict[str, DomainEntry] = {
         "freshness_dataset": "real_operational",
         "parity_audit_applies": False,
         "notes": "Margin quality desde cadena hourly-first (v_real_trip_fact_v2).",
+    },
+    "revenue_proxy": {
+        "primary": "ops.v_real_revenue_proxy_audit",
+        "secondary": ["ops.v_real_revenue_proxy_coverage", "ops.v_revenue_quality_daily_summary"],
+        "legacy": [],
+        "grain": "daily",
+        "canonical_chain": False,
+        "source_mode": "canonical",
+        "freshness_dataset": None,
+        "parity_audit_applies": False,
+        "notes": "Revenue proxy + quality hardening. Config: ops.yego_commission_proxy_config. "
+                 "NaN guard en canon_120d (mig 122). Alertas: ops.revenue_quality_alerts. "
+                 "Endpoints: /revenue-quality/check, /alerts, /by-city. "
+                 "Ver docs/REVENUE_PROXY_DESIGN.md y docs/REVENUE_HARDENING_PHASE6.md.",
     },
 }
 

@@ -2876,3 +2876,377 @@ async def business_slice_omniview(
     except Exception as e:
         logger.exception("business-slice/omniview")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Revenue Proxy Coverage ---
+
+@router.get("/revenue-proxy/coverage")
+async def revenue_proxy_coverage():
+    """Cobertura de revenue real vs proxy por mes/país/ciudad.
+    Lee de ops.v_real_revenue_proxy_coverage (vista creada en migración 120).
+    """
+    from app.db.connection import get_db
+    from psycopg2.extras import RealDictCursor
+    try:
+        def _fetch():
+            with get_db() as conn:
+                cur = conn.cursor(cursor_factory=RealDictCursor)
+                cur.execute("""
+                    SELECT * FROM ops.v_real_revenue_proxy_coverage
+                    ORDER BY trip_month DESC, country, city
+                    LIMIT 200
+                """)
+                rows = [dict(r) for r in cur.fetchall()]
+                cur.close()
+                return rows
+        data = await _run_sync(_fetch)
+        return {"data": data, "total": len(data)}
+    except Exception as e:
+        logger.error("revenue-proxy/coverage: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/revenue-proxy/config")
+async def revenue_proxy_config():
+    """Configuración actual de comisión proxy (ops.yego_commission_proxy_config)."""
+    from app.db.connection import get_db
+    from psycopg2.extras import RealDictCursor
+    try:
+        def _fetch():
+            with get_db() as conn:
+                cur = conn.cursor(cursor_factory=RealDictCursor)
+                cur.execute("""
+                    SELECT id, country, city, park_id, tipo_servicio,
+                           commission_pct, valid_from, valid_to,
+                           priority, is_active, notes
+                    FROM ops.yego_commission_proxy_config
+                    WHERE is_active
+                    ORDER BY priority DESC, valid_from DESC
+                """)
+                rows = [dict(r) for r in cur.fetchall()]
+                cur.close()
+                return rows
+        data = await _run_sync(_fetch)
+        return {"data": data, "total": len(data)}
+    except Exception as e:
+        logger.error("revenue-proxy/config: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Revenue Quality / Hardening ---
+
+@router.get("/revenue-quality/check")
+async def revenue_quality_check():
+    """Ejecuta validación completa de calidad de revenue y retorna alertas."""
+    from app.services.revenue_quality_service import run_revenue_quality_check, persist_alerts
+    try:
+        result = await _run_sync(run_revenue_quality_check)
+        await _run_sync(persist_alerts, result.get("alerts", []))
+        return result
+    except Exception as e:
+        logger.error("revenue-quality/check: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/revenue-quality/alerts")
+async def revenue_quality_alerts(limit: int = Query(50, ge=1, le=200)):
+    """Alertas recientes de calidad de revenue (persistidas)."""
+    from app.services.revenue_quality_service import get_latest_alerts
+    try:
+        data = await _run_sync(get_latest_alerts, limit)
+        return {"data": data, "total": len(data)}
+    except Exception as e:
+        logger.error("revenue-quality/alerts: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/revenue-quality/by-city")
+async def revenue_quality_by_city(days: int = Query(7, ge=1, le=90)):
+    """Resumen de calidad de revenue por ciudad (últimos N días)."""
+    from app.services.revenue_quality_service import get_revenue_quality_by_city
+    try:
+        data = await _run_sync(get_revenue_quality_by_city, days)
+        return {"data": data, "total": len(data)}
+    except Exception as e:
+        logger.error("revenue-quality/by-city: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Action Engine ---
+
+@router.get("/action-engine/run")
+async def action_engine_run():
+    """Ejecuta el Action Engine: genera y persiste acciones priorizadas del día."""
+    from app.services.action_engine_service import run_action_engine, persist_action_output
+    try:
+        result = await _run_sync(run_action_engine)
+        persisted = await _run_sync(persist_action_output, result)
+        result["persisted"] = persisted
+        return result
+    except Exception as e:
+        logger.error("action-engine/run: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/action-engine/today")
+async def action_engine_today(
+    city: Optional[str] = Query(None),
+    severity: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+):
+    """Acciones del día ordenadas por prioridad."""
+    from app.services.action_engine_service import get_today_actions
+    try:
+        data = await _run_sync(get_today_actions, city, severity, limit)
+        return {"date": str(__import__('datetime').date.today()), "actions": data, "total": len(data)}
+    except Exception as e:
+        logger.error("action-engine/today: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/action-engine/catalog")
+async def action_engine_catalog():
+    """Catálogo de acciones operativas disponibles."""
+    from app.db.connection import get_db
+    from psycopg2.extras import RealDictCursor
+    try:
+        def _fetch():
+            with get_db() as conn:
+                cur = conn.cursor(cursor_factory=RealDictCursor)
+                cur.execute("""
+                    SELECT action_id, action_name, action_type, description,
+                           trigger_metric, trigger_condition, severity,
+                           suggested_owner, suggested_channel, expected_impact, is_active
+                    FROM ops.action_catalog
+                    WHERE is_active
+                    ORDER BY severity DESC, action_name
+                """)
+                rows = [dict(r) for r in cur.fetchall()]
+                cur.close()
+                return rows
+        data = await _run_sync(_fetch)
+        return {"data": data, "total": len(data)}
+    except Exception as e:
+        logger.error("action-engine/catalog: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/action-engine/log")
+async def action_engine_log_execution(
+    action_output_id: int = Query(...),
+    action_id: str = Query(...),
+    owner: str = Query(...),
+    status: str = Query("pending"),
+    notes: Optional[str] = Query(None),
+):
+    """Registra tracking de ejecución de una acción."""
+    from app.services.action_engine_service import log_action_execution
+    try:
+        new_id = await _run_sync(
+            log_action_execution, action_output_id, action_id, owner, status, notes
+        )
+        return {"id": new_id, "status": "logged"}
+    except Exception as e:
+        logger.error("action-engine/log: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _action_plan_item(row: dict) -> dict:
+    """Shape estable para UI / integraciones (fase 8)."""
+    return {
+        "id": row.get("id"),
+        "country": row.get("country"),
+        "city": row.get("city") or "",
+        "park_id": row.get("park_id"),
+        "action_id": row.get("action_id"),
+        "action": row.get("action_name"),
+        "volume": row.get("suggested_volume"),
+        "target_segment": row.get("target_segment"),
+        "priority_score": float(row["priority_score"])
+        if row.get("priority_score") is not None
+        else None,
+        "severity": row.get("severity"),
+        "steps": row.get("suggested_playbook_text"),
+        "expected_impact": row.get("expected_impact"),
+        "status": row.get("status"),
+        "playbook_id": row.get("suggested_playbook_id"),
+    }
+
+
+@router.get("/action-plan/today")
+async def action_plan_today(
+    limit: int = Query(100, ge=1, le=500),
+):
+    """Plan operativo del día (prioridad DESC). Requiere corrida previa del orquestador."""
+    from datetime import date as date_cls
+    from app.services.action_orchestrator_service import get_action_plans
+
+    try:
+        rows = await _run_sync(get_action_plans, date_cls.today(), None, limit, 0)
+        d = str(date_cls.today())
+        return {
+            "date": d,
+            "plans": [_action_plan_item(dict(r)) for r in rows],
+            "total": len(rows),
+        }
+    except Exception as e:
+        logger.error("action-plan/today: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/action-plan/top")
+async def action_plan_top(
+    limit: int = Query(20, ge=1, le=200),
+    plan_date: Optional[str] = Query(None, description="YYYY-MM-DD; default hoy"),
+):
+    """Top del plan por priority_score (mismo día que today salvo plan_date)."""
+    from datetime import date as date_cls
+    from app.services.action_orchestrator_service import get_action_plans
+
+    try:
+        pd = date_cls.today()
+        if plan_date:
+            pd = date_cls.fromisoformat(plan_date)
+        rows = await _run_sync(get_action_plans, pd, None, limit, 0)
+        return {
+            "date": str(pd),
+            "plans": [_action_plan_item(dict(r)) for r in rows],
+            "total": len(rows),
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=f"plan_date inválida: {e}")
+    except Exception as e:
+        logger.error("action-plan/top: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/action-plan")
+async def action_plan_filter(
+    city: Optional[str] = Query(None),
+    plan_date: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0, le=10_000),
+):
+    """Plan filtrado por ciudad y fecha."""
+    from datetime import date as date_cls
+    from app.services.action_orchestrator_service import get_action_plans
+
+    try:
+        pd = date_cls.today()
+        if plan_date:
+            pd = date_cls.fromisoformat(plan_date)
+        rows = await _run_sync(get_action_plans, pd, city, limit, offset)
+        return {
+            "date": str(pd),
+            "city_filter": city,
+            "plans": [_action_plan_item(dict(r)) for r in rows],
+            "total": len(rows),
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=f"plan_date inválida: {e}")
+    except Exception as e:
+        logger.error("action-plan: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/action-plan/run")
+async def action_plan_run():
+    """Regenera ops.action_plan_daily para hoy a partir de ops.action_engine_output."""
+    from app.services.action_orchestrator_service import run_action_orchestrator
+
+    try:
+        result = await _run_sync(run_action_orchestrator)
+        return {"ok": True, **result}
+    except Exception as e:
+        logger.error("action-plan/run: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/action-plan/log")
+async def action_plan_log_execution(
+    action_plan_id: int = Query(...),
+    action_id: str = Query(...),
+    owner: str = Query(...),
+    status: str = Query("pending"),
+    notes: Optional[str] = Query(None),
+):
+    """Tracking humano sobre una fila del plan (no dispara acciones externas)."""
+    from app.services.action_orchestrator_service import log_plan_execution
+
+    try:
+        new_id = await _run_sync(
+            log_plan_execution, action_plan_id, action_id, owner, status, notes
+        )
+        return {"id": new_id, "status": "logged", "target": "action_plan_daily"}
+    except Exception as e:
+        logger.error("action-plan/log: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Learning Engine ---
+
+@router.get("/action-learning/effectiveness")
+async def action_learning_effectiveness(
+    action_id: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    country: Optional[str] = Query(None),
+    limit: int = Query(200, ge=1, le=1000),
+):
+    """Efectividad histórica por acción / ciudad / país."""
+    from app.services.action_learning_service import get_effectiveness
+
+    try:
+        rows = await _run_sync(get_effectiveness, action_id, city, country, limit)
+        return {"data": rows, "total": len(rows)}
+    except Exception as e:
+        logger.error("action-learning/effectiveness: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/action-learning/executions")
+async def action_learning_executions(
+    action_id: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0, le=10_000),
+):
+    """Acciones evaluadas con before/after/delta."""
+    from app.services.action_learning_service import get_evaluated_executions
+
+    try:
+        rows = await _run_sync(get_evaluated_executions, action_id, city, limit, offset)
+        return {"data": rows, "total": len(rows)}
+    except Exception as e:
+        logger.error("action-learning/executions: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/action-learning/evaluation-rules")
+async def action_learning_evaluation_rules(
+    active_only: bool = Query(True),
+):
+    """Reglas de evaluación por acción (métrica, dirección, ventana, umbral)."""
+    from app.services.action_learning_service import get_evaluation_rules
+
+    try:
+        rows = await _run_sync(get_evaluation_rules, active_only)
+        return {"data": rows, "total": len(rows)}
+    except Exception as e:
+        logger.error("action-learning/evaluation-rules: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/action-learning/evaluate")
+async def action_learning_evaluate(
+    force: bool = Query(False, description="Re-evaluar acciones ya evaluadas"),
+    limit: int = Query(500, ge=1, le=5000),
+):
+    """Ejecuta evaluación de acciones completadas (escribe result en execution_log)."""
+    from app.services.action_learning_service import evaluate_executions
+
+    try:
+        result = await _run_sync(evaluate_executions, "done", force, limit)
+        return {"ok": True, **result}
+    except Exception as e:
+        logger.error("action-learning/evaluate: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))

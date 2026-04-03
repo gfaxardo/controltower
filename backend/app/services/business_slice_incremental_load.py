@@ -117,7 +117,18 @@ SELECT
         ELSE NULL
     END AS cancelados_por_hora,
     now() AS refreshed_at,
-    now() AS loaded_at
+    now() AS loaded_at,
+    sum(r.revenue_yego_final) FILTER (WHERE r.completed_flag) AS revenue_yego_final,
+    CASE
+        WHEN count(*) FILTER (WHERE r.completed_flag) > 0
+        THEN ROUND(
+            100.0 * count(*) FILTER (WHERE r.completed_flag AND r.revenue_source = 'real')
+            / count(*) FILTER (WHERE r.completed_flag), 2
+        )
+        ELSE NULL
+    END AS revenue_real_coverage_pct,
+    count(*) FILTER (WHERE r.completed_flag AND r.revenue_source = 'proxy')::bigint AS revenue_proxy_trips,
+    count(*) FILTER (WHERE r.completed_flag AND r.revenue_source = 'real')::bigint AS revenue_real_trips
 FROM (
     WITH base AS (
         SELECT * FROM _bs_enriched_month
@@ -335,7 +346,18 @@ SELECT
         ELSE NULL
     END AS cancel_rate_pct,
     now() AS refreshed_at,
-    now() AS loaded_at
+    now() AS loaded_at,
+    sum(r.revenue_yego_final) FILTER (WHERE r.completed_flag) AS revenue_yego_final,
+    CASE
+        WHEN count(*) FILTER (WHERE r.completed_flag) > 0
+        THEN ROUND(
+            100.0 * count(*) FILTER (WHERE r.completed_flag AND r.revenue_source = 'real')
+            / count(*) FILTER (WHERE r.completed_flag), 2
+        )
+        ELSE NULL
+    END AS revenue_real_coverage_pct,
+    count(*) FILTER (WHERE r.completed_flag AND r.revenue_source = 'proxy')::bigint AS revenue_proxy_trips,
+    count(*) FILTER (WHERE r.completed_flag AND r.revenue_source = 'real')::bigint AS revenue_real_trips
 FROM (
     WITH base AS (
         SELECT * FROM _bs_enriched_month
@@ -452,7 +474,14 @@ SELECT
          ELSE NULL
     END AS cancel_rate_pct,
     now() AS refreshed_at,
-    now() AS loaded_at
+    now() AS loaded_at,
+    sum(d.revenue_yego_final) AS revenue_yego_final,
+    CASE WHEN sum(d.trips_completed) > 0
+         THEN ROUND(100.0 * sum(COALESCE(d.revenue_real_trips, 0)) / sum(d.trips_completed), 2)
+         ELSE NULL
+    END AS revenue_real_coverage_pct,
+    sum(COALESCE(d.revenue_proxy_trips, 0))::bigint AS revenue_proxy_trips,
+    sum(COALESCE(d.revenue_real_trips, 0))::bigint AS revenue_real_trips
 FROM {fact_day} d
 WHERE d.trip_date >= %s::date AND d.trip_date < %s::date
 GROUP BY
@@ -670,11 +699,40 @@ def _materialize_enriched_for_month(
     cur.execute(
         """
         CREATE TEMP TABLE _bs_enriched_month AS
-        SELECT *
-        FROM ops.v_real_trips_enriched_base
-        WHERE trip_month = %s::date
-          AND trip_date >= %s::date
-          AND trip_date < %s::date
+        SELECT e.*,
+            CASE
+                WHEN e.completed_flag AND e.revenue_yego_net IS NOT NULL
+                THEN ABS(e.revenue_yego_net)
+                ELSE NULL
+            END AS revenue_yego_real,
+            CASE
+                WHEN e.completed_flag AND e.ticket IS NOT NULL AND e.ticket > 0
+                THEN e.ticket * COALESCE(
+                    ops.resolve_commission_pct(e.country, e.city, e.park_id, e.tipo_servicio, e.trip_date),
+                    0.03
+                )
+                ELSE NULL
+            END AS revenue_yego_proxy,
+            CASE
+                WHEN e.completed_flag AND e.revenue_yego_net IS NOT NULL
+                THEN ABS(e.revenue_yego_net)
+                WHEN e.completed_flag AND e.ticket IS NOT NULL AND e.ticket > 0
+                THEN e.ticket * COALESCE(
+                    ops.resolve_commission_pct(e.country, e.city, e.park_id, e.tipo_servicio, e.trip_date),
+                    0.03
+                )
+                ELSE NULL
+            END AS revenue_yego_final,
+            CASE
+                WHEN NOT e.completed_flag THEN NULL
+                WHEN e.revenue_yego_net IS NOT NULL THEN 'real'
+                WHEN e.ticket IS NOT NULL AND e.ticket > 0 THEN 'proxy'
+                ELSE 'missing'
+            END AS revenue_source
+        FROM ops.v_real_trips_enriched_base e
+        WHERE e.trip_month = %s::date
+          AND e.trip_date >= %s::date
+          AND e.trip_date < %s::date
         """,
         (target_month, target_month, month_end_exclusive),
     )
