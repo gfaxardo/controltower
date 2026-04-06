@@ -755,6 +755,10 @@ export const getBusinessSliceCoverage = async (params = {}) => {
   const response = await api.get('/ops/business-slice/coverage', { params, timeout: BUSINESS_SLICE_HEAVY_TIMEOUT_MS })
   return response.data
 }
+export const getBusinessSliceCoverageSummary = async (params = {}) => {
+  const response = await api.get('/ops/business-slice/coverage-summary', { params, timeout: OPS_SHELL_TIMEOUT_MS })
+  return response.data
+}
 export const getBusinessSliceUnmatched = async (params = {}) => {
   const response = await api.get('/ops/business-slice/unmatched', { params })
   return response.data

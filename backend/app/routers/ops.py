@@ -151,6 +151,7 @@ from app.services.business_slice_service import (
     get_business_slice_filters,
     get_business_slice_monthly,
     get_business_slice_coverage,
+    get_business_slice_coverage_summary,
     get_business_slice_unmatched,
     get_business_slice_conflicts,
     get_business_slice_subfleets,
@@ -2717,6 +2718,23 @@ async def business_slice_coverage(
         return await _run_sync(get_business_slice_coverage, year=year, limit_months=limit_months)
     except Exception as e:
         logger.error("business-slice/coverage: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/business-slice/coverage-summary")
+async def business_slice_coverage_summary(
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    year: Optional[int] = Query(None),
+    month: Optional[int] = Query(None, ge=1, le=12),
+):
+    try:
+        return await _run_sync(
+            get_business_slice_coverage_summary,
+            country=country, city=city, year=year, month=month,
+        )
+    except Exception as e:
+        logger.error("business-slice/coverage-summary: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

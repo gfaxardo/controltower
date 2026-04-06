@@ -7,11 +7,18 @@ import {
   getBusinessSliceMonthly,
   getBusinessSliceWeekly,
   getBusinessSliceDaily,
+  getDataFreshnessGlobal,
+  getBusinessSliceCoverageSummary,
 } from '../services/api.js'
 import {
   buildMatrix,
   aggregateExecutiveKpis,
   computeDeltas as computeDeltasFn,
+  computePeriodStates,
+  periodStateLabel,
+  periodElapsedDays,
+  periodTotalDays,
+  PERIOD_STATES,
   MATRIX_KPIS,
   fmtValue,
   signalColorForKpi,
@@ -86,7 +93,11 @@ export default function BusinessSliceOmniviewMatrix () {
     persistState({ grain, compact, country, city, businessSlice, fleet, showSubfleets, year, month, sortKey })
   }, [grain, compact, country, city, businessSlice, fleet, showSubfleets, year, month, sortKey])
 
+  const [freshnessInfo, setFreshnessInfo] = useState(null)
+  const [coverageSummary, setCoverageSummary] = useState(null)
+
   useEffect(() => { getBusinessSliceFilters().then(setFiltersMeta).catch(() => {}) }, [])
+  useEffect(() => { getDataFreshnessGlobal({ group: 'operational' }).then(setFreshnessInfo).catch(() => {}) }, [])
 
   const countries = filtersMeta?.countries || []
   const allCities = filtersMeta?.cities || []
@@ -138,8 +149,23 @@ export default function BusinessSliceOmniviewMatrix () {
 
   useEffect(() => { loadData() }, [loadData])
 
+  useEffect(() => {
+    const params = {}
+    if (country) params.country = country
+    if (city) params.city = city
+    if (year != null && year !== '') params.year = Number(year)
+    if (month) params.month = Number(month)
+    getBusinessSliceCoverageSummary(params).then(setCoverageSummary).catch(() => setCoverageSummary(null))
+  }, [country, city, year, month])
+
   const matrix = useMemo(() => buildMatrix(rows, grain), [rows, grain])
   const execKpis = useMemo(() => aggregateExecutiveKpis(rows), [rows])
+
+  const maxDataDate = freshnessInfo?.derived_max_date || null
+  const periodStates = useMemo(
+    () => computePeriodStates(matrix.allPeriods, grain, maxDataDate),
+    [matrix.allPeriods, grain, maxDataDate]
+  )
 
   // ─── Insight Engine (memoized) ────────────────────────────────────────────
   const engineConfig = useMemo(
@@ -147,8 +173,8 @@ export default function BusinessSliceOmniviewMatrix () {
     [insightUserPatch]
   )
   const insights = useMemo(
-    () => detectInsights(matrix, grain, engineConfig),
-    [matrix, grain, engineConfig]
+    () => detectInsights(matrix, grain, engineConfig, periodStates),
+    [matrix, grain, engineConfig, periodStates]
   )
   const insightCellMap = useMemo(
     () => buildInsightCellMap(insights, engineConfig),
@@ -207,7 +233,7 @@ export default function BusinessSliceOmniviewMatrix () {
     }
     if (!foundLine) return
     const periodDeltas = {}
-    const rawDeltas = computeDeltasFn(foundLine.periods, matrix.allPeriods)
+    const rawDeltas = computeDeltasFn(foundLine.periods, matrix.allPeriods, periodStates)
     const pd = rawDeltas.get(insight.period)
     if (pd) Object.assign(periodDeltas, pd)
 
@@ -223,7 +249,7 @@ export default function BusinessSliceOmniviewMatrix () {
       periodDeltas,
       raw: foundLine.periods.get(insight.period)?.raw,
     })
-  }, [matrix])
+  }, [matrix, periodStates])
 
   const execCards = useMemo(() => {
     const cards = [
@@ -238,7 +264,17 @@ export default function BusinessSliceOmniviewMatrix () {
     const currPk = p.length > 0 ? p[p.length - 1] : null
     const prevPk = p.length > 1 ? p[p.length - 2] : null
     const currTotals = currPk ? matrix.totals.get(currPk) : null
-    const prevTotals = prevPk ? matrix.totals.get(prevPk) : null
+    const currComparisonMeta = currPk ? matrix.comparisonMeta?.get(currPk) : null
+    const prevTotals = currPk && currComparisonMeta && (currComparisonMeta.is_partial_equivalent || currComparisonMeta.is_operationally_aligned)
+      ? matrix.comparisonTotals?.get(currPk)
+      : (prevPk ? matrix.totals.get(prevPk) : null)
+    const deltaLabel = currComparisonMeta?.comparison_mode === 'weekly_partial_equivalent'
+      ? 'vs eq.'
+      : currComparisonMeta?.comparison_mode === 'monthly_partial_equivalent'
+        ? 'vs eq.'
+        : currComparisonMeta?.comparison_mode === 'daily_same_weekday'
+          ? 'vs DoW'
+          : 'vs ant.'
     return cards.map((c) => {
       const val = execKpis[c.key]
       let delta = null, signal = 'neutral'
@@ -246,11 +282,16 @@ export default function BusinessSliceOmniviewMatrix () {
         const cv = currTotals[c.key], pv = prevTotals[c.key]
         if (cv != null && pv != null && pv !== 0) {
           const diff = cv - pv
-          delta = { delta_pct: diff / Math.abs(pv), signal: diff > 0 ? 'up' : diff < 0 ? 'down' : 'neutral' }
+          delta = {
+            delta_pct: diff / Math.abs(pv),
+            signal: diff > 0 ? 'up' : diff < 0 ? 'down' : 'neutral',
+            isPartialComparison: false,
+            is_equivalent_comparison: !!(currComparisonMeta && (currComparisonMeta.is_partial_equivalent || currComparisonMeta.is_operationally_aligned)),
+          }
           signal = delta.signal
         }
       }
-      return { ...c, val, delta, signal }
+      return { ...c, val, delta, signal, deltaLabel }
     })
   }, [execKpis, matrix])
 
@@ -347,6 +388,15 @@ export default function BusinessSliceOmniviewMatrix () {
           )}
         </div>
 
+        {/* ── Context bar ───────────────────────────────────────── */}
+        {!blockedByCountry && rows.length > 0 && (
+          <OperationalContextBar
+            grain={grain} periodStates={periodStates} allPeriods={matrix.allPeriods}
+            comparisonMeta={matrix.comparisonMeta}
+            freshnessInfo={freshnessInfo} coverageSummary={coverageSummary} compact={compact}
+          />
+        )}
+
         {/* ── KPI strip ─────────────────────────────────────────── */}
         {!blockedByCountry && rows.length > 0 && (
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
@@ -357,7 +407,7 @@ export default function BusinessSliceOmniviewMatrix () {
                 {card.delta && (
                   <div className="flex items-baseline gap-1">
                     <span className="text-[11px] font-semibold" style={{ color: signalColorForKpi(card.signal, card.key) }}>{signalArrow(card.signal)} {fmtDelta(card.delta)}</span>
-                    <span className="text-[9px] text-gray-400">vs ant.</span>
+                    <span className="text-[9px] text-gray-400">{card.deltaLabel}</span>
                   </div>
                 )}
               </div>
@@ -404,7 +454,7 @@ export default function BusinessSliceOmniviewMatrix () {
                 matrix={matrix} grain={grain} compact={compact} sortKey={sortKey}
                 onCellClick={handleCellClick} selectedCell={selectedCell}
                 insightCellMap={insightCellMap} insightMode={insightMode}
-                lineImpactMap={lineImpactMap}
+                lineImpactMap={lineImpactMap} periodStates={periodStates}
               />
             </div>
             <BusinessSliceOmniviewInspector
@@ -412,10 +462,96 @@ export default function BusinessSliceOmniviewMatrix () {
               onClose={() => { setSelection(null); setSelectedCell(null) }}
               insightForSelection={insightForSelection}
               insightTransparency={engineConfig.transparency}
+              periodStates={periodStates} coverageSummary={coverageSummary}
             />
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function OperationalContextBar ({ grain, periodStates, allPeriods, comparisonMeta, freshnessInfo, coverageSummary, compact }) {
+  const hasPartial = [...(periodStates?.values() || [])].some(
+    (s) => s === PERIOD_STATES.PARTIAL || s === PERIOD_STATES.CURRENT_DAY
+  )
+  const hasStale = [...(periodStates?.values() || [])].some((s) => s === PERIOD_STATES.STALE)
+  const lastPeriod = allPeriods.length > 0 ? allPeriods[allPeriods.length - 1] : null
+  const lastState = lastPeriod ? periodStates?.get(lastPeriod) : null
+  const lastMeta = lastPeriod ? comparisonMeta?.get(lastPeriod) : null
+
+  let compLabel = grain === 'weekly' ? 'Comparativo WoW cerrado'
+    : grain === 'daily' ? 'Comparativo diario · mismo día semana anterior'
+      : 'Comparativo MoM cerrado'
+  if (lastMeta?.comparison_mode === 'weekly_partial_equivalent') {
+    compLabel = 'Comparativo semanal parcial equivalente'
+  } else if (lastMeta?.comparison_mode === 'monthly_partial_equivalent') {
+    compLabel = 'Comparativo mensual parcial equivalente'
+  } else if (lastMeta?.comparison_mode === 'daily_same_weekday') {
+    compLabel = 'Comparativo diario · mismo día de semana'
+  } else if (hasPartial) {
+    compLabel = grain === 'weekly' ? 'Comparativo semanal · parcial vs cerrado'
+      : grain === 'daily' ? 'Comparativo diario · mismo día semana anterior'
+        : 'Comparativo mensual · parcial vs cerrado'
+  }
+
+  const elapsed = lastPeriod && (lastState === PERIOD_STATES.PARTIAL || lastState === PERIOD_STATES.CURRENT_DAY)
+    ? periodElapsedDays(lastPeriod, grain) : null
+  const total = lastPeriod && elapsed ? periodTotalDays(lastPeriod, grain) : null
+
+  const cov = coverageSummary
+  const py = compact ? 'py-1' : 'py-1.5'
+
+  return (
+    <div className={`rounded-lg border border-slate-200 bg-slate-50 shadow-sm px-4 ${py} flex flex-wrap items-center gap-x-4 gap-y-1`}>
+      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Contexto</span>
+
+      <span className="text-[10px] text-slate-600">
+        {compLabel}
+      </span>
+
+      {lastMeta?.is_partial_equivalent && (
+        <span className="text-[10px] text-blue-700">
+          {lastMeta.current_range_start} → {lastMeta.current_cutoff_date} vs {lastMeta.previous_equivalent_range_start} → {lastMeta.previous_equivalent_cutoff_date}
+        </span>
+      )}
+
+      {lastMeta?.comparison_mode === 'daily_same_weekday' && (
+        <span className="text-[10px] text-blue-700">
+          Base operativa: mismo día de semana anterior
+          {lastMeta.is_preliminary && <span className="text-amber-700 ml-1">(día actual en curso)</span>}
+        </span>
+      )}
+
+      {hasPartial && elapsed != null && total != null && (
+        <span className="inline-flex items-center gap-1 text-[10px] text-blue-700 font-medium">
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />
+          Avance {elapsed}/{total} días
+        </span>
+      )}
+
+      {hasStale && (
+        <span className="inline-flex items-center gap-1 text-[10px] text-amber-700 font-medium">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
+          Periodo stale detectado
+        </span>
+      )}
+
+      {freshnessInfo && (
+        <span className="text-[10px] text-slate-500" title={freshnessInfo.message}>
+          Freshness: {freshnessInfo.derived_max_date || '—'}
+          {freshnessInfo.lag_days > 0 && <span className="text-amber-600 ml-1">(lag {freshnessInfo.lag_days}d)</span>}
+        </span>
+      )}
+
+      {cov && cov.total_trips > 0 && (
+        <span className="text-[10px] text-slate-600 ml-auto flex items-center gap-2">
+          <span>Cobertura mapeada: <strong className={cov.coverage_pct >= 95 ? 'text-emerald-700' : cov.coverage_pct >= 80 ? 'text-amber-700' : 'text-red-700'}>{cov.coverage_pct}%</strong></span>
+          {cov.unmapped_trips > 0 && (
+            <span className="text-slate-400">No mapeados: {cov.unmapped_trips.toLocaleString()}</span>
+          )}
+        </span>
+      )}
     </div>
   )
 }

@@ -366,3 +366,323 @@ def log_action_execution(
         new_id = cur.fetchone()[0]
         cur.close()
         return new_id
+
+
+# ── Compat API legacy (ActionEngineView): cohortes + export ───────────────
+# El engine actual persiste en ops.action_engine_output (acciones ciudad/día).
+# Estas funciones proyectan esas filas al shape que esperan /ops/action-engine/*.
+
+
+def _parse_api_date(s: Optional[str]) -> Optional[date]:
+    if not s or not str(s).strip():
+        return None
+    try:
+        return date.fromisoformat(str(s).strip()[:10])
+    except ValueError:
+        return None
+
+
+def _severity_to_ui_priority(sev: Optional[str]) -> str:
+    if not sev:
+        return "medium"
+    s = str(sev).lower()
+    if s == "critical":
+        return "high"
+    if s in ("high", "medium", "low"):
+        return s
+    return "medium"
+
+
+def _action_engine_where(
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    week_start: Optional[str] = None,
+    country: Optional[str] = None,
+    city: Optional[str] = None,
+    park_id: Optional[str] = None,
+    cohort_type: Optional[str] = None,
+    priority: Optional[str] = None,
+) -> tuple[str, list[Any]]:
+    parts: list[str] = []
+    params: list[Any] = []
+    ws = _parse_api_date(week_start)
+    fd = _parse_api_date(from_date)
+    td = _parse_api_date(to_date)
+    if ws:
+        parts.append("run_date = %s")
+        params.append(ws)
+    else:
+        if fd:
+            parts.append("run_date >= %s")
+            params.append(fd)
+        if td:
+            parts.append("run_date <= %s")
+            params.append(td)
+        if not fd and not td:
+            parts.append("run_date >= CURRENT_DATE - INTERVAL '120 days'")
+    if country and str(country).strip():
+        parts.append("country IS NOT NULL AND LOWER(TRIM(country::text)) = LOWER(TRIM(%s))")
+        params.append(str(country).strip())
+    if city and str(city).strip():
+        parts.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
+        params.append(str(city).strip())
+    if park_id and str(park_id).strip():
+        parts.append("park_id IS NOT NULL AND TRIM(park_id::text) = TRIM(%s)")
+        params.append(str(park_id).strip())
+    if cohort_type and str(cohort_type).strip():
+        parts.append("action_id = %s")
+        params.append(str(cohort_type).strip())
+    if priority and str(priority).strip():
+        parts.append("severity = %s")
+        params.append(str(priority).strip().lower())
+    where = " AND ".join(parts) if parts else "TRUE"
+    return where, params
+
+
+def _row_to_cohort_row(r: dict) -> dict[str, Any]:
+    rd = r.get("run_date")
+    ws = rd.isoformat()[:10] if hasattr(rd, "isoformat") else str(rd or "")[:10]
+    sev = r.get("severity")
+    return {
+        "cohort_type": r.get("action_id"),
+        "week_start": ws,
+        "week_label": ws,
+        "cohort_size": 1,
+        "dominant_segment": "—",
+        "avg_risk_score": float(r.get("priority_score") or 0),
+        "avg_delta_pct": None,
+        "suggested_priority": _severity_to_ui_priority(sev),
+        "suggested_channel": r.get("suggested_owner") or "",
+        "action_objective": r.get("reason"),
+    }
+
+
+def _row_to_recommendation(r: dict) -> dict[str, Any]:
+    rd = r.get("run_date")
+    ws = rd.isoformat()[:10] if hasattr(rd, "isoformat") else str(rd or "")[:10]
+    return {
+        "action_name": r.get("action_name"),
+        "cohort_type": r.get("action_id"),
+        "cohort_size": 1,
+        "week_label": ws,
+        "week_start": ws,
+        "avg_delta_pct": None,
+        "suggested_priority": _severity_to_ui_priority(r.get("severity")),
+        "suggested_channel": r.get("suggested_owner") or "",
+        "action_objective": r.get("reason"),
+    }
+
+
+def _row_to_export_row(r: dict) -> dict[str, Any]:
+    rd = r.get("run_date")
+    ws = rd.isoformat()[:10] if hasattr(rd, "isoformat") else str(rd or "")[:10]
+    aid = r.get("action_id") or ""
+    city = r.get("city") or ""
+    key = f"{aid}|{city}|{ws}"
+    return {
+        "driver_key": key,
+        "driver_name": r.get("action_name"),
+        "week_start": ws,
+        "week_label": ws,
+        "country": r.get("country"),
+        "city": r.get("city"),
+        "park_id": r.get("park_id"),
+        "park_name": None,
+        "segment_current": aid,
+        "segment_previous": None,
+        "movement_type": None,
+        "trips_current_week": r.get("metric_value"),
+        "avg_trips_baseline": r.get("threshold"),
+        "delta_abs": None,
+        "delta_pct": None,
+        "alert_type": aid,
+        "severity": r.get("severity"),
+        "risk_score": r.get("priority_score"),
+        "risk_band": None,
+        "cohort_type": aid,
+    }
+
+
+def get_action_engine_summary(
+    week_start: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    country: Optional[str] = None,
+    city: Optional[str] = None,
+    park_id: Optional[str] = None,
+    segment_current: Optional[str] = None,
+    cohort_type: Optional[str] = None,
+    priority: Optional[str] = None,
+) -> dict[str, Any]:
+    """KPIs derivados de ops.action_engine_output (compat UI cohortes)."""
+    del segment_current  # no aplica al output operativo actual
+    where, params = _action_engine_where(
+        from_date, to_date, week_start, country, city, park_id, cohort_type, priority,
+    )
+    sql = f"""
+        WITH base AS (
+            SELECT * FROM ops.action_engine_output WHERE {where}
+        )
+        SELECT
+            (SELECT COUNT(*)::int FROM base) AS n,
+            (SELECT COUNT(*)::int FROM base WHERE severity IN ('high', 'critical')) AS n_high,
+            (SELECT COUNT(*)::int FROM (SELECT DISTINCT action_id, run_date FROM base) d) AS n_groups
+    """
+    try:
+        with get_db() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute(sql, params)
+            row = cur.fetchone() or {}
+            cur.close()
+    except Exception as exc:
+        logger.warning("get_action_engine_summary: %s", exc)
+        return {
+            "actionable_drivers": 0,
+            "cohorts_detected": 0,
+            "high_priority_cohorts": 0,
+            "recoverable_drivers": 0,
+            "high_value_at_risk": 0,
+            "near_upgrade_opportunities": 0,
+            "note": "Sin datos o tabla no disponible.",
+        }
+    n = int(row.get("n") or 0)
+    n_high = int(row.get("n_high") or 0)
+    n_groups = int(row.get("n_groups") or 0)
+    return {
+        "actionable_drivers": n,
+        "cohorts_detected": n_groups,
+        "high_priority_cohorts": n_high,
+        "recoverable_drivers": 0,
+        "high_value_at_risk": 0,
+        "near_upgrade_opportunities": 0,
+        "note": "Valores desde acciones operativas (no cohortes de conductores).",
+    }
+
+
+def get_action_engine_cohorts(
+    week_start: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    country: Optional[str] = None,
+    city: Optional[str] = None,
+    park_id: Optional[str] = None,
+    segment_current: Optional[str] = None,
+    cohort_type: Optional[str] = None,
+    priority: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> dict[str, Any]:
+    del segment_current
+    where, params = _action_engine_where(
+        from_date, to_date, week_start, country, city, park_id, cohort_type, priority,
+    )
+    count_sql = f"SELECT COUNT(*)::int AS c FROM ops.action_engine_output WHERE {where}"
+    data_sql = f"""
+        SELECT id, run_date, country, city, park_id, action_id, action_name,
+               severity, priority_score, reason, suggested_owner
+        FROM ops.action_engine_output
+        WHERE {where}
+        ORDER BY priority_score DESC NULLS LAST, run_date DESC, id DESC
+        LIMIT %s OFFSET %s
+    """
+    try:
+        with get_db() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute(count_sql, params)
+            total = int((cur.fetchone() or {}).get("c") or 0)
+            cur.execute(data_sql, params + [limit, offset])
+            rows = [dict(r) for r in cur.fetchall()]
+            cur.close()
+    except Exception as exc:
+        logger.warning("get_action_engine_cohorts: %s", exc)
+        return {"data": [], "total": 0}
+    return {"data": [_row_to_cohort_row(r) for r in rows], "total": total}
+
+
+def get_action_engine_cohort_detail(
+    cohort_type: str,
+    week_start: str,
+    country: Optional[str] = None,
+    city: Optional[str] = None,
+    park_id: Optional[str] = None,
+    limit: int = 500,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """El engine actual no expone conductores por cohorte; drill vacío."""
+    del cohort_type, week_start, country, city, park_id, limit, offset
+    return {
+        "data": [],
+        "total": 0,
+        "note": "Detalle por conductor no disponible para acciones operativas ciudad/día.",
+    }
+
+
+def get_action_engine_recommendations(
+    week_start: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    country: Optional[str] = None,
+    city: Optional[str] = None,
+    park_id: Optional[str] = None,
+    segment_current: Optional[str] = None,
+    top_n: int = 5,
+) -> dict[str, Any]:
+    del segment_current
+    where, params = _action_engine_where(
+        from_date, to_date, week_start, country, city, park_id, None, None,
+    )
+    sql = f"""
+        SELECT id, run_date, action_id, action_name, severity, suggested_owner, reason
+        FROM ops.action_engine_output
+        WHERE {where}
+        ORDER BY priority_score DESC NULLS LAST, run_date DESC, id DESC
+        LIMIT %s
+    """
+    try:
+        with get_db() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute(sql, params + [top_n])
+            rows = [dict(r) for r in cur.fetchall()]
+            cur.close()
+    except Exception as exc:
+        logger.warning("get_action_engine_recommendations: %s", exc)
+        return {"data": []}
+    return {"data": [_row_to_recommendation(r) for r in rows]}
+
+
+def get_action_engine_export(
+    week_start: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    country: Optional[str] = None,
+    city: Optional[str] = None,
+    park_id: Optional[str] = None,
+    segment_current: Optional[str] = None,
+    cohort_type: Optional[str] = None,
+    priority: Optional[str] = None,
+    max_rows: int = 10000,
+) -> list[dict[str, Any]]:
+    del segment_current
+    where, params = _action_engine_where(
+        from_date, to_date, week_start, country, city, park_id, cohort_type, priority,
+    )
+    cap = min(max(int(max_rows), 1), 50000)
+    sql = f"""
+        SELECT id, run_date, country, city, park_id, action_id, action_name,
+               severity, priority_score, reason, metric_name, metric_value,
+               threshold, suggested_owner
+        FROM ops.action_engine_output
+        WHERE {where}
+        ORDER BY priority_score DESC NULLS LAST, run_date DESC, id DESC
+        LIMIT %s
+    """
+    try:
+        with get_db() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute(sql, params + [cap])
+            rows = [dict(r) for r in cur.fetchall()]
+            cur.close()
+    except Exception as exc:
+        logger.warning("get_action_engine_export: %s", exc)
+        return []
+    return [_row_to_export_row(r) for r in rows]

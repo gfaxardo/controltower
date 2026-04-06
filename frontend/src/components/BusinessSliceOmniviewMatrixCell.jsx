@@ -14,6 +14,8 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
   periodLbl,
   insightSeverity,
   insightMode,
+  periodState,
+  grain,
 }) {
   const py = compact ? 'py-px' : 'py-0.5'
   const valSize = compact ? 'text-[11px]' : 'text-xs'
@@ -28,6 +30,7 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
       : ''
 
   const dimmed = insightMode && !hasInsight
+  const isPC = delta?.isPartialComparison
 
   if (!delta) {
     return (
@@ -43,7 +46,7 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
   const deltaTxt = fmtDelta(delta)
   const color = signalColorForKpi(delta.signal, kpiKey)
   const arrow = signalArrow(delta.signal)
-  const tooltip = buildCellTooltip(kpi, delta, cityName, lineName, periodLbl)
+  const tooltip = buildCellTooltip(kpi, delta, cityName, lineName, periodLbl, periodState, grain)
 
   return (
     <td
@@ -58,8 +61,8 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
     >
       <div className={`${valSize} font-semibold text-gray-800 leading-none`}>{val}</div>
       {deltaTxt && (
-        <div className={`${deltaSize} leading-none font-medium mt-px`} style={{ color }}>
-          {arrow}{deltaTxt}
+        <div className={`${deltaSize} leading-none font-medium mt-px`} style={{ color, opacity: isPC ? 0.55 : 1 }}>
+          {arrow}{deltaTxt}{isPC ? '~' : ''}
         </div>
       )}
     </td>

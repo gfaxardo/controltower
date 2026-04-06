@@ -76,6 +76,94 @@ function getISOWeekYear (d) {
   return copy.getUTCFullYear()
 }
 
+// ─── Period State ─────────────────────────────────────────────────────────
+export const PERIOD_STATES = {
+  CLOSED: 'CLOSED',
+  PARTIAL: 'PARTIAL',
+  CURRENT_DAY: 'CURRENT_DAY',
+  STALE: 'STALE',
+  FUTURE: 'FUTURE',
+}
+
+const STATE_LABELS = {
+  CLOSED: 'Cerrado',
+  PARTIAL: 'Parcial',
+  CURRENT_DAY: 'Hoy',
+  STALE: 'Stale',
+  FUTURE: 'Futuro',
+}
+
+export function periodStateLabel (state) {
+  return STATE_LABELS[state] || ''
+}
+
+export function computePeriodStates (allPeriods, grain, maxDataDate = null) {
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const todayStr = today.toISOString().slice(0, 10)
+  const maxData = maxDataDate ? new Date(maxDataDate + 'T00:00:00') : null
+  const states = new Map()
+
+  for (const pk of allPeriods) {
+    const d = new Date(pk + 'T00:00:00')
+    if (isNaN(d)) { states.set(pk, PERIOD_STATES.CLOSED); continue }
+
+    let state = PERIOD_STATES.CLOSED
+
+    if (grain === 'monthly') {
+      const monthStart = new Date(d.getFullYear(), d.getMonth(), 1)
+      const nextMonth = new Date(d.getFullYear(), d.getMonth() + 1, 1)
+      if (today >= monthStart && today < nextMonth) {
+        state = PERIOD_STATES.PARTIAL
+      } else if (today < monthStart) {
+        state = PERIOD_STATES.FUTURE
+      } else if (maxData) {
+        const lastDay = new Date(nextMonth - 1)
+        if (maxData < lastDay) state = PERIOD_STATES.STALE
+      }
+    } else if (grain === 'weekly') {
+      const weekStart = new Date(d)
+      const weekEnd = new Date(weekStart)
+      weekEnd.setDate(weekEnd.getDate() + 7)
+      if (today >= weekStart && today < weekEnd) {
+        state = PERIOD_STATES.PARTIAL
+      } else if (today < weekStart) {
+        state = PERIOD_STATES.FUTURE
+      } else if (maxData) {
+        const lastDay = new Date(weekEnd - 86400000)
+        if (maxData < lastDay) state = PERIOD_STATES.STALE
+      }
+    } else {
+      if (pk === todayStr) {
+        state = PERIOD_STATES.CURRENT_DAY
+      } else if (d > today) {
+        state = PERIOD_STATES.FUTURE
+      } else if (maxData && d > maxData) {
+        state = PERIOD_STATES.STALE
+      }
+    }
+
+    states.set(pk, state)
+  }
+  return states
+}
+
+export function periodElapsedDays (pk, grain) {
+  const d = new Date(pk + 'T00:00:00')
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  if (grain === 'monthly') return Math.max(1, Math.floor((today - d) / 86400000) + 1)
+  if (grain === 'weekly') return Math.min(7, Math.max(1, Math.floor((today - d) / 86400000) + 1))
+  return 1
+}
+
+export function periodTotalDays (pk, grain) {
+  if (grain === 'weekly') return 7
+  if (grain === 'daily') return 1
+  const d = new Date(pk + 'T00:00:00')
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+}
+
 // ─── Derived metrics ────────────────────────────────────────────────────────
 function enrichRow (row) {
   const trips = Number(row.trips_completed) || 0
@@ -92,6 +180,8 @@ export function buildMatrix (rows, grain) {
   const cities = new Map()
   const periodSet = new Set()
   const totalsBucket = new Map()
+  const comparisonTotalsBucket = new Map()
+  const comparisonMeta = new Map()
 
   for (const raw of rows) {
     const r = enrichRow({ ...raw })
@@ -131,29 +221,86 @@ export function buildMatrix (rows, grain) {
     tb._drivers += Number(r.active_drivers) || 0
     if (r.avg_ticket != null) { tb._ticketSum += Number(r.avg_ticket); tb._ticketN += 1 }
     if (r.commission_pct != null) { tb._commSum += Number(r.commission_pct); tb._commN += 1 }
+
+    const cmp = r.comparison_context
+    const baseline = cmp?.baseline_metrics
+    if (cmp && !comparisonMeta.has(pk)) {
+      comparisonMeta.set(pk, {
+        comparison_mode: cmp.comparison_mode ?? null,
+        is_partial_equivalent: !!cmp.is_partial_equivalent,
+        is_operationally_aligned: !!cmp.is_operationally_aligned,
+        is_preliminary: !!cmp.is_preliminary,
+        period_state: cmp.period_state ?? null,
+        current_range_start: cmp.current_range_start ?? null,
+        current_cutoff_date: cmp.current_cutoff_date ?? null,
+        previous_equivalent_range_start: cmp.previous_equivalent_range_start ?? null,
+        previous_equivalent_cutoff_date: cmp.previous_equivalent_cutoff_date ?? null,
+        baseline_period_key: cmp.baseline_period_key ?? null,
+      })
+    }
+    if (baseline) {
+      if (!comparisonTotalsBucket.has(pk)) {
+        comparisonTotalsBucket.set(pk, { _trips: 0, _cancelled: 0, _revenue: 0, _drivers: 0, _ticketSum: 0, _ticketN: 0, _commSum: 0, _commN: 0 })
+      }
+      const cb = comparisonTotalsBucket.get(pk)
+      cb._trips += Number(baseline.trips_completed) || 0
+      cb._cancelled += Number(baseline.trips_cancelled) || 0
+      cb._revenue += Number(baseline.revenue_yego_net) || 0
+      cb._drivers += Number(baseline.active_drivers) || 0
+      if (baseline.avg_ticket != null) { cb._ticketSum += Number(baseline.avg_ticket); cb._ticketN += 1 }
+      if (baseline.commission_pct != null) { cb._commSum += Number(baseline.commission_pct); cb._commN += 1 }
+    }
   }
 
   const allPeriods = [...periodSet].sort()
 
   const totals = new Map()
+  const comparisonTotals = new Map()
+  const buildTotalsFromBucket = (bucket) => {
+    const total = bucket._trips + bucket._cancelled
+    return {
+      trips_completed: bucket._trips,
+      revenue_yego_net: bucket._revenue,
+      active_drivers: bucket._drivers,
+      commission_pct: bucket._commN > 0 ? bucket._commSum / bucket._commN : null,
+      avg_ticket: bucket._ticketN > 0 ? bucket._ticketSum / bucket._ticketN : null,
+      cancel_rate_pct: total > 0 ? bucket._cancelled / total : null,
+      trips_per_driver: bucket._drivers > 0 ? bucket._trips / bucket._drivers : null,
+    }
+  }
   for (const [pk, tb] of totalsBucket) {
-    const total = tb._trips + tb._cancelled
-    totals.set(pk, {
-      trips_completed: tb._trips,
-      revenue_yego_net: tb._revenue,
-      active_drivers: tb._drivers,
-      commission_pct: tb._commN > 0 ? tb._commSum / tb._commN : null,
-      avg_ticket: tb._ticketN > 0 ? tb._ticketSum / tb._ticketN : null,
-      cancel_rate_pct: total > 0 ? tb._cancelled / total : null,
-      trips_per_driver: tb._drivers > 0 ? tb._trips / tb._drivers : null,
-    })
+    totals.set(pk, buildTotalsFromBucket(tb))
+  }
+  for (const [pk, tb] of comparisonTotalsBucket) {
+    comparisonTotals.set(pk, buildTotalsFromBucket(tb))
   }
 
-  return { cities, allPeriods, totals }
+  return { cities, allPeriods, totals, comparisonTotals, comparisonMeta }
+}
+
+function _comparisonMetaForDelta (cmp, isPartialComparison, hasEquivalentBaseline = null) {
+  const equivalent = hasEquivalentBaseline ?? !!(cmp?.baseline_metrics && (cmp?.is_partial_equivalent || cmp?.is_operationally_aligned))
+  return {
+    comparison_mode: cmp?.comparison_mode ?? null,
+    is_partial_equivalent: !!cmp?.is_partial_equivalent,
+    is_operationally_aligned: !!cmp?.is_operationally_aligned,
+    is_preliminary: !!cmp?.is_preliminary,
+    is_equivalent_comparison: equivalent,
+    isPartialComparison,
+    current_range_start: cmp?.current_range_start ?? null,
+    current_cutoff_date: cmp?.current_cutoff_date ?? null,
+    previous_equivalent_range_start: cmp?.previous_equivalent_range_start ?? null,
+    previous_equivalent_cutoff_date: cmp?.previous_equivalent_cutoff_date ?? null,
+    baseline_period_key: cmp?.baseline_period_key ?? null,
+  }
 }
 
 // ─── Deltas ─────────────────────────────────────────────────────────────────
-export function computeDeltas (linePeriods, allPeriods) {
+function _isPartialState (s) {
+  return s === PERIOD_STATES.PARTIAL || s === PERIOD_STATES.CURRENT_DAY
+}
+
+export function computeDeltas (linePeriods, allPeriods, periodStates) {
   const result = new Map()
   for (let i = 0; i < allPeriods.length; i++) {
     const pk = allPeriods[i]
@@ -161,12 +308,20 @@ export function computeDeltas (linePeriods, allPeriods) {
     const curr = linePeriods.get(pk)
     const prev = prevPk ? linePeriods.get(prevPk) : null
     if (!curr) { result.set(pk, null); continue }
+
+    const curState = periodStates?.get(pk)
+    const prevState = prevPk ? periodStates?.get(prevPk) : null
+    const cmp = curr.raw?.comparison_context || null
+    const hasEquivalentBaseline = !!(cmp?.baseline_metrics && (cmp?.is_partial_equivalent || cmp?.is_operationally_aligned))
+    const isPartialComparison = !!(periodStates && _isPartialState(curState) && prevState === PERIOD_STATES.CLOSED && !hasEquivalentBaseline)
+    const meta = _comparisonMetaForDelta(cmp, isPartialComparison, hasEquivalentBaseline)
+
     const deltas = {}
     for (const { key, showAsPct } of MATRIX_KPIS) {
       const cv = curr.metrics[key]
-      const pv = prev?.metrics?.[key]
+      const pv = hasEquivalentBaseline ? cmp?.baseline_metrics?.[key] : prev?.metrics?.[key]
       if (cv == null || pv == null || pv === 0) {
-        deltas[key] = { value: cv, delta_pct: null, delta_abs: null, signal: 'neutral' }
+        deltas[key] = { value: cv, delta_pct: null, delta_abs: null, signal: 'neutral', previous: pv, ...meta }
       } else {
         const diff = Number(cv) - Number(pv)
         const pct = Number(pv) !== 0 ? diff / Math.abs(Number(pv)) : null
@@ -177,6 +332,7 @@ export function computeDeltas (linePeriods, allPeriods) {
           delta_abs: showAsPct ? diff : null,
           delta_abs_pp: showAsPct ? diff * 100 : null,
           signal: diff > 0 ? 'up' : diff < 0 ? 'down' : 'neutral',
+          ...meta,
         }
       }
     }
@@ -186,7 +342,7 @@ export function computeDeltas (linePeriods, allPeriods) {
 }
 
 // ─── Totals deltas (for frozen row) ─────────────────────────────────────────
-export function computeTotalsDeltas (totals, allPeriods) {
+export function computeTotalsDeltas (totals, allPeriods, periodStates, comparisonTotals, comparisonMeta) {
   const result = new Map()
   for (let i = 0; i < allPeriods.length; i++) {
     const pk = allPeriods[i]
@@ -194,12 +350,20 @@ export function computeTotalsDeltas (totals, allPeriods) {
     const curr = totals.get(pk)
     const prev = prevPk ? totals.get(prevPk) : null
     if (!curr) { result.set(pk, null); continue }
+
+    const curState = periodStates?.get(pk)
+    const prevState = prevPk ? periodStates?.get(prevPk) : null
+    const cmp = comparisonMeta?.get(pk) || null
+    const hasEquivalentBaseline = !!(comparisonTotals?.get(pk) && (cmp?.is_partial_equivalent || cmp?.is_operationally_aligned))
+    const isPartialComparison = !!(periodStates && _isPartialState(curState) && prevState === PERIOD_STATES.CLOSED && !hasEquivalentBaseline)
+    const meta = _comparisonMetaForDelta(cmp, isPartialComparison, hasEquivalentBaseline)
+
     const deltas = {}
     for (const { key, showAsPct } of MATRIX_KPIS) {
       const cv = curr[key]
-      const pv = prev?.[key]
+      const pv = hasEquivalentBaseline ? comparisonTotals?.get(pk)?.[key] : prev?.[key]
       if (cv == null || pv == null || pv === 0) {
-        deltas[key] = { value: cv, delta_pct: null, delta_abs: null, signal: 'neutral' }
+        deltas[key] = { value: cv, delta_pct: null, delta_abs: null, signal: 'neutral', previous: pv, ...meta }
       } else {
         const diff = Number(cv) - Number(pv)
         const pct = Number(pv) !== 0 ? diff / Math.abs(Number(pv)) : null
@@ -208,6 +372,7 @@ export function computeTotalsDeltas (totals, allPeriods) {
           delta_abs: showAsPct ? diff : null,
           delta_abs_pp: showAsPct ? diff * 100 : null,
           signal: diff > 0 ? 'up' : diff < 0 ? 'down' : 'neutral',
+          ...meta,
         }
       }
     }
@@ -333,15 +498,43 @@ export function signalArrow (signal) {
   return '—'
 }
 
+export function describeComparison (delta, grain) {
+  if (!delta) return null
+  if (delta.is_equivalent_comparison) {
+    if (delta.comparison_mode === 'weekly_partial_equivalent') {
+      return `Parcial equivalente · ${delta.current_range_start} → ${delta.current_cutoff_date} vs ${delta.previous_equivalent_range_start} → ${delta.previous_equivalent_cutoff_date}`
+    }
+    if (delta.comparison_mode === 'monthly_partial_equivalent') {
+      return `Parcial equivalente · ${delta.current_range_start} → ${delta.current_cutoff_date} vs ${delta.previous_equivalent_range_start} → ${delta.previous_equivalent_cutoff_date}`
+    }
+    if (delta.comparison_mode === 'daily_same_weekday') {
+      return delta.is_preliminary
+        ? `Mismo día semana anterior · día actual en curso`
+        : `Mismo día semana anterior · ${delta.previous_equivalent_range_start}`
+    }
+  }
+  if (delta.isPartialComparison) {
+    return 'Comparativo parcial vs periodo previo completo'
+  }
+  if (grain === 'daily') return 'Comparativo diario vs periodo operativo equivalente'
+  return 'Comparativo vs periodo anterior'
+}
+
 // ─── Tooltip builder ────────────────────────────────────────────────────────
-export function buildCellTooltip (kpi, delta, cityName, lineName, periodLbl) {
+export function buildCellTooltip (kpi, delta, cityName, lineName, periodLbl, periodState, grain) {
   const parts = [`${kpi.label} — ${lineName}`, `${cityName} · ${periodLbl}`]
+  if (periodState) {
+    const sl = periodStateLabel(periodState)
+    if (sl) parts.push(`Estado: ${sl}`)
+  }
   if (delta) {
     parts.push(`Actual: ${fmtRaw(delta.value)}`)
     if (delta.previous != null) parts.push(`Anterior: ${fmtRaw(delta.previous)}`)
     const dt = fmtDelta(delta)
     if (dt) parts.push(`Δ: ${signalArrow(delta.signal)} ${dt}`)
     if (delta.delta_abs_pp != null) parts.push(`Δ pp: ${delta.delta_abs_pp.toFixed(2)}`)
+    const desc = describeComparison(delta, grain)
+    if (desc) parts.push(desc)
   }
   return parts.join('\n')
 }

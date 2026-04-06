@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
-import { MATRIX_KPIS, fmtValue, fmtRaw, fmtDelta, signalColorForKpi, signalArrow, periodLabel } from './omniview/omniviewMatrixUtils.js'
+import { MATRIX_KPIS, fmtValue, fmtRaw, fmtDelta, signalColorForKpi, signalArrow, periodLabel, periodStateLabel, PERIOD_STATES, describeComparison } from './omniview/omniviewMatrixUtils.js'
 
-export default function BusinessSliceOmniviewInspector ({ selection, grain, compact, onClose, insightForSelection, insightTransparency }) {
+export default function BusinessSliceOmniviewInspector ({ selection, grain, compact, onClose, insightForSelection, insightTransparency, periodStates, coverageSummary }) {
   const w = compact ? 'w-72' : 'w-80'
 
   if (!selection) {
@@ -30,6 +30,11 @@ export default function BusinessSliceOmniviewInspector ({ selection, grain, comp
   const label = periodLabel(period, grain)
   const padCard = compact ? 'px-2 py-1.5' : 'px-2.5 py-2'
   const ins = insightForSelection
+  const pState = periodStates?.get(period)
+  const hasPartialDelta = Object.values(periodDeltas || {}).some((d) => d?.isPartialComparison)
+  const comparisonDelta = periodDeltas?.[selectedKpiKey] || Object.values(periodDeltas || {}).find(Boolean)
+  const comparisonDesc = describeComparison(comparisonDelta, grain)
+  const hasEquivalentComparison = !!comparisonDelta?.is_equivalent_comparison
 
   return (
     <aside className={`${w} shrink-0 rounded-lg border ${ins ? 'border-red-200' : 'border-blue-200'} bg-white shadow-md self-start sticky top-2 overflow-hidden`}>
@@ -44,12 +49,33 @@ export default function BusinessSliceOmniviewInspector ({ selection, grain, comp
         <button type="button" onClick={onClose} className="text-slate-400 hover:text-white text-sm leading-none ml-2 shrink-0" title="Cerrar">×</button>
       </div>
 
-      <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider">Periodo</span>
-          <span className="text-xs font-bold text-slate-800">{label}</span>
+      <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-200">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider">Periodo</span>
+            <span className="text-xs font-bold text-slate-800">{label}</span>
+            {pState && pState !== PERIOD_STATES.CLOSED && (
+              <span className={`px-1 py-px rounded text-[8px] font-bold ${
+                pState === PERIOD_STATES.PARTIAL || pState === PERIOD_STATES.CURRENT_DAY
+                  ? 'bg-blue-100 text-blue-700' : pState === PERIOD_STATES.STALE
+                  ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'
+              }`}>
+                {periodStateLabel(pState)}
+              </span>
+            )}
+          </div>
+          {raw?.country && <span className="text-[9px] text-slate-400">{raw.country} · {raw.city}</span>}
         </div>
-        {raw?.country && <span className="text-[9px] text-slate-400">{raw.country} · {raw.city}</span>}
+        {hasEquivalentComparison && comparisonDesc && (
+          <div className="mt-1 text-[9px] text-blue-700 bg-blue-50 rounded px-2 py-0.5 border border-blue-100">
+            {comparisonDesc}
+          </div>
+        )}
+        {!hasEquivalentComparison && hasPartialDelta && (
+          <div className="mt-1 text-[9px] text-blue-600 bg-blue-50 rounded px-2 py-0.5 border border-blue-100">
+            Comparativo parcial vs cerrado — deltas orientativos
+          </div>
+        )}
       </div>
 
       {/* ── Insight detected section (additive, only if insight exists) ── */}
@@ -76,7 +102,11 @@ export default function BusinessSliceOmniviewInspector ({ selection, grain, comp
               </div>
               <div className="flex items-baseline justify-between">
                 <span className={`${compact ? 'text-base' : 'text-lg'} font-bold text-gray-900 leading-tight`}>{fmtValue(currentVal, kpi.key)}</span>
-                {d?.previous != null && <span className="text-[9px] text-gray-400">ant: {fmtRaw(d.previous)}</span>}
+                {d?.previous != null && (
+                  <span className="text-[9px] text-gray-400">
+                    {d.is_equivalent_comparison ? 'base eq:' : 'ant:'} {fmtRaw(d.previous)}
+                  </span>
+                )}
               </div>
               {(d?.delta_abs_pp != null || d?.delta_pct != null) && (
                 <div className="mt-0.5 flex gap-3 text-[9px] text-gray-400">
@@ -96,6 +126,16 @@ export default function BusinessSliceOmniviewInspector ({ selection, grain, comp
         {raw?.city && <MetaRow label="Ciudad" value={raw.city} />}
         {raw?.is_subfleet != null && <MetaRow label="Subflota" value={raw.is_subfleet ? 'Sí' : 'No'} />}
         <MetaRow label="Grano" value={grain} />
+        {pState && <MetaRow label="Estado periodo" value={periodStateLabel(pState)} />}
+        {comparisonDelta?.comparison_mode && <MetaRow label="Modo comparativo" value={comparisonDelta.comparison_mode} />}
+        {comparisonDelta?.current_cutoff_date && <MetaRow label="Corte actual" value={comparisonDelta.current_cutoff_date} />}
+        {comparisonDelta?.previous_equivalent_cutoff_date && <MetaRow label="Corte equivalente" value={comparisonDelta.previous_equivalent_cutoff_date} />}
+        {coverageSummary && coverageSummary.total_trips > 0 && (
+          <>
+            <MetaRow label="Cobertura" value={`${coverageSummary.coverage_pct}%`} />
+            <MetaRow label="No mapeados" value={coverageSummary.unmapped_trips.toLocaleString()} />
+          </>
+        )}
       </div>
     </aside>
   )
@@ -121,6 +161,11 @@ function InsightBanner ({ insight, transparency }) {
         <span className={`${badgeBg} text-white px-1.5 py-px rounded text-[8px] font-bold uppercase`}>
           {insight.severity}
         </span>
+        {insight.preliminary && (
+          <span className="bg-blue-100 text-blue-700 px-1 py-px rounded text-[7px] font-bold uppercase">
+            Preliminar
+          </span>
+        )}
         <span className={`text-[10px] font-bold ${textColor}`}>Insight detectado</span>
         {insight.groupedCount > 1 && (
           <span className="text-[8px] text-gray-500 bg-white/70 px-1 rounded border border-gray-200">

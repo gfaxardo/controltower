@@ -135,6 +135,11 @@ export default function BusinessSliceInsightsPanel ({
                 <span className={`${s.badge} px-1 py-px rounded text-[8px] font-bold uppercase`}>
                   {ins.severity}
                 </span>
+                {ins.preliminary && (
+                  <span className="bg-blue-100 text-blue-700 px-1 py-px rounded text-[7px] font-bold uppercase">
+                    Preliminar
+                  </span>
+                )}
                 <span className={`text-[10px] font-bold ${s.text} truncate`}>
                   {ins.city} — {ins.business_slice}
                 </span>

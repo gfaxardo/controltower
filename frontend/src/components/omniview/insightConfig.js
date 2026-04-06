@@ -48,6 +48,9 @@ export const INSIGHT_CONFIG = {
     daily: 1.8,
   },
 
+  /** Multiplicador adicional para periodos parciales (PARTIAL/CURRENT_DAY). Se aplica sobre grainMult. */
+  partialPeriodThresholdMultiplier: 1.5,
+
   impactWeights: {
     revenue_yego_net: 0.6,
     trips_completed: 0.3,

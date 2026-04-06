@@ -13,8 +13,9 @@ export default function BusinessSliceOmniviewMatrixTable ({
   insightCellMap,
   insightMode,
   lineImpactMap,
+  periodStates,
 }) {
-  const { cities, allPeriods, totals } = matrix
+  const { cities, allPeriods, totals, comparisonTotals, comparisonMeta } = matrix
   const [collapsed, setCollapsed] = useState(new Set())
   const headerH = compact ? HEADER_H_COMPACT : HEADER_H_COMFORTABLE
 
@@ -23,8 +24,8 @@ export default function BusinessSliceOmniviewMatrixTable ({
   }, [cities])
 
   const totalsDeltas = useMemo(
-    () => computeTotalsDeltas(totals, allPeriods),
-    [totals, allPeriods]
+    () => computeTotalsDeltas(totals, allPeriods, periodStates, comparisonTotals, comparisonMeta),
+    [totals, allPeriods, periodStates, comparisonTotals, comparisonMeta]
   )
 
   const toggleCity = (ck) => {
@@ -61,7 +62,7 @@ export default function BusinessSliceOmniviewMatrixTable ({
             )}
           </colgroup>
 
-          <BusinessSliceOmniviewMatrixHeader allPeriods={allPeriods} grain={grain} compact={compact} />
+          <BusinessSliceOmniviewMatrixHeader allPeriods={allPeriods} grain={grain} compact={compact} periodStates={periodStates} />
 
           <tbody>
             <TotalsRow allPeriods={allPeriods} totalsDeltas={totalsDeltas} compact={compact} headerH={headerH} />
@@ -89,6 +90,7 @@ export default function BusinessSliceOmniviewMatrixTable ({
                   compact={compact}
                   insightCellMap={insightCellMap}
                   insightMode={insightMode}
+                  periodStates={periodStates}
                 />
               )
             })}
@@ -123,10 +125,16 @@ const TotalsRow = memo(function TotalsRow ({ allPeriods, totalsDeltas, compact, 
           const val = fmtValue(d.value, kpi.key)
           const dt = fmtDelta(d)
           const color = signalColorForKpi(d.signal, kpi.key)
+          const isPC = d.isPartialComparison
           return (
-            <td key={`t-${pk}-${kpi.key}`} className={`px-1 ${py} text-center whitespace-nowrap border-r border-gray-200/60`} style={bgStyle}>
+            <td key={`t-${pk}-${kpi.key}`} className={`px-1 ${py} text-center whitespace-nowrap border-r border-gray-200/60`} style={bgStyle}
+              title={isPC ? 'Comparativo parcial vs cerrado' : undefined}>
               <div className={`${valSize} font-bold text-slate-700 leading-none`}>{val}</div>
-              {dt && <div className={`${deltaSize} leading-none font-semibold mt-px`} style={{ color }}>{signalArrow(d.signal)}{dt}</div>}
+              {dt && (
+                <div className={`${deltaSize} leading-none font-semibold mt-px`} style={{ color, opacity: isPC ? 0.55 : 1 }}>
+                  {signalArrow(d.signal)}{dt}{isPC ? '~' : ''}
+                </div>
+              )}
             </td>
           )
         })
@@ -135,7 +143,7 @@ const TotalsRow = memo(function TotalsRow ({ allPeriods, totalsDeltas, compact, 
   )
 })
 
-function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, kpiCount, isCollapsed, onToggle, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode }) {
+function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, kpiCount, isCollapsed, onToggle, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates }) {
   const totalCols = allPeriods.length * kpiCount
   const py = compact ? 'py-1' : 'py-1.5'
   const fontSize = compact ? 'text-[11px]' : 'text-xs'
@@ -156,14 +164,14 @@ function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, kpiCount, isCo
       {!isCollapsed && lineEntries.map(([lineKey, lineData]) => (
         <LineRow key={lineKey} cityKey={cityKey} cityName={cityData.city} lineKey={lineKey} lineData={lineData}
           allPeriods={allPeriods} onCellClick={onCellClick} selectedCell={selectedCell} grain={grain} compact={compact}
-          insightCellMap={insightCellMap} insightMode={insightMode} />
+          insightCellMap={insightCellMap} insightMode={insightMode} periodStates={periodStates} />
       ))}
     </>
   )
 }
 
-function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode }) {
-  const deltas = useMemo(() => computeDeltas(lineData.periods, allPeriods), [lineData.periods, allPeriods])
+function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates }) {
+  const deltas = useMemo(() => computeDeltas(lineData.periods, allPeriods, periodStates), [lineData.periods, allPeriods, periodStates])
   const isSubfleet = lineData.is_subfleet
   const py = compact ? 'py-px' : 'py-1'
   const fontSize = compact ? 'text-[11px]' : 'text-xs'
@@ -184,6 +192,7 @@ function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClic
       {allPeriods.map((pk, periodIdx) => {
         const periodDeltas = deltas.get(pk)
         const pLabel = periodLabelFn(pk, grain)
+        const pState = periodStates?.get(pk)
         return MATRIX_KPIS.map((kpi) => {
           const cellId = `${cityKey}::${lineKey}::${pk}::${kpi.key}`
           const delta = periodDeltas ? periodDeltas[kpi.key] : null
@@ -193,7 +202,7 @@ function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClic
               key={cellId} kpiKey={kpi.key} kpi={kpi} delta={delta}
               isSelected={selectedCell === cellId} compact={compact} periodIdx={periodIdx}
               cityName={cityName} lineName={lineData.business_slice_name} periodLbl={pLabel}
-              insightSeverity={insightSev} insightMode={insightMode}
+              insightSeverity={insightSev} insightMode={insightMode} periodState={pState} grain={grain}
               onClick={() => onCellClick?.({
                 id: cellId, cityKey, lineKey, period: pk, kpiKey: kpi.key,
                 lineData, periodDeltas, raw: lineData.periods.get(pk)?.raw,

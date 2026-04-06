@@ -2,9 +2,13 @@
  * insightEngine.js — Insight & Action Engine para Omniview Matrix.
  * Toda calibración numérica y reglas base viven en INSIGHT_CONFIG (insightConfig.js).
  * Opcional: mergeInsightRuntimeConfig + patch de usuario (insightUserSettings.js).
+ *
+ * Period State awareness: si el periodo está abierto pero el delta ya usa
+ * partial-equivalent real, el insight puede mantenerse normal. Solo se degrada
+ * cuando sigue siendo parcial-vs-completo o CURRENT_DAY sin corte intradía equivalente.
  */
 
-import { computeDeltas, periodLabel } from './omniviewMatrixUtils.js'
+import { computeDeltas, periodLabel, PERIOD_STATES } from './omniviewMatrixUtils.js'
 import { INSIGHT_CONFIG } from './insightConfig.js'
 
 // ─── Resolución de config por métrica + grano ───────────────────────────────
@@ -148,34 +152,55 @@ function groupInsightsByRowPeriod (rawInsights, config) {
   return out.sort((a, b) => b.impactScore - a.impactScore)
 }
 
+// ─── Period state helpers for insight engine ─────────────────────────────────
+
+function _isPartialPeriod (state) {
+  return state === PERIOD_STATES.PARTIAL || state === PERIOD_STATES.CURRENT_DAY
+}
+
+function _downgradeSeverity (severity) {
+  if (severity === 'critical') return 'warning'
+  return severity
+}
+
 // ─── Detección principal ─────────────────────────────────────────────────────
 
-export function detectInsights (matrix, grain, config = INSIGHT_CONFIG) {
+export function detectInsights (matrix, grain, config = INSIGHT_CONFIG, periodStates = null) {
   const { cities, allPeriods } = matrix
   if (allPeriods.length < 2) return []
 
   const baseMult = config.grainThresholdMultipliers?.[grain] ?? 1
   const userSens = config.userSensitivityMultiplier ?? 1
   const grainMult = baseMult * userSens
+  const partialMultiplier = config.partialPeriodThresholdMultiplier ?? 1.5
 
   const raw = []
   let idCounter = 0
 
   for (const [cityKey, cityData] of cities) {
     for (const [lineKey, lineData] of cityData.lines) {
-      const deltas = computeDeltas(lineData.periods, allPeriods)
+      const deltas = computeDeltas(lineData.periods, allPeriods, periodStates)
 
       for (const pk of allPeriods) {
         const periodDeltas = deltas.get(pk)
         if (!periodDeltas) continue
+
+        const pState = periodStates?.get(pk)
+        const isPartial = _isPartialPeriod(pState)
 
         for (const metricKey of Object.keys(config.metrics || {})) {
           const cfg = getMetricDefinition(config, grain, metricKey)
           const d = periodDeltas[metricKey]
           if (!d || d.value == null || !cfg) continue
 
-          const severity = evaluateMetricThresholds(cfg, d, grainMult)
+          const hasTrustworthyEquivalent = !!(d.is_equivalent_comparison && !d.is_preliminary)
+          const shouldDowngrade = isPartial && !hasTrustworthyEquivalent
+          const effectiveMult = shouldDowngrade ? grainMult * partialMultiplier : grainMult
+
+          let severity = evaluateMetricThresholds(cfg, d, effectiveMult)
           if (!severity) continue
+
+          if (shouldDowngrade) severity = _downgradeSeverity(severity)
 
           const impactScore = calculateImpactScore(periodDeltas, config)
           const explanation = explainInsight(metricKey, periodDeltas, config)
@@ -202,6 +227,9 @@ export function detectInsights (matrix, grain, config = INSIGHT_CONFIG) {
             impactScore,
             explanation,
             action,
+            preliminary: shouldDowngrade || !!d.is_preliminary,
+            comparisonMode: d.comparison_mode ?? null,
+            isEquivalentComparison: !!d.is_equivalent_comparison,
           })
         }
       }
