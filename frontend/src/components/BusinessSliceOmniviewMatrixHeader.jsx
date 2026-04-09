@@ -1,4 +1,5 @@
-import { MATRIX_KPIS, periodLabel, periodStateLabel, PERIOD_STATES } from './omniview/omniviewMatrixUtils.js'
+import { Fragment } from 'react'
+import { MATRIX_KPIS, periodLabel, periodStateLabel, PERIOD_STATES, resolvePeriodTrustVisual, trustIssueSummaryForTooltip } from './omniview/omniviewMatrixUtils.js'
 
 export const COL1_W = 90
 export const COL2_W = 130
@@ -6,17 +7,19 @@ export const HEADER_H_COMFORTABLE = 52
 export const HEADER_H_COMPACT = 40
 
 const STATE_BADGE_STYLES = {
+  [PERIOD_STATES.OPEN]: 'bg-emerald-600/90 text-white',
   [PERIOD_STATES.PARTIAL]: 'bg-blue-500/80 text-white',
   [PERIOD_STATES.CURRENT_DAY]: 'bg-blue-500/80 text-white',
   [PERIOD_STATES.STALE]: 'bg-amber-500/80 text-white',
   [PERIOD_STATES.FUTURE]: 'bg-slate-500/60 text-slate-200',
 }
 
-export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, compact, periodStates }) {
+export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, compact, periodStates, matrixTrust = null }) {
   const py1 = compact ? 'py-1' : 'py-1.5'
   const py2 = compact ? 'py-0.5' : 'py-1'
   const fontSize1 = compact ? 'text-[10px]' : 'text-xs'
   const fontSize2 = compact ? 'text-[9px]' : 'text-[10px]'
+  const trustTip = trustIssueSummaryForTooltip(matrixTrust)
 
   return (
     <thead className="sticky top-0 z-20">
@@ -39,12 +42,16 @@ export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, 
           const state = periodStates?.get(pk)
           const badge = state && state !== PERIOD_STATES.CLOSED
           const badgeCls = STATE_BADGE_STYLES[state] || ''
+          const periodTrust = resolvePeriodTrustVisual(pk, grain, matrixTrust)
+          const trustTop =
+            periodTrust === 'blocked' ? 'border-t-[3px] border-t-red-500' : periodTrust === 'warning' ? 'border-t-[3px] border-t-amber-500' : ''
           return (
             <th
               key={pk}
               colSpan={MATRIX_KPIS.length}
-              className={`px-0 ${py1} text-center ${fontSize1} font-bold uppercase tracking-wide border-l-2 border-slate-500 ${idx % 2 === 1 ? 'bg-slate-750' : ''}`}
+              className={`px-0 ${py1} text-center ${fontSize1} font-bold uppercase tracking-wide border-l-2 border-slate-500 ${idx % 2 === 1 ? 'bg-slate-750' : ''} ${trustTop}`}
               style={idx % 2 === 1 ? { backgroundColor: 'rgb(40,50,70)' } : undefined}
+              title={periodTrust && trustTip ? trustTip : undefined}
             >
               {periodLabel(pk, grain)}
               {badge && (
@@ -58,19 +65,26 @@ export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, 
       </tr>
 
       <tr className="bg-slate-700 text-slate-300">
-        {allPeriods.map((pk, pIdx) =>
-          MATRIX_KPIS.map((kpi, j) => (
-            <th
-              key={`${pk}-${kpi.key}`}
-              className={`px-0.5 ${py2} text-center ${fontSize2} font-semibold uppercase tracking-wide whitespace-nowrap
-                ${j === 0 ? 'border-l-2 border-slate-500' : 'border-l border-slate-600/50'}`}
-              style={pIdx % 2 === 1 ? { backgroundColor: 'rgb(48,58,78)' } : undefined}
-              title={kpi.label}
-            >
-              {kpi.short}
-            </th>
-          ))
-        )}
+        {allPeriods.map((pk, pIdx) => {
+          const periodTrust = resolvePeriodTrustVisual(pk, grain, matrixTrust)
+          const trustTop =
+            periodTrust === 'blocked' ? 'border-t-[2px] border-t-red-500/90' : periodTrust === 'warning' ? 'border-t-[2px] border-t-amber-500/90' : ''
+          return (
+            <Fragment key={`hdr-${pk}`}>
+              {MATRIX_KPIS.map((kpi, j) => (
+                <th
+                  key={`${pk}-${kpi.key}`}
+                  className={`px-0.5 ${py2} text-center ${fontSize2} font-semibold uppercase tracking-wide whitespace-nowrap
+                    ${j === 0 ? 'border-l-2 border-slate-500' : 'border-l border-slate-600/50'} ${trustTop}`}
+                  style={pIdx % 2 === 1 ? { backgroundColor: 'rgb(48,58,78)' } : undefined}
+                  title={periodTrust && trustTip ? `${kpi.label} · ${trustTip}` : kpi.label}
+                >
+                  {kpi.short}
+                </th>
+              ))}
+            </Fragment>
+          )
+        })}
       </tr>
     </thead>
   )

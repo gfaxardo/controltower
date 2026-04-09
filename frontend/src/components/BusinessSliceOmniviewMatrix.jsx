@@ -9,12 +9,14 @@ import {
   getBusinessSliceDaily,
   getDataFreshnessGlobal,
   getBusinessSliceCoverageSummary,
+  getMatrixOperationalTrust,
 } from '../services/api.js'
 import {
   buildMatrix,
   aggregateExecutiveKpis,
   computeDeltas as computeDeltasFn,
   computePeriodStates,
+  mergePeriodStatesFromMeta,
   periodStateLabel,
   periodElapsedDays,
   periodTotalDays,
@@ -29,6 +31,7 @@ import {
   loadPersistedState,
   persistState,
   SORT_OPTIONS,
+  resolveMainIssueCellTarget,
 } from './omniview/omniviewMatrixUtils.js'
 import { INSIGHT_CONFIG } from './omniview/insightConfig.js'
 import { detectInsights, buildInsightCellMap } from './omniview/insightEngine.js'
@@ -37,6 +40,7 @@ import BusinessSliceOmniviewMatrixTable from './BusinessSliceOmniviewMatrixTable
 import BusinessSliceOmniviewInspector from './BusinessSliceOmniviewInspector.jsx'
 import BusinessSliceInsightsPanel from './BusinessSliceInsightsPanel.jsx'
 import BusinessSliceInsightSettings from './BusinessSliceInsightSettings.jsx'
+import MatrixExecutiveBanner from './MatrixExecutiveBanner.jsx'
 
 const GRAINS = [
   { id: 'monthly', label: 'Mensual' },
@@ -94,9 +98,36 @@ export default function BusinessSliceOmniviewMatrix () {
   }, [grain, compact, country, city, businessSlice, fleet, showSubfleets, year, month, sortKey])
 
   const [freshnessInfo, setFreshnessInfo] = useState(null)
+  const [sliceMaxTripDate, setSliceMaxTripDate] = useState(null)
   const [coverageSummary, setCoverageSummary] = useState(null)
+  const [matrixMeta, setMatrixMeta] = useState(null)
+  const [matrixTrust, setMatrixTrust] = useState(null)
 
   useEffect(() => { getBusinessSliceFilters().then(setFiltersMeta).catch(() => {}) }, [])
+  useEffect(() => {
+    getMatrixOperationalTrust()
+      .then(setMatrixTrust)
+      .catch(() => setMatrixTrust({
+        trust_status: 'warning',
+        message: 'No se pudo cargar el estado de confianza de la Matrix',
+        operational_trust: { status: 'warning', message: 'Error de red' },
+        operational_decision: {
+          decision_mode: 'CAUTION',
+          confidence: { score: 0, coverage: 0, freshness: 0, consistency: 0 },
+        },
+        trust_recommendations: [],
+        trust_history_recent: [],
+        global_insights_blocked: false,
+        affected_period_keys: { monthly: [], weekly: [], daily: [] },
+        executive: {
+          status: 'WARNING',
+          impact_pct: 0,
+          priority_score: 0,
+          main_issue: null,
+          action: 'Error de red al cargar Data Trust.',
+        },
+      }))
+  }, [])
   useEffect(() => { getDataFreshnessGlobal({ group: 'operational' }).then(setFreshnessInfo).catch(() => {}) }, [])
 
   const countries = filtersMeta?.countries || []
@@ -125,7 +156,13 @@ export default function BusinessSliceOmniviewMatrix () {
   }, [country]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadData = useCallback(async () => {
-    if (blockedByCountry) { setRows([]); setErr(null); return }
+    if (blockedByCountry) {
+      setRows([])
+      setMatrixMeta(null)
+      setSliceMaxTripDate(null)
+      setErr(null)
+      return
+    }
     setLoading(true); setErr(null)
     try {
       const params = {}
@@ -140,10 +177,20 @@ export default function BusinessSliceOmniviewMatrix () {
       else if (grain === 'daily') res = await getBusinessSliceDaily(params)
       else res = await getBusinessSliceMonthly(params)
       let data = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : [])
+      setMatrixMeta(res?.meta ?? null)
+      setSliceMaxTripDate(res?.meta?.slice_max_trip_date ?? null)
       if (!showSubfleets) data = data.filter((r) => !r.is_subfleet)
       setRows(data)
     } catch (e) {
-      setErr(e?.response?.data?.detail || e.message || 'Error cargando datos'); setRows([])
+      const detail = e?.response?.data?.detail
+      const net =
+        e?.code === 'ECONNABORTED' || e?.message?.includes?.('timeout')
+          ? 'Tiempo de espera agotado: el servidor o la base de datos pueden estar lentos o no disponibles.'
+          : null
+      setErr(net || (typeof detail === 'string' ? detail : detail?.message) || e.message || 'Error cargando datos')
+      setRows([])
+      setMatrixMeta(null)
+      setSliceMaxTripDate(null)
     } finally { setLoading(false) }
   }, [grain, country, city, businessSlice, fleet, showSubfleets, year, month, blockedByCountry])
 
@@ -161,20 +208,105 @@ export default function BusinessSliceOmniviewMatrix () {
   const matrix = useMemo(() => buildMatrix(rows, grain), [rows, grain])
   const execKpis = useMemo(() => aggregateExecutiveKpis(rows), [rows])
 
-  const maxDataDate = freshnessInfo?.derived_max_date || null
+  // Freshness para STALE: priorizar capa business_slice (day_fact) alineada a la matriz.
+  const maxDataDate = sliceMaxTripDate || freshnessInfo?.derived_max_date || null
   const periodStates = useMemo(
-    () => computePeriodStates(matrix.allPeriods, grain, maxDataDate),
-    [matrix.allPeriods, grain, maxDataDate]
+    () => mergePeriodStatesFromMeta(
+      computePeriodStates(matrix.allPeriods, grain, maxDataDate),
+      matrixMeta?.period_states,
+    ),
+    [matrix.allPeriods, grain, maxDataDate, matrixMeta]
   )
+
+  const bannerContextHints = useMemo(() => {
+    const hints = []
+    if (matrixMeta?.fact_layer?.status === 'empty') {
+      hints.push(
+        matrixMeta.fact_layer.message ||
+          'Capa operativa (facts) sin datos para este filtro: revisar carga ETL.'
+      )
+    }
+    const lp = matrix.allPeriods.length > 0 ? matrix.allPeriods[matrix.allPeriods.length - 1] : null
+    const st = lp ? periodStates?.get(lp) : null
+    if (st === PERIOD_STATES.STALE) {
+      hints.push('Data desactualizada: el delta no es definitivo')
+    }
+    if (st === PERIOD_STATES.OPEN || st === PERIOD_STATES.PARTIAL) {
+      hints.push(
+        st === PERIOD_STATES.PARTIAL
+          ? 'Carga incompleta: comparativos preliminares'
+          : 'En curso: comparativos preliminares'
+      )
+    }
+    const cp = coverageSummary?.coverage_pct
+    if (cp != null && cp < 92) hints.push(`Cobertura mapeada ${cp}%`)
+    const um = coverageSummary?.unmapped_trips
+    if (um != null && um > 0) hints.push(`Sin mapear ${um.toLocaleString()} viajes`)
+    return hints
+  }, [matrix.allPeriods, periodStates, coverageSummary, matrixMeta])
 
   // ─── Insight Engine (memoized) ────────────────────────────────────────────
   const engineConfig = useMemo(
     () => mergeInsightRuntimeConfig(INSIGHT_CONFIG, insightUserPatch),
     [insightUserPatch]
   )
+  const trustContext = useMemo(() => {
+    if (!matrixTrust?.trust_status) return null
+    const decisionMode = matrixTrust.operational_decision?.decision_mode ?? null
+    return {
+      trust_status: matrixTrust.trust_status,
+      decision_mode: decisionMode,
+      global_insights_blocked:
+        !!matrixTrust.global_insights_blocked || decisionMode === 'BLOCKED',
+      matrixTrust,
+    }
+  }, [matrixTrust])
+
+  const execNavPendingRef = useRef(false)
+
+  const executiveForBanner = useMemo(() => {
+    if (!matrixTrust) return null
+    if (matrixTrust.executive) return matrixTrust.executive
+    const ts = matrixTrust.trust_status
+    const status = ts === 'ok' ? 'OK' : ts === 'blocked' ? 'BLOCKED' : 'WARNING'
+    const im = matrixTrust.impact_summary || {}
+    const pi = matrixTrust.primary_issue
+    return {
+      status,
+      impact_pct: Math.max(Number(im.pct_trips_affected) || 0, Number(im.pct_revenue_affected) || 0),
+      priority_score: pi?.severity_weight ?? 0,
+      main_issue: pi
+        ? {
+            code: pi.code,
+            description: pi.message,
+            city: pi.trace?.city ?? null,
+            lob: pi.trace?.lob ?? null,
+            period: pi.trace?.period ?? null,
+            metric: Array.isArray(pi.trace?.metrics) ? pi.trace.metrics[0] : null,
+          }
+        : null,
+      action: pi?.action_engine?.action || matrixTrust.message || '',
+    }
+  }, [matrixTrust])
+
+  const handleExecutiveBannerActivate = useCallback(() => {
+    const mi = executiveForBanner?.main_issue
+    if (!mi) return
+    execNavPendingRef.current = true
+    if (mi.city) setCity(mi.city)
+    if (mi.lob) setBusinessSlice(mi.lob)
+    if (mi.period && grain === 'monthly') {
+      const d = String(mi.period).slice(0, 10)
+      const y = parseInt(d.slice(0, 4), 10)
+      const mo = parseInt(d.slice(5, 7), 10)
+      if (!Number.isNaN(y)) setYear(y)
+      if (!Number.isNaN(mo)) setMonth(String(mo))
+    }
+  }, [executiveForBanner, grain])
+
   const insights = useMemo(
-    () => detectInsights(matrix, grain, engineConfig, periodStates),
-    [matrix, grain, engineConfig, periodStates]
+    () => detectInsights(matrix, grain, engineConfig, periodStates, trustContext),
+    [matrix, grain, engineConfig, periodStates, trustContext]
   )
   const insightCellMap = useMemo(
     () => buildInsightCellMap(insights, engineConfig),
@@ -191,6 +323,12 @@ export default function BusinessSliceOmniviewMatrix () {
 
   const refreshInsightPatch = useCallback(() => {
     setInsightUserPatch(loadInsightUserPatch() ?? {})
+  }, [])
+
+  const refreshMatrixTrust = useCallback(() => {
+    getMatrixOperationalTrust()
+      .then(setMatrixTrust)
+      .catch(() => {})
   }, [])
 
   const sortSelectOptions = useMemo(() => {
@@ -222,6 +360,23 @@ export default function BusinessSliceOmniviewMatrix () {
     setSelectedCell((prev) => (prev === cellInfo.id ? null : cellInfo.id))
     setSelection((prev) => (prev?.id === cellInfo.id ? null : cellInfo))
   }, [])
+
+  useEffect(() => {
+    if (!execNavPendingRef.current || loading || blockedByCountry || rows.length === 0) return
+    const mi = executiveForBanner?.main_issue
+    const resolved = mi && resolveMainIssueCellTarget(matrix, grain, mi, periodStates)
+    if (resolved?.cellInfo) {
+      handleCellClick(resolved.cellInfo)
+      requestAnimationFrame(() => {
+        const id = resolved.cellInfo.id
+        const el = typeof CSS !== 'undefined' && CSS.escape
+          ? document.querySelector(`[data-matrix-cell-id="${CSS.escape(id)}"]`)
+          : document.querySelector(`[data-matrix-cell-id="${id.replace(/"/g, '')}"]`)
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' })
+      })
+    }
+    execNavPendingRef.current = false
+  }, [rows, matrix, loading, blockedByCountry, executiveForBanner, grain, periodStates, handleCellClick])
 
   const handleInsightClick = useCallback((insight) => {
     const lineData = matrix.cities.get(insight.cityKey)?.lines
@@ -301,8 +456,19 @@ export default function BusinessSliceOmniviewMatrix () {
   }, [matrix, grain])
 
   return (
-    <div className="relative" style={{ width: '100vw', left: '50%', right: '50%', marginLeft: '-50vw', marginRight: '-50vw' }}>
+    <div className="relative" data-omniview-matrix-root style={{ width: '100vw', left: '50%', right: '50%', marginLeft: '-50vw', marginRight: '-50vw' }}>
       <div className="px-4 md:px-6 lg:px-8 space-y-3">
+        <MatrixExecutiveBanner
+          executive={executiveForBanner}
+          decisionMode={matrixTrust?.operational_decision?.decision_mode}
+          confidence={matrixTrust?.operational_decision?.confidence}
+          recommendations={matrixTrust?.trust_recommendations}
+          loading={!matrixTrust}
+          actionable={!blockedByCountry && rows.length > 0 && !loading}
+          onActivate={handleExecutiveBannerActivate}
+          contextHints={bannerContextHints}
+        />
+
         {/* ── Controls ──────────────────────────────────────────── */}
         <div className="rounded-lg border border-gray-200 bg-white shadow-sm px-4 py-2.5">
           <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
@@ -393,7 +559,10 @@ export default function BusinessSliceOmniviewMatrix () {
           <OperationalContextBar
             grain={grain} periodStates={periodStates} allPeriods={matrix.allPeriods}
             comparisonMeta={matrix.comparisonMeta}
-            freshnessInfo={freshnessInfo} coverageSummary={coverageSummary} compact={compact}
+            freshnessInfo={freshnessInfo} sliceMaxTripDate={sliceMaxTripDate}
+            coverageSummary={coverageSummary} compact={compact}
+            matrixMeta={matrixMeta}
+            execKpis={execKpis}
           />
         )}
 
@@ -455,6 +624,7 @@ export default function BusinessSliceOmniviewMatrix () {
                 onCellClick={handleCellClick} selectedCell={selectedCell}
                 insightCellMap={insightCellMap} insightMode={insightMode}
                 lineImpactMap={lineImpactMap} periodStates={periodStates}
+                matrixTrust={matrixTrust}
               />
             </div>
             <BusinessSliceOmniviewInspector
@@ -463,6 +633,9 @@ export default function BusinessSliceOmniviewMatrix () {
               insightForSelection={insightForSelection}
               insightTransparency={engineConfig.transparency}
               periodStates={periodStates} coverageSummary={coverageSummary}
+              matrixTrust={matrixTrust}
+              matrixMeta={matrixMeta}
+              onTrustStateRefresh={refreshMatrixTrust}
             />
           </div>
         )}
@@ -471,9 +644,9 @@ export default function BusinessSliceOmniviewMatrix () {
   )
 }
 
-function OperationalContextBar ({ grain, periodStates, allPeriods, comparisonMeta, freshnessInfo, coverageSummary, compact }) {
+function OperationalContextBar ({ grain, periodStates, allPeriods, comparisonMeta, freshnessInfo, sliceMaxTripDate, coverageSummary, compact, matrixMeta, execKpis }) {
   const hasPartial = [...(periodStates?.values() || [])].some(
-    (s) => s === PERIOD_STATES.PARTIAL || s === PERIOD_STATES.CURRENT_DAY
+    (s) => s === PERIOD_STATES.PARTIAL || s === PERIOD_STATES.CURRENT_DAY || s === PERIOD_STATES.OPEN
   )
   const hasStale = [...(periodStates?.values() || [])].some((s) => s === PERIOD_STATES.STALE)
   const lastPeriod = allPeriods.length > 0 ? allPeriods[allPeriods.length - 1] : null
@@ -495,7 +668,7 @@ function OperationalContextBar ({ grain, periodStates, allPeriods, comparisonMet
         : 'Comparativo mensual · parcial vs cerrado'
   }
 
-  const elapsed = lastPeriod && (lastState === PERIOD_STATES.PARTIAL || lastState === PERIOD_STATES.CURRENT_DAY)
+  const elapsed = lastPeriod && (lastState === PERIOD_STATES.PARTIAL || lastState === PERIOD_STATES.CURRENT_DAY || lastState === PERIOD_STATES.OPEN)
     ? periodElapsedDays(lastPeriod, grain) : null
   const total = lastPeriod && elapsed ? periodTotalDays(lastPeriod, grain) : null
 
@@ -538,18 +711,44 @@ function OperationalContextBar ({ grain, periodStates, allPeriods, comparisonMet
       )}
 
       {freshnessInfo && (
-        <span className="text-[10px] text-slate-500" title={freshnessInfo.message}>
-          Freshness: {freshnessInfo.derived_max_date || '—'}
-          {freshnessInfo.lag_days > 0 && <span className="text-amber-600 ml-1">(lag {freshnessInfo.lag_days}d)</span>}
+        <span
+          className="text-[10px] text-slate-500"
+          title={sliceMaxTripDate ? `Business slice day_fact: ${sliceMaxTripDate}. ${freshnessInfo.message || ''}` : freshnessInfo.message}>
+          Freshness: {sliceMaxTripDate || freshnessInfo.derived_max_date || '—'}
+          {sliceMaxTripDate && <span className="text-slate-400 ml-1">(slice)</span>}
+          {!sliceMaxTripDate && freshnessInfo.lag_days > 0 && (
+            <span className="text-amber-600 ml-1">(lag {freshnessInfo.lag_days}d)</span>
+          )}
         </span>
       )}
 
-      {cov && cov.total_trips > 0 && (
+      {cov && (cov.total_trips_real_raw ?? cov.total_trips) > 0 && (
         <span className="text-[10px] text-slate-600 ml-auto flex items-center gap-2">
-          <span>Cobertura mapeada: <strong className={cov.coverage_pct >= 95 ? 'text-emerald-700' : cov.coverage_pct >= 80 ? 'text-amber-700' : 'text-red-700'}>{cov.coverage_pct}%</strong></span>
+          <span title="Mapped / universo RAW (public.trips_unified)">
+            Cobertura: <strong className={cov.coverage_pct >= 95 ? 'text-emerald-700' : cov.coverage_pct >= 80 ? 'text-amber-700' : 'text-red-700'}>{cov.coverage_pct}%</strong>
+            <span className="text-slate-400 font-normal"> RAW {(cov.total_trips_real_raw ?? cov.total_trips).toLocaleString()}</span>
+          </span>
           {cov.unmapped_trips > 0 && (
-            <span className="text-slate-400">No mapeados: {cov.unmapped_trips.toLocaleString()}</span>
+            <span className="text-slate-400">Sin mapear: {cov.unmapped_trips.toLocaleString()}</span>
           )}
+          {cov.identity_check_ok === false && (
+            <span className="text-amber-700" title="RAW vs resolved o conteos por estado">⚠ identidad</span>
+          )}
+        </span>
+      )}
+
+      {execKpis?.unmapped_trips_volume > 0 && (
+        <span className="text-[10px] text-amber-800" title="Volumen en bucket UNMAPPED (calidad de mapeo, no LOB)">
+          Sin mapear en vista: {execKpis.unmapped_trips_volume.toLocaleString()} viajes
+          {execKpis.unmapped_share_of_trips != null && (
+            <span className="text-slate-500"> ({(execKpis.unmapped_share_of_trips * 100).toFixed(1)}% del volumen mostrado)</span>
+          )}
+        </span>
+      )}
+
+      {matrixMeta?.period_states?.length > 0 && (
+        <span className="text-[10px] text-slate-500 hidden lg:inline" title="State Engine: max por período en day_fact (no solo global)">
+          Estados: backend · máx global {matrixMeta.slice_max_trip_date || '—'} · por período ✓
         </span>
       )}
     </div>

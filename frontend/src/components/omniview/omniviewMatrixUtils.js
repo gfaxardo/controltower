@@ -18,6 +18,91 @@ export const MATRIX_KPIS = [
 
 export const KPI_KEYS = MATRIX_KPIS.map(k => k.key)
 
+function matchPeriodKeyInMatrix (allPeriods, grain, periodHint) {
+  if (!allPeriods?.length) return null
+  if (!periodHint) return allPeriods[allPeriods.length - 1]
+  const ph = String(periodHint).slice(0, 10)
+  if (allPeriods.includes(ph)) return ph
+  if (grain === 'monthly') {
+    const pref = ph.slice(0, 7)
+    const hit = allPeriods.find((p) => String(p).slice(0, 7) === pref)
+    return hit || allPeriods[allPeriods.length - 1]
+  }
+  return allPeriods.find((p) => String(p) === ph) || allPeriods[allPeriods.length - 1]
+}
+
+/**
+ * Resuelve celda Matrix para el hallazgo ejecutivo (inspector + scroll).
+ * @param {object} mainIssue — { city, lob, period, metric } desde API executive.main_issue
+ */
+export function resolveMainIssueCellTarget (matrix, grain, mainIssue, periodStates = null) {
+  if (!matrix?.cities?.size || !mainIssue) return null
+  const kpiKey = mainIssue.metric && KPI_KEYS.includes(mainIssue.metric)
+    ? mainIssue.metric
+    : 'trips_completed'
+  const same = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase()
+
+  let cityPair = null
+  if (mainIssue.city) {
+    for (const [ck, cd] of matrix.cities) {
+      if (same(cd.city, mainIssue.city)) {
+        cityPair = [ck, cd]
+        break
+      }
+    }
+  }
+  if (!cityPair) {
+    const it = matrix.cities.entries().next()
+    if (it.done) return null
+    cityPair = it.value
+  }
+  const [cityKey, cityData] = cityPair
+
+  let linePair = null
+  if (mainIssue.lob) {
+    for (const [lk, ld] of cityData.lines) {
+      if (same(ld.business_slice_name, mainIssue.lob)) {
+        linePair = [lk, ld]
+        break
+      }
+    }
+  }
+  if (!linePair) {
+    for (const [lk, ld] of cityData.lines) {
+      if (!ld.is_subfleet) {
+        linePair = [lk, ld]
+        break
+      }
+    }
+  }
+  if (!linePair) {
+    const it = cityData.lines.entries().next()
+    if (it.done) return null
+    linePair = it.value
+  }
+  const [lineKey, lineData] = linePair
+
+  const pk = matchPeriodKeyInMatrix(matrix.allPeriods, grain, mainIssue.period)
+  if (!pk) return null
+
+  const deltas = computeDeltas(lineData.periods, matrix.allPeriods, periodStates)
+  const periodDeltas = deltas.get(pk) || null
+
+  const cellId = `${cityKey}::${lineKey}::${pk}::${kpiKey}`
+  return {
+    cellInfo: {
+      id: cellId,
+      cityKey,
+      lineKey,
+      period: pk,
+      kpiKey,
+      lineData,
+      periodDeltas,
+      raw: lineData.periods.get(pk)?.raw,
+    },
+  }
+}
+
 // ─── Period helpers ─────────────────────────────────────────────────────────
 export function periodKey (row, grain) {
   if (grain === 'monthly') return row?.month ?? null
@@ -78,6 +163,7 @@ function getISOWeekYear (d) {
 
 // ─── Period State ─────────────────────────────────────────────────────────
 export const PERIOD_STATES = {
+  OPEN: 'OPEN',
   CLOSED: 'CLOSED',
   PARTIAL: 'PARTIAL',
   CURRENT_DAY: 'CURRENT_DAY',
@@ -86,15 +172,32 @@ export const PERIOD_STATES = {
 }
 
 const STATE_LABELS = {
+  OPEN: 'En curso',
   CLOSED: 'Cerrado',
-  PARTIAL: 'Parcial',
+  PARTIAL: 'Carga incompleta',
   CURRENT_DAY: 'Hoy',
-  STALE: 'Stale',
+  STALE: 'Data desactualizada',
   FUTURE: 'Futuro',
 }
 
 export function periodStateLabel (state) {
   return STATE_LABELS[state] || ''
+}
+
+/**
+ * Prioriza estados calculados en backend (State Engine) sobre el fallback local.
+ * @param {Map<string,string>} computedMap
+ * @param {Array<{period_key?: string, period_status?: string}>} metaPeriodStates
+ */
+export function mergePeriodStatesFromMeta (computedMap, metaPeriodStates) {
+  if (!metaPeriodStates?.length) return computedMap
+  const m = new Map(computedMap)
+  for (const rec of metaPeriodStates) {
+    const pk = rec?.period_key
+    const st = rec?.period_status
+    if (pk && st) m.set(pk, st)
+  }
+  return m
 }
 
 export function computePeriodStates (allPeriods, grain, maxDataDate = null) {
@@ -114,7 +217,8 @@ export function computePeriodStates (allPeriods, grain, maxDataDate = null) {
       const monthStart = new Date(d.getFullYear(), d.getMonth(), 1)
       const nextMonth = new Date(d.getFullYear(), d.getMonth() + 1, 1)
       if (today >= monthStart && today < nextMonth) {
-        state = PERIOD_STATES.PARTIAL
+        const lagOk = maxData && maxData >= new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1)
+        state = lagOk ? PERIOD_STATES.OPEN : PERIOD_STATES.PARTIAL
       } else if (today < monthStart) {
         state = PERIOD_STATES.FUTURE
       } else if (maxData) {
@@ -126,7 +230,8 @@ export function computePeriodStates (allPeriods, grain, maxDataDate = null) {
       const weekEnd = new Date(weekStart)
       weekEnd.setDate(weekEnd.getDate() + 7)
       if (today >= weekStart && today < weekEnd) {
-        state = PERIOD_STATES.PARTIAL
+        const lagOk = maxData && maxData >= new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1)
+        state = lagOk ? PERIOD_STATES.OPEN : PERIOD_STATES.PARTIAL
       } else if (today < weekStart) {
         state = PERIOD_STATES.FUTURE
       } else if (maxData) {
@@ -297,7 +402,11 @@ function _comparisonMetaForDelta (cmp, isPartialComparison, hasEquivalentBaselin
 
 // ─── Deltas ─────────────────────────────────────────────────────────────────
 function _isPartialState (s) {
-  return s === PERIOD_STATES.PARTIAL || s === PERIOD_STATES.CURRENT_DAY
+  return s === PERIOD_STATES.PARTIAL || s === PERIOD_STATES.CURRENT_DAY || s === PERIOD_STATES.OPEN
+}
+
+function _isStaleState (s) {
+  return s === PERIOD_STATES.STALE
 }
 
 export function computeDeltas (linePeriods, allPeriods, periodStates) {
@@ -313,8 +422,21 @@ export function computeDeltas (linePeriods, allPeriods, periodStates) {
     const prevState = prevPk ? periodStates?.get(prevPk) : null
     const cmp = curr.raw?.comparison_context || null
     const hasEquivalentBaseline = !!(cmp?.baseline_metrics && (cmp?.is_partial_equivalent || cmp?.is_operationally_aligned))
-    const isPartialComparison = !!(periodStates && _isPartialState(curState) && prevState === PERIOD_STATES.CLOSED && !hasEquivalentBaseline)
-    const meta = _comparisonMetaForDelta(cmp, isPartialComparison, hasEquivalentBaseline)
+    const isStaleComparison = !!(periodStates && _isStaleState(curState))
+    const isUnmappedLine = !!curr.raw?.is_unmapped_bucket
+    const isPartialComparison = !!(
+      periodStates &&
+      (
+        isUnmappedLine ||
+        (_isPartialState(curState) && prevState === PERIOD_STATES.CLOSED && !hasEquivalentBaseline) ||
+        isStaleComparison
+      )
+    )
+    const meta = {
+      ..._comparisonMetaForDelta(cmp, isPartialComparison, hasEquivalentBaseline),
+      is_unmapped_bucket: isUnmappedLine,
+      data_quality_row: isUnmappedLine,
+    }
 
     const deltas = {}
     for (const { key, showAsPct } of MATRIX_KPIS) {
@@ -355,7 +477,14 @@ export function computeTotalsDeltas (totals, allPeriods, periodStates, compariso
     const prevState = prevPk ? periodStates?.get(prevPk) : null
     const cmp = comparisonMeta?.get(pk) || null
     const hasEquivalentBaseline = !!(comparisonTotals?.get(pk) && (cmp?.is_partial_equivalent || cmp?.is_operationally_aligned))
-    const isPartialComparison = !!(periodStates && _isPartialState(curState) && prevState === PERIOD_STATES.CLOSED && !hasEquivalentBaseline)
+    const isStaleComparison = !!(periodStates && _isStaleState(curState))
+    const isPartialComparison = !!(
+      periodStates &&
+      (
+        (_isPartialState(curState) && prevState === PERIOD_STATES.CLOSED && !hasEquivalentBaseline) ||
+        isStaleComparison
+      )
+    )
     const meta = _comparisonMetaForDelta(cmp, isPartialComparison, hasEquivalentBaseline)
 
     const deltas = {}
@@ -385,21 +514,36 @@ export function computeTotalsDeltas (totals, allPeriods, periodStates, compariso
 export function aggregateExecutiveKpis (rows) {
   let trips = 0, cancelled = 0, revenue = 0, drivers = 0
   let ticketSum = 0, ticketN = 0, commSum = 0, commN = 0
+  let umTrips = 0, umCancelled = 0, umRevenue = 0
   for (const r of rows) {
-    trips += Number(r.trips_completed) || 0
-    cancelled += Number(r.trips_cancelled) || 0
-    revenue += Number(r.revenue_yego_net) || 0
+    const tc = Number(r.trips_completed) || 0
+    const cc = Number(r.trips_cancelled) || 0
+    const rev = Number(r.revenue_yego_net) || 0
+    if (r.is_unmapped_bucket) {
+      umTrips += tc
+      umCancelled += cc
+      umRevenue += rev
+      continue
+    }
+    trips += tc
+    cancelled += cc
+    revenue += rev
     drivers += Number(r.active_drivers) || 0
     if (r.avg_ticket != null) { ticketSum += Number(r.avg_ticket); ticketN += 1 }
     if (r.commission_pct != null) { commSum += Number(r.commission_pct); commN += 1 }
   }
   const total = trips + cancelled
+  const umVol = umTrips + umCancelled
+  const allVol = total + umVol
   return {
     trips_completed: trips, revenue_yego_net: revenue,
     commission_pct: commN > 0 ? commSum / commN : null,
     active_drivers: drivers,
     cancel_rate_pct: total > 0 ? cancelled / total : null,
     trips_per_driver: drivers > 0 ? trips / drivers : null,
+    unmapped_trips_volume: umVol,
+    unmapped_revenue: umRevenue,
+    unmapped_share_of_trips: allVol > 0 ? umVol / allVol : 0,
   }
 }
 
@@ -521,12 +665,124 @@ export function describeComparison (delta, grain) {
 }
 
 // ─── Tooltip builder ────────────────────────────────────────────────────────
-export function buildCellTooltip (kpi, delta, cityName, lineName, periodLbl, periodState, grain) {
+function _normTrustStr (s) {
+  return String(s || '').trim().toLowerCase()
+}
+
+/** ¿El segmento de trust aplica a esta celda? (ciudad / LOB / periodo / métrica) */
+export function cellMatchesTrustSegment (segment, { grain, cityName, lineName, periodKey, kpiKey }) {
+  if (!segment) return false
+  const pk = segment.period_keys || {}
+  const hasPeriod = !!(pk.monthly?.length || pk.weekly?.length || pk.daily?.length)
+  if (hasPeriod) {
+    let ok = false
+    if (grain === 'monthly' && pk.monthly?.includes(periodKey)) ok = true
+    if (grain === 'weekly' && pk.weekly?.includes(periodKey)) ok = true
+    if (grain === 'daily' && pk.daily?.includes(periodKey)) ok = true
+    if (!ok) return false
+  }
+  if (segment.city && _normTrustStr(segment.city) !== _normTrustStr(cityName)) return false
+  if (segment.lob && _normTrustStr(segment.lob) !== _normTrustStr(lineName)) return false
+  const m = segment.metrics
+  if (Array.isArray(m) && m.length > 0 && !m.includes(kpiKey)) return false
+  return true
+}
+
+/**
+ * Peor estado operativo para una celda concreta (priorizado vs solo periodo global).
+ */
+export function resolveCellTrustVisual (matrixTrust, grain, cityName, lineName, periodKey, kpiKey) {
+  if (!matrixTrust || matrixTrust.trust_status === 'ok') return null
+  const segs = matrixTrust.affected_segments || []
+  let worst = null
+  const rank = { warning: 1, blocked: 2 }
+  for (const s of segs) {
+    if (!cellMatchesTrustSegment(s, { grain, cityName, lineName, periodKey, kpiKey })) continue
+    const st = s.trust_status
+    if (st === 'blocked') return 'blocked'
+    if (st === 'warning' && (!worst || (rank[st] || 0) > (rank[worst] || 0))) worst = 'warning'
+  }
+  if (worst) return worst
+  return resolvePeriodTrustVisual(periodKey, grain, matrixTrust)
+}
+
+/** Trust operativo Matrix: columna afectada (null = sin marca en esa columna). */
+export function resolvePeriodTrustVisual (periodKey, grain, matrixTrust) {
+  if (!matrixTrust || matrixTrust.trust_status === 'ok') return null
+  const aff = matrixTrust.affected_period_keys || {}
+  const hasSpecific = (aff.monthly?.length || aff.weekly?.length || aff.daily?.length) > 0
+  let match = false
+  if (grain === 'monthly') match = !!(aff.monthly && aff.monthly.includes(periodKey))
+  else if (grain === 'weekly') match = !!(aff.weekly && aff.weekly.includes(periodKey))
+  else match = !!(aff.daily && aff.daily.includes(periodKey))
+  if (!match && matrixTrust.trust_status === 'blocked' && !hasSpecific) match = true
+  if (!match) return null
+  return matrixTrust.trust_status
+}
+
+/** Fila total: aplica segmentos sin ciudad/LOB (agregado). */
+export function resolveTotalsTrustVisual (matrixTrust, grain, periodKey, kpiKey) {
+  if (!matrixTrust || matrixTrust.trust_status === 'ok') return null
+  const segs = matrixTrust.affected_segments || []
+  let worst = null
+  const rank = { warning: 1, blocked: 2 }
+  for (const s of segs) {
+    if (s.city || s.lob) continue
+    if (!cellMatchesTrustSegment(s, { grain, cityName: '*', lineName: '*', periodKey, kpiKey })) continue
+    const st = s.trust_status
+    if (st === 'blocked') return 'blocked'
+    if (st === 'warning' && (!worst || (rank[st] || 0) > (rank[worst] || 0))) worst = 'warning'
+  }
+  if (worst) return worst
+  return resolvePeriodTrustVisual(periodKey, grain, matrixTrust)
+}
+
+export function trustIssueSummaryForTooltip (matrixTrust) {
+  if (!matrixTrust || matrixTrust.trust_status === 'ok') return null
+  const pi = matrixTrust.primary_issue
+  if (pi?.message) {
+    const label = pi.trust_status === 'blocked' ? 'Prioridad' : 'Aviso prior.'
+    return `${label}: ${pi.message}`
+  }
+  const op = matrixTrust.operational_trust || {}
+  const first =
+    (op.blocked_findings && op.blocked_findings[0]) ||
+    (op.warning_findings && op.warning_findings[0])
+  if (first?.message) return `${matrixTrust.trust_status === 'blocked' ? 'Bloqueo' : 'Aviso'}: ${first.message}`
+  return matrixTrust.message || null
+}
+
+/** Líneas extra para tooltip: acción + query sugerida por segmentos que aplican a la celda. */
+export function trustSegmentsDetailForTooltip (matrixTrust, grain, cityName, lineName, periodKey, kpiKey) {
+  if (!matrixTrust?.affected_segments?.length) return null
+  const chunks = []
+  for (const s of matrixTrust.affected_segments) {
+    if (!cellMatchesTrustSegment(s, { grain, cityName, lineName, periodKey, kpiKey })) continue
+    const ae = s.action_engine || {}
+    const head = s.code ? `[${s.code}] ` : ''
+    chunks.push(`${head}${s.message || ''}`.trim())
+    if (ae.action) chunks.push(`→ Acción: ${ae.action}`)
+    if (ae.suggested_query) chunks.push(`→ Query: ${ae.suggested_query}`)
+    if (ae.process) chunks.push(`→ Proceso: ${ae.process}`)
+  }
+  if (!chunks.length) return null
+  return chunks.join('\n')
+}
+
+/** Resalta celda (periodo con incidencia de trust). */
+export function trustPeriodCellOverlayClass (visual) {
+  if (!visual) return ''
+  if (visual === 'blocked') return 'shadow-[inset_0_0_0_1.5px_rgba(220,38,38,0.55)] bg-rose-50/30'
+  return 'shadow-[inset_0_0_0_1px_rgba(217,119,6,0.5)] bg-amber-50/25'
+}
+
+export function buildCellTooltip (kpi, delta, cityName, lineName, periodLbl, periodState, grain, trustLine = null) {
   const parts = [`${kpi.label} — ${lineName}`, `${cityName} · ${periodLbl}`]
   if (periodState) {
     const sl = periodStateLabel(periodState)
     if (sl) parts.push(`Estado: ${sl}`)
   }
+  if (trustLine) parts.push(trustLine)
   if (delta) {
     parts.push(`Actual: ${fmtRaw(delta.value)}`)
     if (delta.previous != null) parts.push(`Anterior: ${fmtRaw(delta.previous)}`)

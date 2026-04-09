@@ -1,78 +1,32 @@
 from typing import Dict, Optional, List, Literal, Any
 from dataclasses import dataclass
-from app.db.schema_verify import inspect_revenue_column
 import logging
 import unicodedata
 import re
 
 logger = logging.getLogger(__name__)
 
-REVENUE_COLUMN_CACHE: Optional[str] = None
+# ---------------------------------------------------------------------------
+# LEGACY — bi.real_monthly_agg
+# ---------------------------------------------------------------------------
+# Las siguientes funciones existían para resolver columnas de
+# bi.real_monthly_agg (tabla legacy del pipeline BI externo).
+# El sistema operativo actual de Control Tower NO usa bi.real_monthly_agg.
+# Las fuentes canónicas son: trips_2025/2026, ops.*, dims canónicas.
+# Se mantienen como stubs que retornan None para no romper imports legacy.
+# ---------------------------------------------------------------------------
 
 def get_revenue_column_name() -> Optional[str]:
-    """
-    Obtiene el nombre de la columna de revenue en bi.real_monthly_agg.
-    Si no existe, retorna None.
-    """
-    global REVENUE_COLUMN_CACHE
-    
-    if REVENUE_COLUMN_CACHE is not None:
-        return REVENUE_COLUMN_CACHE
-    
-    from app.db.connection import get_db
-    try:
-        with get_db() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_schema = 'bi' 
-                AND table_name = 'real_monthly_agg'
-                AND (
-                    column_name ILIKE '%revenue%' 
-                    OR column_name ILIKE '%ingreso%'
-                    OR column_name ILIKE '%income%'
-                )
-                LIMIT 1;
-            """)
-            result = cursor.fetchone()
-            cursor.close()
-            
-            if result:
-                REVENUE_COLUMN_CACHE = result[0]
-                logger.info(f"Columna de revenue mapeada: {REVENUE_COLUMN_CACHE}")
-                return REVENUE_COLUMN_CACHE
-            else:
-                REVENUE_COLUMN_CACHE = None
-                logger.info("No se encontró columna de revenue en bi.real_monthly_agg")
-                return None
-    except Exception as e:
-        logger.warning(f"Error al obtener columna revenue: {e}")
-        return None
-
-METRIC_MAPPING = {
-    'trips': 'orders_completed',
-    'revenue': get_revenue_column_name,
-    'active_drivers': None,
-    'commission': None
-}
+    """LEGACY — bi.real_monthly_agg ya no es fuente operativa. Retorna None."""
+    logger.debug("LEGACY_BI_SOURCE_DETECTED: get_revenue_column_name llamada — bi.real_monthly_agg no es source of truth operativo.")
+    return None
 
 def get_real_column_name(metric: str) -> Optional[str]:
-    """
-    Obtiene el nombre de la columna real correspondiente a una métrica.
-    """
-    if metric not in METRIC_MAPPING:
-        logger.warning(f"Métrica desconocida: {metric}")
-        return None
-    
-    mapping = METRIC_MAPPING[metric]
-    
-    if mapping is None:
-        return None
-    elif callable(mapping):
-        return mapping()
-    else:
-        return mapping
+    """LEGACY — resolver columna desde bi.real_monthly_agg. Ya no es fuente operativa."""
+    logger.debug("LEGACY_BI_SOURCE_DETECTED: get_real_column_name('%s') — bi.real_monthly_agg no es source of truth operativo.", metric)
+    if metric == 'trips':
+        return 'orders_completed'
+    return None
 
 LINE_OF_BUSINESS_MAPPING = {
     'autos regular': 'Auto Taxi',
@@ -171,18 +125,18 @@ def normalize_line_of_business(plan_line: str) -> str:
 def get_all_universe_line_of_business() -> List[str]:
     """
     Obtiene todos los valores únicos de default_line_of_business del universo operativo.
+
+    LEGACY: originalmente leía de bi.real_monthly_agg. Migrado a dim.dim_park directo
+    dado que el sistema actual resuelve LOB desde dims canónicas + ops.*.
     """
     from app.db.connection import get_db
     try:
         with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT DISTINCT COALESCE(d.default_line_of_business, '') as line_of_business
-                FROM bi.real_monthly_agg r
-                LEFT JOIN dim.dim_park d ON r.park_id = d.park_id
-                WHERE r.year = 2025
-                AND COALESCE(r.orders_completed, 0) > 0
-                AND COALESCE(d.default_line_of_business, '') != ''
+                SELECT DISTINCT COALESCE(default_line_of_business, '') AS line_of_business
+                FROM dim.dim_park
+                WHERE COALESCE(default_line_of_business, '') != ''
                 ORDER BY line_of_business
             """)
             results = cursor.fetchall()

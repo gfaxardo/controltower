@@ -8,7 +8,7 @@
  * cuando sigue siendo parcial-vs-completo o CURRENT_DAY sin corte intradía equivalente.
  */
 
-import { computeDeltas, periodLabel, PERIOD_STATES } from './omniviewMatrixUtils.js'
+import { computeDeltas, periodLabel, PERIOD_STATES, resolveCellTrustVisual } from './omniviewMatrixUtils.js'
 import { INSIGHT_CONFIG } from './insightConfig.js'
 
 // ─── Resolución de config por métrica + grano ───────────────────────────────
@@ -155,7 +155,11 @@ function groupInsightsByRowPeriod (rawInsights, config) {
 // ─── Period state helpers for insight engine ─────────────────────────────────
 
 function _isPartialPeriod (state) {
-  return state === PERIOD_STATES.PARTIAL || state === PERIOD_STATES.CURRENT_DAY
+  return (
+    state === PERIOD_STATES.PARTIAL ||
+    state === PERIOD_STATES.CURRENT_DAY ||
+    state === PERIOD_STATES.OPEN
+  )
 }
 
 function _downgradeSeverity (severity) {
@@ -165,10 +169,17 @@ function _downgradeSeverity (severity) {
 
 // ─── Detección principal ─────────────────────────────────────────────────────
 
-export function detectInsights (matrix, grain, config = INSIGHT_CONFIG, periodStates = null) {
+export function detectInsights (matrix, grain, config = INSIGHT_CONFIG, periodStates = null, trustContext = null) {
   const { cities, allPeriods } = matrix
   if (allPeriods.length < 2) return []
+  if (trustContext?.global_insights_blocked) return []
+  const dm =
+    trustContext?.decision_mode ||
+    trustContext?.matrixTrust?.operational_decision?.decision_mode ||
+    null
+  if (dm === 'BLOCKED') return []
 
+  const mt = trustContext?.matrixTrust
   const baseMult = config.grainThresholdMultipliers?.[grain] ?? 1
   const userSens = config.userSensitivityMultiplier ?? 1
   const grainMult = baseMult * userSens
@@ -179,6 +190,8 @@ export function detectInsights (matrix, grain, config = INSIGHT_CONFIG, periodSt
 
   for (const [cityKey, cityData] of cities) {
     for (const [lineKey, lineData] of cityData.lines) {
+      if (lineData.business_slice_name === 'UNMAPPED' || cityData.city === 'UNMAPPED') continue
+
       const deltas = computeDeltas(lineData.periods, allPeriods, periodStates)
 
       for (const pk of allPeriods) {
@@ -187,6 +200,7 @@ export function detectInsights (matrix, grain, config = INSIGHT_CONFIG, periodSt
 
         const pState = periodStates?.get(pk)
         const isPartial = _isPartialPeriod(pState)
+        const isStale = pState === PERIOD_STATES.STALE
 
         for (const metricKey of Object.keys(config.metrics || {})) {
           const cfg = getMetricDefinition(config, grain, metricKey)
@@ -194,15 +208,31 @@ export function detectInsights (matrix, grain, config = INSIGHT_CONFIG, periodSt
           if (!d || d.value == null || !cfg) continue
 
           const hasTrustworthyEquivalent = !!(d.is_equivalent_comparison && !d.is_preliminary)
-          const shouldDowngrade = isPartial && !hasTrustworthyEquivalent
+          const shouldDowngrade = (isPartial && !hasTrustworthyEquivalent) || isStale
           const effectiveMult = shouldDowngrade ? grainMult * partialMultiplier : grainMult
 
           let severity = evaluateMetricThresholds(cfg, d, effectiveMult)
           if (!severity) continue
 
-          if (shouldDowngrade) severity = _downgradeSeverity(severity)
+          const cellTrust = mt
+            ? resolveCellTrustVisual(mt, grain, cityData.city, lineData.business_slice_name, pk, metricKey)
+            : null
+          if (cellTrust === 'blocked') continue
 
-          const impactScore = calculateImpactScore(periodDeltas, config)
+          if (shouldDowngrade) severity = _downgradeSeverity(severity)
+          const matrixCaution =
+            dm === 'CAUTION' ||
+            trustContext?.trust_status === 'warning'
+          const trustDegraded =
+            cellTrust === 'warning' ||
+            (!cellTrust && matrixCaution)
+          if (trustDegraded) {
+            if (severity === 'critical') severity = 'warning'
+            else if (severity === 'warning') severity = 'warning'
+          }
+
+          let impactScore = calculateImpactScore(periodDeltas, config)
+          if (trustDegraded) impactScore *= 0.5
           const explanation = explainInsight(metricKey, periodDeltas, config)
           const action = suggestActions(explanation.causeId, config)
 

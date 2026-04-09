@@ -1,5 +1,5 @@
 from app.db.connection import get_db
-from app.contracts.data_contract import get_real_column_name, normalize_country_std, normalize_city_std, normalize_line_of_business_std
+from app.contracts.data_contract import normalize_country_std, normalize_city_std, normalize_line_of_business_std
 from psycopg2.extras import RealDictCursor
 import logging
 from typing import Optional, List, Dict

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Body
 import os
 import json
 import time as _time
@@ -148,6 +148,8 @@ from app.services.top_driver_behavior_service import (
     get_top_driver_behavior_export,
 )
 from app.services.business_slice_service import (
+    append_unmapped_bucket_rows,
+    enrich_business_slice_matrix_meta,
     get_business_slice_filters,
     get_business_slice_monthly,
     get_business_slice_coverage,
@@ -158,8 +160,13 @@ from app.services.business_slice_service import (
     get_plan_business_slice_stub,
     get_business_slice_weekly,
     get_business_slice_daily,
+    get_business_slice_matrix_freshness_meta,
 )
 from app.services.business_slice_omniview_service import get_business_slice_omniview
+from app.services.omniview_matrix_integrity_service import (
+    get_matrix_operational_trust_api_payload,
+    log_omniview_issue_action,
+)
 from app.settings import settings
 from fastapi.responses import Response
 from typing import Optional, Literal
@@ -2692,18 +2699,50 @@ async def business_slice_monthly(
     limit: int = Query(2000, ge=1, le=10000),
 ):
     try:
-        data = await _run_sync(
-            get_business_slice_monthly,
-            country=country,
-            city=city,
-            business_slice=business_slice,
-            fleet=fleet,
-            subfleet=subfleet,
-            year=year,
-            month=month,
-            limit=limit,
-        )
-        return {"data": data, "total": len(data)}
+        def _monthly_bundle():
+            rows = get_business_slice_monthly(
+                country=country,
+                city=city,
+                business_slice=business_slice,
+                fleet=fleet,
+                subfleet=subfleet,
+                year=year,
+                month=month,
+                limit=limit,
+            )
+            rows = append_unmapped_bucket_rows(
+                rows,
+                "monthly",
+                country=country,
+                city=city,
+                year=year,
+                month=month,
+                business_slice=business_slice,
+                fleet=fleet,
+                subfleet=subfleet,
+            )
+            meta = enrich_business_slice_matrix_meta(
+                get_business_slice_matrix_freshness_meta(),
+                "monthly",
+                rows,
+                country=country,
+                city=city,
+                business_slice=business_slice,
+                fleet=fleet,
+                subfleet=subfleet,
+                year=year,
+                month=month,
+                fact_layer={
+                    "grain": "monthly",
+                    "status": "ok",
+                    "source": "month_fact",
+                    "source_table": "ops.real_business_slice_month_fact",
+                },
+            )
+            return rows, meta
+
+        data, meta = await _run_sync(_monthly_bundle)
+        return {"data": data, "total": len(data), "meta": meta}
     except Exception as e:
         logger.error("business-slice/monthly: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -2789,15 +2828,43 @@ async def business_slice_weekly(
     limit: int = Query(1500, ge=1, le=10000),
 ):
     try:
-        data = await _run_sync(
-            get_business_slice_weekly,
-            country=country,
-            city=city,
-            business_slice=business_slice,
-            year=year,
-            limit=limit,
-        )
-        return {"data": data, "total": len(data)}
+        def _weekly_bundle():
+            rows, fact_layer = get_business_slice_weekly(
+                country=country,
+                city=city,
+                business_slice=business_slice,
+                year=year,
+                limit=limit,
+            )
+            if fact_layer.get("status") == "ok":
+                rows = append_unmapped_bucket_rows(
+                    rows,
+                    "weekly",
+                    country=country,
+                    city=city,
+                    year=year,
+                    month=None,
+                    business_slice=business_slice,
+                    fleet=None,
+                    subfleet=None,
+                )
+            meta = enrich_business_slice_matrix_meta(
+                get_business_slice_matrix_freshness_meta(),
+                "weekly",
+                rows,
+                country=country,
+                city=city,
+                business_slice=business_slice,
+                fleet=None,
+                subfleet=None,
+                year=year,
+                month=None,
+                fact_layer=fact_layer,
+            )
+            return rows, meta
+
+        data, meta = await _run_sync(_weekly_bundle)
+        return {"data": data, "total": len(data), "meta": meta}
     except Exception as e:
         logger.error("business-slice/weekly: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -2813,16 +2880,44 @@ async def business_slice_daily(
     limit: int = Query(2000, ge=1, le=10000),
 ):
     try:
-        data = await _run_sync(
-            get_business_slice_daily,
-            country=country,
-            city=city,
-            business_slice=business_slice,
-            year=year,
-            month=month,
-            limit=limit,
-        )
-        return {"data": data, "total": len(data)}
+        def _daily_bundle():
+            rows, fact_layer = get_business_slice_daily(
+                country=country,
+                city=city,
+                business_slice=business_slice,
+                year=year,
+                month=month,
+                limit=limit,
+            )
+            if fact_layer.get("status") == "ok":
+                rows = append_unmapped_bucket_rows(
+                    rows,
+                    "daily",
+                    country=country,
+                    city=city,
+                    year=year,
+                    month=month,
+                    business_slice=business_slice,
+                    fleet=None,
+                    subfleet=None,
+                )
+            meta = enrich_business_slice_matrix_meta(
+                get_business_slice_matrix_freshness_meta(),
+                "daily",
+                rows,
+                country=country,
+                city=city,
+                business_slice=business_slice,
+                fleet=None,
+                subfleet=None,
+                year=year,
+                month=month,
+                fact_layer=fact_layer,
+            )
+            return rows, meta
+
+        data, meta = await _run_sync(_daily_bundle)
+        return {"data": data, "total": len(data), "meta": meta}
     except Exception as e:
         logger.error("business-slice/daily: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -2893,6 +2988,36 @@ async def business_slice_omniview(
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         logger.exception("business-slice/omniview")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/business-slice/matrix-operational-trust")
+async def business_slice_matrix_operational_trust():
+    """Trust operativo OK|warning|blocked para Omniview Matrix (validación de integridad)."""
+    try:
+        return await _run_sync(get_matrix_operational_trust_api_payload)
+    except Exception as e:
+        logger.exception("business-slice/matrix-operational-trust")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/business-slice/matrix-issue-action")
+async def business_slice_matrix_issue_action(payload: dict = Body(...)):
+    """Registra ejecución o resolución de una acción sobre un issue de Omniview Matrix."""
+    try:
+        issue = payload.get("issue") if isinstance(payload.get("issue"), dict) else {}
+        action_status = str(payload.get("action_status") or "").strip().lower()
+        notes = payload.get("notes")
+        if not issue:
+            raise HTTPException(status_code=422, detail="issue es obligatorio")
+        if action_status not in ("executed", "resolved"):
+            raise HTTPException(status_code=422, detail="action_status debe ser executed o resolved")
+        row = await _run_sync(log_omniview_issue_action, issue, action_status, notes)
+        return {"status": "ok", "action": row}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("business-slice/matrix-issue-action")
         raise HTTPException(status_code=500, detail=str(e))
 
 

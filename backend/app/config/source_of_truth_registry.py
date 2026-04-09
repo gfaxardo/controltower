@@ -94,6 +94,22 @@ SOURCE_OF_TRUTH: Dict[str, DomainEntry] = {
         "parity_audit_applies": False,
         "notes": "Ciclo de vida por park; freshness = MAX(last_completed_ts) en mv_driver_lifecycle_base.",
     },
+    "omniview_matrix": {
+        "primary": "ops.real_business_slice_month_fact",
+        "secondary": [
+            "ops.real_business_slice_day_fact",
+            "ops.real_business_slice_week_fact",
+            "ops.v_real_trips_business_slice_resolved",
+        ],
+        "legacy": [],
+        "grain": "multi",
+        "canonical_chain": True,
+        "source_mode": "canonical",
+        "freshness_dataset": None,
+        "parity_audit_applies": False,
+        "notes": "Omniview Matrix UI; trust operativo vía omniview_matrix_integrity_service "
+                  "(gaps/freshness→warning, rollup/revenue→blocked).",
+    },
     "business_slice": {
         "primary": "ops.real_business_slice_month_fact",
         "secondary": [
@@ -163,7 +179,14 @@ SOURCE_OF_TRUTH: Dict[str, DomainEntry] = {
 }
 
 # Vistas que exponen Data Trust en UI (subconjunto del registry)
-DATA_TRUST_VIEWS = ("real_lob", "resumen", "plan_vs_real", "supply", "driver_lifecycle")
+DATA_TRUST_VIEWS = (
+    "real_lob",
+    "resumen",
+    "plan_vs_real",
+    "supply",
+    "driver_lifecycle",
+    "omniview_matrix",
+)
 
 # Todas las vistas registradas (para summary/observabilidad)
 REGISTERED_VIEWS = tuple(SOURCE_OF_TRUTH.keys())

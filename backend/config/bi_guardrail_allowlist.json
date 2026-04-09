@@ -1,0 +1,135 @@
+{
+  "policy": {
+    "official_sources": [
+      "trips_2025",
+      "trips_2026",
+      "ops.*",
+      "canonical dimensions"
+    ],
+    "restricted_schema": "bi.*",
+    "notes": [
+      "Runtime operativo no debe introducir nuevas dependencias a bi.*.",
+      "bi.real_monthly_agg es legacy y no puede usarse como source of truth operativo.",
+      "bi.ingestion_status sigue permitido como metadata activa de ingesta."
+    ]
+  },
+  "scan": {
+    "roots": [
+      "backend",
+      "backend/app",
+      "backend/scripts",
+      "backend/alembic",
+      "frontend/src"
+    ],
+    "include_suffixes": [
+      ".py",
+      ".sql",
+      ".js",
+      ".jsx",
+      ".ts",
+      ".tsx",
+      ".json",
+      ".yaml",
+      ".yml",
+      ".toml"
+    ],
+    "exclude_paths": [
+      "backend/tests/",
+      "docs/",
+      "frontend/dist/",
+      "frontend/node_modules/",
+      ".pytest_cache/",
+      "backend/.venv/",
+      "backend/venv/",
+      "backend/app/guardrails/",
+      "backend/scripts/check_bi_guardrail.py",
+      "backend/config/bi_guardrail_allowlist.json"
+    ]
+  },
+  "allowed_references": [
+    {
+      "path": "backend/app/db/schema_verify.py",
+      "match": "bi.real_daily_enriched",
+      "count": 5,
+      "category": "metadata activa",
+      "reason": "Tabla vigente validada en startup para servicios activos."
+    },
+    {
+      "path": "backend/app/db/schema_verify.py",
+      "match": "bi.real_monthly_agg",
+      "count": 10,
+      "category": "legacy tolerada",
+      "reason": "Solo referencias legacy/documentadas; no bloquea runtime operativo."
+    },
+    {
+      "path": "backend/app/db/schema_verify.py",
+      "match": "inspect_revenue_column",
+      "count": 2,
+      "category": "legacy tolerada",
+      "reason": "Stub legacy mantenido por compatibilidad de imports."
+    },
+    {
+      "path": "backend/app/contracts/data_contract.py",
+      "match": "bi.real_monthly_agg",
+      "count": 8,
+      "category": "legacy tolerada",
+      "reason": "Comentarios/stubs explícitos para evitar ambigüedad arquitectónica."
+    },
+    {
+      "path": "backend/app/contracts/data_contract.py",
+      "match": "get_revenue_column_name",
+      "count": 2,
+      "category": "legacy tolerada",
+      "reason": "Stub legacy explícito; no debe reutilizarse fuera de este módulo."
+    },
+    {
+      "path": "backend/app/contracts/data_contract.py",
+      "match": "get_real_column_name",
+      "count": 2,
+      "category": "legacy tolerada",
+      "reason": "Stub legacy explícito; protegido por guardrail."
+    },
+    {
+      "path": "backend/app/services/plan_parser_service.py",
+      "match": "bi.ingestion_status",
+      "count": 2,
+      "category": "metadata activa",
+      "reason": "Estado de ingesta usado por parser/plan."
+    },
+    {
+      "path": "backend/app/routers/ingestion.py",
+      "match": "bi.ingestion_status",
+      "count": 1,
+      "category": "metadata activa",
+      "reason": "Endpoint de metadata de ingesta."
+    },
+    {
+      "path": "backend/app/db/connection.py",
+      "match": "bi.ingestion_status",
+      "count": 4,
+      "category": "metadata activa",
+      "reason": "Creación/verificación de tabla de metadata de ingesta."
+    },
+    {
+      "path": "backend/alembic/versions/092_observability_artifact_registry_and_refresh_log.py",
+      "match": "bi.ingestion_status",
+      "count": 1,
+      "category": "metadata activa",
+      "reason": "Artifact registry de observability."
+    },
+    {
+      "path": "backend/scripts/detect_heavy_mvs.py",
+      "match": "bi.*",
+      "count": 1,
+      "category": "script offline",
+      "reason": "Script offline de performance; no forma parte del runtime."
+    },
+    {
+      "path": "backend/explore_line_of_business_mapping.py",
+      "match": "bi.real_monthly_agg",
+      "count": 1,
+      "category": "script offline",
+      "reason": "Script exploratorio legacy fuera del runtime."
+    }
+  ]
+}

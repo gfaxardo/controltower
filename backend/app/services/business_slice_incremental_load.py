@@ -632,6 +632,15 @@ def apply_business_slice_load_session_settings(cur: Any) -> None:
     if jit_off in ("1", "true", "on", "yes"):
         cur.execute("SET LOCAL jit = off")
 
+    # Evita cortes por statement_timeout del rol/pool durante chunks largos (carga completa del mes).
+    if os.environ.get("BUSINESS_SLICE_LOAD_RESPECT_STMT_TIMEOUT", "").strip().lower() not in (
+        "1",
+        "true",
+        "on",
+        "yes",
+    ):
+        cur.execute("SET LOCAL statement_timeout = 0")
+
 
 def _effective_chunk_grain(cli_grain: Optional[str]) -> str:
     if cli_grain is not None and cli_grain.strip():

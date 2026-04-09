@@ -1,7 +1,7 @@
 import { useMemo, useState, memo } from 'react'
 import BusinessSliceOmniviewMatrixHeader, { COL1_W, COL2_W, HEADER_H_COMFORTABLE, HEADER_H_COMPACT } from './BusinessSliceOmniviewMatrixHeader.jsx'
 import BusinessSliceOmniviewMatrixCell from './BusinessSliceOmniviewMatrixCell.jsx'
-import { MATRIX_KPIS, computeDeltas, computeTotalsDeltas, fmtValue, fmtDelta, signalColorForKpi, signalArrow, sortLineEntries, periodLabel as periodLabelFn } from './omniview/omniviewMatrixUtils.js'
+import { MATRIX_KPIS, computeDeltas, computeTotalsDeltas, fmtValue, fmtDelta, signalColorForKpi, signalArrow, sortLineEntries, periodLabel as periodLabelFn, trustIssueSummaryForTooltip, trustPeriodCellOverlayClass, resolveCellTrustVisual, resolveTotalsTrustVisual } from './omniview/omniviewMatrixUtils.js'
 
 export default function BusinessSliceOmniviewMatrixTable ({
   matrix,
@@ -14,13 +14,20 @@ export default function BusinessSliceOmniviewMatrixTable ({
   insightMode,
   lineImpactMap,
   periodStates,
+  matrixTrust = null,
 }) {
   const { cities, allPeriods, totals, comparisonTotals, comparisonMeta } = matrix
   const [collapsed, setCollapsed] = useState(new Set())
   const headerH = compact ? HEADER_H_COMPACT : HEADER_H_COMFORTABLE
+  const trustLine = useMemo(() => trustIssueSummaryForTooltip(matrixTrust), [matrixTrust])
 
   const cityEntries = useMemo(() => {
-    return [...cities.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+    return [...cities.entries()].sort((a, b) => {
+      const aUn = a[1].city === 'UNMAPPED' ? 1 : 0
+      const bUn = b[1].city === 'UNMAPPED' ? 1 : 0
+      if (aUn !== bUn) return aUn - bUn
+      return a[0].localeCompare(b[0])
+    })
   }, [cities])
 
   const totalsDeltas = useMemo(
@@ -49,7 +56,7 @@ export default function BusinessSliceOmniviewMatrixTable ({
   const colW = compact ? 58 : 66
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
+    <div className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden" data-omniview-matrix-table>
       <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: 'calc(100vh - 240px)' }}>
         <table className="border-collapse min-w-full" style={{ tableLayout: 'fixed', width: 'auto' }}>
           <colgroup>
@@ -62,10 +69,10 @@ export default function BusinessSliceOmniviewMatrixTable ({
             )}
           </colgroup>
 
-          <BusinessSliceOmniviewMatrixHeader allPeriods={allPeriods} grain={grain} compact={compact} periodStates={periodStates} />
+          <BusinessSliceOmniviewMatrixHeader allPeriods={allPeriods} grain={grain} compact={compact} periodStates={periodStates} matrixTrust={matrixTrust} />
 
           <tbody>
-            <TotalsRow allPeriods={allPeriods} totalsDeltas={totalsDeltas} compact={compact} headerH={headerH} />
+            <TotalsRow allPeriods={allPeriods} totalsDeltas={totalsDeltas} compact={compact} headerH={headerH} grain={grain} matrixTrust={matrixTrust} trustLine={trustLine} />
 
             {cityEntries.map(([cityKey, cityData]) => {
               const isCollapsed = collapsed.has(cityKey)
@@ -91,6 +98,8 @@ export default function BusinessSliceOmniviewMatrixTable ({
                   insightCellMap={insightCellMap}
                   insightMode={insightMode}
                   periodStates={periodStates}
+                  matrixTrust={matrixTrust}
+                  trustLine={trustLine}
                 />
               )
             })}
@@ -101,7 +110,7 @@ export default function BusinessSliceOmniviewMatrixTable ({
   )
 }
 
-const TotalsRow = memo(function TotalsRow ({ allPeriods, totalsDeltas, compact, headerH }) {
+const TotalsRow = memo(function TotalsRow ({ allPeriods, totalsDeltas, compact, headerH, grain, matrixTrust, trustLine }) {
   const py = compact ? 'py-px' : 'py-0.5'
   const valSize = compact ? 'text-[10px]' : 'text-[11px]'
   const deltaSize = compact ? 'text-[8px]' : 'text-[9px]'
@@ -118,17 +127,21 @@ const TotalsRow = memo(function TotalsRow ({ allPeriods, totalsDeltas, compact, 
       {allPeriods.map((pk, periodIdx) => {
         const pDeltas = totalsDeltas.get(pk)
         const zebra = periodIdx % 2 === 1
+        const periodTrust = resolveTotalsTrustVisual(matrixTrust, grain, pk, kpi.key)
+        const trustOv = trustPeriodCellOverlayClass(periodTrust)
         return MATRIX_KPIS.map((kpi) => {
           const d = pDeltas?.[kpi.key]
           const bgStyle = zebra ? { backgroundColor: 'rgb(238,240,245)' } : { backgroundColor: 'rgb(243,244,248)' }
-          if (!d) return <td key={`t-${pk}-${kpi.key}`} className={`px-1 ${py} text-center ${valSize} text-gray-300 border-r border-gray-200/60`} style={bgStyle}>—</td>
+          const trustTitle = periodTrust && trustLine ? trustLine : undefined
+          if (!d) return <td key={`t-${pk}-${kpi.key}`} className={`px-1 ${py} text-center ${valSize} text-gray-300 border-r border-gray-200/60 ${trustOv}`} style={bgStyle} title={trustTitle}>—</td>
           const val = fmtValue(d.value, kpi.key)
           const dt = fmtDelta(d)
           const color = signalColorForKpi(d.signal, kpi.key)
           const isPC = d.isPartialComparison
+          const title = [isPC ? 'Comparativo parcial vs cerrado' : null, trustTitle].filter(Boolean).join(' — ') || undefined
           return (
-            <td key={`t-${pk}-${kpi.key}`} className={`px-1 ${py} text-center whitespace-nowrap border-r border-gray-200/60`} style={bgStyle}
-              title={isPC ? 'Comparativo parcial vs cerrado' : undefined}>
+            <td key={`t-${pk}-${kpi.key}`} className={`px-1 ${py} text-center whitespace-nowrap border-r border-gray-200/60 ${trustOv}`} style={bgStyle}
+              title={title}>
               <div className={`${valSize} font-bold text-slate-700 leading-none`}>{val}</div>
               {dt && (
                 <div className={`${deltaSize} leading-none font-semibold mt-px`} style={{ color, opacity: isPC ? 0.55 : 1 }}>
@@ -143,7 +156,7 @@ const TotalsRow = memo(function TotalsRow ({ allPeriods, totalsDeltas, compact, 
   )
 })
 
-function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, kpiCount, isCollapsed, onToggle, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates }) {
+function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, kpiCount, isCollapsed, onToggle, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine }) {
   const totalCols = allPeriods.length * kpiCount
   const py = compact ? 'py-1' : 'py-1.5'
   const fontSize = compact ? 'text-[11px]' : 'text-xs'
@@ -164,13 +177,14 @@ function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, kpiCount, isCo
       {!isCollapsed && lineEntries.map(([lineKey, lineData]) => (
         <LineRow key={lineKey} cityKey={cityKey} cityName={cityData.city} lineKey={lineKey} lineData={lineData}
           allPeriods={allPeriods} onCellClick={onCellClick} selectedCell={selectedCell} grain={grain} compact={compact}
-          insightCellMap={insightCellMap} insightMode={insightMode} periodStates={periodStates} />
+          insightCellMap={insightCellMap} insightMode={insightMode} periodStates={periodStates}
+          matrixTrust={matrixTrust} trustLine={trustLine} />
       ))}
     </>
   )
 }
 
-function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates }) {
+function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine }) {
   const deltas = useMemo(() => computeDeltas(lineData.periods, allPeriods, periodStates), [lineData.periods, allPeriods, periodStates])
   const isSubfleet = lineData.is_subfleet
   const py = compact ? 'py-px' : 'py-1'
@@ -197,12 +211,17 @@ function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClic
           const cellId = `${cityKey}::${lineKey}::${pk}::${kpi.key}`
           const delta = periodDeltas ? periodDeltas[kpi.key] : null
           const insightSev = insightCellMap?.get(cellId) || null
+          const ptv = resolveCellTrustVisual(matrixTrust, grain, cityName, lineData.business_slice_name, pk, kpi.key)
           return (
             <BusinessSliceOmniviewMatrixCell
               key={cellId} kpiKey={kpi.key} kpi={kpi} delta={delta}
               isSelected={selectedCell === cellId} compact={compact} periodIdx={periodIdx}
               cityName={cityName} lineName={lineData.business_slice_name} periodLbl={pLabel}
               insightSeverity={insightSev} insightMode={insightMode} periodState={pState} grain={grain}
+              periodTrustVisual={ptv} trustLine={trustLine}
+              matrixTrust={matrixTrust}
+              periodKey={pk}
+              matrixCellId={cellId}
               onClick={() => onCellClick?.({
                 id: cellId, cityKey, lineKey, period: pk, kpiKey: kpi.key,
                 lineData, periodDeltas, raw: lineData.periods.get(pk)?.raw,

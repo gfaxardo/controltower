@@ -64,6 +64,13 @@ def get_confidence_status(view_name: str, filters: Optional[Dict[str, Any]] = No
         primary = get_primary_source(view_name)
         source_mode = get_source_mode(view_name)
 
+        if view_name == "omniview_matrix":
+            from app.services.omniview_matrix_integrity_service import (
+                get_confidence_bundle_omniview_matrix,
+            )
+
+            return get_confidence_bundle_omniview_matrix()
+
         # Resumen: combina real_lob + plan_vs_real
         if view_name == "resumen":
             return _resumen_confidence()

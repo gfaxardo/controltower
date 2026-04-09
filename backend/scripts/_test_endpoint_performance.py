@@ -23,6 +23,8 @@ def measure(label, fn, **kwargs):
     t0 = time.perf_counter()
     try:
         result = fn(**kwargs)
+        if isinstance(result, tuple) and len(result) >= 1 and isinstance(result[0], list):
+            result = result[0]
         dt = time.perf_counter() - t0
         n = len(result) if isinstance(result, list) else "?"
         rev_ok = sum(1 for r in result if r.get("revenue_yego_net") is not None) if isinstance(result, list) else "?"
@@ -53,7 +55,7 @@ def main():
     measure("weekly(year=2026)", get_business_slice_weekly, year=2026)
     measure("weekly(year=2026, country=colombia)", get_business_slice_weekly, year=2026, country="colombia")
 
-    print("\n=== NOTA: tests con fallback omitidos (resolved view tarda >5min) ===", flush=True)
+    print("\n=== NOTA: weekly/daily solo usan facts; no hay fallback a resolved ===", flush=True)
     print("Done.", flush=True)
 
 

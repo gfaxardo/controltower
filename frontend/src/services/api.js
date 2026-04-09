@@ -748,7 +748,8 @@ export const getBusinessSliceFilters = async () => {
   return response.data
 }
 export const getBusinessSliceMonthly = async (params = {}) => {
-  const response = await api.get('/ops/business-slice/monthly', { params, timeout: OPS_SHELL_TIMEOUT_MS })
+  // Misma ventana que weekly/daily: año completo + unmapped + meta State Engine puede superar 2 min (BD remota/lenta).
+  const response = await api.get('/ops/business-slice/monthly', { params, timeout: BUSINESS_SLICE_HEAVY_TIMEOUT_MS })
   return response.data
 }
 export const getBusinessSliceCoverage = async (params = {}) => {
@@ -756,7 +757,7 @@ export const getBusinessSliceCoverage = async (params = {}) => {
   return response.data
 }
 export const getBusinessSliceCoverageSummary = async (params = {}) => {
-  const response = await api.get('/ops/business-slice/coverage-summary', { params, timeout: OPS_SHELL_TIMEOUT_MS })
+  const response = await api.get('/ops/business-slice/coverage-summary', { params, timeout: BUSINESS_SLICE_HEAVY_TIMEOUT_MS })
   return response.data
 }
 export const getBusinessSliceUnmatched = async (params = {}) => {
@@ -789,6 +790,19 @@ export const getBusinessSliceOmniview = async (params = {}) => {
     return getBusinessSliceDaily(rest)
   }
   return getBusinessSliceMonthly(rest)
+}
+
+/** Trust operativo Matrix (integridad: gaps, freshness, rollup, revenue). */
+export const getMatrixOperationalTrust = async () => {
+  const response = await api.get('/ops/business-slice/matrix-operational-trust', { timeout: BUSINESS_SLICE_HEAVY_TIMEOUT_MS })
+  return response.data
+}
+
+export const logMatrixIssueAction = async (payload) => {
+  const response = await api.post('/ops/business-slice/matrix-issue-action', payload, {
+    timeout: BUSINESS_SLICE_HEAVY_TIMEOUT_MS,
+  })
+  return response.data
 }
 
 export default api
