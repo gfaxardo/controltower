@@ -3,8 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from app.settings import settings
-from app.db.connection import init_db_pool, create_plan_schema, create_ingestion_status_schema
-from app.db.schema_verify import verify_schema, inspect_real_columns
+from app.startup_checks import run_startup_checks
+from app.startup_state import set_startup_report
 from app.routers import plan, real, core, ops, health, ingestion, phase2b, phase2c, driver_lifecycle, controltower, observability, real_vs_projection
 import logging
 import time
@@ -91,21 +91,24 @@ app.include_router(real_vs_projection.router, prefix="/ops")
 async def startup_event():
     logger.info("Iniciando YEGO Control Tower API...")
     try:
-        init_db_pool()
-        logger.info("Pool de conexiones inicializado")
-        
-        create_plan_schema()
-        logger.info("Esquema plan creado/verificado")
-        
-        create_ingestion_status_schema()
-        logger.info("Esquema ingestion_status creado/verificado")
-        
-        table_structures = verify_schema()
-        logger.info("Estructuras de tablas verificadas")
-        
-        inspection_results = inspect_real_columns()
-        logger.info("Inspección de columnas reales completada")
-        
+        report = run_startup_checks()
+        set_startup_report(report)
+        logger.info(
+            "Startup: overall=%s checks=%s",
+            report.get("overall"),
+            len(report.get("checks") or []),
+        )
+        if report.get("overall") == "blocked":
+            detail = next(
+                (c.get("detail") for c in (report.get("checks") or []) if c.get("status") == "failed"),
+                "db_pool u operación bloqueante falló",
+            )
+            raise RuntimeError(f"Startup bloqueado: {detail}")
+    except ValueError:
+        # verify_schema en dev: columnas críticas faltantes
+        raise
+    except RuntimeError:
+        raise
     except Exception as e:
         logger.error(f"Error en startup: {e}")
         raise

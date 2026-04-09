@@ -1,9 +1,11 @@
 """
 Real LOB Drill PRO: endpoints /ops/real-lob/drill y /ops/real-lob/drill/children.
-Fuente: ops.mv_real_drill_dim_agg (breakdown lob|park|service_type) y ops.v_real_data_coverage.
+Fuente: ops.mv_real_drill_dim_agg (breakdown lob|park|service_type) y cobertura vía ops.v_real_data_coverage
+(resuelta en app.db.real_data_coverage_sql: vista canónica; fallback temporal documentado si falta la vista).
 - Respuesta: countries[] con coverage, kpis (sobre lo visible), rows con periodo/estado/viajes/margen/km/b2b.
 - Children: desglose por LOB (1 fila por lob_group), PARK (city, park_name), o SERVICE_TYPE (tipo_servicio).
 """
+from app.db.real_data_coverage_sql import coverage_from_clause
 from app.db.connection import get_db_drill
 from psycopg2.extras import RealDictCursor
 from typing import Optional, List, Dict, Any
@@ -24,7 +26,6 @@ def _debug_log_svc(location: str, message: str, data: dict, hypothesis_id: str):
 # #endregion
 
 MV_DIM = "ops.mv_real_drill_dim_agg"
-VIEW_COVERAGE = "ops.v_real_data_coverage"
 LOW_VOLUME_THRESHOLD = 20  # categorías con viajes < 20 se agrupan en LOW_VOLUME
 LOW_SAMPLE_THRESHOLD = 30  # si viajes < 30 no mostrar pct_b2b como significativo (LOW SAMPLE)
 # Drill consulta MV + varias vistas. Rol puede tener 15s: forzar 0 (sin límite) para esta request.
@@ -317,16 +318,16 @@ def get_drill(
             cur.execute("SET LOCAL work_mem = '256MB'")
 
             # #region agent log
-            _debug_log_svc("real_lob_drill_pro_service.py:before_first_select", "about to run first SELECT (v_real_data_coverage)", {}, "H5")
+            _debug_log_svc("real_lob_drill_pro_service.py:before_first_select", "about to run first SELECT (coverage)", {}, "H5")
             # #endregion
-            # Coverage por país (v_real_data_coverage) + freshness desde canon (v_real_freshness_trips)
+            cov_sql, _cov_fallback = coverage_from_clause(cur)
+            # Coverage por país (vista canónica o fallback) + freshness desde real_rollup_day_fact
             cur.execute(f"""
                 SELECT country,
                     last_trip_date::text AS last_day_with_data,
                     last_month_with_data::text AS last_month_with_data,
                     last_week_with_data::text AS last_week_with_data
-                FROM {VIEW_COVERAGE}
-                WHERE country IN ('pe','co')
+                FROM {cov_sql} AS cov
                 ORDER BY country
             """)
             coverage_rows = cur.fetchall()
@@ -368,10 +369,10 @@ def get_drill(
 
             # Calendario: meses o semanas hasta el actual
             if period_type == "month":
-                cur.execute("""
+                cur.execute(f"""
                     WITH bounds AS (
                         SELECT
-                            COALESCE((SELECT MIN(min_month) FROM ops.v_real_data_coverage), date_trunc('month', CURRENT_DATE)::date) AS min_month,
+                            COALESCE((SELECT MIN(min_month) FROM {cov_sql} AS c), date_trunc('month', CURRENT_DATE)::date) AS min_month,
                             date_trunc('month', CURRENT_DATE)::date AS current_month
                     )
                     SELECT (generate_series(b.min_month, b.current_month, '1 month'::interval))::date AS period_start
@@ -379,10 +380,10 @@ def get_drill(
                     ORDER BY period_start DESC
                 """)
             else:
-                cur.execute("""
+                cur.execute(f"""
                     WITH bounds AS (
                         SELECT
-                            COALESCE((SELECT MIN(min_week) FROM ops.v_real_data_coverage), date_trunc('week', CURRENT_DATE)::date) AS min_week,
+                            COALESCE((SELECT MIN(min_week) FROM {cov_sql} AS c), date_trunc('week', CURRENT_DATE)::date) AS min_week,
                             date_trunc('week', CURRENT_DATE)::date AS current_week
                     )
                     SELECT (generate_series(b.min_week, b.current_week, '1 week'::interval))::date AS period_start

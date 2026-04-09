@@ -2773,8 +2773,14 @@ async def business_slice_coverage_summary(
             country=country, city=city, year=year, month=month,
         )
     except Exception as e:
+        msg = str(e).lower()
         logger.error("business-slice/coverage-summary: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        if "timeout" in msg or "canceling statement" in msg or "disk full" in msg or "no space" in msg:
+            raise HTTPException(
+                status_code=503,
+                detail="coverage-summary: base de datos ocupada, timeout o recurso insuficiente; reintente más tarde.",
+            ) from e
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/business-slice/unmatched")

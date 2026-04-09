@@ -1,4 +1,5 @@
 """Real LOB drill-down: summary por país/periodo, by-lob y by-park. Fuente: MV ops.mv_real_rollup_day y vistas drill."""
+from app.db.real_data_coverage_sql import coverage_from_clause
 from app.db.connection import get_db
 from psycopg2.extras import RealDictCursor
 from psycopg2 import ProgrammingError, OperationalError
@@ -31,7 +32,6 @@ VIEW_PARK_MONTH = "ops.v_real_drill_park_month"
 VIEW_PARK_WEEK = "ops.v_real_drill_park_week"
 VIEW_BASE = "ops.v_real_trips_base_drill"
 MV_ROLLUP = "ops.mv_real_rollup_day"
-VIEW_COVERAGE = "ops.v_real_data_coverage"
 TIMEOUT_MS = 20000
 
 
@@ -84,14 +84,15 @@ def get_real_drill_coverage() -> List[Dict[str, Any]]:
             cur = conn.cursor(cursor_factory=RealDictCursor)
             cur.execute("SET statement_timeout = %s", (str(TIMEOUT_MS),))
             try:
-                cur.execute("""
+                cov_sql, _ = coverage_from_clause(cur)
+                cur.execute(f"""
                     SELECT
                         country,
                         last_trip_date::text AS last_trip_date,
                         last_trip_ts,
                         last_month_with_data::text AS last_month_with_data,
                         last_week_with_data::text AS last_week_with_data
-                    FROM ops.v_real_data_coverage
+                    FROM {cov_sql} AS _cov
                     ORDER BY country
                 """)
                 rows = cur.fetchall()
@@ -161,12 +162,17 @@ def get_real_drill_summary(
     # segment B2B o B2C: query calendarizada desde MV (rápido, sin fullscan)
     seg = segment.upper()
     period_expr = _period_expr_mv(period_type)
-    sql_seg = f"""
+    try:
+        with get_db() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("SET statement_timeout = %s", (str(TIMEOUT_MS),))
+            cov_sql, _ = coverage_from_clause(cur)
+            sql_seg = f"""
         WITH
         bounds AS (
             SELECT
-                COALESCE((SELECT MIN(min_month) FROM {VIEW_COVERAGE} WHERE min_month IS NOT NULL), date_trunc('month', CURRENT_DATE)::date) AS min_month,
-                COALESCE((SELECT MIN(min_week) FROM {VIEW_COVERAGE} WHERE min_week IS NOT NULL), date_trunc('week', CURRENT_DATE)::date) AS min_week,
+                COALESCE((SELECT MIN(min_month) FROM {cov_sql} AS _cov WHERE min_month IS NOT NULL), date_trunc('month', CURRENT_DATE)::date) AS min_month,
+                COALESCE((SELECT MIN(min_week) FROM {cov_sql} AS _cov2 WHERE min_week IS NOT NULL), date_trunc('week', CURRENT_DATE)::date) AS min_week,
                 date_trunc('month', CURRENT_DATE)::date AS current_month,
                 date_trunc('week', CURRENT_DATE)::date AS current_week
         ),
@@ -235,10 +241,6 @@ def get_real_drill_summary(
         ORDER BY period_start DESC, trips DESC
         LIMIT %s
     """
-    try:
-        with get_db() as conn:
-            cur = conn.cursor(cursor_factory=RealDictCursor)
-            cur.execute("SET statement_timeout = %s", (str(TIMEOUT_MS),))
             try:
                 cur.execute(sql_seg, [period_type, period_type, seg, period_type, period_type, period_type, period_type, period_type, period_type, limit_val])
             except ProgrammingError as e:

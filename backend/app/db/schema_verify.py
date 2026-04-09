@@ -144,6 +144,9 @@ def inspect_real_columns() -> Dict[str, any]:
                     "No es bloqueante — el sistema actual opera sobre ops.*.",
                     e,
                 )
+                # Un SELECT fallido aborta la transacción en PostgreSQL; sin rollback los
+                # siguientes usos del mismo cursor fallan con "current transaction is aborted".
+                conn.rollback()
 
             # --- bi.real_daily_enriched ---
             try:
@@ -159,6 +162,7 @@ def inspect_real_columns() -> Dict[str, any]:
                 logger.info(f"bi.real_daily_enriched: {len(columns)} columnas")
             except Exception as e:
                 logger.error(f"Error al inspeccionar bi.real_daily_enriched: {e}")
+                conn.rollback()
 
             # --- dim.dim_park ---
             try:
@@ -172,6 +176,7 @@ def inspect_real_columns() -> Dict[str, any]:
                 logger.info(f"dim.dim_park: {len(columns)} columnas")
             except Exception as e:
                 logger.error(f"Error al inspeccionar dim.dim_park: {e}")
+                conn.rollback()
 
             # --- LOB universe (desde dim.dim_park, no desde bi.real_monthly_agg) ---
             try:
@@ -191,6 +196,7 @@ def inspect_real_columns() -> Dict[str, any]:
                 ]
             except Exception as e:
                 logger.warning(f"Error al obtener líneas de negocio: {e}")
+                conn.rollback()
 
             logger.info("=" * 60)
             logger.info("INSPECCIÓN COMPLETADA")
@@ -201,5 +207,10 @@ def inspect_real_columns() -> Dict[str, any]:
 
     except Exception as e:
         logger.error(f"Error en inspección de columnas reales: {e}")
-        raise
+        return {
+            "_error": str(e),
+            "real_monthly_agg": {"legacy": True},
+            "real_daily_enriched": {},
+            "dim_park": {},
+        }
 
