@@ -12,6 +12,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 from app.db.connection import get_db_audit
+import app.services.omniview_matrix_integrity_service as _trust_svc
 from app.services.business_slice_incremental_load import (
     _materialize_enriched_for_month,
     _drop_enriched_temp,
@@ -190,6 +191,9 @@ def _run_backfill(months: list[date], with_week: bool, chunk_grain: str | None):
                     _state["done_months"] = idx + 1
                     _state["completed_months"].append(month_str)
 
+                # Invalidar cache de trust para que refleje datos nuevos
+                _invalidate_trust_cache()
+
             except Exception as e:
                 logger.exception("backfill_runner: error en mes %s: %s", month_str, e)
                 with _lock:
@@ -197,10 +201,22 @@ def _run_backfill(months: list[date], with_week: bool, chunk_grain: str | None):
                     _state["done_months"] = idx + 1
 
         _upd(phase="done", running=False, ended_at=datetime.now(timezone.utc).isoformat())
+        _invalidate_trust_cache()
 
     except Exception as e:
         logger.exception("backfill_runner: error fatal: %s", e)
         _upd(phase="error", running=False, error=str(e), ended_at=datetime.now(timezone.utc).isoformat())
+
+
+def _invalidate_trust_cache():
+    """Limpia el cache SWR de matrix-operational-trust para que el próximo request
+    dispare un re-cómputo con los datos recién materializados."""
+    try:
+        with _trust_svc._matrix_trust_api_lock:
+            _trust_svc._matrix_trust_api_cache = None
+        logger.debug("backfill_runner: trust cache invalidado")
+    except Exception as e:
+        logger.warning("backfill_runner: no se pudo invalidar trust cache: %s", e)
 
 
 def start_backfill(
