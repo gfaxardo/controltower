@@ -17,12 +17,14 @@ from app.services.business_slice_incremental_load import (
     _materialize_enriched_for_month,
     _drop_enriched_temp,
     _RESOLVE_AND_AGG_DAY_FROM_TEMP,
+    _RESOLVE_AND_AGG_FROM_TEMP,
     _WEEK_ROLLUP_FROM_DAY_FACT,
     apply_business_slice_load_session_settings,
     _effective_chunk_grain,
     month_first_day,
     FACT_DAY,
     FACT_WEEK,
+    FACT_MONTH,
 )
 
 import calendar
@@ -111,14 +113,18 @@ def _run_backfill(months: list[date], with_week: bool, chunk_grain: str | None):
                     cur = conn.cursor()
                     apply_business_slice_load_session_settings(cur)
 
-                    # 1. Borrar mes existente
+                    # 1. Borrar mes existente en day_fact y month_fact
                     cur.execute(
                         f"DELETE FROM {FACT_DAY} WHERE trip_date >= %s::date AND trip_date <= %s::date",
                         (target_month, end_date),
                     )
+                    cur.execute(
+                        f"DELETE FROM {FACT_MONTH} WHERE month = %s::date",
+                        (target_month,),
+                    )
                     conn.commit()
 
-                    # 2. Materializar enriched → temp table
+                    # 2. Materializar enriched → temp table (scan lento, una sola vez)
                     mat_rows = _materialize_enriched_for_month(cur, target_month, conn)
                     if mat_rows == 0:
                         _drop_enriched_temp(cur)
@@ -126,6 +132,13 @@ def _run_backfill(months: list[date], with_week: bool, chunk_grain: str | None):
                         with _lock:
                             _state["completed_months"].append(month_str)
                         continue
+
+                    # 2b. Insertar month_fact desde la misma temp table (rápido)
+                    _upd(phase="inserting_month_fact")
+                    resolve_month_sql = _RESOLVE_AND_AGG_FROM_TEMP.format(fact_month=FACT_MONTH)
+                    apply_business_slice_load_session_settings(cur)
+                    cur.execute(resolve_month_sql)
+                    conn.commit()
 
                     # 3. Descubrir chunks
                     use_country_only = grain == "country"

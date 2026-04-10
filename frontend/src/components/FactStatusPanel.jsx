@@ -161,17 +161,19 @@ export default function FactStatusPanel ({ onClose }) {
   // Estado del progreso en texto
   const phaseLabel = {
     materializing_enriched: 'Escaneando viajes del período…',
-    inserting_chunks: `Insertando chunk ${prog?.current_chunk_idx}/${prog?.total_chunks}`,
-    week_rollup:      'Calculando semanas…',
-    done:             '¡Completado!',
-    error:            'Error',
-    cancelled:        'Cancelado',
+    inserting_month_fact:   'Insertando month_fact…',
+    inserting_chunks:       `Insertando chunk ${prog?.current_chunk_idx}/${prog?.total_chunks}`,
+    week_rollup:            'Calculando semanas…',
+    done:                   '¡Completado!',
+    error:                  'Error',
+    cancelled:              'Cancelado',
   }[prog?.phase] || 'Iniciando…'
 
   const phaseDesc = {
     materializing_enriched: 'La fase más larga (~5-7 min por mes). Lee y clasifica millones de viajes.',
-    inserting_chunks: prog?.current_chunk_label ? `País / ciudad: ${prog.current_chunk_label}` : '',
-    week_rollup: 'Agrupando días en semanas…',
+    inserting_month_fact:   'Agrupando viajes en month_fact para mantener consistencia con day_fact.',
+    inserting_chunks:       prog?.current_chunk_label ? `País / ciudad: ${prog.current_chunk_label}` : '',
+    week_rollup:            'Agrupando días en semanas…',
   }[prog?.phase] || ''
 
   const elapsed = useElapsed(prog?.started_at)
@@ -295,8 +297,8 @@ export default function FactStatusPanel ({ onClose }) {
               />
             </div>
 
-            {/* Barra indeterminada mientras escanea (sin chunks todavía) */}
-            {isRunning && prog?.phase === 'materializing_enriched' && (
+            {/* Barra indeterminada mientras escanea o inserta month_fact */}
+            {isRunning && (prog?.phase === 'materializing_enriched' || prog?.phase === 'inserting_month_fact') && (
               <div className="overflow-hidden h-1 rounded-full bg-blue-100">
                 <div className="h-full bg-blue-400 rounded-full w-1/3"
                   style={{ animation: 'indeterminate-slide 1.6s ease-in-out infinite' }} />
