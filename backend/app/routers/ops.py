@@ -3007,6 +3007,139 @@ async def business_slice_matrix_operational_trust():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/business-slice/backfill-progress")
+async def business_slice_backfill_progress():
+    """Estado en tiempo real del backfill (mes actual, chunk actual, contadores)."""
+    from app.services.backfill_runner import get_progress
+    return get_progress()
+
+
+@router.post("/business-slice/backfill")
+async def business_slice_backfill_start(payload: dict = Body(...)):
+    """Dispara un backfill de day_fact + week_fact para un rango de meses.
+    Body: { from_date: "2025-01", to_date: "2025-06", with_week: true }
+    """
+    from app.services.backfill_runner import start_backfill, is_running
+    from datetime import date as date_type
+
+    if is_running():
+        raise HTTPException(status_code=409, detail="Ya hay un backfill corriendo. Esperá a que termine.")
+
+    def _parse_ym(s: str) -> date_type:
+        s = str(s).strip()
+        if len(s) == 7 and s[4] == "-":
+            y, m = int(s[:4]), int(s[5:7])
+            return date_type(y, m, 1)
+        raise ValueError(f"Formato inválido: {s!r}. Usar YYYY-MM")
+
+    try:
+        from_date = _parse_ym(payload.get("from_date", ""))
+        to_date   = _parse_ym(payload.get("to_date", ""))
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    with_week = bool(payload.get("with_week", True))
+    started = start_backfill(from_date, to_date, with_week=with_week)
+    if not started:
+        raise HTTPException(status_code=409, detail="No se pudo iniciar el backfill.")
+    return {"ok": True, "from_date": str(from_date)[:7], "to_date": str(to_date)[:7], "with_week": with_week}
+
+
+@router.post("/business-slice/backfill-cancel")
+async def business_slice_backfill_cancel():
+    """Cancela el backfill en curso (espera a que termine el chunk actual)."""
+    from app.services.backfill_runner import cancel, is_running
+    if not is_running():
+        return {"ok": False, "detail": "No hay backfill corriendo"}
+    cancel()
+    return {"ok": True, "detail": "Cancelación solicitada — termina el chunk actual y para"}
+
+
+@router.get("/business-slice/fact-status")
+async def business_slice_fact_status():
+    """Estado actual de las 3 FACT tables (month/week/day): qué meses están cargados y cuántas filas."""
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    from app.db.connection import get_db
+    try:
+        def _query():
+            with get_db() as conn:
+                cur = conn.cursor(cursor_factory=RealDictCursor)
+                cur.execute("""
+                    WITH month_status AS (
+                        SELECT
+                            month::text AS period,
+                            SUM(trips_completed)::bigint AS trips,
+                            COUNT(*)::int AS slices,
+                            MAX(loaded_at) AS loaded_at
+                        FROM ops.real_business_slice_month_fact
+                        GROUP BY month
+                        ORDER BY month
+                    ),
+                    day_months AS (
+                        SELECT
+                            date_trunc('month', trip_date)::date::text AS period,
+                            SUM(trips_completed)::bigint AS trips,
+                            COUNT(DISTINCT trip_date)::int AS days,
+                            MAX(loaded_at) AS loaded_at
+                        FROM ops.real_business_slice_day_fact
+                        GROUP BY 1
+                        ORDER BY 1
+                    ),
+                    week_months AS (
+                        SELECT
+                            date_trunc('month', week_start)::date::text AS period,
+                            SUM(trips_completed)::bigint AS trips,
+                            COUNT(DISTINCT week_start)::int AS weeks,
+                            MAX(loaded_at) AS loaded_at
+                        FROM ops.real_business_slice_week_fact
+                        GROUP BY 1
+                        ORDER BY 1
+                    )
+                    SELECT
+                        ms.period,
+                        ms.trips   AS month_trips,
+                        ms.slices  AS month_slices,
+                        ms.loaded_at AS month_loaded_at,
+                        dm.trips   AS day_trips,
+                        dm.days    AS day_days,
+                        dm.loaded_at AS day_loaded_at,
+                        wm.trips   AS week_trips,
+                        wm.weeks   AS week_weeks,
+                        wm.loaded_at AS week_loaded_at
+                    FROM month_status ms
+                    LEFT JOIN day_months dm USING (period)
+                    LEFT JOIN week_months wm USING (period)
+                    ORDER BY ms.period
+                """)
+                rows = [dict(r) for r in cur.fetchall()]
+                for r in rows:
+                    for k in ("month_loaded_at", "day_loaded_at", "week_loaded_at"):
+                        if r.get(k) is not None:
+                            r[k] = r[k].isoformat()
+                # Totales globales
+                cur.execute("SELECT COUNT(DISTINCT month) FROM ops.real_business_slice_month_fact")
+                total_months = (cur.fetchone() or {}).get("count", 0)
+                cur.execute("SELECT COUNT(DISTINCT date_trunc('month', trip_date)::date) FROM ops.real_business_slice_day_fact")
+                total_day_months = (cur.fetchone() or {}).get("count", 0)
+                cur.execute("SELECT COUNT(DISTINCT date_trunc('month', week_start)::date) FROM ops.real_business_slice_week_fact")
+                total_week_months = (cur.fetchone() or {}).get("count", 0)
+                cur.close()
+            return {
+                "months": rows,
+                "summary": {
+                    "total_months_in_month_fact": int(total_months or 0),
+                    "total_months_in_day_fact": int(total_day_months or 0),
+                    "total_months_in_week_fact": int(total_week_months or 0),
+                    "complete": int(total_day_months or 0) >= int(total_months or 1),
+                }
+            }
+        return await _run_sync(_query)
+    except Exception as e:
+        logger.exception("business-slice/fact-status")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/business-slice/matrix-issue-action")
 async def business_slice_matrix_issue_action(payload: dict = Body(...)):
     """Registra ejecución o resolución de una acción sobre un issue de Omniview Matrix."""

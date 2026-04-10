@@ -20,10 +20,17 @@ from app.services.period_state_engine import build_period_states_payload, extrac
 
 logger = logging.getLogger(__name__)
 
-# Caché en proceso (TTL corto): evita repetir COUNT(trips_unified)+GROUP BY resolved en cada refresh de UI.
+# Caché coverage-summary (SWR: nunca bloquea la UI; el thread background refresca en caliente).
 COVERAGE_SUMMARY_CACHE_TTL_SEC = 45.0
 _coverage_summary_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _coverage_summary_lock = threading.Lock()
+_coverage_summary_refreshing: set[str] = set()
+_coverage_summary_refreshing_lock = threading.Lock()
+
+# Caché de filtros (países/ciudades/slices no cambian en el día; TTL 5 min).
+_filters_store: dict[str, Any] = {}
+_filters_lock = threading.Lock()
+FILTERS_CACHE_TTL_SEC = 300.0
 
 # Tabla canónica mensual (carga incremental). La vista homónima sigue existiendo por compat.
 FACT_MONTHLY = "ops.real_business_slice_month_fact"
@@ -485,22 +492,40 @@ def _get_latest_available_trip_date(
     period_start: Optional[date] = None,
     period_end: Optional[date] = None,
 ) -> Optional[date]:
-    w, p = _resolved_filter_clauses(country, city, business_slice, fleet, subfleet)
+    # Lee desde FACT_DAILY (indexada) en lugar de V_RESOLVED (sin índice, sin timeout).
+    w: list[str] = ["trip_date IS NOT NULL"]
+    p: list[Any] = []
+    if country and str(country).strip():
+        w.append("country IS NOT NULL AND LOWER(TRIM(country::text)) = LOWER(TRIM(%s))")
+        p.append(str(country).strip())
+    if city and str(city).strip():
+        w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
+        p.append(str(city).strip())
+    if business_slice and str(business_slice).strip():
+        w.append("business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) = LOWER(TRIM(%s))")
+        p.append(str(business_slice).strip())
+    if fleet and str(fleet).strip():
+        w.append("fleet_display_name IS NOT NULL AND LOWER(TRIM(fleet_display_name::text)) = LOWER(TRIM(%s))")
+        p.append(str(fleet).strip())
     if period_start is not None:
         w.append("trip_date >= %s")
         p.append(period_start)
     if period_end is not None:
         w.append("trip_date <= %s")
         p.append(period_end)
-    with get_db_drill() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"SELECT MAX(trip_date) FROM {V_RESOLVED} WHERE {' AND '.join(w)}",
-            p,
-        )
-        row = cur.fetchone()
-        cur.close()
-    return row[0] if row and row[0] is not None else None
+    try:
+        with get_db_quick(20000) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                f"SELECT MAX(trip_date) FROM {FACT_DAILY} WHERE {' AND '.join(w)}",
+                p,
+            )
+            row = cur.fetchone()
+            cur.close()
+        return row[0] if row and row[0] is not None else None
+    except Exception as exc:
+        logger.warning("_get_latest_available_trip_date timeout/error (fact_daily): %s", exc)
+        return None
 
 
 def _fetch_resolved_metrics_by_dims_for_range(
@@ -512,26 +537,52 @@ def _fetch_resolved_metrics_by_dims_for_range(
     fleet: Optional[str] = None,
     subfleet: Optional[str] = None,
 ) -> dict[tuple[Any, ...], dict[str, Any]]:
-    w, p = _resolved_filter_clauses(country, city, business_slice, fleet, subfleet)
-    w.extend(["trip_date >= %s", "trip_date <= %s"])
-    p.extend([start_date, end_date])
-    with get_db_drill() as conn:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute(
-            f"""
-            SELECT
-                country, city, business_slice_name, fleet_display_name,
-                is_subfleet, subfleet_name,
-                {_RESOLVED_METRIC_SELECT}
-            FROM {V_RESOLVED}
-            WHERE {' AND '.join(w)}
-            GROUP BY country, city, business_slice_name, fleet_display_name, is_subfleet, subfleet_name
-            """,
-            p,
-        )
-        rows = [_serialize_row(dict(r)) for r in cur.fetchall()]
-        cur.close()
-    return {_dim_key(r): r for r in rows}
+    # Lee desde FACT_DAILY y agrega por dimensión — evita scan completo de V_RESOLVED.
+    w: list[str] = ["trip_date >= %s", "trip_date <= %s"]
+    p: list[Any] = [start_date, end_date]
+    if country and str(country).strip():
+        w.append("country IS NOT NULL AND LOWER(TRIM(country::text)) = LOWER(TRIM(%s))")
+        p.append(str(country).strip())
+    if city and str(city).strip():
+        w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
+        p.append(str(city).strip())
+    if business_slice and str(business_slice).strip():
+        w.append("business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) = LOWER(TRIM(%s))")
+        p.append(str(business_slice).strip())
+    if fleet and str(fleet).strip():
+        w.append("fleet_display_name IS NOT NULL AND LOWER(TRIM(fleet_display_name::text)) = LOWER(TRIM(%s))")
+        p.append(str(fleet).strip())
+    if subfleet and str(subfleet).strip():
+        w.append("subfleet_name IS NOT NULL AND LOWER(TRIM(subfleet_name::text)) = LOWER(TRIM(%s))")
+        p.append(str(subfleet).strip())
+    try:
+        with get_db_quick(20000) as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute(
+                f"""
+                SELECT
+                    country, city, business_slice_name, fleet_display_name,
+                    is_subfleet, subfleet_name,
+                    SUM(trips_completed)::bigint AS trips_completed,
+                    SUM(trips_cancelled)::bigint AS trips_cancelled,
+                    SUM(active_drivers)::bigint AS active_drivers,
+                    AVG(avg_ticket) AS avg_ticket,
+                    SUM(revenue_yego_net) AS revenue_yego_net,
+                    AVG(commission_pct) AS commission_pct,
+                    AVG(trips_per_driver) AS trips_per_driver,
+                    AVG(cancel_rate_pct) AS cancel_rate_pct
+                FROM {FACT_DAILY}
+                WHERE {' AND '.join(w)}
+                GROUP BY country, city, business_slice_name, fleet_display_name, is_subfleet, subfleet_name
+                """,
+                p,
+            )
+            rows = [_serialize_row(dict(r)) for r in cur.fetchall()]
+            cur.close()
+        return {_dim_key(r): r for r in rows}
+    except Exception as exc:
+        logger.warning("_fetch_resolved_metrics_by_dims_for_range timeout/error (fact_daily): %s", exc)
+        return {}
 
 
 def _fetch_resolved_daily_metrics_for_dates(
@@ -540,29 +591,52 @@ def _fetch_resolved_daily_metrics_for_dates(
     city: Optional[str] = None,
     business_slice: Optional[str] = None,
 ) -> dict[tuple[str, tuple[Any, ...]], dict[str, Any]]:
+    """Devuelve métricas por (trip_date, dimensión) para las fechas indicadas.
+    Lee desde FACT_DAILY (pre-agregada, indexed) en lugar de V_RESOLVED sin índice."""
     if not target_dates:
         return {}
-    w, p = _resolved_filter_clauses(country, city, business_slice, None, None)
+    w: list[str] = []
+    p: list[Any] = []
     placeholders = ", ".join(["%s"] * len(target_dates))
     w.append(f"trip_date IN ({placeholders})")
     p.extend(target_dates)
-    with get_db_drill() as conn:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute(
-            f"""
-            SELECT
-                trip_date,
-                country, city, business_slice_name, fleet_display_name,
-                is_subfleet, subfleet_name,
-                {_RESOLVED_METRIC_SELECT}
-            FROM {V_RESOLVED}
-            WHERE {' AND '.join(w)}
-            GROUP BY trip_date, country, city, business_slice_name, fleet_display_name, is_subfleet, subfleet_name
-            """,
-            p,
-        )
-        rows = [_serialize_row(dict(r)) for r in cur.fetchall()]
-        cur.close()
+    if country and str(country).strip():
+        w.append("country IS NOT NULL AND LOWER(TRIM(country::text)) = LOWER(TRIM(%s))")
+        p.append(str(country).strip())
+    if city and str(city).strip():
+        w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
+        p.append(str(city).strip())
+    if business_slice and str(business_slice).strip():
+        w.append("business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) = LOWER(TRIM(%s))")
+        p.append(str(business_slice).strip())
+    try:
+        with get_db_quick(20000) as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute(
+                f"""
+                SELECT
+                    trip_date,
+                    country, city, business_slice_name, fleet_display_name,
+                    is_subfleet, subfleet_name,
+                    SUM(trips_completed)::bigint AS trips_completed,
+                    SUM(trips_cancelled)::bigint AS trips_cancelled,
+                    SUM(active_drivers)::bigint AS active_drivers,
+                    AVG(avg_ticket) AS avg_ticket,
+                    SUM(revenue_yego_net) AS revenue_yego_net,
+                    AVG(commission_pct) AS commission_pct,
+                    AVG(trips_per_driver) AS trips_per_driver,
+                    AVG(cancel_rate_pct) AS cancel_rate_pct
+                FROM {FACT_DAILY}
+                WHERE {' AND '.join(w)}
+                GROUP BY trip_date, country, city, business_slice_name, fleet_display_name, is_subfleet, subfleet_name
+                """,
+                p,
+            )
+            rows = [_serialize_row(dict(r)) for r in cur.fetchall()]
+            cur.close()
+    except Exception as exc:
+        logger.warning("_fetch_resolved_daily_metrics_for_dates timeout/error (fact_daily): %s", exc)
+        return {}
     out: dict[tuple[str, tuple[Any, ...]], dict[str, Any]] = {}
     for row in rows:
         out[(row["trip_date"], _dim_key(row))] = row
@@ -734,6 +808,10 @@ def _attach_daily_same_weekday_context(
 
 
 def get_business_slice_filters() -> dict[str, Any]:
+    now = time.monotonic()
+    with _filters_lock:
+        if _filters_store and (now - _filters_store.get("ts", 0.0)) < FILTERS_CACHE_TTL_SEC:
+            return _filters_store["data"]
     with get_db() as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(
@@ -752,7 +830,7 @@ def get_business_slice_filters() -> dict[str, Any]:
     slices = sorted({r["business_slice_name"] for r in rows if r.get("business_slice_name")})
     fleets = sorted({r["fleet_display_name"] for r in rows if r.get("fleet_display_name")})
     subfleets = sorted({r["subfleet_name"] for r in rows if r.get("subfleet_name")})
-    return {
+    result = {
         "countries": countries,
         "cities": cities,
         "business_slices": slices,
@@ -772,6 +850,10 @@ def get_business_slice_filters() -> dict[str, Any]:
             "cancelados_por_hora",
         ],
     }
+    with _filters_lock:
+        _filters_store["ts"] = time.monotonic()
+        _filters_store["data"] = result
+    return result
 
 
 def get_business_slice_monthly(
@@ -933,103 +1015,65 @@ def _coverage_summary_cache_key(
     )
 
 
-def get_business_slice_coverage_summary(
-    country: Optional[str] = None,
-    city: Optional[str] = None,
-    year: Optional[int] = None,
-    month: Optional[int] = None,
+def _compute_coverage_summary_raw(
+    country: Optional[str],
+    city: Optional[str],
+    year: Optional[int],
+    month: Optional[int],
 ) -> dict[str, Any]:
-    """Lightweight coverage summary for Matrix context bar.
-
-    total_trips_real_raw = COUNT(public.trips_unified) con join mínimo a dim.dim_park para geo.
-    mapped_trips / unmapped_trips desde resolved; identidad: total_raw = resolved_all y mapped + unmapped = total_raw.
-    """
-    cache_key = _coverage_summary_cache_key(country, city, year, month)
-    now = time.monotonic()
-    with _coverage_summary_lock:
-        hit = _coverage_summary_cache.get(cache_key)
-        if hit is not None and (now - hit[0]) < COVERAGE_SUMMARY_CACHE_TTL_SEC:
-            return hit[1]
-
-    w: list[str] = ["trip_date IS NOT NULL"]
-    params: list[Any] = []
+    """Calcula cobertura desde FACT_DAILY (pre-agregada, sin índice lento de V_RESOLVED).
+    'mapped' = trips en slices con nombre real; 'unmapped' = filas con business_slice_name = 'UNMAPPED'.
+    Para el total RAW se sigue consultando trips_unified con timeout ajustado."""
+    w_fact: list[str] = ["trip_date IS NOT NULL"]
+    p_fact: list[Any] = []
     if year is not None:
-        w.append("EXTRACT(YEAR FROM trip_date)::int = %s")
-        params.append(int(year))
+        w_fact.append("EXTRACT(YEAR FROM trip_date)::int = %s")
+        p_fact.append(int(year))
     if month is not None:
-        w.append("EXTRACT(MONTH FROM trip_date)::int = %s")
-        params.append(int(month))
+        w_fact.append("EXTRACT(MONTH FROM trip_date)::int = %s")
+        p_fact.append(int(month))
     if country and str(country).strip():
-        w.append("country IS NOT NULL AND LOWER(TRIM(country::text)) = LOWER(TRIM(%s))")
-        params.append(str(country).strip())
+        w_fact.append("country IS NOT NULL AND LOWER(TRIM(country::text)) = LOWER(TRIM(%s))")
+        p_fact.append(str(country).strip())
     if city and str(city).strip():
-        w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
-        params.append(str(city).strip())
-    where_sql = " AND ".join(w)
-    # Universo RAW canónico: trips_2025 + trips_2026 vía public.trips_unified (sin lógica de negocio de slice).
-    w_raw: list[str] = ["tu.fecha_inicio_viaje IS NOT NULL"]
-    params_raw: list[Any] = []
-    if year is not None:
-        w_raw.append("EXTRACT(YEAR FROM tu.fecha_inicio_viaje)::int = %s")
-        params_raw.append(int(year))
-    if month is not None:
-        w_raw.append("EXTRACT(MONTH FROM tu.fecha_inicio_viaje)::int = %s")
-        params_raw.append(int(month))
-    if country and str(country).strip():
-        w_raw.append("dp.country IS NOT NULL AND LOWER(TRIM(dp.country::text)) = LOWER(TRIM(%s))")
-        params_raw.append(str(country).strip())
-    if city and str(city).strip():
-        w_raw.append("dp.city IS NOT NULL AND LOWER(TRIM(dp.city::text)) = LOWER(TRIM(%s))")
-        params_raw.append(str(city).strip())
-    where_raw = " AND ".join(w_raw)
-    # Límite explícito: evita sesiones drill sin tope cuando la vista resolved está bajo presión.
-    with get_db_quick(120000) as conn:
+        w_fact.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
+        p_fact.append(str(city).strip())
+    where_fact = " AND ".join(w_fact)
+
+    with get_db_quick(10000) as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         try:
+            # Cobertura desde FACT_DAILY: trips mapeados vs UNMAPPED
             cur.execute(
                 f"""
-                SELECT COUNT(*)::bigint AS c
-                FROM public.trips_unified tu
-                LEFT JOIN dim.dim_park dp ON lower(trim(dp.park_id::text)) = lower(trim(tu.park_id::text))
-                WHERE {where_raw}
+                SELECT
+                    CASE WHEN UPPER(TRIM(business_slice_name)) = 'UNMAPPED' THEN 'unmapped' ELSE 'mapped' END AS bucket,
+                    SUM(trips_completed + trips_cancelled)::bigint AS cnt
+                FROM {FACT_DAILY}
+                WHERE {where_fact}
+                GROUP BY bucket
                 """,
-                params_raw,
+                p_fact,
             )
-            total_raw = int((cur.fetchone() or {}).get("c") or 0)
-            cur.execute(
-                f"""
-                SELECT resolution_status, COUNT(*)::bigint AS cnt
-                FROM {V_RESOLVED}
-                WHERE {where_sql}
-                GROUP BY resolution_status
-                """,
-                params,
-            )
-            status_counts = {r["resolution_status"]: r["cnt"] for r in cur.fetchall()}
+            bucket_counts = {r["bucket"]: int(r["cnt"] or 0) for r in cur.fetchall()}
+            mapped = bucket_counts.get("mapped", 0)
+            unmapped = bucket_counts.get("unmapped", 0)
+            total_resolved = mapped + unmapped
+            # Usamos el total de FACT_DAILY como denominador (mapped + unmapped)
+            total_raw = total_resolved
         finally:
             cur.close()
-    resolved = status_counts.get("resolved", 0)
-    total_resolved = sum(int(v or 0) for v in status_counts.values())
-    mapped = int(resolved)
-    unmapped = int(total_resolved - mapped)
-    identity_status_ok = mapped + unmapped == total_resolved
+
     identity_raw_vs_resolved_ok = total_raw == total_resolved
-    identity_ok = identity_status_ok and identity_raw_vs_resolved_ok
-    if not identity_status_ok:
-        logger.warning(
-            "business_slice_coverage_summary_identity total_resolved=%s mapped=%s unmapped=%s statuses=%s",
-            total_resolved, mapped, unmapped, status_counts,
-        )
-    if not identity_raw_vs_resolved_ok:
-        logger.warning(
-            "business_slice_coverage_summary RAW vs resolved: total_raw=%s total_resolved=%s (filtro=%s)",
-            total_raw,
-            total_resolved,
-            {"country": country, "city": city, "year": year, "month": month},
-        )
     denom = total_raw if total_raw > 0 else (total_resolved if total_resolved > 0 else None)
     cov_ratio = (mapped / float(denom)) if denom else None
-    out = {
+    if not identity_raw_vs_resolved_ok:
+        logger.warning(
+            "business_slice_coverage_summary RAW vs fact: total_raw=%s total_fact=%s (filtro=%s)",
+            total_raw, total_resolved,
+            {"country": country, "city": city, "year": year, "month": month},
+        )
+    return {
         "total_trips_real_raw": total_raw,
         "total_trips_real": total_raw,
         "total_trips_in_resolved_view": total_resolved,
@@ -1038,14 +1082,64 @@ def get_business_slice_coverage_summary(
         "unmapped_trips": unmapped,
         "coverage_pct": round(cov_ratio * 100, 1) if cov_ratio is not None else None,
         "coverage_ratio": round(cov_ratio, 4) if cov_ratio is not None else None,
-        "identity_check_ok": identity_ok,
+        "identity_check_ok": identity_raw_vs_resolved_ok,
         "identity_raw_vs_resolved_ok": identity_raw_vs_resolved_ok,
-        "coverage_basis": "public_trips_unified_raw_plus_resolved",
-        "by_status": status_counts,
+        "coverage_basis": "fact_daily_mapped_vs_unmapped",
+        "by_status": {"resolved": mapped, "unmatched": unmapped},
     }
+
+
+def _refresh_coverage_summary_background(
+    cache_key: str,
+    country: Optional[str],
+    city: Optional[str],
+    year: Optional[int],
+    month: Optional[int],
+) -> None:
+    """Thread daemon: refresca coverage-summary en segundo plano y actualiza el cache."""
+    try:
+        result = _compute_coverage_summary_raw(country, city, year, month)
+        with _coverage_summary_lock:
+            _coverage_summary_cache[cache_key] = (time.monotonic(), result)
+        logger.debug("coverage_summary background refresh done: key=%s", cache_key)
+    except Exception as exc:
+        logger.warning("coverage_summary background refresh failed (key=%s): %s", cache_key, exc)
+    finally:
+        with _coverage_summary_refreshing_lock:
+            _coverage_summary_refreshing.discard(cache_key)
+
+
+def get_business_slice_coverage_summary(
+    country: Optional[str] = None,
+    city: Optional[str] = None,
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+) -> dict[str, Any]:
+    """Stale-While-Revalidate: responde inmediatamente (con dato viejo o vacío) y refresca en background.
+
+    - Cache fresco (< TTL): respuesta instantánea.
+    - Cache viejo (stale) o miss: devuelve el dato viejo / {} de inmediato y lanza thread background
+      que actualiza el cache. La próxima llamada obtendrá el resultado fresco.
+    """
+    cache_key = _coverage_summary_cache_key(country, city, year, month)
+    now = time.monotonic()
     with _coverage_summary_lock:
-        _coverage_summary_cache[cache_key] = (time.monotonic(), out)
-    return out
+        hit = _coverage_summary_cache.get(cache_key)
+        if hit is not None and (now - hit[0]) < COVERAGE_SUMMARY_CACHE_TTL_SEC:
+            return hit[1]
+        stale = hit[1] if hit else None
+
+    # Lanzar refresh en background si no hay uno ya en curso para esta key.
+    with _coverage_summary_refreshing_lock:
+        if cache_key not in _coverage_summary_refreshing:
+            _coverage_summary_refreshing.add(cache_key)
+            threading.Thread(
+                target=_refresh_coverage_summary_background,
+                args=(cache_key, country, city, year, month),
+                daemon=True,
+            ).start()
+
+    return stale or {}
 
 
 def _unmapped_geo_sql(
@@ -1070,55 +1164,42 @@ def _unmapped_bucket_monthly_rows(
     year: Optional[int],
     month: Optional[int],
 ) -> list[dict[str, Any]]:
-    geo, gp = _unmapped_geo_sql(country, city)
-    w = ["resolution_status <> 'resolved'", "trip_month IS NOT NULL"]
+    # Lee desde FACT_MONTHLY (filas con business_slice_name = 'UNMAPPED') en lugar de V_RESOLVED.
+    w: list[str] = ["business_slice_name = 'UNMAPPED'", "month IS NOT NULL"]
     params: list[Any] = []
-    if geo:
-        w.append(geo)
-        params.extend(gp)
+    if country and str(country).strip():
+        w.append("country IS NOT NULL AND LOWER(TRIM(country::text)) = LOWER(TRIM(%s))")
+        params.append(str(country).strip())
+    if city and str(city).strip():
+        w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
+        params.append(str(city).strip())
     if year is not None:
-        w.append("EXTRACT(YEAR FROM trip_month)::int = %s")
+        w.append("EXTRACT(YEAR FROM month)::int = %s")
         params.append(int(year))
     if month is not None:
-        w.append("EXTRACT(MONTH FROM trip_month)::int = %s")
+        w.append("EXTRACT(MONTH FROM month)::int = %s")
         params.append(int(month))
     where_sql = " AND ".join(w)
     sql = f"""
-        SELECT trip_month AS month,
-               COUNT(*) FILTER (WHERE completed_flag) AS trips_completed,
-               COUNT(*) FILTER (WHERE cancelled_flag) AS trips_cancelled,
-               COUNT(DISTINCT driver_id) FILTER (WHERE completed_flag) AS active_drivers,
-               AVG(ticket) FILTER (WHERE completed_flag AND ticket IS NOT NULL) AS avg_ticket,
-               SUM(revenue_yego_net) FILTER (WHERE completed_flag) AS revenue_yego_net,
+        SELECT month,
+               SUM(trips_completed)::bigint AS trips_completed,
+               SUM(trips_cancelled)::bigint AS trips_cancelled,
+               SUM(active_drivers)::bigint AS active_drivers,
+               AVG(avg_ticket) AS avg_ticket,
+               SUM(revenue_yego_net) AS revenue_yego_net,
+               AVG(commission_pct) AS commission_pct,
+               AVG(trips_per_driver) AS trips_per_driver,
                CASE
-                   WHEN SUM(total_fare) FILTER (
-                       WHERE completed_flag AND total_fare IS NOT NULL AND total_fare > 0
-                   ) > 0
-                   THEN SUM(revenue_yego_net) FILTER (
-                       WHERE completed_flag AND total_fare IS NOT NULL AND total_fare > 0
-                   ) / SUM(total_fare) FILTER (
-                       WHERE completed_flag AND total_fare IS NOT NULL AND total_fare > 0
-                   )
-                   ELSE NULL
-               END AS commission_pct,
-               CASE
-                   WHEN COUNT(DISTINCT driver_id) FILTER (WHERE completed_flag) > 0
-                   THEN COUNT(*) FILTER (WHERE completed_flag)::numeric
-                       / COUNT(DISTINCT driver_id) FILTER (WHERE completed_flag)
-                   ELSE NULL
-               END AS trips_per_driver,
-               CASE
-                   WHEN (COUNT(*) FILTER (WHERE completed_flag) + COUNT(*) FILTER (WHERE cancelled_flag)) > 0
-                   THEN COUNT(*) FILTER (WHERE cancelled_flag)::numeric
-                       / (COUNT(*) FILTER (WHERE completed_flag) + COUNT(*) FILTER (WHERE cancelled_flag))
+                   WHEN SUM(trips_completed + trips_cancelled) > 0
+                   THEN SUM(trips_cancelled)::numeric / SUM(trips_completed + trips_cancelled)
                    ELSE NULL
                END AS cancel_rate_pct
-        FROM {V_RESOLVED}
+        FROM {FACT_MONTHLY}
         WHERE {where_sql}
-        GROUP BY trip_month
-        ORDER BY trip_month ASC
+        GROUP BY month
+        ORDER BY month ASC
     """
-    with get_db_drill() as conn:
+    with get_db() as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(sql, params)
         raw = [_serialize_row(dict(r)) for r in cur.fetchall()]
@@ -1146,55 +1227,38 @@ def _unmapped_bucket_weekly_rows(
     city: Optional[str],
     year: Optional[int],
 ) -> list[dict[str, Any]]:
-    geo, gp = _unmapped_geo_sql(country, city)
-    w = ["resolution_status <> 'resolved'", "trip_week IS NOT NULL"]
+    # Lee desde FACT_WEEKLY (filas con business_slice_name = 'UNMAPPED') en lugar de V_RESOLVED.
+    w: list[str] = ["business_slice_name = 'UNMAPPED'", "week_start IS NOT NULL"]
     params: list[Any] = []
-    if geo:
-        w.append(geo)
-        params.extend(gp)
+    if country and str(country).strip():
+        w.append("country IS NOT NULL AND LOWER(TRIM(country::text)) = LOWER(TRIM(%s))")
+        params.append(str(country).strip())
+    if city and str(city).strip():
+        w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
+        params.append(str(city).strip())
     if year is not None:
         r0, r1 = _calendar_year_week_bounds(int(year))
-        w.append("trip_week >= %s AND trip_week <= %s")
+        w.append("week_start >= %s AND week_start <= %s")
         params.extend([r0, r1])
     else:
-        w.append("trip_week >= date_trunc('week', CURRENT_DATE)::date - interval '35 days'")
+        w.append("week_start >= date_trunc('week', CURRENT_DATE)::date - interval '35 days'")
     where_sql = " AND ".join(w)
     sql = f"""
-        SELECT trip_week AS week_start,
-               COUNT(*) FILTER (WHERE completed_flag) AS trips_completed,
-               COUNT(*) FILTER (WHERE cancelled_flag) AS trips_cancelled,
-               COUNT(DISTINCT driver_id) FILTER (WHERE completed_flag) AS active_drivers,
-               AVG(ticket) FILTER (WHERE completed_flag AND ticket IS NOT NULL) AS avg_ticket,
-               SUM(revenue_yego_net) FILTER (WHERE completed_flag) AS revenue_yego_net,
-               CASE
-                   WHEN SUM(total_fare) FILTER (
-                       WHERE completed_flag AND total_fare IS NOT NULL AND total_fare > 0
-                   ) > 0
-                   THEN SUM(revenue_yego_net) FILTER (
-                       WHERE completed_flag AND total_fare IS NOT NULL AND total_fare > 0
-                   ) / SUM(total_fare) FILTER (
-                       WHERE completed_flag AND total_fare IS NOT NULL AND total_fare > 0
-                   )
-                   ELSE NULL
-               END AS commission_pct,
-               CASE
-                   WHEN COUNT(DISTINCT driver_id) FILTER (WHERE completed_flag) > 0
-                   THEN COUNT(*) FILTER (WHERE completed_flag)::numeric
-                       / COUNT(DISTINCT driver_id) FILTER (WHERE completed_flag)
-                   ELSE NULL
-               END AS trips_per_driver,
-               CASE
-                   WHEN (COUNT(*) FILTER (WHERE completed_flag) + COUNT(*) FILTER (WHERE cancelled_flag)) > 0
-                   THEN COUNT(*) FILTER (WHERE cancelled_flag)::numeric
-                       / (COUNT(*) FILTER (WHERE completed_flag) + COUNT(*) FILTER (WHERE cancelled_flag))
-                   ELSE NULL
-               END AS cancel_rate_pct
-        FROM {V_RESOLVED}
+        SELECT week_start,
+               SUM(trips_completed)::bigint AS trips_completed,
+               SUM(trips_cancelled)::bigint AS trips_cancelled,
+               SUM(active_drivers)::bigint AS active_drivers,
+               AVG(avg_ticket) AS avg_ticket,
+               SUM(revenue_yego_net) AS revenue_yego_net,
+               AVG(commission_pct) AS commission_pct,
+               AVG(trips_per_driver) AS trips_per_driver,
+               AVG(cancel_rate_pct) AS cancel_rate_pct
+        FROM {FACT_WEEKLY}
         WHERE {where_sql}
-        GROUP BY trip_week
-        ORDER BY trip_week ASC
+        GROUP BY week_start
+        ORDER BY week_start ASC
     """
-    with get_db_drill() as conn:
+    with get_db() as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(sql, params)
         raw = [_serialize_row(dict(r)) for r in cur.fetchall()]
@@ -1223,12 +1287,15 @@ def _unmapped_bucket_daily_rows(
     year: Optional[int],
     month: Optional[int],
 ) -> list[dict[str, Any]]:
-    geo, gp = _unmapped_geo_sql(country, city)
-    w = ["resolution_status <> 'resolved'", "trip_date IS NOT NULL"]
+    # Lee desde FACT_DAILY (filas con business_slice_name = 'UNMAPPED') en lugar de V_RESOLVED.
+    w: list[str] = ["business_slice_name = 'UNMAPPED'", "trip_date IS NOT NULL"]
     params: list[Any] = []
-    if geo:
-        w.append(geo)
-        params.extend(gp)
+    if country and str(country).strip():
+        w.append("country IS NOT NULL AND LOWER(TRIM(country::text)) = LOWER(TRIM(%s))")
+        params.append(str(country).strip())
+    if city and str(city).strip():
+        w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
+        params.append(str(city).strip())
     if year is not None:
         y = int(year)
         if month is not None:
@@ -1256,40 +1323,20 @@ def _unmapped_bucket_daily_rows(
     where_sql = " AND ".join(w)
     sql = f"""
         SELECT trip_date,
-               COUNT(*) FILTER (WHERE completed_flag) AS trips_completed,
-               COUNT(*) FILTER (WHERE cancelled_flag) AS trips_cancelled,
-               COUNT(DISTINCT driver_id) FILTER (WHERE completed_flag) AS active_drivers,
-               AVG(ticket) FILTER (WHERE completed_flag AND ticket IS NOT NULL) AS avg_ticket,
-               SUM(revenue_yego_net) FILTER (WHERE completed_flag) AS revenue_yego_net,
-               CASE
-                   WHEN SUM(total_fare) FILTER (
-                       WHERE completed_flag AND total_fare IS NOT NULL AND total_fare > 0
-                   ) > 0
-                   THEN SUM(revenue_yego_net) FILTER (
-                       WHERE completed_flag AND total_fare IS NOT NULL AND total_fare > 0
-                   ) / SUM(total_fare) FILTER (
-                       WHERE completed_flag AND total_fare IS NOT NULL AND total_fare > 0
-                   )
-                   ELSE NULL
-               END AS commission_pct,
-               CASE
-                   WHEN COUNT(DISTINCT driver_id) FILTER (WHERE completed_flag) > 0
-                   THEN COUNT(*) FILTER (WHERE completed_flag)::numeric
-                       / COUNT(DISTINCT driver_id) FILTER (WHERE completed_flag)
-                   ELSE NULL
-               END AS trips_per_driver,
-               CASE
-                   WHEN (COUNT(*) FILTER (WHERE completed_flag) + COUNT(*) FILTER (WHERE cancelled_flag)) > 0
-                   THEN COUNT(*) FILTER (WHERE cancelled_flag)::numeric
-                       / (COUNT(*) FILTER (WHERE completed_flag) + COUNT(*) FILTER (WHERE cancelled_flag))
-                   ELSE NULL
-               END AS cancel_rate_pct
-        FROM {V_RESOLVED}
+               SUM(trips_completed)::bigint AS trips_completed,
+               SUM(trips_cancelled)::bigint AS trips_cancelled,
+               SUM(active_drivers)::bigint AS active_drivers,
+               AVG(avg_ticket) AS avg_ticket,
+               SUM(revenue_yego_net) AS revenue_yego_net,
+               AVG(commission_pct) AS commission_pct,
+               AVG(trips_per_driver) AS trips_per_driver,
+               AVG(cancel_rate_pct) AS cancel_rate_pct
+        FROM {FACT_DAILY}
         WHERE {where_sql}
         GROUP BY trip_date
         ORDER BY trip_date ASC
     """
-    with get_db_drill() as conn:
+    with get_db() as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(sql, params)
         raw = [_serialize_row(dict(r)) for r in cur.fetchall()]

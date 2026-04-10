@@ -41,6 +41,7 @@ import BusinessSliceOmniviewInspector from './BusinessSliceOmniviewInspector.jsx
 import BusinessSliceInsightsPanel from './BusinessSliceInsightsPanel.jsx'
 import BusinessSliceInsightSettings from './BusinessSliceInsightSettings.jsx'
 import MatrixExecutiveBanner from './MatrixExecutiveBanner.jsx'
+import FactStatusPanel from './FactStatusPanel.jsx'
 
 const GRAINS = [
   { id: 'monthly', label: 'Mensual' },
@@ -49,22 +50,25 @@ const GRAINS = [
 ]
 
 const btnCls = (active) =>
-  `px-2.5 py-1 rounded-md text-xs font-semibold transition-colors ${
-    active ? 'bg-slate-800 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+  `px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+    active ? 'bg-slate-900 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300 hover:bg-gray-50'
   }`
 
 const densityCls = (active) =>
-  `px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
-    active ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+  `px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+    active ? 'bg-slate-900 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200 hover:border-gray-300 hover:bg-gray-50'
   }`
 
 const modeCls = (active) =>
-  `px-2.5 py-0.5 rounded text-[11px] font-semibold transition-colors ${
-    active ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+  `px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+    active ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50'
   }`
 
-const selectCls = 'border border-gray-300 rounded-md text-xs px-2 py-1 bg-white focus:ring-1 focus:ring-blue-400 focus:border-blue-400 outline-none'
-const miniSelectCls = 'border border-gray-200 rounded text-[10px] px-1.5 py-0.5 bg-white outline-none text-gray-500'
+const selectCls = 'border border-gray-200 rounded-md text-sm px-2.5 py-1.5 bg-white focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none text-gray-700'
+const miniSelectCls = 'border border-gray-200 rounded-md text-xs px-2 py-1 bg-white outline-none text-gray-600 focus:ring-1 focus:ring-blue-400'
+
+/** Si true (p. ej. VITE_OMNIVIEW_MATRIX_MANUAL_LOAD en .env.development), no se llama a la API pesada hasta pulsar «Cargar datos». */
+const MANUAL_LOAD = import.meta.env.VITE_OMNIVIEW_MATRIX_MANUAL_LOAD === 'true'
 
 export default function BusinessSliceOmniviewMatrix () {
   const saved = useMemo(() => loadPersistedState(), [])
@@ -83,6 +87,7 @@ export default function BusinessSliceOmniviewMatrix () {
   const [sortKey, setSortKey] = useState(saved?.sortKey || 'alpha')
   const [insightUserPatch, setInsightUserPatch] = useState(() => loadInsightUserPatch() ?? {})
   const [insightSettingsOpen, setInsightSettingsOpen] = useState(false)
+  const [factStatusOpen, setFactStatusOpen] = useState(false)
   const prevInsightMode = useRef(insightMode)
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
@@ -102,33 +107,95 @@ export default function BusinessSliceOmniviewMatrix () {
   const [coverageSummary, setCoverageSummary] = useState(null)
   const [matrixMeta, setMatrixMeta] = useState(null)
   const [matrixTrust, setMatrixTrust] = useState(null)
+  /** En modo manual, false hasta que el usuario pulse «Cargar datos» (evita consultas pesadas al montar la vista). */
+  const [heavyQueriesEnabled, setHeavyQueriesEnabled] = useState(!MANUAL_LOAD)
 
-  useEffect(() => { getBusinessSliceFilters().then(setFiltersMeta).catch(() => {}) }, [])
+  /**
+   * Mapa de tareas activas: { taskKey: 'Etiqueta visible' }.
+   * Una tarea aparece mientras su request está en vuelo; desaparece al completarse o cancelarse.
+   */
+  const [loadingTasks, setLoadingTasks] = useState({})
+  const activeTasks = Object.values(loadingTasks).filter(Boolean)
+
+  const trustAbortRef = useRef(null)
+  const freshnessAbortRef = useRef(null)
+  const filtersAbortRef = useRef(null)
+
   useEffect(() => {
-    getMatrixOperationalTrust()
-      .then(setMatrixTrust)
-      .catch(() => setMatrixTrust({
-        trust_status: 'warning',
-        message: 'No se pudo cargar el estado de confianza de la Matrix',
-        operational_trust: { status: 'warning', message: 'Error de red' },
-        operational_decision: {
-          decision_mode: 'CAUTION',
-          confidence: { score: 0, coverage: 0, freshness: 0, consistency: 0 },
-        },
-        trust_recommendations: [],
-        trust_history_recent: [],
-        global_insights_blocked: false,
-        affected_period_keys: { monthly: [], weekly: [], daily: [] },
-        executive: {
-          status: 'WARNING',
-          impact_pct: 0,
-          priority_score: 0,
-          main_issue: null,
-          action: 'Error de red al cargar Data Trust.',
-        },
-      }))
+    const ctrl = new AbortController()
+    filtersAbortRef.current = ctrl
+    getBusinessSliceFilters({ signal: ctrl.signal })
+      .then(setFiltersMeta)
+      .catch(() => {})
+    return () => ctrl.abort('unmount')
   }, [])
-  useEffect(() => { getDataFreshnessGlobal({ group: 'operational' }).then(setFreshnessInfo).catch(() => {}) }, [])
+
+  const trustPollRef = useRef(null)
+  useEffect(() => {
+    if (!heavyQueriesEnabled) return
+    let cancelled = false
+    const ctrl = new AbortController()
+    trustAbortRef.current = ctrl
+
+    const fetchTrust = () => {
+      setLoadingTasks((t) => ({ ...t, trust: 'Trust operativo' }))
+      getMatrixOperationalTrust({ signal: ctrl.signal })
+        .then((data) => {
+          if (cancelled) return
+          setMatrixTrust(data)
+          // Si el backend todavía está computando, reintentamos en 5s
+          if (data?.trust_status === 'loading') {
+            trustPollRef.current = setTimeout(fetchTrust, 5000)
+          } else {
+            setLoadingTasks((t) => { const n = { ...t }; delete n.trust; return n })
+          }
+        })
+        .catch((e) => {
+          if (cancelled) return
+          if (e?.code === 'ERR_CANCELED' || e?.name === 'CanceledError' || e?.name === 'AbortError') return
+          setMatrixTrust({
+            trust_status: 'warning',
+            message: 'No se pudo cargar el estado de confianza de la Matrix',
+            operational_trust: { status: 'warning', message: 'Error de red' },
+            operational_decision: {
+              decision_mode: 'CAUTION',
+              confidence: { score: 0, coverage: 0, freshness: 0, consistency: 0 },
+            },
+            trust_recommendations: [],
+            trust_history_recent: [],
+            global_insights_blocked: false,
+            affected_period_keys: { monthly: [], weekly: [], daily: [] },
+            executive: {
+              status: 'WARNING',
+              impact_pct: 0,
+              priority_score: 0,
+              main_issue: null,
+              action: 'Error de red al cargar Data Trust.',
+            },
+          })
+          setLoadingTasks((t) => { const n = { ...t }; delete n.trust; return n })
+        })
+    }
+
+    fetchTrust()
+    return () => {
+      cancelled = true
+      ctrl.abort('unmount')
+      clearTimeout(trustPollRef.current)
+    }
+  }, [heavyQueriesEnabled])
+
+  useEffect(() => {
+    if (!heavyQueriesEnabled) return
+    const ctrl = new AbortController()
+    freshnessAbortRef.current = ctrl
+    setLoadingTasks((t) => ({ ...t, freshness: 'Frescura de datos' }))
+    getDataFreshnessGlobal({ group: 'operational' }, { signal: ctrl.signal })
+      .then(setFreshnessInfo)
+      .catch(() => {})
+      .finally(() => setLoadingTasks((t) => { const n = { ...t }; delete n.freshness; return n }))
+    return () => ctrl.abort('unmount')
+  }, [heavyQueriesEnabled])
 
   const countries = filtersMeta?.countries || []
   const allCities = filtersMeta?.cities || []
@@ -155,7 +222,12 @@ export default function BusinessSliceOmniviewMatrix () {
     }
   }, [country]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadData = useCallback(async () => {
+  const abortRef = useRef(null)
+  const debounceRef = useRef(null)
+
+  // doLoad: ejecuta la carga real de la matriz + lanza coverage-summary DESPUÉS (con retraso).
+  // Acepta un AbortController.signal para poder cancelar si el usuario cambia filtros mientras carga.
+  const doLoad = useCallback(async (signal) => {
     if (blockedByCountry) {
       setRows([])
       setMatrixMeta(null)
@@ -164,6 +236,7 @@ export default function BusinessSliceOmniviewMatrix () {
       return
     }
     setLoading(true); setErr(null)
+    setLoadingTasks((t) => ({ ...t, matrix: 'Matriz de datos' }))
     try {
       const params = {}
       if (country) params.country = country
@@ -173,15 +246,37 @@ export default function BusinessSliceOmniviewMatrix () {
       if (month) params.month = Number(month)
       if (grain === 'monthly' && fleet) params.fleet = fleet
       let res
-      if (grain === 'weekly') res = await getBusinessSliceWeekly(params)
-      else if (grain === 'daily') res = await getBusinessSliceDaily(params)
-      else res = await getBusinessSliceMonthly(params)
+      if (grain === 'weekly') res = await getBusinessSliceWeekly(params, { signal })
+      else if (grain === 'daily') res = await getBusinessSliceDaily(params, { signal })
+      else res = await getBusinessSliceMonthly(params, { signal })
       let data = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : [])
       setMatrixMeta(res?.meta ?? null)
       setSliceMaxTripDate(res?.meta?.slice_max_trip_date ?? null)
       if (!showSubfleets) data = data.filter((r) => !r.is_subfleet)
       setRows(data)
+      setLoadingTasks((t) => { const n = { ...t }; delete n.matrix; return n })
+
+      // Coverage-summary se lanza DESPUÉS de que la matriz cargó, con 3s de retraso para no
+      // competir con las queries principales de la BD.
+      const coverageParams = {}
+      if (country) coverageParams.country = country
+      if (city) coverageParams.city = city
+      if (year != null && year !== '') coverageParams.year = Number(year)
+      if (month) coverageParams.month = Number(month)
+      setLoadingTasks((t) => ({ ...t, coverage: 'Cobertura (en espera…)' }))
+      await new Promise((resolve) => setTimeout(resolve, 3000))
+      if (signal?.aborted) {
+        setLoadingTasks((t) => { const n = { ...t }; delete n.coverage; return n })
+        return
+      }
+      setLoadingTasks((t) => ({ ...t, coverage: 'Cobertura' }))
+      getBusinessSliceCoverageSummary(coverageParams, { signal })
+        .then(setCoverageSummary)
+        .catch(() => setCoverageSummary(null))
+        .finally(() => setLoadingTasks((t) => { const n = { ...t }; delete n.coverage; return n }))
     } catch (e) {
+      setLoadingTasks((t) => { const n = { ...t }; delete n.matrix; delete n.coverage; return n })
+      if (e?.code === 'ERR_CANCELED' || e?.name === 'CanceledError' || e?.name === 'AbortError') return
       const detail = e?.response?.data?.detail
       const net =
         e?.code === 'ECONNABORTED' || e?.message?.includes?.('timeout')
@@ -191,19 +286,47 @@ export default function BusinessSliceOmniviewMatrix () {
       setRows([])
       setMatrixMeta(null)
       setSliceMaxTripDate(null)
-    } finally { setLoading(false) }
+    } finally {
+      setLoading(false)
+      setLoadingTasks((t) => { const n = { ...t }; delete n.matrix; return n })
+    }
   }, [grain, country, city, businessSlice, fleet, showSubfleets, year, month, blockedByCountry])
 
-  useEffect(() => { loadData() }, [loadData])
+  // scheduledLoad: debounce de 600ms antes de lanzar doLoad. Cancela la request anterior si
+  // el usuario cambia filtros antes de que termine.
+  const scheduledLoad = useCallback(() => {
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      abortRef.current?.abort('filter-change')
+      abortRef.current = new AbortController()
+      doLoad(abortRef.current.signal)
+    }, 600)
+  }, [doLoad])
 
   useEffect(() => {
-    const params = {}
-    if (country) params.country = country
-    if (city) params.city = city
-    if (year != null && year !== '') params.year = Number(year)
-    if (month) params.month = Number(month)
-    getBusinessSliceCoverageSummary(params).then(setCoverageSummary).catch(() => setCoverageSummary(null))
-  }, [country, city, year, month])
+    if (!heavyQueriesEnabled) return
+    scheduledLoad()
+    return () => {
+      clearTimeout(debounceRef.current)
+      abortRef.current?.abort('unmount')
+    }
+  }, [scheduledLoad, heavyQueriesEnabled])
+
+  // loadData: función pública para refrescos manuales (botones, etc.) sin debounce.
+  const loadData = useCallback(() => {
+    abortRef.current?.abort('manual-reload')
+    abortRef.current = new AbortController()
+    doLoad(abortRef.current.signal)
+  }, [doLoad])
+
+  /** Cancela TODAS las requests en vuelo (incluido debounce pendiente). */
+  const cancelAll = useCallback(() => {
+    clearTimeout(debounceRef.current)
+    abortRef.current?.abort('user-cancel')
+    trustAbortRef.current?.abort('user-cancel')
+    freshnessAbortRef.current?.abort('user-cancel')
+    filtersAbortRef.current?.abort('user-cancel')
+  }, [])
 
   const matrix = useMemo(() => buildMatrix(rows, grain), [rows, grain])
   const execKpis = useMemo(() => aggregateExecutiveKpis(rows), [rows])
@@ -458,104 +581,200 @@ export default function BusinessSliceOmniviewMatrix () {
   return (
     <div className="relative" data-omniview-matrix-root style={{ width: '100vw', left: '50%', right: '50%', marginLeft: '-50vw', marginRight: '-50vw' }}>
       <div className="px-4 md:px-6 lg:px-8 space-y-3">
-        <MatrixExecutiveBanner
-          executive={executiveForBanner}
-          decisionMode={matrixTrust?.operational_decision?.decision_mode}
-          confidence={matrixTrust?.operational_decision?.confidence}
-          recommendations={matrixTrust?.trust_recommendations}
-          loading={!matrixTrust}
-          actionable={!blockedByCountry && rows.length > 0 && !loading}
-          onActivate={handleExecutiveBannerActivate}
-          contextHints={bannerContextHints}
-        />
+        {heavyQueriesEnabled && (
+          <MatrixExecutiveBanner
+            executive={executiveForBanner}
+            decisionMode={matrixTrust?.operational_decision?.decision_mode}
+            confidence={matrixTrust?.operational_decision?.confidence}
+            recommendations={matrixTrust?.trust_recommendations}
+            loading={!matrixTrust || matrixTrust?.trust_status === 'loading'}
+            actionable={!blockedByCountry && rows.length > 0 && !loading}
+            onActivate={handleExecutiveBannerActivate}
+            contextHints={bannerContextHints}
+          />
+        )}
 
         {/* ── Controls ──────────────────────────────────────────── */}
-        <div className="rounded-lg border border-gray-200 bg-white shadow-sm px-4 py-2.5">
-          <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Grano</label>
-              <div className="flex gap-0.5">
+        <div className="rounded-xl border border-gray-200 bg-white shadow-sm divide-y divide-gray-100">
+
+          {/* Fila 1: Filtros de datos */}
+          <div className="px-4 py-3 flex flex-wrap items-end gap-x-4 gap-y-3">
+            {/* Grano temporal */}
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Grano</span>
+              <div className="flex gap-1">
                 {GRAINS.map((g) => (
                   <button key={g.id} type="button" className={btnCls(grain === g.id)} onClick={() => setGrain(g.id)}>{g.label}</button>
                 ))}
               </div>
             </div>
 
-            <FilterSelect label="País" value={country} onChange={setCountry} options={countries} placeholder="Todos" required={needsCountry} />
-            <FilterSelect label="Ciudad" value={city} onChange={setCity} options={citiesForCountry} placeholder="Todas" />
-            <FilterSelect label="Tajada" value={businessSlice} onChange={setBusinessSlice} options={slices} placeholder="Todas" />
-            {grain === 'monthly' && <FilterSelect label="Flota" value={fleet} onChange={setFleet} options={fleets} placeholder="Todas" />}
+            {/* Separador vertical */}
+            <div className="hidden sm:block self-stretch w-px bg-gray-100 mx-1" />
 
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Año</label>
-              <input type="number" className={selectCls + ' w-[68px]'} value={year}
+            {/* Filtros dimensionales */}
+            <FilterSelect label="País" value={country} onChange={setCountry} options={countries} placeholder="Todos los países" required={needsCountry} />
+            <FilterSelect label="Ciudad" value={city} onChange={setCity} options={citiesForCountry} placeholder="Todas las ciudades" />
+            <FilterSelect label="Tajada" value={businessSlice} onChange={setBusinessSlice} options={slices} placeholder="Todas las tajadas" />
+            {grain === 'monthly' && <FilterSelect label="Flota" value={fleet} onChange={setFleet} options={fleets} placeholder="Todas las flotas" />}
+
+            {/* Separador vertical */}
+            <div className="hidden sm:block self-stretch w-px bg-gray-100 mx-1" />
+
+            {/* Periodo */}
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Año</span>
+              <input type="number" className={selectCls + ' w-20'} value={year}
                 onChange={(e) => setYear(e.target.value === '' ? '' : Number(e.target.value))} />
             </div>
 
             {(grain === 'monthly' || grain === 'daily') && (
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Mes</label>
-                <select className={selectCls + ' w-[68px]'} value={month} onChange={(e) => setMonth(e.target.value)}>
-                  <option value="">—</option>
-                  {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{m}</option>)}
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Mes</span>
+                <select className={selectCls + ' w-24'} value={month} onChange={(e) => setMonth(e.target.value)}>
+                  <option value="">Todos</option>
+                  {['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'].map((m, i) => (
+                    <option key={i + 1} value={i + 1}>{m}</option>
+                  ))}
                 </select>
               </div>
             )}
 
-            <label className="flex items-center gap-1 text-[11px] text-gray-500 cursor-pointer select-none pb-0.5">
+            <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none self-end pb-1.5">
               <input type="checkbox" checked={showSubfleets} onChange={(e) => setShowSubfleets(e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-3 w-3" />
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5" />
               Subflotas
             </label>
+          </div>
 
-            {/* ── Right controls ─────────────────────────────────── */}
-            <div className="ml-auto flex items-end gap-2 pb-0.5">
-              {/* Mode toggle: Data / Insight */}
-              <div className="flex items-center gap-0.5">
-                <span className="text-[10px] text-gray-400 mr-0.5">Modo</span>
+          {/* Fila 2: Controles de visualización */}
+          <div className="px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-2 bg-gray-50/60">
+            {/* Modo Data / Insight */}
+            <div className="flex items-center gap-1">
+              <span className="text-[11px] font-medium text-gray-400 mr-1">Vista</span>
+              <div className="flex gap-1">
                 <button type="button" className={modeCls(!insightMode)} onClick={() => setInsightMode(false)}>Data</button>
                 <button type="button" className={modeCls(insightMode)} onClick={() => setInsightMode(true)}>
                   Insight
                   {insights.length > 0 && (
-                    <span className="ml-1 px-1 py-px rounded-full text-[8px] font-bold bg-red-500 text-white">{insights.length}</span>
+                    <span className="ml-1.5 px-1.5 py-px rounded-full text-[9px] font-bold bg-red-500 text-white">{insights.length}</span>
                   )}
                 </button>
               </div>
+            </div>
 
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] text-gray-400">Orden</span>
-                <select className={miniSelectCls} value={sortKey} onChange={(e) => setSortKey(e.target.value)}>
-                  {sortSelectOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-                </select>
-              </div>
+            <div className="w-px h-4 bg-gray-200 hidden sm:block" />
 
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Densidad</span>
+            {/* Orden */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-medium text-gray-400">Orden</span>
+              <select className={miniSelectCls} value={sortKey} onChange={(e) => setSortKey(e.target.value)}>
+                {sortSelectOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+            </div>
+
+            <div className="w-px h-4 bg-gray-200 hidden sm:block" />
+
+            {/* Densidad */}
+            <div className="flex items-center gap-1">
+              <span className="text-[11px] font-medium text-gray-400 mr-1">Densidad</span>
+              <div className="flex gap-1">
                 <button type="button" className={densityCls(!compact)} onClick={() => setCompact(false)}>Cómodo</button>
                 <button type="button" className={densityCls(compact)} onClick={() => setCompact(true)}>Compacto</button>
               </div>
+            </div>
 
+            <div className="ml-auto flex items-center gap-2">
+              <button type="button"
+                onClick={() => setFactStatusOpen((o) => !o)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all border ${factStatusOpen ? 'bg-slate-800 text-white border-slate-800' : 'text-gray-500 bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}
+                title="Ver estado de materialización de FACT tables">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7M4 7c0-2 1-3 3-3h10c2 0 3 1 3 3M4 7h16" />
+                </svg>
+                FACT tables
+              </button>
               {rows.length > 0 && (
-                <button type="button" onClick={handleExport}
-                  className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium text-gray-500 bg-gray-100 hover:bg-gray-200 transition-colors"
-                  title="Exportar matriz a CSV">
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V3" />
-                  </svg>CSV
-                </button>
+                <>
+                  <div className="w-px h-4 bg-gray-200" />
+                  <button type="button" onClick={handleExport}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-gray-500 bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all"
+                    title="Exportar matriz a CSV">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V3" />
+                    </svg>
+                    Exportar CSV
+                  </button>
+                </>
               )}
             </div>
           </div>
 
-          {blockedByCountry && (
-            <div className="mt-2 rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] text-amber-900 font-medium">
-              Selecciona un <strong>país</strong> para habilitar análisis semanal o diario.
+          {blockedByCountry && heavyQueriesEnabled && (
+            <div className="px-4 py-2 text-xs text-amber-800 bg-amber-50 border-t border-amber-100 font-medium flex items-center gap-2">
+              <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z" />
+              </svg>
+              Selecciona un <strong className="mx-0.5">país</strong> para habilitar el análisis semanal o diario.
+            </div>
+          )}
+
+          {factStatusOpen && (
+            <div className="mt-3">
+              <FactStatusPanel onClose={() => setFactStatusOpen(false)} />
+            </div>
+          )}
+
+          {MANUAL_LOAD && !heavyQueriesEnabled && (
+            <div className="mt-3 rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white px-6 py-6 flex flex-col items-center gap-4 text-center shadow-sm">
+              <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center">
+                <svg className="w-5 h-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-800">Omniview Matrix — carga diferida</p>
+                <p className="mt-1 text-xs text-slate-500 max-w-sm">
+                  No se ejecutan consultas a la base de datos hasta que pulses el botón. Ajusta los filtros y carga cuando estés listo.
+                </p>
+                {blockedByCountry && (
+                  <p className="mt-2 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-1">
+                    Selecciona un país para habilitar el grano semanal o diario.
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                disabled={blockedByCountry}
+                onClick={() => setHeavyQueriesEnabled(true)}
+                className="px-6 py-2 rounded-lg text-sm font-semibold bg-slate-900 text-white hover:bg-slate-700 transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Cargar datos
+              </button>
             </div>
           )}
         </div>
 
+        {/* ── Barra de actividad: muestra qué requests están en vuelo + botón Detener ── */}
+        {activeTasks.length > 0 && (
+          <div className="mt-2 flex items-center gap-2.5 px-3 py-1.5 rounded-lg border border-blue-100 bg-blue-50 text-xs text-blue-700">
+            <span className="inline-block w-3 h-3 border-[1.5px] border-blue-300 border-t-blue-600 rounded-full animate-spin flex-shrink-0" />
+            <span className="flex-1 min-w-0 truncate font-medium">
+              {activeTasks.join(' · ')}
+            </span>
+            <button
+              type="button"
+              onClick={cancelAll}
+              className="flex-shrink-0 px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-100 hover:bg-red-100 hover:text-red-700 text-blue-700 border border-blue-200 hover:border-red-200 transition-colors"
+              title="Cancelar todas las consultas en vuelo"
+            >
+              Detener
+            </button>
+          </div>
+        )}
+
         {/* ── Context bar ───────────────────────────────────────── */}
-        {!blockedByCountry && rows.length > 0 && (
+        {heavyQueriesEnabled && !blockedByCountry && rows.length > 0 && (
           <OperationalContextBar
             grain={grain} periodStates={periodStates} allPeriods={matrix.allPeriods}
             comparisonMeta={matrix.comparisonMeta}
@@ -567,7 +786,7 @@ export default function BusinessSliceOmniviewMatrix () {
         )}
 
         {/* ── KPI strip ─────────────────────────────────────────── */}
-        {!blockedByCountry && rows.length > 0 && (
+        {heavyQueriesEnabled && !blockedByCountry && rows.length > 0 && (
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
             {execCards.map((card) => (
               <div key={card.key} className={`rounded-lg border border-gray-200 bg-white shadow-sm ${compact ? 'px-3 py-1.5' : 'px-3 py-2'}`}>
@@ -585,7 +804,7 @@ export default function BusinessSliceOmniviewMatrix () {
         )}
 
         {/* ── Insights Panel (additive, between KPI strip and Matrix) ── */}
-        {!blockedByCountry && insights.length > 0 && (
+        {heavyQueriesEnabled && !blockedByCountry && insights.length > 0 && (
           <BusinessSliceInsightsPanel
             insights={insights}
             onInsightClick={handleInsightClick}
@@ -604,11 +823,11 @@ export default function BusinessSliceOmniviewMatrix () {
           onSaved={refreshInsightPatch}
         />
 
-        {err && !blockedByCountry && (
+        {err && heavyQueriesEnabled && !blockedByCountry && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-800">{String(err)}</div>
         )}
 
-        {loading && (
+        {loading && heavyQueriesEnabled && (
           <div className="flex items-center gap-2 text-xs text-gray-500 py-6 justify-center">
             <span className="inline-block w-3.5 h-3.5 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
             Cargando datos…
@@ -616,7 +835,7 @@ export default function BusinessSliceOmniviewMatrix () {
         )}
 
         {/* ── Matrix + Inspector ─────────────────────────────────── */}
-        {!loading && !blockedByCountry && (
+        {heavyQueriesEnabled && !loading && !blockedByCountry && (
           <div className="flex gap-3 items-start">
             <div className="flex-1 min-w-0">
               <BusinessSliceOmniviewMatrixTable
@@ -757,13 +976,13 @@ function OperationalContextBar ({ grain, periodStates, allPeriods, comparisonMet
 
 function FilterSelect ({ label, value, onChange, options, placeholder, required }) {
   return (
-    <div>
-      <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">
+    <div className="flex flex-col gap-1">
+      <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
         {label}{required && <span className="text-red-500 ml-0.5">*</span>}
-      </label>
+      </span>
       <select
-        className={`border rounded-md text-xs px-2 py-1 bg-white focus:ring-1 focus:ring-blue-400 focus:border-blue-400 outline-none min-w-[100px] ${
-          required && !value ? 'border-amber-400 bg-amber-50' : 'border-gray-300'
+        className={`border rounded-md text-sm px-2.5 py-1.5 bg-white focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none min-w-[130px] text-gray-700 transition-colors ${
+          required && !value ? 'border-amber-400 bg-amber-50 text-amber-900' : 'border-gray-200 hover:border-gray-300'
         }`}
         value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">{placeholder}</option>

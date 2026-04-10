@@ -3,7 +3,8 @@
  * Rediseño: navegación por bloques de decisión (Performance, Proyección, Drivers, Riesgo, Operación, Plan).
  * Real vs Proyección es tab principal. Diaria = Performance > Real; Semanal/Mensual = Operación > Drill.
  */
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import CollapsibleFilters from './components/CollapsibleFilters'
 import ExecutiveSnapshotView from './components/ExecutiveSnapshotView'
 import MonthlySplitView from './components/MonthlySplitView'
@@ -82,7 +83,86 @@ const OPERACION_SUBTABS = [
   { id: 'omniview_matrix', label: 'Omniview Matrix' }
 ]
 
+// ─── Mapa URL <-> (tab, subtab) ─────────────────────────────────────────────
+const ROUTE_MAP = [
+  { path: '/', tab: TAB_PERFORMANCE, sub: 'resumen' },
+  { path: '/performance', tab: TAB_PERFORMANCE, sub: 'resumen' },
+  { path: '/performance/resumen', tab: TAB_PERFORMANCE, sub: 'resumen' },
+  { path: '/performance/plan-vs-real', tab: TAB_PERFORMANCE, sub: 'plan_vs_real' },
+  { path: '/performance/real', tab: TAB_PERFORMANCE, sub: 'real' },
+  { path: '/drivers', tab: TAB_DRIVERS, sub: 'supply' },
+  { path: '/drivers/supply', tab: TAB_DRIVERS, sub: 'supply' },
+  { path: '/drivers/lifecycle', tab: TAB_DRIVERS, sub: 'lifecycle' },
+  { path: '/riesgo', tab: TAB_RISK, sub: 'driver_behavior' },
+  { path: '/riesgo/driver-behavior', tab: TAB_RISK, sub: 'driver_behavior' },
+  { path: '/riesgo/action-engine', tab: TAB_RISK, sub: 'action_engine' },
+  { path: '/operacion', tab: TAB_OPERACION, sub: 'lob_drill' },
+  { path: '/operacion/lob-drill', tab: TAB_OPERACION, sub: 'lob_drill' },
+  { path: '/operacion/business-slice', tab: TAB_OPERACION, sub: 'business_slice' },
+  { path: '/operacion/omniview', tab: TAB_OPERACION, sub: 'business_slice_omniview' },
+  { path: '/operacion/omniview-matrix', tab: TAB_OPERACION, sub: 'omniview_matrix' },
+  { path: '/plan', tab: TAB_PLAN, sub: 'acciones' },
+  { path: '/plan/acciones', tab: TAB_PLAN, sub: 'acciones' },
+  { path: '/plan/universo', tab: TAB_PLAN, sub: 'universo' },
+  { path: '/plan/validacion', tab: TAB_PLAN, sub: 'validacion' },
+  { path: '/en-revision', tab: TAB_EN_REVISION, sub: 'real_vs_projection' },
+  { path: '/en-revision/real-vs-proyeccion', tab: TAB_EN_REVISION, sub: 'real_vs_projection' },
+  { path: '/en-revision/alertas', tab: TAB_EN_REVISION, sub: 'behavioral_alerts' },
+  { path: '/en-revision/flota', tab: TAB_EN_REVISION, sub: 'fleet_leakage' },
+  { path: '/diagnosticos', tab: TAB_SYSTEM_HEALTH, sub: null },
+]
+
+const SUB_URL = {
+  // Performance
+  resumen: '/performance/resumen',
+  plan_vs_real: '/performance/plan-vs-real',
+  // Drivers
+  supply: '/drivers/supply',
+  lifecycle: '/drivers/lifecycle',
+  // Riesgo
+  driver_behavior: '/riesgo/driver-behavior',
+  action_engine: '/riesgo/action-engine',
+  // Operacion
+  lob_drill: '/operacion/lob-drill',
+  business_slice: '/operacion/business-slice',
+  business_slice_omniview: '/operacion/omniview',
+  omniview_matrix: '/operacion/omniview-matrix',
+  // Plan
+  acciones: '/plan/acciones',
+  universo: '/plan/universo',
+  validacion: '/plan/validacion',
+  // En revisión
+  real_vs_projection: '/en-revision/real-vs-proyeccion',
+  behavioral_alerts: '/en-revision/alertas',
+  fleet_leakage: '/en-revision/flota',
+}
+
+const TAB_DEFAULT_PATH = {
+  [TAB_PERFORMANCE]: '/performance/resumen',
+  [TAB_DRIVERS]: '/drivers/supply',
+  [TAB_RISK]: '/riesgo/driver-behavior',
+  [TAB_OPERACION]: '/operacion/lob-drill',
+  [TAB_PLAN]: '/plan/acciones',
+  [TAB_EN_REVISION]: '/en-revision/real-vs-proyeccion',
+  [TAB_SYSTEM_HEALTH]: '/diagnosticos',
+}
+
+function parseRoute (pathname) {
+  const match = ROUTE_MAP.find((r) => r.path === pathname)
+  if (match) return match
+  // fallback: prefix match
+  const prefix = ROUTE_MAP.find((r) => r.path !== '/' && pathname.startsWith(r.path))
+  return prefix || ROUTE_MAP[0]
+}
+
 function App () {
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  const parsed = parseRoute(location.pathname)
+  const activeTab = parsed.tab
+  const routeSub = parsed.sub
+
   const [filters, setFilters] = useState({
     country: '',
     city: '',
@@ -91,17 +171,30 @@ function App () {
     year_plan: 2026
   })
   const [refreshKey, setRefreshKey] = useState(0)
-  const [activeTab, setActiveTab] = useState(TAB_PERFORMANCE)
-  const [performanceSubTab, setPerformanceSubTab] = useState('resumen')
-  const [driversSubTab, setDriversSubTab] = useState('supply')
-  const [riskSubTab, setRiskSubTab] = useState('driver_behavior')
-  const [enRevisionSubTab, setEnRevisionSubTab] = useState('real_vs_projection')
-  const [planSubTab, setPlanSubTab] = useState('acciones')
-  const [operacionSubTab, setOperacionSubTab] = useState('lob_drill')
+
+  // Subtabs derivados de la ruta; el estado local solo se usa para inner (plan validacion)
+  const performanceSubTab = activeTab === TAB_PERFORMANCE ? (routeSub || 'resumen') : 'resumen'
+  const driversSubTab = activeTab === TAB_DRIVERS ? (routeSub || 'supply') : 'supply'
+  const riskSubTab = activeTab === TAB_RISK ? (routeSub || 'driver_behavior') : 'driver_behavior'
+  const operacionSubTab = activeTab === TAB_OPERACION ? (routeSub || 'lob_drill') : 'lob_drill'
+  const planSubTab = activeTab === TAB_PLAN ? (routeSub || 'acciones') : 'acciones'
+  const enRevisionSubTab = activeTab === TAB_EN_REVISION ? (routeSub || 'real_vs_projection') : 'real_vs_projection'
+
   const [planValidacionInner, setPlanValidacionInner] = useState('out_of_universe')
   const [showAdminModal, setShowAdminModal] = useState(false)
   const [showDiagnosticsMenu, setShowDiagnosticsMenu] = useState(false)
   const diagnosticsRef = useRef(null)
+
+  const setActiveTab = useCallback((tab) => {
+    navigate(TAB_DEFAULT_PATH[tab] || '/')
+  }, [navigate])
+
+  const setPerformanceSubTab = useCallback((sub) => navigate(SUB_URL[sub] || '/performance/resumen'), [navigate])
+  const setDriversSubTab = useCallback((sub) => navigate(SUB_URL[sub] || '/drivers/supply'), [navigate])
+  const setRiskSubTab = useCallback((sub) => navigate(SUB_URL[sub] || '/riesgo/driver-behavior'), [navigate])
+  const setOperacionSubTab = useCallback((sub) => navigate(SUB_URL[sub] || '/operacion/lob-drill'), [navigate])
+  const setPlanSubTab = useCallback((sub) => navigate(SUB_URL[sub] || '/plan/acciones'), [navigate])
+  const setEnRevisionSubTab = useCallback((sub) => navigate(SUB_URL[sub] || '/en-revision/real-vs-proyeccion'), [navigate])
 
   const handleFilterChange = (newFilters) => {
     setFilters(newFilters)
@@ -128,30 +221,142 @@ function App () {
   }
 
   const navButtonClass = (isActive) =>
-    `py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
+    `py-3 px-3 border-b-2 font-medium text-sm whitespace-nowrap transition-colors ${
       isActive
-        ? 'border-blue-500 text-blue-600'
-        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+        ? 'border-blue-600 text-blue-600'
+        : 'border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300'
     }`
 
   const subNavButtonClass = (isActive) =>
-    `px-3 py-1.5 rounded text-sm ${isActive ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`
+    `px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+      isActive
+        ? 'bg-blue-600 text-white shadow-sm'
+        : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
+    }`
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <div className="container mx-auto px-4 py-8">
-        <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
-          <h1 className="text-2xl font-bold text-gray-800">
-            YEGO Control Tower
-          </h1>
+    <div className="min-h-screen bg-gray-50">
+      {/* ── Top bar ─────────────────────────────────────────────────── */}
+      <header className="sticky top-0 z-40 bg-white border-b border-gray-200 shadow-sm">
+        <div className="w-full px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+              </svg>
+            </div>
+            <div>
+              <span className="text-[15px] font-bold text-gray-900 tracking-tight">YEGO</span>
+              <span className="text-[15px] font-normal text-gray-400 ml-1">Control Tower</span>
+            </div>
+          </div>
           <button
             type="button"
             onClick={() => setShowAdminModal(true)}
-            className="px-4 py-2 rounded-md border border-gray-400 bg-gray-100 text-gray-700 hover:bg-gray-200 font-medium text-sm"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:border-gray-300 font-medium text-xs transition-all"
           >
-            ADMIN
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            Admin
           </button>
-        </header>
+        </div>
+      </header>
+
+      {/* ========== NAVEGACIÓN PRINCIPAL (full-width) ========== */}
+      <div className="sticky top-14 z-30 bg-white border-b border-gray-200">
+        <div className="w-full px-4 sm:px-6">
+          <nav className="-mb-px flex flex-wrap items-center">
+            {MAIN_NAV_TABS.map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActiveTab(id)}
+                className={navButtonClass(activeTab === id)}
+              >
+                {label}
+              </button>
+            ))}
+            <div className="relative ml-auto" ref={diagnosticsRef}>
+              <button
+                type="button"
+                onClick={() => setShowDiagnosticsMenu((v) => !v)}
+                className={`py-3 px-3 border-b-2 font-medium text-sm whitespace-nowrap transition-colors ${
+                  activeTab === TAB_SYSTEM_HEALTH
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300'
+                }`}
+                aria-expanded={showDiagnosticsMenu}
+                aria-haspopup="true"
+              >
+                Diagnósticos ▾
+              </button>
+              {showDiagnosticsMenu && (
+                <div className="absolute right-0 top-full mt-1 py-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[10rem]">
+                  <button
+                    type="button"
+                    onClick={() => openDiagnostics(TAB_SYSTEM_HEALTH)}
+                    className={`block w-full text-left px-4 py-2 text-sm ${activeTab === TAB_SYSTEM_HEALTH ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}`}
+                  >
+                    System Health
+                  </button>
+                </div>
+              )}
+            </div>
+          </nav>
+        </div>
+      </div>
+
+      {/* ========== SUB-NAV (full-width, condicional) ========== */}
+      {activeTab === TAB_PERFORMANCE && (
+        <div className="bg-white border-b border-gray-100 w-full px-4 sm:px-6 py-2 flex flex-wrap gap-1.5">
+          {PERFORMANCE_SUBTABS.map(({ id, label }) => (
+            <button key={id} type="button" onClick={() => setPerformanceSubTab(id)} className={subNavButtonClass(performanceSubTab === id)}>{label}</button>
+          ))}
+        </div>
+      )}
+      {activeTab === TAB_DRIVERS && (
+        <div className="bg-white border-b border-gray-100 w-full px-4 sm:px-6 py-2 flex flex-wrap gap-1.5">
+          {DRIVERS_SUBTABS.map(({ id, label }) => (
+            <button key={id} type="button" onClick={() => setDriversSubTab(id)} className={subNavButtonClass(driversSubTab === id)}>{label}</button>
+          ))}
+        </div>
+      )}
+      {activeTab === TAB_RISK && (
+        <div className="bg-white border-b border-gray-100 w-full px-4 sm:px-6 py-2 flex flex-wrap gap-1.5">
+          {RISK_SUBTABS.map(({ id, label }) => (
+            <button key={id} type="button" onClick={() => setRiskSubTab(id)} className={subNavButtonClass(riskSubTab === id)}>{label}</button>
+          ))}
+        </div>
+      )}
+      {activeTab === TAB_PLAN && (
+        <div className="bg-white border-b border-gray-100 w-full px-4 sm:px-6 py-2 flex flex-wrap gap-1.5">
+          {PLAN_SUBTABS.map(({ id, label }) => (
+            <button key={id} type="button" onClick={() => setPlanSubTab(id)} className={subNavButtonClass(planSubTab === id)}>{label}</button>
+          ))}
+        </div>
+      )}
+      {activeTab === TAB_OPERACION && (
+        <div className="bg-white border-b border-gray-100 w-full px-4 sm:px-6 py-2 flex flex-wrap gap-1.5">
+          {OPERACION_SUBTABS.map(({ id, label }) => (
+            <button key={id} type="button" onClick={() => setOperacionSubTab(id)} className={subNavButtonClass(operacionSubTab === id)}>{label}</button>
+          ))}
+        </div>
+      )}
+      {activeTab === TAB_EN_REVISION && (
+        <div className="bg-amber-50 border-b border-amber-200 w-full px-4 sm:px-6 py-2 flex flex-wrap items-center gap-3">
+          <span className="text-xs text-amber-700 font-medium">⚠ En revisión</span>
+          <div className="flex flex-wrap gap-1.5">
+            {EN_REVISION_SUBTABS.map(({ id, label }) => (
+              <button key={id} type="button" onClick={() => setEnRevisionSubTab(id)} className={subNavButtonClass(enRevisionSubTab === id)}>{label}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ========== CONTENIDO ========== */}
+      <div className="w-full px-4 sm:px-6 py-4">
 
         {showAdminModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
@@ -171,286 +376,85 @@ function App () {
           </div>
         )}
 
-        <GlobalFreshnessBanner
-          activeTab={
-            activeTab === TAB_OPERACION || (activeTab === TAB_PERFORMANCE && performanceSubTab === 'real')
-              ? 'real'
-              : activeTab
-          }
-        />
+        {/* Omniview Matrix tiene su propia barra de contexto y controla su carga manualmente;
+            se omiten los banners globales para no generar confusión ni queries adicionales. */}
+        {operacionSubTab !== 'omniview_matrix' && (
+          <GlobalFreshnessBanner
+            activeTab={
+              activeTab === TAB_OPERACION || (activeTab === TAB_PERFORMANCE && performanceSubTab === 'real')
+                ? 'real'
+                : activeTab
+            }
+          />
+        )}
 
         {(activeTab === TAB_PERFORMANCE && performanceSubTab === 'real') && <RealMarginQualityCard />}
-        {(activeTab === TAB_OPERACION) && <RealMarginQualityCard />}
+        {(activeTab === TAB_OPERACION && operacionSubTab !== 'omniview_matrix') && <RealMarginQualityCard />}
 
         <CollapsibleFilters onFilterChange={handleFilterChange} />
-
-        {/* ========== NAVEGACIÓN PRINCIPAL ========== */}
-        <div className="mb-4 border-b border-gray-200">
-          <nav className="-mb-px flex flex-wrap items-center gap-1 sm:gap-2">
-            {MAIN_NAV_TABS.map(({ id, label }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setActiveTab(id)}
-                className={navButtonClass(activeTab === id)}
-              >
-                {label}
-              </button>
-            ))}
-            <div className="relative ml-2 sm:ml-4" ref={diagnosticsRef}>
-              <button
-                type="button"
-                onClick={() => setShowDiagnosticsMenu((v) => !v)}
-                className={`py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap border-transparent text-gray-500 hover:text-gray-700 ${
-                  activeTab === TAB_SYSTEM_HEALTH ? 'border-blue-500 text-blue-600' : ''
-                }`}
-                aria-expanded={showDiagnosticsMenu}
-                aria-haspopup="true"
-              >
-                Diagnósticos ▾
-              </button>
-              {showDiagnosticsMenu && (
-                <div className="absolute right-0 top-full mt-1 py-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 min-w-[10rem]">
-                  <button
-                    type="button"
-                    onClick={() => openDiagnostics(TAB_SYSTEM_HEALTH)}
-                    className={`block w-full text-left px-4 py-2 text-sm ${activeTab === TAB_SYSTEM_HEALTH ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'}`}
-                  >
-                    System Health
-                  </button>
-                </div>
-              )}
-            </div>
-          </nav>
-        </div>
-
-        {/* ========== SUB-NAV: Performance ========== */}
-        {activeTab === TAB_PERFORMANCE && (
-          <div className="mb-4 pb-2 border-b border-gray-200">
-            <p className="text-xs text-gray-500 mb-2">Qué está pasando: viajes, revenue, Plan vs Real</p>
-            <div className="flex flex-wrap gap-2">
-              {PERFORMANCE_SUBTABS.map(({ id, label }) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setPerformanceSubTab(id)}
-                  className={subNavButtonClass(performanceSubTab === id)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ========== SUB-NAV: Drivers ========== */}
-        {activeTab === TAB_DRIVERS && (
-          <div className="mb-4 pb-2 border-b border-gray-200">
-            <p className="text-xs text-gray-500 mb-2">Quién lo hace: supply y ciclo de vida</p>
-            <div className="flex flex-wrap gap-2">
-              {DRIVERS_SUBTABS.map(({ id, label }) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setDriversSubTab(id)}
-                  className={subNavButtonClass(driversSubTab === id)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ========== SUB-NAV: Riesgo ========== */}
-        {activeTab === TAB_RISK && (
-          <div className="mb-4 pb-2 border-b border-gray-200">
-            <p className="text-xs text-gray-500 mb-2">Qué se rompe: alertas, fuga, acciones</p>
-            <div className="flex flex-wrap gap-2">
-              {RISK_SUBTABS.map(({ id, label }) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setRiskSubTab(id)}
-                  className={subNavButtonClass(riskSubTab === id)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ========== SUB-NAV: Plan ========== */}
-        {activeTab === TAB_PLAN && (
-          <div className="mb-4 pb-2 border-b border-gray-200">
-            <p className="text-xs text-gray-500 mb-2">Validación del plan: acciones, universo, expansión y huecos</p>
-            <div className="flex flex-wrap gap-2">
-              {PLAN_SUBTABS.map(({ id, label }) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setPlanSubTab(id)}
-                  className={subNavButtonClass(planSubTab === id)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* ========== CONTENIDO: Performance ========== */}
         {activeTab === TAB_PERFORMANCE && (
           <section className="space-y-4" aria-label="Performance">
-            <h2 className="text-xl font-semibold text-gray-800">Performance</h2>
-            {performanceSubTab === 'resumen' && (
-              <>
-                <p className="text-sm text-gray-600">Plan vs Real en KPIs (viajes, conductores, revenue).</p>
-                <ExecutiveSnapshotView key={`snapshot-${refreshKey}`} filters={filters} refreshKey={refreshKey} />
-              </>
-            )}
+            {performanceSubTab === 'resumen' && <ExecutiveSnapshotView key={`snapshot-${refreshKey}`} filters={filters} refreshKey={refreshKey} />}
             {performanceSubTab === 'plan_vs_real' && (
               <>
-                <p className="text-sm text-gray-600">Detalle mensual y semanal Plan vs Real.</p>
                 <MonthlySplitView key={`monthly-${refreshKey}`} filters={filters} />
                 <WeeklyPlanVsRealView key={`weekly-${refreshKey}`} filters={filters} />
               </>
             )}
-            {performanceSubTab === 'real' && (
-              <>
-                <p className="text-sm text-gray-600">Vista diaria: hoy, ayer, por día y por hora. Para desglose semanal o mensual por LOB y parque → pestaña Operación.</p>
-                <RealOperationalView key={`real-operational-${refreshKey}`} country={filters.country} city={filters.city} />
-              </>
-            )}
+            {performanceSubTab === 'real' && <RealOperationalView key={`real-operational-${refreshKey}`} country={filters.country} city={filters.city} />}
           </section>
         )}
 
-        {/* ========== CONTENIDO: En revisión (fuera de flujo principal) ========== */}
+        {/* ========== CONTENIDO: En revisión ========== */}
         {activeTab === TAB_EN_REVISION && (
-          <>
-            <div className="mb-4 pb-2 border-b border-amber-200 bg-amber-50/50 rounded px-3 py-2">
-              <p className="text-xs text-amber-800 font-medium mb-2">Pantallas en revisión: no considerar datos como definitivos.</p>
-              <div className="flex flex-wrap gap-2">
-                {EN_REVISION_SUBTABS.map(({ id, label }) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setEnRevisionSubTab(id)}
-                    className={subNavButtonClass(enRevisionSubTab === id)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <section className="space-y-4" aria-label="En revisión">
-              <h2 className="text-xl font-semibold text-gray-800">En revisión</h2>
-              {enRevisionSubTab === 'real_vs_projection' && <RealVsProjectionView key={`real-vs-projection-${refreshKey}`} />}
-              {enRevisionSubTab === 'behavioral_alerts' && <BehavioralAlertsView key={`behavioral-alerts-${refreshKey}`} />}
-              {enRevisionSubTab === 'fleet_leakage' && <FleetLeakageView key={`fleet-leakage-${refreshKey}`} />}
-            </section>
-          </>
+          <section className="space-y-4" aria-label="En revisión">
+            {enRevisionSubTab === 'real_vs_projection' && <RealVsProjectionView key={`real-vs-projection-${refreshKey}`} />}
+            {enRevisionSubTab === 'behavioral_alerts' && <BehavioralAlertsView key={`behavioral-alerts-${refreshKey}`} />}
+            {enRevisionSubTab === 'fleet_leakage' && <FleetLeakageView key={`fleet-leakage-${refreshKey}`} />}
+          </section>
         )}
 
         {/* ========== CONTENIDO: Drivers ========== */}
         {activeTab === TAB_DRIVERS && (
           <section className="space-y-4" aria-label="Drivers">
-            <h2 className="text-xl font-semibold text-gray-800">Drivers</h2>
-            {driversSubTab === 'supply' && (
-              <>
-                <p className="text-sm text-gray-600">Dinámica de supply por park: overview, composición, migración y alertas.</p>
-                <SupplyView key={`supply-${refreshKey}`} />
-              </>
-            )}
-            {driversSubTab === 'lifecycle' && (
-              <>
-                <p className="text-sm text-gray-600">Evolución del parque y cohortes por park.</p>
-                <DriverLifecycleView key={`driver-lifecycle-${refreshKey}`} />
-              </>
-            )}
+            {driversSubTab === 'supply' && <SupplyView key={`supply-${refreshKey}`} />}
+            {driversSubTab === 'lifecycle' && <DriverLifecycleView key={`driver-lifecycle-${refreshKey}`} />}
           </section>
         )}
 
         {/* ========== CONTENIDO: Riesgo ========== */}
         {activeTab === TAB_RISK && (
           <section className="space-y-4" aria-label="Riesgo">
-            <h2 className="text-xl font-semibold text-gray-800">Riesgo</h2>
             {riskSubTab === 'driver_behavior' && <DriverBehaviorView key={`driver-behavior-${refreshKey}`} />}
             {riskSubTab === 'action_engine' && <ActionEngineView key={`action-engine-${refreshKey}`} />}
           </section>
         )}
 
-        {/* ========== SUB-NAV: Operación ========== */}
-        {activeTab === TAB_OPERACION && (
-          <div className="mb-4 pb-2 border-b border-gray-200">
-            <p className="text-xs text-gray-500 mb-2">Desglose operativo, Business Slice y comparativo Omniview (REAL)</p>
-            <div className="flex flex-wrap gap-2">
-              {OPERACION_SUBTABS.map(({ id, label }) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setOperacionSubTab(id)}
-                  className={subNavButtonClass(operacionSubTab === id)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* ========== CONTENIDO: Operación (desglose por LOB, park, tipo de servicio) ========== */}
         {activeTab === TAB_OPERACION && (
           <section className="space-y-4" aria-label="Operación">
-            <h2 className="text-xl font-semibold text-gray-800">Operación</h2>
-            {operacionSubTab === 'lob_drill' && (
-              <>
-                <p className="text-sm text-gray-600">Desglose semanal y mensual por país, LOB, parque y tipo de servicio.</p>
-                <RealLOBDrillView key={`real-lob-drill-${refreshKey}`} />
-              </>
-            )}
-            {operacionSubTab === 'business_slice' && (
-              <>
-                <p className="text-sm text-gray-600">Tajadas de negocio (Business Slice): matriz mensual REAL y auditoría de cobertura.</p>
-                <BusinessSliceView key={`business-slice-${refreshKey}`} />
-              </>
-            )}
-            {operacionSubTab === 'business_slice_omniview' && (
-              <>
-                <p className="text-sm text-gray-600">
-                  Omniview: comparativo periodo vs anterior (MoM / WoW / día −7), jerarquía operativa y KPIs. No sustituye la vista Business Slice clásica.
-                </p>
-                <BusinessSliceOmniview key={`business-slice-omniview-${refreshKey}`} />
-              </>
-            )}
-            {operacionSubTab === 'omniview_matrix' && (
-              <BusinessSliceOmniviewMatrix key={`bs-omniview-matrix-${refreshKey}`} />
-            )}
+            {operacionSubTab === 'lob_drill' && <RealLOBDrillView key={`real-lob-drill-${refreshKey}`} />}
+            {operacionSubTab === 'business_slice' && <BusinessSliceView key={`business-slice-${refreshKey}`} />}
+            {operacionSubTab === 'business_slice_omniview' && <BusinessSliceOmniview key={`business-slice-omniview-${refreshKey}`} />}
+            {operacionSubTab === 'omniview_matrix' && <BusinessSliceOmniviewMatrix key={`bs-omniview-matrix-${refreshKey}`} />}
           </section>
         )}
 
         {/* ========== CONTENIDO: Plan ========== */}
         {activeTab === TAB_PLAN && (
           <section className="space-y-4" aria-label="Plan">
-            <h2 className="text-xl font-semibold text-gray-800">Plan</h2>
             {planSubTab === 'acciones' && (
               <>
-                <p className="text-sm text-gray-600">Fase 2B (acciones) y Fase 2C (accountability).</p>
                 <Phase2BActionsTrackingView key={`actions-2b-${refreshKey}`} />
                 <Phase2CAccountabilityView key={`accountability-2c-${refreshKey}`} />
               </>
             )}
-            {planSubTab === 'universo' && (
-              <>
-                <p className="text-sm text-gray-600">Universo y LOB.</p>
-                <LobUniverseView key={`lob-universe-${refreshKey}`} filters={filters} />
-              </>
-            )}
+            {planSubTab === 'universo' && <LobUniverseView key={`lob-universe-${refreshKey}`} filters={filters} />}
             {planSubTab === 'validacion' && (
               <>
-                <p className="text-sm text-gray-600">Expansión y huecos del plan.</p>
-                <div className="flex flex-wrap gap-2 mb-3">
+                <div className="flex flex-wrap gap-1.5 mb-3">
                   <button
                     type="button"
                     onClick={() => setPlanValidacionInner('out_of_universe')}
@@ -479,8 +483,6 @@ function App () {
 
         {activeTab === TAB_SYSTEM_HEALTH && (
           <section className="space-y-4" aria-label="Diagnósticos">
-            <h2 className="text-xl font-semibold text-gray-800">System Health</h2>
-            <p className="text-sm text-gray-600">Integridad de datos, freshness de MVs e ingestión.</p>
             <SystemHealthView key={`system-health-${refreshKey}`} />
           </section>
         )}

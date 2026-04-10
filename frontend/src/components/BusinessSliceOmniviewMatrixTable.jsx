@@ -127,9 +127,9 @@ const TotalsRow = memo(function TotalsRow ({ allPeriods, totalsDeltas, compact, 
       {allPeriods.map((pk, periodIdx) => {
         const pDeltas = totalsDeltas.get(pk)
         const zebra = periodIdx % 2 === 1
-        const periodTrust = resolveTotalsTrustVisual(matrixTrust, grain, pk, kpi.key)
-        const trustOv = trustPeriodCellOverlayClass(periodTrust)
         return MATRIX_KPIS.map((kpi) => {
+          const periodTrust = resolveTotalsTrustVisual(matrixTrust, grain, pk, kpi.key)
+          const trustOv = trustPeriodCellOverlayClass(periodTrust)
           const d = pDeltas?.[kpi.key]
           const bgStyle = zebra ? { backgroundColor: 'rgb(238,240,245)' } : { backgroundColor: 'rgb(243,244,248)' }
           const trustTitle = periodTrust && trustLine ? trustLine : undefined

@@ -7,6 +7,8 @@ export default defineConfig({
   base: '/',
   server: {
     port: 5173,
+    // Necesario para React Router en dev: redirige cualquier ruta a index.html
+    historyApiFallback: true,
     proxy: {
       '/api': {
         // Dev: backend local (uvicorn). Producción/otro: definir VITE_API_URL (ej. http://162.55.214.109:8000)

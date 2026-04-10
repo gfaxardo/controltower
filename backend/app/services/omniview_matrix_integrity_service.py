@@ -22,14 +22,15 @@ from psycopg2.extras import RealDictCursor
 
 from app.services.omniview_playbooks import contextualize_playbook, playbook_for_issue_code
 
-from app.db.connection import get_db, get_db_drill
+from app.db.connection import get_db, get_db_drill, get_db_quick
 
 logger = logging.getLogger(__name__)
 
-# Respuesta del endpoint matrix-operational-trust: evita re-ejecutar toda la auditoría en cada poll de UI.
+# Respuesta del endpoint matrix-operational-trust: SWR — nunca bloquea la UI, computa en background.
 MATRIX_TRUST_API_CACHE_TTL_SEC = 45.0
 _matrix_trust_api_cache: tuple[float, dict[str, Any]] | None = None
 _matrix_trust_api_lock = threading.Lock()
+_matrix_trust_api_computing = False  # flag anti-thundering-herd
 
 # Contrato Matrix (alineado a requerimientos producto)
 MIN_DISTINCT_MONTHS = 13
@@ -1739,20 +1740,100 @@ def build_auto_recommendations(
     return recs[:8]
 
 
+_TRUST_LOADING_PAYLOAD: dict[str, Any] = {
+    "trust_status": "loading",
+    "message": "Evaluando integridad Matrix…",
+    "operational_trust": {"status": "loading", "message": "Calculando…"},
+    "operational_decision": {"decision_mode": "CAUTION", "confidence": {"score": 0, "coverage": 0, "freshness": 0, "consistency": 0}},
+    "trust_recommendations": [], "early_warnings": [], "issue_history": {}, "issue_clusters": [],
+    "issue_actions_recent": [], "trust_history_recent": [], "trust_history_timeline": [],
+    "trust_history_persisted": False, "trust_history_persist_reason": "computing",
+    "affected_period_keys": {"monthly": [], "weekly": [], "daily": []},
+    "affected_segments": [], "issue_snapshots": [], "primary_issue": None, "impact_summary": None,
+    "trust_scopes": {"global": "loading", "cities": {}, "lobs": {}, "periods_flat": {}},
+    "global_insights_blocked": False, "findings": [],
+    "executive": {"status": "LOADING", "impact_pct": 0.0, "priority_score": 0.0, "main_issue": None, "action": None},
+}
+
+
+def _compute_trust_background() -> None:
+    """Thread daemon: computa el trust payload y lo guarda en caché."""
+    global _matrix_trust_api_cache, _matrix_trust_api_computing
+    try:
+        full = run_omniview_matrix_integrity_checks()
+        op = full["operational_trust"]
+        out = {
+            "trust_status": op["status"],
+            "message": op["message"],
+            "operational_trust": op,
+            "operational_decision": full.get("operational_decision"),
+            "trust_recommendations": full.get("trust_recommendations") or [],
+            "early_warnings": full.get("early_warnings") or [],
+            "issue_history": full.get("issue_history") or {},
+            "issue_clusters": full.get("issue_clusters") or [],
+            "issue_actions_recent": full.get("issue_actions_recent") or [],
+            "trust_history_recent": full.get("trust_history_recent") or [],
+            "trust_history_timeline": full.get("trust_history_timeline") or [],
+            "trust_history_period_key": full.get("trust_history_period_key"),
+            "trust_history_insert_id": full.get("trust_history_insert_id"),
+            "trust_history_persisted": full.get("trust_history_persisted", False),
+            "trust_history_persist_reason": full.get("trust_history_persist_reason"),
+            "affected_period_keys": full["affected_period_keys"],
+            "affected_segments": full.get("affected_segments") or [],
+            "issue_snapshots": full.get("issue_snapshots") or [],
+            "primary_issue": full.get("primary_issue"),
+            "impact_summary": full.get("impact_summary"),
+            "trust_scopes": full.get("trust_scopes") or {},
+            "global_insights_blocked": full.get("global_insights_blocked", False),
+            "findings": full["findings"],
+            "executive": full.get("executive"),
+            "snapshot": full.get("snapshot", {}),
+        }
+        with _matrix_trust_api_lock:
+            _matrix_trust_api_cache = (time.monotonic(), copy.deepcopy(out))
+        logger.debug("matrix-operational-trust: background compute done")
+    except Exception as e:
+        logger.warning("matrix-operational-trust background compute failed: %s", e)
+    finally:
+        global _matrix_trust_api_computing
+        with _matrix_trust_api_lock:
+            _matrix_trust_api_computing = False
+
+
 def get_matrix_operational_trust_api_payload() -> dict[str, Any]:
-    """Respuesta liviana para UI Matrix (banner + hints)."""
-    global _matrix_trust_api_cache
+    """SWR: devuelve inmediatamente (caché o loading) y refresca en background.
+    Nunca bloquea el endpoint más de unos milisegundos."""
+    global _matrix_trust_api_cache, _matrix_trust_api_computing
     now = time.monotonic()
     with _matrix_trust_api_lock:
-        if _matrix_trust_api_cache is not None:
-            ts, payload = _matrix_trust_api_cache
-            if (now - ts) < MATRIX_TRUST_API_CACHE_TTL_SEC:
-                logger.debug(
-                    "matrix-operational-trust: cache hit age=%.1fs ttl=%ss",
-                    now - ts,
-                    MATRIX_TRUST_API_CACHE_TTL_SEC,
-                )
-                return copy.deepcopy(payload)
+        cached = _matrix_trust_api_cache
+        computing = _matrix_trust_api_computing
+
+    if cached is not None:
+        ts, payload = cached
+        age = now - ts
+        if age < MATRIX_TRUST_API_CACHE_TTL_SEC:
+            return copy.deepcopy(payload)  # fresh
+        # stale: devolver dato viejo y refrescar en background
+        if not computing:
+            with _matrix_trust_api_lock:
+                _matrix_trust_api_computing = True
+            t = threading.Thread(target=_compute_trust_background, daemon=True)
+            t.start()
+        return copy.deepcopy(payload)
+
+    # caché vacía: devolver "loading" y lanzar cómputo en background
+    if not computing:
+        with _matrix_trust_api_lock:
+            _matrix_trust_api_computing = True
+        t = threading.Thread(target=_compute_trust_background, daemon=True)
+        t.start()
+    return copy.deepcopy(_TRUST_LOADING_PAYLOAD)
+
+
+def _get_matrix_trust_payload_blocking() -> dict[str, Any]:
+    """Versión bloqueante legacy. Solo para uso interno si se necesita resultado síncrono."""
+    global _matrix_trust_api_cache
     try:
         full = run_omniview_matrix_integrity_checks()
     except Exception as e:
@@ -1792,7 +1873,7 @@ def get_matrix_operational_trust_api_payload() -> dict[str, Any]:
             "error": str(e),
         }
     op = full["operational_trust"]
-    out = {
+    return {
         "trust_status": op["status"],
         "message": op["message"],
         "operational_trust": op,
@@ -1804,8 +1885,6 @@ def get_matrix_operational_trust_api_payload() -> dict[str, Any]:
         "issue_actions_recent": full.get("issue_actions_recent") or [],
         "trust_history_recent": full.get("trust_history_recent") or [],
         "trust_history_timeline": full.get("trust_history_timeline") or [],
-        "trust_history_period_key": full.get("trust_history_period_key"),
-        "trust_history_insert_id": full.get("trust_history_insert_id"),
         "trust_history_persisted": full.get("trust_history_persisted", False),
         "trust_history_persist_reason": full.get("trust_history_persist_reason"),
         "affected_period_keys": full["affected_period_keys"],
@@ -1819,9 +1898,6 @@ def get_matrix_operational_trust_api_payload() -> dict[str, Any]:
         "executive": full.get("executive"),
         "snapshot": full.get("snapshot", {}),
     }
-    with _matrix_trust_api_lock:
-        _matrix_trust_api_cache = (time.monotonic(), copy.deepcopy(out))
-    return out
 
 
 def run_omniview_matrix_integrity_checks() -> dict[str, Any]:
@@ -1996,9 +2072,14 @@ def get_confidence_bundle_omniview_matrix() -> dict[str, Any]:
     }
 
 
-def _q_all(sql: str, params: list[Any] | None = None, drill: bool = False) -> list[dict[str, Any]]:
-    ctx = get_db_drill if drill else get_db
-    with ctx() as conn:
+def _q_all(sql: str, params: list[Any] | None = None, drill: bool = False, timeout_ms: int | None = None) -> list[dict[str, Any]]:
+    if timeout_ms is not None:
+        ctx = get_db_quick(timeout_ms)
+    elif drill:
+        ctx = get_db_drill()
+    else:
+        ctx = get_db()
+    with ctx as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(sql, params or [])
         rows = [dict(r) for r in cur.fetchall()]
@@ -2006,8 +2087,8 @@ def _q_all(sql: str, params: list[Any] | None = None, drill: bool = False) -> li
     return rows
 
 
-def _q_one(sql: str, params: list[Any] | None = None, drill: bool = False) -> dict[str, Any]:
-    r = _q_all(sql, params, drill=drill)
+def _q_one(sql: str, params: list[Any] | None = None, drill: bool = False, timeout_ms: int | None = None) -> dict[str, Any]:
+    r = _q_all(sql, params, drill=drill, timeout_ms=timeout_ms)
     return r[0] if r else {}
 
 
@@ -2075,17 +2156,10 @@ def check_freshness(findings: list[dict[str, Any]]) -> dict[str, Any]:
         )
         return snap
 
-    # Fuente: ventana acotada para no full-scan (ajustable por env)
-    recent = int(os.environ.get("OMNIVIEW_VALIDATION_SOURCE_DAYS", "400"))
+    # Fuente: MAX(trip_date) desde day_fact (materializada, responde en ms)
     try:
         src = _q_one(
-            f"""
-            SELECT MAX(trip_date)::date AS d
-            FROM ops.v_real_trips_enriched_base
-            WHERE trip_date >= CURRENT_DATE - %s::int
-            """,
-            [recent],
-            drill=True,
+            "SELECT MAX(trip_date)::date AS d FROM ops.real_business_slice_day_fact"
         )
         snap["source_trip_max_bounded"] = src.get("d")
     except Exception as e:
@@ -2095,9 +2169,9 @@ def check_freshness(findings: list[dict[str, Any]]) -> dict[str, Any]:
             "warn",
             "freshness",
             "SOURCE_MAX_UNAVAILABLE",
-            f"MAX(trip_date) en enriched_base (acotado) falló: {e}",
-            "No se compara lag exacto vs canon; revisar conexión drill o timeout.",
-            "Ejecutar con get_db_drill y/o subir timeout de sesión; o revisar vista.",
+            f"MAX(trip_date) en day_fact falló: {e}",
+            "No se compara lag exacto vs canon; revisar que day_fact tenga datos.",
+            "Ejecutar backfill para poblar ops.real_business_slice_day_fact.",
             str(e),
         )
 
@@ -2333,7 +2407,7 @@ def check_revenue(findings: list[dict[str, Any]]) -> None:
             trace={"metrics": ["revenue_yego_net", "commission_pct", "trips_per_driver", "avg_ticket"]},
         )
 
-    # Comparar último mes cerrado con datos en ambos lados
+    # Comparar último mes cerrado: month_fact vs sum de day_fact del mismo mes
     try:
         cmp_rows = _q_all(
             """
@@ -2349,23 +2423,21 @@ def check_revenue(findings: list[dict[str, Any]]) -> None:
                 FROM ops.real_business_slice_month_fact f
                 JOIN last_m ON f.month = last_m.m
             ),
-            rsum AS (
+            dsum AS (
                 SELECT
-                    COUNT(*) FILTER (WHERE r.completed_flag)::numeric AS tc,
-                    SUM(r.revenue_yego_net) FILTER (WHERE r.completed_flag)::numeric AS rev
-                FROM ops.v_real_trips_business_slice_resolved r
-                JOIN last_m ON r.trip_month = last_m.m
-                WHERE r.resolution_status = 'resolved'
+                    SUM(d.trips_completed)::numeric AS tc,
+                    SUM(d.revenue_yego_net)::numeric AS rev
+                FROM ops.real_business_slice_day_fact d
+                JOIN last_m ON date_trunc('month', d.trip_date)::date = last_m.m
             )
             SELECT
                 last_m.m::text AS period,
                 fsum.tc AS fact_trips,
-                rsum.tc AS raw_trips,
+                dsum.tc AS raw_trips,
                 fsum.rev AS fact_rev,
-                rsum.rev AS raw_rev
-            FROM last_m, fsum, rsum
+                dsum.rev AS raw_rev
+            FROM last_m, fsum, dsum
             """,
-            drill=True,
         )
         if not cmp_rows:
             _add(
@@ -2451,28 +2523,26 @@ def check_consistency(findings: list[dict[str, Any]]) -> None:
                 JOIN periods p ON p.month = f.month
                 GROUP BY f.month
             ),
-            raw_tot AS (
+            day_tot AS (
                 SELECT
-                    r.trip_month AS period_key,
-                    COUNT(*) FILTER (WHERE r.completed_flag)::numeric AS total_trips,
-                    SUM(r.revenue_yego_net) FILTER (WHERE r.completed_flag)::numeric AS total_revenue
-                FROM ops.v_real_trips_business_slice_resolved r
-                JOIN periods p ON p.month = r.trip_month
-                WHERE r.resolution_status = 'resolved'
-                GROUP BY r.trip_month
+                    date_trunc('month', d.trip_date)::date AS period_key,
+                    SUM(d.trips_completed)::numeric AS total_trips,
+                    SUM(d.revenue_yego_net)::numeric AS total_revenue
+                FROM ops.real_business_slice_day_fact d
+                JOIN periods p ON date_trunc('month', d.trip_date)::date = p.month
+                GROUP BY 1
             )
             SELECT
                 rs.period_key::text AS period,
                 rs.rows_trips,
-                rt.total_trips,
-                (rs.rows_trips - rt.total_trips) AS trips_diff,
+                dt.total_trips,
+                (rs.rows_trips - dt.total_trips) AS trips_diff,
                 rs.rows_revenue,
-                rt.total_revenue,
-                (rs.rows_revenue - rt.total_revenue) AS rev_diff
+                dt.total_revenue,
+                (rs.rows_revenue - dt.total_revenue) AS rev_diff
             FROM rows_sum rs
-            JOIN raw_tot rt USING (period_key)
+            JOIN day_tot dt USING (period_key)
             """,
-            drill=True,
         )
         for r in rows:
             td = float(r.get("trips_diff") or 0)

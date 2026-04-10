@@ -15,8 +15,9 @@ export default function MatrixExecutiveBanner ({
 }) {
   if (loading || !executive) {
     return (
-      <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 min-h-[36px] flex items-center">
-        <span className="text-[11px] text-slate-500">Cargando Data Trust ejecutivo…</span>
+      <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 min-h-[36px] flex items-center gap-2">
+        <span className="inline-block w-3 h-3 border-[1.5px] border-slate-300 border-t-slate-500 rounded-full animate-spin flex-shrink-0" />
+        <span className="text-[11px] text-slate-400">Data Trust ejecutivo…</span>
       </div>
     )
   }

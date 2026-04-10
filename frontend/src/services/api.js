@@ -481,8 +481,8 @@ export const getSupplyFreshness = async () => {
 }
 
 // Freshness global (banner). group=operational para pestaña Real (no falla por datasets legacy).
-export const getDataFreshnessGlobal = async (params = {}) => {
-  const response = await api.get('/ops/data-freshness/global', { params: { group: params.group }, timeout: OPS_SHELL_TIMEOUT_MS })
+export const getDataFreshnessGlobal = async (params = {}, { signal } = {}) => {
+  const response = await api.get('/ops/data-freshness/global', { params: { group: params.group }, timeout: OPS_SHELL_TIMEOUT_MS, signal })
   return response.data
 }
 
@@ -743,58 +743,82 @@ export const getTopDriverBehaviorExportUrl = (params = {}) => {
 }
 
 // --- Business Slice (REAL, capa ejecutiva) ---
-export const getBusinessSliceFilters = async () => {
-  const response = await api.get('/ops/business-slice/filters', { timeout: OPS_SHELL_TIMEOUT_MS })
+export const getBusinessSliceFilters = async ({ signal } = {}) => {
+  const response = await api.get('/ops/business-slice/filters', { timeout: OPS_SHELL_TIMEOUT_MS, signal })
   return response.data
 }
-export const getBusinessSliceMonthly = async (params = {}) => {
+export const getBusinessSliceMonthly = async (params = {}, { signal } = {}) => {
   // Misma ventana que weekly/daily: año completo + unmapped + meta State Engine puede superar 2 min (BD remota/lenta).
-  const response = await api.get('/ops/business-slice/monthly', { params, timeout: BUSINESS_SLICE_HEAVY_TIMEOUT_MS })
+  const response = await api.get('/ops/business-slice/monthly', { params, timeout: BUSINESS_SLICE_HEAVY_TIMEOUT_MS, signal })
   return response.data
 }
-export const getBusinessSliceCoverage = async (params = {}) => {
-  const response = await api.get('/ops/business-slice/coverage', { params, timeout: BUSINESS_SLICE_HEAVY_TIMEOUT_MS })
+export const getBusinessSliceCoverage = async (params = {}, { signal } = {}) => {
+  const response = await api.get('/ops/business-slice/coverage', { params, timeout: BUSINESS_SLICE_HEAVY_TIMEOUT_MS, signal })
   return response.data
 }
-export const getBusinessSliceCoverageSummary = async (params = {}) => {
-  const response = await api.get('/ops/business-slice/coverage-summary', { params, timeout: BUSINESS_SLICE_HEAVY_TIMEOUT_MS })
+export const getBusinessSliceCoverageSummary = async (params = {}, { signal } = {}) => {
+  const response = await api.get('/ops/business-slice/coverage-summary', { params, timeout: BUSINESS_SLICE_HEAVY_TIMEOUT_MS, signal })
   return response.data
 }
-export const getBusinessSliceUnmatched = async (params = {}) => {
-  const response = await api.get('/ops/business-slice/unmatched', { params })
+export const getBusinessSliceUnmatched = async (params = {}, { signal } = {}) => {
+  const response = await api.get('/ops/business-slice/unmatched', { params, signal })
   return response.data
 }
-export const getBusinessSliceConflicts = async (params = {}) => {
-  const response = await api.get('/ops/business-slice/conflicts', { params })
+export const getBusinessSliceConflicts = async (params = {}, { signal } = {}) => {
+  const response = await api.get('/ops/business-slice/conflicts', { params, signal })
   return response.data
 }
-export const getBusinessSliceSubfleets = async () => {
-  const response = await api.get('/ops/business-slice/subfleets')
+export const getBusinessSliceSubfleets = async ({ signal } = {}) => {
+  const response = await api.get('/ops/business-slice/subfleets', { signal })
   return response.data
 }
-export const getBusinessSliceWeekly = async (params = {}) => {
-  const response = await api.get('/ops/business-slice/weekly', { params, timeout: BUSINESS_SLICE_HEAVY_TIMEOUT_MS })
+export const getBusinessSliceWeekly = async (params = {}, { signal } = {}) => {
+  const response = await api.get('/ops/business-slice/weekly', { params, timeout: BUSINESS_SLICE_HEAVY_TIMEOUT_MS, signal })
   return response.data
 }
-export const getBusinessSliceDaily = async (params = {}) => {
-  const response = await api.get('/ops/business-slice/daily', { params, timeout: BUSINESS_SLICE_HEAVY_TIMEOUT_MS })
+export const getBusinessSliceDaily = async (params = {}, { signal } = {}) => {
+  const response = await api.get('/ops/business-slice/daily', { params, timeout: BUSINESS_SLICE_HEAVY_TIMEOUT_MS, signal })
   return response.data
 }
 /** Omniview: unifica monthly / weekly / daily según `grain` (no se envía al backend). */
-export const getBusinessSliceOmniview = async (params = {}) => {
+export const getBusinessSliceOmniview = async (params = {}, opts = {}) => {
   const { grain = 'monthly', ...rest } = params
   if (grain === 'weekly') {
-    return getBusinessSliceWeekly(rest)
+    return getBusinessSliceWeekly(rest, opts)
   }
   if (grain === 'daily') {
-    return getBusinessSliceDaily(rest)
+    return getBusinessSliceDaily(rest, opts)
   }
-  return getBusinessSliceMonthly(rest)
+  return getBusinessSliceMonthly(rest, opts)
+}
+
+/** Estado de materialización de las 3 FACT tables (qué meses están cargados). */
+export const getFactStatus = async ({ signal } = {}) => {
+  const response = await api.get('/ops/business-slice/fact-status', { timeout: 10000, signal })
+  return response.data
+}
+
+/** Progreso en tiempo real del backfill activo (chunk a chunk). */
+export const getBackfillProgress = async ({ signal } = {}) => {
+  const response = await api.get('/ops/business-slice/backfill-progress', { timeout: 5000, signal })
+  return response.data
+}
+
+/** Dispara un backfill. from_date/to_date en formato "YYYY-MM". */
+export const startBackfill = async ({ from_date, to_date, with_week = true }) => {
+  const response = await api.post('/ops/business-slice/backfill', { from_date, to_date, with_week }, { timeout: 10000 })
+  return response.data
+}
+
+/** Cancela el backfill en curso. */
+export const cancelBackfill = async () => {
+  const response = await api.post('/ops/business-slice/backfill-cancel', {}, { timeout: 5000 })
+  return response.data
 }
 
 /** Trust operativo Matrix (integridad: gaps, freshness, rollup, revenue). */
-export const getMatrixOperationalTrust = async () => {
-  const response = await api.get('/ops/business-slice/matrix-operational-trust', { timeout: BUSINESS_SLICE_HEAVY_TIMEOUT_MS })
+export const getMatrixOperationalTrust = async ({ signal } = {}) => {
+  const response = await api.get('/ops/business-slice/matrix-operational-trust', { timeout: BUSINESS_SLICE_HEAVY_TIMEOUT_MS, signal })
   return response.data
 }
 

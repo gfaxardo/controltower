@@ -271,6 +271,8 @@ FROM (
         b.total_fare,
         b.condicion,
         b.source_table,
+        b.revenue_source,
+        b.revenue_yego_final,
         CASE
             WHEN o.trip_id IS NULL THEN 'unmatched'
             WHEN o.n_slices > 1 THEN 'conflict'
@@ -417,6 +419,7 @@ FROM (
         b.trip_week, b.hour_of_day, b.trip_hour_start,
         b.revenue_yego_net, b.ticket, b.km, b.duration_minutes,
         b.gmv_passenger_paid, b.total_fare, b.condicion, b.source_table,
+        b.revenue_source, b.revenue_yego_final,
         CASE WHEN o.trip_id IS NULL THEN 'unmatched' WHEN o.n_slices > 1 THEN 'conflict' ELSE 'resolved' END AS resolution_status,
         w.mapping_rule_id,
         COALESCE(w.business_slice_name, '__UNMATCHED__') AS business_slice_name,
