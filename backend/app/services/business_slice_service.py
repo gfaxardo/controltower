@@ -15,6 +15,10 @@ from typing import Any, Optional
 
 from psycopg2.extras import RealDictCursor
 
+from app.config.kpi_aggregation_rules import (
+    OMNIVIEW_MATRIX_VISIBLE_KPIS,
+    get_omniview_kpi_rule,
+)
 from app.db.connection import get_db, get_db_drill, get_db_quick
 from app.services.period_state_engine import build_period_states_payload, extract_period_keys_from_rows
 
@@ -248,6 +252,278 @@ def _dim_key(row: dict[str, Any]) -> tuple[Any, ...]:
     return tuple(row.get(k) for k in COMPARE_DIM_FIELDS)
 
 
+_CANONICAL_COMPONENT_SELECT = """
+    COUNT(*) FILTER (WHERE completed_flag) AS trips_completed,
+    COUNT(*) FILTER (WHERE cancelled_flag) AS trips_cancelled,
+    COUNT(DISTINCT driver_id) FILTER (WHERE completed_flag) AS active_drivers,
+    SUM(ticket) FILTER (
+        WHERE completed_flag AND ticket IS NOT NULL
+    ) AS ticket_sum_completed,
+    COUNT(ticket) FILTER (
+        WHERE completed_flag AND ticket IS NOT NULL
+    )::bigint AS ticket_count_completed,
+    SUM(revenue_yego_net) FILTER (WHERE completed_flag) AS revenue_yego_net,
+    SUM(total_fare) FILTER (
+        WHERE completed_flag
+          AND total_fare IS NOT NULL
+          AND total_fare > 0
+    ) AS total_fare_completed_positive_sum
+"""
+
+
+def _num(v: Any) -> float:
+    if v is None:
+        return 0.0
+    if isinstance(v, Decimal):
+        return float(v) if v.is_finite() else 0.0
+    try:
+        return float(v)
+    except Exception:
+        return 0.0
+
+
+def _ratio_or_none(numerator: Any, denominator: Any) -> float | None:
+    den = _num(denominator)
+    if den <= 0:
+        return None
+    return _num(numerator) / den
+
+
+def _canonical_metrics_from_components(row: dict[str, Any]) -> dict[str, Any]:
+    trips_completed = int(_num(row.get("trips_completed")))
+    trips_cancelled = int(_num(row.get("trips_cancelled")))
+    active_drivers = int(_num(row.get("active_drivers")))
+    ticket_sum = row.get("ticket_sum_completed")
+    ticket_count = row.get("ticket_count_completed")
+    revenue_yego_net = row.get("revenue_yego_net")
+    total_fare_sum = row.get("total_fare_completed_positive_sum")
+    metrics = {
+        "trips_completed": trips_completed,
+        "trips_cancelled": trips_cancelled,
+        "active_drivers": active_drivers,
+        "revenue_yego_net": _json_safe_scalar(revenue_yego_net),
+        "avg_ticket": _json_safe_scalar(_ratio_or_none(ticket_sum, ticket_count)),
+        "commission_pct": _json_safe_scalar(_ratio_or_none(revenue_yego_net, total_fare_sum)),
+        "cancel_rate_pct": _json_safe_scalar(
+            _ratio_or_none(trips_cancelled, trips_completed + trips_cancelled)
+        ),
+        "trips_per_driver": _json_safe_scalar(_ratio_or_none(trips_completed, active_drivers)),
+    }
+    for kpi_key in OMNIVIEW_MATRIX_VISIBLE_KPIS:
+        get_omniview_kpi_rule(kpi_key)
+    return metrics
+
+
+def _period_key_for_row(grain: str, row: dict[str, Any]) -> str | None:
+    key_name = "month" if grain == "monthly" else "week_start" if grain == "weekly" else "trip_date"
+    value = row.get(key_name)
+    return str(value)[:10] if value is not None else None
+
+
+def _period_expr_for_grain(grain: str, column: str = "trip_date") -> str:
+    if grain == "monthly":
+        return f"date_trunc('month', {column})::date"
+    if grain == "weekly":
+        return f"date_trunc('week', {column})::date"
+    return f"{column}::date"
+
+
+def _resolved_period_where_clauses(
+    grain: str,
+    country: Optional[str] = None,
+    city: Optional[str] = None,
+    business_slice: Optional[str] = None,
+    fleet: Optional[str] = None,
+    subfleet: Optional[str] = None,
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+) -> tuple[list[str], list[Any]]:
+    w, p = _resolved_filter_clauses(
+        country=country,
+        city=city,
+        business_slice=business_slice,
+        fleet=fleet,
+        subfleet=subfleet,
+    )
+    if grain == "monthly":
+        date_w, date_p = _where_clauses_trip_date(None, None, None, None, None, year, month, "")
+        w.extend(date_w)
+        p.extend(date_p)
+        if year is None and month is None:
+            w.append("trip_date >= (date_trunc('month', CURRENT_DATE)::date - interval '12 months')")
+    elif grain == "weekly":
+        if year is not None:
+            r0, r1 = _calendar_year_week_bounds(int(year))
+            w.append("trip_date >= %s AND trip_date < %s")
+            p.extend([r0, r1 + timedelta(days=7)])
+        else:
+            w.append("trip_date >= date_trunc('week', CURRENT_DATE)::date - interval '35 days'")
+    else:
+        date_w, date_p = _where_clauses_trip_date(None, None, None, None, None, year, month, "")
+        w.extend(date_w)
+        p.extend(date_p)
+        if year is None and month is None:
+            w.append("trip_date >= CURRENT_DATE - interval '13 days'")
+    return w, p
+
+
+def _fetch_resolved_metrics_for_range(
+    start_date: date,
+    end_date: date,
+    country: Optional[str] = None,
+    city: Optional[str] = None,
+    business_slice: Optional[str] = None,
+    fleet: Optional[str] = None,
+    subfleet: Optional[str] = None,
+) -> dict[str, Any]:
+    w, p = _resolved_filter_clauses(
+        country=country,
+        city=city,
+        business_slice=business_slice,
+        fleet=fleet,
+        subfleet=subfleet,
+    )
+    w.extend(["trip_date >= %s", "trip_date <= %s"])
+    p.extend([start_date, end_date])
+    with get_db_drill() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(
+            f"""
+            SELECT
+                {_CANONICAL_COMPONENT_SELECT}
+            FROM {V_RESOLVED}
+            WHERE {' AND '.join(w)}
+            """,
+            p,
+        )
+        row = cur.fetchone()
+        cur.close()
+    return _canonical_metrics_from_components(dict(row or {}))
+
+
+def _fetch_resolved_period_totals(
+    grain: str,
+    *,
+    country: Optional[str] = None,
+    city: Optional[str] = None,
+    business_slice: Optional[str] = None,
+    fleet: Optional[str] = None,
+    subfleet: Optional[str] = None,
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+) -> dict[str, dict[str, Any]]:
+    w, p = _resolved_period_where_clauses(
+        grain,
+        country=country,
+        city=city,
+        business_slice=business_slice,
+        fleet=fleet,
+        subfleet=subfleet,
+        year=year,
+        month=month,
+    )
+    period_expr = _period_expr_for_grain(grain)
+    with get_db_drill() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(
+            f"""
+            SELECT
+                {period_expr} AS period_key,
+                {_CANONICAL_COMPONENT_SELECT}
+            FROM {V_RESOLVED}
+            WHERE {' AND '.join(w)}
+            GROUP BY 1
+            ORDER BY 1 ASC
+            """,
+            p,
+        )
+        raw = [dict(r) for r in cur.fetchall()]
+        cur.close()
+    totals: dict[str, dict[str, Any]] = {}
+    for row in raw:
+        period_key = str(row.get("period_key"))[:10]
+        totals[period_key] = _canonical_metrics_from_components(row)
+    return totals
+
+
+def _extract_period_comparison_ranges(
+    rows: list[dict[str, Any]],
+    grain: str,
+) -> dict[str, tuple[date, date]]:
+    ranges: dict[str, tuple[date, date]] = {}
+    for row in rows:
+        period_key = _period_key_for_row(grain, row)
+        cmp = row.get("comparison_context") or {}
+        start = cmp.get("previous_equivalent_range_start")
+        end = cmp.get("previous_equivalent_cutoff_date")
+        if not period_key or not start or not end or period_key in ranges:
+            continue
+        try:
+            ranges[period_key] = (date.fromisoformat(str(start)), date.fromisoformat(str(end)))
+        except Exception:
+            continue
+    return ranges
+
+
+def _safe_fetch_matrix_totals_meta(
+    grain: str,
+    rows: list[dict[str, Any]],
+    *,
+    country: Optional[str] = None,
+    city: Optional[str] = None,
+    business_slice: Optional[str] = None,
+    fleet: Optional[str] = None,
+    subfleet: Optional[str] = None,
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+) -> dict[str, Any]:
+    try:
+        period_totals = _fetch_resolved_period_totals(
+            grain,
+            country=country,
+            city=city,
+            business_slice=business_slice,
+            fleet=fleet,
+            subfleet=subfleet,
+            year=year,
+            month=month,
+        )
+        comparison_totals: dict[str, dict[str, Any]] = {}
+        for period_key, (start_date, end_date) in _extract_period_comparison_ranges(rows, grain).items():
+            comparison_totals[period_key] = _fetch_resolved_metrics_for_range(
+                start_date,
+                end_date,
+                country=country,
+                city=city,
+                business_slice=business_slice,
+                fleet=fleet,
+                subfleet=subfleet,
+            )
+        unmapped_period_totals: dict[str, dict[str, Any]] = {}
+        if not business_slice and not fleet and not subfleet:
+            unmapped_period_totals = _fetch_resolved_period_totals(
+                grain,
+                country=country,
+                city=city,
+                business_slice="UNMAPPED",
+                year=year,
+                month=month,
+            )
+        return {
+            "period_totals": period_totals,
+            "comparison_period_totals": comparison_totals,
+            "unmapped_period_totals": unmapped_period_totals,
+        }
+    except Exception as exc:
+        logger.warning("matrix canonical totals unavailable: %s", exc, exc_info=True)
+        return {
+            "period_totals": {},
+            "comparison_period_totals": {},
+            "unmapped_period_totals": {},
+            "totals_warning": str(exc),
+        }
+
+
 def _month_start(d: date) -> date:
     return date(d.year, d.month, 1)
 
@@ -447,6 +723,19 @@ def enrich_business_slice_matrix_meta(
     )
     if fact_layer:
         out["fact_layer"] = fact_layer
+    out.update(
+        _safe_fetch_matrix_totals_meta(
+            out["grain"],
+            rows,
+            country=country,
+            city=city,
+            business_slice=business_slice,
+            fleet=fleet,
+            subfleet=subfleet,
+            year=year,
+            month=month,
+        )
+    )
     return out
 
 
@@ -537,51 +826,39 @@ def _fetch_resolved_metrics_by_dims_for_range(
     fleet: Optional[str] = None,
     subfleet: Optional[str] = None,
 ) -> dict[tuple[Any, ...], dict[str, Any]]:
-    # Lee desde FACT_DAILY y agrega por dimensión — evita scan completo de V_RESOLVED.
-    w: list[str] = ["trip_date >= %s", "trip_date <= %s"]
-    p: list[Any] = [start_date, end_date]
-    if country and str(country).strip():
-        w.append("country IS NOT NULL AND LOWER(TRIM(country::text)) = LOWER(TRIM(%s))")
-        p.append(str(country).strip())
-    if city and str(city).strip():
-        w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
-        p.append(str(city).strip())
-    if business_slice and str(business_slice).strip():
-        w.append("business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) = LOWER(TRIM(%s))")
-        p.append(str(business_slice).strip())
-    if fleet and str(fleet).strip():
-        w.append("fleet_display_name IS NOT NULL AND LOWER(TRIM(fleet_display_name::text)) = LOWER(TRIM(%s))")
-        p.append(str(fleet).strip())
-    if subfleet and str(subfleet).strip():
-        w.append("subfleet_name IS NOT NULL AND LOWER(TRIM(subfleet_name::text)) = LOWER(TRIM(%s))")
-        p.append(str(subfleet).strip())
+    w, p = _resolved_filter_clauses(
+        country=country,
+        city=city,
+        business_slice=business_slice,
+        fleet=fleet,
+        subfleet=subfleet,
+    )
+    w.extend(["trip_date >= %s", "trip_date <= %s"])
+    p.extend([start_date, end_date])
     try:
-        with get_db_quick(20000) as conn:
+        with get_db_drill() as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
             cur.execute(
                 f"""
                 SELECT
                     country, city, business_slice_name, fleet_display_name,
                     is_subfleet, subfleet_name,
-                    SUM(trips_completed)::bigint AS trips_completed,
-                    SUM(trips_cancelled)::bigint AS trips_cancelled,
-                    SUM(active_drivers)::bigint AS active_drivers,
-                    AVG(avg_ticket) AS avg_ticket,
-                    SUM(revenue_yego_net) AS revenue_yego_net,
-                    AVG(commission_pct) AS commission_pct,
-                    AVG(trips_per_driver) AS trips_per_driver,
-                    AVG(cancel_rate_pct) AS cancel_rate_pct
-                FROM {FACT_DAILY}
+                    {_CANONICAL_COMPONENT_SELECT}
+                FROM {V_RESOLVED}
                 WHERE {' AND '.join(w)}
                 GROUP BY country, city, business_slice_name, fleet_display_name, is_subfleet, subfleet_name
                 """,
                 p,
             )
-            rows = [_serialize_row(dict(r)) for r in cur.fetchall()]
+            rows = []
+            for raw in cur.fetchall():
+                item = dict(raw)
+                item.update(_canonical_metrics_from_components(item))
+                rows.append(_serialize_row(item))
             cur.close()
         return {_dim_key(r): r for r in rows}
     except Exception as exc:
-        logger.warning("_fetch_resolved_metrics_by_dims_for_range timeout/error (fact_daily): %s", exc)
+        logger.warning("_fetch_resolved_metrics_by_dims_for_range timeout/error (resolved): %s", exc)
         return {}
 
 
@@ -1164,50 +1441,18 @@ def _unmapped_bucket_monthly_rows(
     year: Optional[int],
     month: Optional[int],
 ) -> list[dict[str, Any]]:
-    # Lee desde FACT_MONTHLY (filas con business_slice_name = 'UNMAPPED') en lugar de V_RESOLVED.
-    w: list[str] = ["business_slice_name = 'UNMAPPED'", "month IS NOT NULL"]
-    params: list[Any] = []
-    if country and str(country).strip():
-        w.append("country IS NOT NULL AND LOWER(TRIM(country::text)) = LOWER(TRIM(%s))")
-        params.append(str(country).strip())
-    if city and str(city).strip():
-        w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
-        params.append(str(city).strip())
-    if year is not None:
-        w.append("EXTRACT(YEAR FROM month)::int = %s")
-        params.append(int(year))
-    if month is not None:
-        w.append("EXTRACT(MONTH FROM month)::int = %s")
-        params.append(int(month))
-    where_sql = " AND ".join(w)
-    sql = f"""
-        SELECT month,
-               SUM(trips_completed)::bigint AS trips_completed,
-               SUM(trips_cancelled)::bigint AS trips_cancelled,
-               SUM(active_drivers)::bigint AS active_drivers,
-               AVG(avg_ticket) AS avg_ticket,
-               SUM(revenue_yego_net) AS revenue_yego_net,
-               AVG(commission_pct) AS commission_pct,
-               AVG(trips_per_driver) AS trips_per_driver,
-               CASE
-                   WHEN SUM(trips_completed + trips_cancelled) > 0
-                   THEN SUM(trips_cancelled)::numeric / SUM(trips_completed + trips_cancelled)
-                   ELSE NULL
-               END AS cancel_rate_pct
-        FROM {FACT_MONTHLY}
-        WHERE {where_sql}
-        GROUP BY month
-        ORDER BY month ASC
-    """
-    with get_db() as conn:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute(sql, params)
-        raw = [_serialize_row(dict(r)) for r in cur.fetchall()]
-        cur.close()
     out: list[dict[str, Any]] = []
-    for r in raw:
+    for period_key, metrics in _fetch_resolved_period_totals(
+        "monthly",
+        country=country,
+        city=city,
+        business_slice="UNMAPPED",
+        year=year,
+        month=month,
+    ).items():
         row = {
-            **r,
+            **metrics,
+            "month": period_key,
             "country": "—",
             "city": UNMAPPED_BUCKET_CITY,
             "business_slice_name": UNMAPPED_BUCKET_SLICE_NAME,
@@ -1227,46 +1472,18 @@ def _unmapped_bucket_weekly_rows(
     city: Optional[str],
     year: Optional[int],
 ) -> list[dict[str, Any]]:
-    # Lee desde FACT_WEEKLY (filas con business_slice_name = 'UNMAPPED') en lugar de V_RESOLVED.
-    w: list[str] = ["business_slice_name = 'UNMAPPED'", "week_start IS NOT NULL"]
-    params: list[Any] = []
-    if country and str(country).strip():
-        w.append("country IS NOT NULL AND LOWER(TRIM(country::text)) = LOWER(TRIM(%s))")
-        params.append(str(country).strip())
-    if city and str(city).strip():
-        w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
-        params.append(str(city).strip())
-    if year is not None:
-        r0, r1 = _calendar_year_week_bounds(int(year))
-        w.append("week_start >= %s AND week_start <= %s")
-        params.extend([r0, r1])
-    else:
-        w.append("week_start >= date_trunc('week', CURRENT_DATE)::date - interval '35 days'")
-    where_sql = " AND ".join(w)
-    sql = f"""
-        SELECT week_start,
-               SUM(trips_completed)::bigint AS trips_completed,
-               SUM(trips_cancelled)::bigint AS trips_cancelled,
-               SUM(active_drivers)::bigint AS active_drivers,
-               AVG(avg_ticket) AS avg_ticket,
-               SUM(revenue_yego_net) AS revenue_yego_net,
-               AVG(commission_pct) AS commission_pct,
-               AVG(trips_per_driver) AS trips_per_driver,
-               AVG(cancel_rate_pct) AS cancel_rate_pct
-        FROM {FACT_WEEKLY}
-        WHERE {where_sql}
-        GROUP BY week_start
-        ORDER BY week_start ASC
-    """
-    with get_db() as conn:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute(sql, params)
-        raw = [_serialize_row(dict(r)) for r in cur.fetchall()]
-        cur.close()
     out: list[dict[str, Any]] = []
-    for r in raw:
+    for period_key, metrics in _fetch_resolved_period_totals(
+        "weekly",
+        country=country,
+        city=city,
+        business_slice="UNMAPPED",
+        year=year,
+        month=None,
+    ).items():
         row = {
-            **r,
+            **metrics,
+            "week_start": period_key,
             "country": "—",
             "city": UNMAPPED_BUCKET_CITY,
             "business_slice_name": UNMAPPED_BUCKET_SLICE_NAME,
@@ -1287,64 +1504,18 @@ def _unmapped_bucket_daily_rows(
     year: Optional[int],
     month: Optional[int],
 ) -> list[dict[str, Any]]:
-    # Lee desde FACT_DAILY (filas con business_slice_name = 'UNMAPPED') en lugar de V_RESOLVED.
-    w: list[str] = ["business_slice_name = 'UNMAPPED'", "trip_date IS NOT NULL"]
-    params: list[Any] = []
-    if country and str(country).strip():
-        w.append("country IS NOT NULL AND LOWER(TRIM(country::text)) = LOWER(TRIM(%s))")
-        params.append(str(country).strip())
-    if city and str(city).strip():
-        w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
-        params.append(str(city).strip())
-    if year is not None:
-        y = int(year)
-        if month is not None:
-            mo = int(month)
-            if mo == 1:
-                lo = date(y, 1, 1) - timedelta(days=7)
-                hi = date(y, mo, monthrange(y, mo)[1])
-                w.append("trip_date >= %s AND trip_date <= %s")
-                params.extend([lo, hi])
-            else:
-                w.append("EXTRACT(YEAR FROM trip_date)::int = %s")
-                params.append(y)
-                w.append("EXTRACT(MONTH FROM trip_date)::int = %s")
-                params.append(mo)
-        else:
-            lo = date(y, 1, 1) - timedelta(days=7)
-            hi = date(y, 12, 31)
-            w.append("trip_date >= %s AND trip_date <= %s")
-            params.extend([lo, hi])
-    elif month is not None:
-        w.append("EXTRACT(MONTH FROM trip_date)::int = %s")
-        params.append(int(month))
-    else:
-        w.append("trip_date >= CURRENT_DATE - interval '13 days'")
-    where_sql = " AND ".join(w)
-    sql = f"""
-        SELECT trip_date,
-               SUM(trips_completed)::bigint AS trips_completed,
-               SUM(trips_cancelled)::bigint AS trips_cancelled,
-               SUM(active_drivers)::bigint AS active_drivers,
-               AVG(avg_ticket) AS avg_ticket,
-               SUM(revenue_yego_net) AS revenue_yego_net,
-               AVG(commission_pct) AS commission_pct,
-               AVG(trips_per_driver) AS trips_per_driver,
-               AVG(cancel_rate_pct) AS cancel_rate_pct
-        FROM {FACT_DAILY}
-        WHERE {where_sql}
-        GROUP BY trip_date
-        ORDER BY trip_date ASC
-    """
-    with get_db() as conn:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute(sql, params)
-        raw = [_serialize_row(dict(r)) for r in cur.fetchall()]
-        cur.close()
     out: list[dict[str, Any]] = []
-    for r in raw:
+    for period_key, metrics in _fetch_resolved_period_totals(
+        "daily",
+        country=country,
+        city=city,
+        business_slice="UNMAPPED",
+        year=year,
+        month=month,
+    ).items():
         row = {
-            **r,
+            **metrics,
+            "trip_date": period_key,
             "country": "—",
             "city": UNMAPPED_BUCKET_CITY,
             "business_slice_name": UNMAPPED_BUCKET_SLICE_NAME,
@@ -1520,51 +1691,39 @@ def get_business_slice_weekly(
     year: Optional[int] = None,
     limit: int = 1500,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Agregado semanal solo desde ops.real_business_slice_week_fact (sin agregación runtime sobre resolved)."""
+    """Agregado semanal canónico desde resolved para preservar unicidad de drivers y ratios."""
     eff_limit = min(max(limit, 1), 10000)
     if year is not None:
         # Serie anual + cruce ISO: muchas filas dim×semana; evitar recorte al inicio del año.
         eff_limit = min(10000, max(eff_limit, 7500))
-    empty_meta: dict[str, Any] = {
+    data = _weekly_from_resolved(country, city, business_slice, year, eff_limit)
+    if not data:
+        empty_meta: dict[str, Any] = {
+            "grain": "weekly",
+            "source_table": V_RESOLVED,
+            "status": "empty",
+            "source": None,
+            "code": "RESOLVED_LAYER_EMPTY",
+            "message": (
+                "No hay datos operativos resueltos en ops.v_real_trips_business_slice_resolved para el filtro."
+            ),
+        }
+        return [], empty_meta
+    meta_ok: dict[str, Any] = {
         "grain": "weekly",
-        "source_table": FACT_WEEKLY,
-        "status": "empty",
-        "source": None,
-        "code": "FACT_LAYER_EMPTY",
-        "message": (
-            "No hay datos operativos en ops.real_business_slice_week_fact para el filtro. "
-            "Cargar week_fact / ETL; la agregación en caliente sobre la vista resolved está desactivada."
-        ),
+        "source_table": V_RESOLVED,
+        "status": "ok",
+        "source": "resolved_canonical",
     }
-    with get_db() as conn:
-        if _fact_table_has_data(conn, FACT_WEEKLY, date_col="week_start", year=year):
-            logger.info("weekly: usando week_fact (year=%s)", year)
-            data = _weekly_from_fact(conn, country, city, business_slice, year, eff_limit)
-            meta_ok: dict[str, Any] = {
-                "grain": "weekly",
-                "source_table": FACT_WEEKLY,
-                "status": "ok",
-                "source": "week_fact",
-            }
-            return (
-                _attach_weekly_partial_equivalent_context(
-                    data,
-                    country=country,
-                    city=city,
-                    business_slice=business_slice,
-                ),
-                meta_ok,
-            )
-    logger.error(
-        "FACT_LAYER_EMPTY weekly: %s sin filas en ventana operativa (year=%s country=%s city=%s slice=%s). "
-        "Fallback a vista resolved deshabilitado por política de rendimiento.",
-        FACT_WEEKLY,
-        year,
-        country,
-        city,
-        business_slice,
+    return (
+        _attach_weekly_partial_equivalent_context(
+            data,
+            country=country,
+            city=city,
+            business_slice=business_slice,
+        ),
+        meta_ok,
     )
-    return [], empty_meta
 
 
 def _weekly_from_fact(
@@ -1611,6 +1770,53 @@ def _weekly_from_fact(
     data = [_serialize_row(dict(r)) for r in cur.fetchall()]
     cur.close()
     return data
+
+
+def _weekly_from_resolved(
+    country: Optional[str] = None,
+    city: Optional[str] = None,
+    business_slice: Optional[str] = None,
+    year: Optional[int] = None,
+    limit: int = 1500,
+) -> list[dict[str, Any]]:
+    w, params = _resolved_filter_clauses(
+        country=country,
+        city=city,
+        business_slice=business_slice,
+    )
+    if year is not None:
+        r0, r1 = _calendar_year_week_bounds(year)
+        w.append("trip_date >= %s AND trip_date < %s")
+        params.extend([r0, r1 + timedelta(days=7)])
+    else:
+        w.append("trip_date >= date_trunc('week', CURRENT_DATE)::date - interval '35 days'")
+    sql = f"""
+        SELECT
+            date_trunc('week', trip_date)::date AS week_start,
+            country,
+            city,
+            business_slice_name,
+            fleet_display_name,
+            is_subfleet,
+            subfleet_name,
+            {_CANONICAL_COMPONENT_SELECT}
+        FROM {V_RESOLVED}
+        WHERE {' AND '.join(w)}
+        GROUP BY 1, country, city, business_slice_name, fleet_display_name, is_subfleet, subfleet_name
+        ORDER BY 1 ASC, country, city, business_slice_name, fleet_display_name
+        LIMIT %s
+    """
+    params.append(min(max(limit, 1), 10000))
+    with get_db_drill() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(sql, params)
+        rows: list[dict[str, Any]] = []
+        for raw in cur.fetchall():
+            item = dict(raw)
+            item.update(_canonical_metrics_from_components(item))
+            rows.append(_serialize_row(item))
+        cur.close()
+    return rows
 
 
 def get_business_slice_daily(

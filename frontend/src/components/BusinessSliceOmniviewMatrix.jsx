@@ -13,7 +13,6 @@ import {
 } from '../services/api.js'
 import {
   buildMatrix,
-  aggregateExecutiveKpis,
   computeDeltas as computeDeltasFn,
   computePeriodStates,
   mergePeriodStatesFromMeta,
@@ -49,6 +48,14 @@ const GRAINS = [
   { id: 'daily', label: 'Diario' },
 ]
 
+const KPI_FOCUS_OPTIONS = [
+  { id: 'trips_completed', label: 'Trips' },
+  { id: 'revenue_yego_net', label: 'Revenue' },
+  { id: 'active_drivers', label: 'Active drivers' },
+  { id: 'avg_ticket', label: 'Avg ticket' },
+  { id: 'trips_per_driver', label: 'Trips per driver' },
+]
+
 const btnCls = (active) =>
   `px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
     active ? 'bg-slate-900 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300 hover:bg-gray-50'
@@ -70,6 +77,16 @@ const miniSelectCls = 'border border-gray-200 rounded-md text-xs px-2 py-1 bg-wh
 /** Si true (p. ej. VITE_OMNIVIEW_MATRIX_MANUAL_LOAD en .env.development), no se llama a la API pesada hasta pulsar «Cargar datos». */
 const MANUAL_LOAD = import.meta.env.VITE_OMNIVIEW_MATRIX_MANUAL_LOAD === 'true'
 
+function toMetricMap (raw) {
+  const out = new Map()
+  if (!raw || typeof raw !== 'object') return out
+  for (const [periodKey, metrics] of Object.entries(raw)) {
+    if (!periodKey || !metrics || typeof metrics !== 'object') continue
+    out.set(periodKey, metrics)
+  }
+  return out
+}
+
 export default function BusinessSliceOmniviewMatrix () {
   const saved = useMemo(() => loadPersistedState(), [])
 
@@ -85,6 +102,7 @@ export default function BusinessSliceOmniviewMatrix () {
   const [year, setYear] = useState(saved?.year ?? new Date().getFullYear())
   const [month, setMonth] = useState(saved?.month || '')
   const [sortKey, setSortKey] = useState(saved?.sortKey || 'alpha')
+  const [focusedKpi, setFocusedKpi] = useState(saved?.focusedKpi || 'trips_completed')
   const [insightUserPatch, setInsightUserPatch] = useState(() => loadInsightUserPatch() ?? {})
   const [insightSettingsOpen, setInsightSettingsOpen] = useState(false)
   const [factStatusOpen, setFactStatusOpen] = useState(false)
@@ -99,8 +117,8 @@ export default function BusinessSliceOmniviewMatrix () {
   const blockedByCountry = needsCountry && !country
 
   useEffect(() => {
-    persistState({ grain, compact, country, city, businessSlice, fleet, showSubfleets, year, month, sortKey })
-  }, [grain, compact, country, city, businessSlice, fleet, showSubfleets, year, month, sortKey])
+    persistState({ grain, compact, country, city, businessSlice, fleet, showSubfleets, year, month, sortKey, focusedKpi })
+  }, [grain, compact, country, city, businessSlice, fleet, showSubfleets, year, month, sortKey, focusedKpi])
 
   const [freshnessInfo, setFreshnessInfo] = useState(null)
   const [sliceMaxTripDate, setSliceMaxTripDate] = useState(null)
@@ -328,8 +346,34 @@ export default function BusinessSliceOmniviewMatrix () {
     filtersAbortRef.current?.abort('user-cancel')
   }, [])
 
-  const matrix = useMemo(() => buildMatrix(rows, grain), [rows, grain])
-  const execKpis = useMemo(() => aggregateExecutiveKpis(rows), [rows])
+  const baseMatrix = useMemo(() => buildMatrix(rows, grain), [rows, grain])
+  const backendTotals = useMemo(() => toMetricMap(matrixMeta?.period_totals), [matrixMeta?.period_totals])
+  const backendComparisonTotals = useMemo(
+    () => toMetricMap(matrixMeta?.comparison_period_totals),
+    [matrixMeta?.comparison_period_totals]
+  )
+  const backendUnmappedTotals = useMemo(
+    () => toMetricMap(matrixMeta?.unmapped_period_totals),
+    [matrixMeta?.unmapped_period_totals]
+  )
+  const matrix = useMemo(() => ({
+    ...baseMatrix,
+    totals: backendTotals.size > 0 ? backendTotals : baseMatrix.totals,
+    comparisonTotals: backendComparisonTotals.size > 0 ? backendComparisonTotals : baseMatrix.comparisonTotals,
+  }), [baseMatrix, backendTotals, backendComparisonTotals])
+  const execKpis = useMemo(() => {
+    const periods = matrix.allPeriods || []
+    const currPk = periods.length > 0 ? periods[periods.length - 1] : null
+    const currTotals = currPk ? matrix.totals.get(currPk) : null
+    const currUnmapped = currPk ? backendUnmappedTotals.get(currPk) : null
+    const totalTripsVisible = (Number(currTotals?.trips_completed) || 0) + (Number(currTotals?.trips_cancelled) || 0)
+    const unmappedTripsVolume = (Number(currUnmapped?.trips_completed) || 0) + (Number(currUnmapped?.trips_cancelled) || 0)
+    return {
+      ...(currTotals || {}),
+      unmapped_trips_volume: unmappedTripsVolume,
+      unmapped_share_of_trips: totalTripsVisible > 0 ? unmappedTripsVolume / totalTripsVisible : 0,
+    }
+  }, [matrix, backendUnmappedTotals])
 
   // Freshness para STALE: priorizar capa business_slice (day_fact) alineada a la matriz.
   const maxDataDate = sliceMaxTripDate || freshnessInfo?.derived_max_date || null
@@ -528,50 +572,6 @@ export default function BusinessSliceOmniviewMatrix () {
       raw: foundLine.periods.get(insight.period)?.raw,
     })
   }, [matrix, periodStates])
-
-  const execCards = useMemo(() => {
-    const cards = [
-      { key: 'trips_completed', label: 'Viajes' },
-      { key: 'revenue_yego_net', label: 'Revenue net' },
-      { key: 'commission_pct', label: 'Comisión %' },
-      { key: 'active_drivers', label: 'Conductores' },
-      { key: 'cancel_rate_pct', label: 'Cancel %' },
-      { key: 'trips_per_driver', label: 'Viajes / cond.' },
-    ]
-    const p = matrix.allPeriods
-    const currPk = p.length > 0 ? p[p.length - 1] : null
-    const prevPk = p.length > 1 ? p[p.length - 2] : null
-    const currTotals = currPk ? matrix.totals.get(currPk) : null
-    const currComparisonMeta = currPk ? matrix.comparisonMeta?.get(currPk) : null
-    const prevTotals = currPk && currComparisonMeta && (currComparisonMeta.is_partial_equivalent || currComparisonMeta.is_operationally_aligned)
-      ? matrix.comparisonTotals?.get(currPk)
-      : (prevPk ? matrix.totals.get(prevPk) : null)
-    const deltaLabel = currComparisonMeta?.comparison_mode === 'weekly_partial_equivalent'
-      ? 'vs eq.'
-      : currComparisonMeta?.comparison_mode === 'monthly_partial_equivalent'
-        ? 'vs eq.'
-        : currComparisonMeta?.comparison_mode === 'daily_same_weekday'
-          ? 'vs DoW'
-          : 'vs ant.'
-    return cards.map((c) => {
-      const val = execKpis[c.key]
-      let delta = null, signal = 'neutral'
-      if (currTotals && prevTotals) {
-        const cv = currTotals[c.key], pv = prevTotals[c.key]
-        if (cv != null && pv != null && pv !== 0) {
-          const diff = cv - pv
-          delta = {
-            delta_pct: diff / Math.abs(pv),
-            signal: diff > 0 ? 'up' : diff < 0 ? 'down' : 'neutral',
-            isPartialComparison: false,
-            is_equivalent_comparison: !!(currComparisonMeta && (currComparisonMeta.is_partial_equivalent || currComparisonMeta.is_operationally_aligned)),
-          }
-          signal = delta.signal
-        }
-      }
-      return { ...c, val, delta, signal, deltaLabel }
-    })
-  }, [execKpis, matrix])
 
   const handleExport = useCallback(() => {
     const csv = exportMatrixCsv(matrix, grain)
@@ -785,25 +785,31 @@ export default function BusinessSliceOmniviewMatrix () {
           />
         )}
 
-        {/* ── KPI strip ─────────────────────────────────────────── */}
+        {/* ── KPI focus mode ────────────────────────────────────── */}
         {heavyQueriesEnabled && !blockedByCountry && rows.length > 0 && (
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-            {execCards.map((card) => (
-              <div key={card.key} className={`rounded-lg border border-gray-200 bg-white shadow-sm ${compact ? 'px-3 py-1.5' : 'px-3 py-2'}`}>
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider leading-tight">{card.label}</p>
-                <p className={`font-bold text-gray-900 leading-tight ${compact ? 'text-base' : 'text-lg'}`}>{fmtValue(card.val, card.key)}</p>
-                {card.delta && (
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-[11px] font-semibold" style={{ color: signalColorForKpi(card.signal, card.key) }}>{signalArrow(card.signal)} {fmtDelta(card.delta)}</span>
-                    <span className="text-[9px] text-gray-400">{card.deltaLabel}</span>
-                  </div>
-                )}
+          <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+            <div className="flex flex-wrap items-center gap-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">KPI focus mode</p>
+                <p className="mt-1 text-xs text-gray-500">La matriz conserva la lectura temporal, pero muestra una sola métrica a la vez.</p>
               </div>
-            ))}
+              <div className="flex flex-wrap gap-1.5">
+                {KPI_FOCUS_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setFocusedKpi(option.id)}
+                    className={btnCls(focusedKpi === option.id)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
-        {/* ── Insights Panel (additive, between KPI strip and Matrix) ── */}
+        {/* ── Insights Panel (additive, between focus and Matrix) ── */}
         {heavyQueriesEnabled && !blockedByCountry && insights.length > 0 && (
           <BusinessSliceInsightsPanel
             insights={insights}
@@ -835,7 +841,7 @@ export default function BusinessSliceOmniviewMatrix () {
         )}
 
         {/* ── Matrix + Inspector ─────────────────────────────────── */}
-        {heavyQueriesEnabled && !loading && !blockedByCountry && (
+        {heavyQueriesEnabled && !loading && !blockedByCountry && rows.length > 0 && (
           <div className="flex gap-3 items-start">
             <div className="flex-1 min-w-0">
               <BusinessSliceOmniviewMatrixTable
@@ -844,6 +850,7 @@ export default function BusinessSliceOmniviewMatrix () {
                 insightCellMap={insightCellMap} insightMode={insightMode}
                 lineImpactMap={lineImpactMap} periodStates={periodStates}
                 matrixTrust={matrixTrust}
+                focusedKpi={focusedKpi}
               />
             </div>
             <BusinessSliceOmniviewInspector

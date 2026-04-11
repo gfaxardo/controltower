@@ -77,15 +77,15 @@ const PLAN_SUBTABS = [
 ]
 
 const OPERACION_SUBTABS = [
+  { id: 'omniview_matrix', label: 'Omniview Matrix' },
   { id: 'lob_drill', label: 'Real LOB / Drill' },
   { id: 'business_slice', label: 'Business Slice' },
   { id: 'business_slice_omniview', label: 'Omniview' },
-  { id: 'omniview_matrix', label: 'Omniview Matrix' }
 ]
 
 // ─── Mapa URL <-> (tab, subtab) ─────────────────────────────────────────────
 const ROUTE_MAP = [
-  { path: '/', tab: TAB_PERFORMANCE, sub: 'resumen' },
+  { path: '/', tab: TAB_OPERACION, sub: 'omniview_matrix' },
   { path: '/performance', tab: TAB_PERFORMANCE, sub: 'resumen' },
   { path: '/performance/resumen', tab: TAB_PERFORMANCE, sub: 'resumen' },
   { path: '/performance/plan-vs-real', tab: TAB_PERFORMANCE, sub: 'plan_vs_real' },
@@ -96,7 +96,7 @@ const ROUTE_MAP = [
   { path: '/riesgo', tab: TAB_RISK, sub: 'driver_behavior' },
   { path: '/riesgo/driver-behavior', tab: TAB_RISK, sub: 'driver_behavior' },
   { path: '/riesgo/action-engine', tab: TAB_RISK, sub: 'action_engine' },
-  { path: '/operacion', tab: TAB_OPERACION, sub: 'lob_drill' },
+  { path: '/operacion', tab: TAB_OPERACION, sub: 'omniview_matrix' },
   { path: '/operacion/lob-drill', tab: TAB_OPERACION, sub: 'lob_drill' },
   { path: '/operacion/business-slice', tab: TAB_OPERACION, sub: 'business_slice' },
   { path: '/operacion/omniview', tab: TAB_OPERACION, sub: 'business_slice_omniview' },
@@ -141,7 +141,7 @@ const TAB_DEFAULT_PATH = {
   [TAB_PERFORMANCE]: '/performance/resumen',
   [TAB_DRIVERS]: '/drivers/supply',
   [TAB_RISK]: '/riesgo/driver-behavior',
-  [TAB_OPERACION]: '/operacion/lob-drill',
+  [TAB_OPERACION]: '/operacion/omniview-matrix',
   [TAB_PLAN]: '/plan/acciones',
   [TAB_EN_REVISION]: '/en-revision/real-vs-proyeccion',
   [TAB_SYSTEM_HEALTH]: '/diagnosticos',
@@ -176,7 +176,7 @@ function App () {
   const performanceSubTab = activeTab === TAB_PERFORMANCE ? (routeSub || 'resumen') : 'resumen'
   const driversSubTab = activeTab === TAB_DRIVERS ? (routeSub || 'supply') : 'supply'
   const riskSubTab = activeTab === TAB_RISK ? (routeSub || 'driver_behavior') : 'driver_behavior'
-  const operacionSubTab = activeTab === TAB_OPERACION ? (routeSub || 'lob_drill') : 'lob_drill'
+  const operacionSubTab = activeTab === TAB_OPERACION ? (routeSub || 'omniview_matrix') : 'omniview_matrix'
   const planSubTab = activeTab === TAB_PLAN ? (routeSub || 'acciones') : 'acciones'
   const enRevisionSubTab = activeTab === TAB_EN_REVISION ? (routeSub || 'real_vs_projection') : 'real_vs_projection'
 
@@ -192,7 +192,7 @@ function App () {
   const setPerformanceSubTab = useCallback((sub) => navigate(SUB_URL[sub] || '/performance/resumen'), [navigate])
   const setDriversSubTab = useCallback((sub) => navigate(SUB_URL[sub] || '/drivers/supply'), [navigate])
   const setRiskSubTab = useCallback((sub) => navigate(SUB_URL[sub] || '/riesgo/driver-behavior'), [navigate])
-  const setOperacionSubTab = useCallback((sub) => navigate(SUB_URL[sub] || '/operacion/lob-drill'), [navigate])
+  const setOperacionSubTab = useCallback((sub) => navigate(SUB_URL[sub] || '/operacion/omniview-matrix'), [navigate])
   const setPlanSubTab = useCallback((sub) => navigate(SUB_URL[sub] || '/plan/acciones'), [navigate])
   const setEnRevisionSubTab = useCallback((sub) => navigate(SUB_URL[sub] || '/en-revision/real-vs-proyeccion'), [navigate])
 

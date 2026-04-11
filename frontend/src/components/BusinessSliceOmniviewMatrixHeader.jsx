@@ -1,5 +1,5 @@
 import { Fragment } from 'react'
-import { MATRIX_KPIS, periodLabel, periodStateLabel, PERIOD_STATES, resolvePeriodTrustVisual, trustIssueSummaryForTooltip } from './omniview/omniviewMatrixUtils.js'
+import { periodLabel, periodStateLabel, PERIOD_STATES, resolvePeriodTrustVisual, trustIssueSummaryForTooltip } from './omniview/omniviewMatrixUtils.js'
 
 export const COL1_W = 90
 export const COL2_W = 130
@@ -14,7 +14,7 @@ const STATE_BADGE_STYLES = {
   [PERIOD_STATES.FUTURE]: 'bg-slate-500/60 text-slate-200',
 }
 
-export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, compact, periodStates, matrixTrust = null }) {
+export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, compact, periodStates, matrixTrust = null, focusedKpi }) {
   const py1 = compact ? 'py-1' : 'py-1.5'
   const py2 = compact ? 'py-0.5' : 'py-1'
   const fontSize1 = compact ? 'text-[10px]' : 'text-xs'
@@ -48,7 +48,7 @@ export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, 
           return (
             <th
               key={pk}
-              colSpan={MATRIX_KPIS.length}
+              colSpan={1}
               className={`px-0 ${py1} text-center ${fontSize1} font-bold uppercase tracking-wide border-l-2 border-slate-500 ${idx % 2 === 1 ? 'bg-slate-750' : ''} ${trustTop}`}
               style={idx % 2 === 1 ? { backgroundColor: 'rgb(40,50,70)' } : undefined}
               title={periodTrust && trustTip ? trustTip : undefined}
@@ -71,17 +71,14 @@ export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, 
             periodTrust === 'blocked' ? 'border-t-[2px] border-t-red-500/90' : periodTrust === 'warning' ? 'border-t-[2px] border-t-amber-500/90' : ''
           return (
             <Fragment key={`hdr-${pk}`}>
-              {MATRIX_KPIS.map((kpi, j) => (
-                <th
-                  key={`${pk}-${kpi.key}`}
-                  className={`px-0.5 ${py2} text-center ${fontSize2} font-semibold uppercase tracking-wide whitespace-nowrap
-                    ${j === 0 ? 'border-l-2 border-slate-500' : 'border-l border-slate-600/50'} ${trustTop}`}
-                  style={pIdx % 2 === 1 ? { backgroundColor: 'rgb(48,58,78)' } : undefined}
-                  title={periodTrust && trustTip ? `${kpi.label} · ${trustTip}` : kpi.label}
-                >
-                  {kpi.short}
-                </th>
-              ))}
+              <th
+                key={`${pk}-${focusedKpi.key}`}
+                className={`px-0.5 ${py2} text-center ${fontSize2} font-semibold uppercase tracking-wide whitespace-nowrap border-l-2 border-slate-500 ${trustTop}`}
+                style={pIdx % 2 === 1 ? { backgroundColor: 'rgb(48,58,78)' } : undefined}
+                title={periodTrust && trustTip ? `${focusedKpi.label} · ${trustTip}` : focusedKpi.label}
+              >
+                {focusedKpi.short}
+              </th>
             </Fragment>
           )
         })}

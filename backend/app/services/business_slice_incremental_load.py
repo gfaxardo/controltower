@@ -29,6 +29,7 @@ FACT_MONTH = "ops.real_business_slice_month_fact"
 FACT_HOUR = "ops.real_business_slice_hour_fact"
 FACT_DAY = "ops.real_business_slice_day_fact"
 FACT_WEEK = "ops.real_business_slice_week_fact"
+V_RESOLVED = "ops.v_real_trips_business_slice_resolved"
 
 # ---------------------------------------------------------------------------
 # SQL: resolución inline desde temp table + agregación mensual
@@ -128,7 +129,18 @@ SELECT
         ELSE NULL
     END AS revenue_real_coverage_pct,
     count(*) FILTER (WHERE r.completed_flag AND r.revenue_source = 'proxy')::bigint AS revenue_proxy_trips,
-    count(*) FILTER (WHERE r.completed_flag AND r.revenue_source = 'real')::bigint AS revenue_real_trips
+    count(*) FILTER (WHERE r.completed_flag AND r.revenue_source = 'real')::bigint AS revenue_real_trips,
+    sum(r.ticket) FILTER (
+        WHERE r.completed_flag AND r.ticket IS NOT NULL
+    ) AS ticket_sum_completed,
+    count(r.ticket) FILTER (
+        WHERE r.completed_flag AND r.ticket IS NOT NULL
+    )::bigint AS ticket_count_completed,
+    sum(r.total_fare) FILTER (
+        WHERE r.completed_flag
+          AND r.total_fare IS NOT NULL
+          AND r.total_fare > 0
+    ) AS total_fare_completed_positive_sum
 FROM (
     WITH base AS (
         SELECT * FROM _bs_enriched_month
@@ -359,7 +371,18 @@ SELECT
         ELSE NULL
     END AS revenue_real_coverage_pct,
     count(*) FILTER (WHERE r.completed_flag AND r.revenue_source = 'proxy')::bigint AS revenue_proxy_trips,
-    count(*) FILTER (WHERE r.completed_flag AND r.revenue_source = 'real')::bigint AS revenue_real_trips
+    count(*) FILTER (WHERE r.completed_flag AND r.revenue_source = 'real')::bigint AS revenue_real_trips,
+    sum(r.ticket) FILTER (
+        WHERE r.completed_flag AND r.ticket IS NOT NULL
+    ) AS ticket_sum_completed,
+    count(r.ticket) FILTER (
+        WHERE r.completed_flag AND r.ticket IS NOT NULL
+    )::bigint AS ticket_count_completed,
+    sum(r.total_fare) FILTER (
+        WHERE r.completed_flag
+          AND r.total_fare IS NOT NULL
+          AND r.total_fare > 0
+    ) AS total_fare_completed_positive_sum
 FROM (
     WITH base AS (
         SELECT * FROM _bs_enriched_month
@@ -442,55 +465,83 @@ GROUP BY
 """
 
 # ---------------------------------------------------------------------------
-# SQL: week_fact — rollup desde day_fact (NO desde trips crudos)
+# SQL: week_fact — agregado canónico desde resolved (mantiene DISTINCT drivers)
 # ---------------------------------------------------------------------------
 
-_WEEK_ROLLUP_FROM_DAY_FACT = """
+_WEEK_AGG_FROM_RESOLVED = """
 INSERT INTO {fact_week}
 SELECT
-    date_trunc('week', d.trip_date)::date AS week_start,
-    d.country,
-    d.city,
-    d.business_slice_name,
-    d.fleet_display_name,
-    d.is_subfleet,
-    d.subfleet_name,
-    d.parent_fleet_name,
-    sum(d.trips_completed)::bigint AS trips_completed,
-    sum(d.trips_cancelled)::bigint AS trips_cancelled,
-    sum(d.active_drivers)::bigint AS active_drivers,
-    CASE WHEN sum(d.trips_completed) > 0
-         THEN sum(d.avg_ticket * d.trips_completed) / sum(d.trips_completed)
+    date_trunc('week', r.trip_date)::date AS week_start,
+    r.country,
+    r.city,
+    r.business_slice_name,
+    r.fleet_display_name,
+    r.is_subfleet,
+    r.subfleet_name,
+    r.parent_fleet_name,
+    count(*) FILTER (WHERE r.completed_flag) AS trips_completed,
+    count(*) FILTER (WHERE r.cancelled_flag) AS trips_cancelled,
+    count(DISTINCT r.driver_id) FILTER (WHERE r.completed_flag) AS active_drivers,
+    CASE WHEN count(r.ticket) FILTER (WHERE r.completed_flag AND r.ticket IS NOT NULL) > 0
+         THEN sum(r.ticket) FILTER (WHERE r.completed_flag AND r.ticket IS NOT NULL)
+              / count(r.ticket) FILTER (WHERE r.completed_flag AND r.ticket IS NOT NULL)
          ELSE NULL
     END AS avg_ticket,
-    CASE WHEN sum(d.revenue_yego_net) > 0
-         THEN avg(d.commission_pct)
+    CASE
+         WHEN sum(r.total_fare) FILTER (
+             WHERE r.completed_flag
+               AND r.total_fare IS NOT NULL
+               AND r.total_fare > 0
+         ) > 0
+         THEN sum(r.revenue_yego_net) FILTER (
+             WHERE r.completed_flag
+               AND r.total_fare IS NOT NULL
+               AND r.total_fare > 0
+         ) / sum(r.total_fare) FILTER (
+             WHERE r.completed_flag
+               AND r.total_fare IS NOT NULL
+               AND r.total_fare > 0
+         )
          ELSE NULL
     END AS commission_pct,
-    CASE WHEN sum(d.active_drivers) > 0
-         THEN sum(d.trips_completed)::numeric / sum(d.active_drivers)
+    CASE WHEN count(DISTINCT r.driver_id) FILTER (WHERE r.completed_flag) > 0
+         THEN count(*) FILTER (WHERE r.completed_flag)::numeric
+              / count(DISTINCT r.driver_id) FILTER (WHERE r.completed_flag)
          ELSE NULL
     END AS trips_per_driver,
-    sum(d.revenue_yego_net) AS revenue_yego_net,
-    CASE WHEN (sum(d.trips_completed) + sum(d.trips_cancelled)) > 0
-         THEN sum(d.trips_cancelled)::numeric / (sum(d.trips_completed) + sum(d.trips_cancelled))
+    sum(r.revenue_yego_net) FILTER (WHERE r.completed_flag) AS revenue_yego_net,
+    CASE WHEN (count(*) FILTER (WHERE r.completed_flag) + count(*) FILTER (WHERE r.cancelled_flag)) > 0
+         THEN count(*) FILTER (WHERE r.cancelled_flag)::numeric
+              / (count(*) FILTER (WHERE r.completed_flag) + count(*) FILTER (WHERE r.cancelled_flag))
          ELSE NULL
     END AS cancel_rate_pct,
     now() AS refreshed_at,
     now() AS loaded_at,
-    sum(d.revenue_yego_final) AS revenue_yego_final,
-    CASE WHEN sum(d.trips_completed) > 0
-         THEN ROUND(100.0 * sum(COALESCE(d.revenue_real_trips, 0)) / sum(d.trips_completed), 2)
-         ELSE NULL
-    END AS revenue_real_coverage_pct,
-    sum(COALESCE(d.revenue_proxy_trips, 0))::bigint AS revenue_proxy_trips,
-    sum(COALESCE(d.revenue_real_trips, 0))::bigint AS revenue_real_trips
-FROM {fact_day} d
-WHERE d.trip_date >= %s::date AND d.trip_date < %s::date
+    sum(r.revenue_yego_net) FILTER (WHERE r.completed_flag) AS revenue_yego_final,
+    NULL::numeric AS revenue_real_coverage_pct,
+    0::bigint AS revenue_proxy_trips,
+    count(*) FILTER (WHERE r.completed_flag AND r.revenue_yego_net IS NOT NULL)::bigint AS revenue_real_trips,
+    sum(r.ticket) FILTER (
+        WHERE r.completed_flag AND r.ticket IS NOT NULL
+    ) AS ticket_sum_completed,
+    count(r.ticket) FILTER (
+        WHERE r.completed_flag AND r.ticket IS NOT NULL
+    )::bigint AS ticket_count_completed,
+    sum(r.total_fare) FILTER (
+        WHERE r.completed_flag
+          AND r.total_fare IS NOT NULL
+          AND r.total_fare > 0
+    ) AS total_fare_completed_positive_sum
+FROM {resolved} r
+WHERE r.resolution_status = 'resolved'
+  AND r.business_slice_name IS NOT NULL
+  AND r.trip_date IS NOT NULL
+  AND r.trip_date >= %s::date
+  AND r.trip_date < %s::date
 GROUP BY
-    date_trunc('week', d.trip_date),
-    d.country, d.city, d.business_slice_name, d.fleet_display_name,
-    d.is_subfleet, d.subfleet_name, d.parent_fleet_name
+    date_trunc('week', r.trip_date),
+    r.country, r.city, r.business_slice_name, r.fleet_display_name,
+    r.is_subfleet, r.subfleet_name, r.parent_fleet_name
 """
 
 # ---------------------------------------------------------------------------
@@ -1002,7 +1053,7 @@ def load_business_slice_day_for_month(
 
 
 # ---------------------------------------------------------------------------
-# week_fact loader (rollup from day_fact — NO desde trips crudos)
+# week_fact loader (agregado canónico desde resolved)
 # ---------------------------------------------------------------------------
 
 
@@ -1013,7 +1064,7 @@ def load_business_slice_week_for_month(
 ) -> int:
     """
     Calcula week_fact para todas las semanas que tocan el mes objetivo.
-    Rollup directo desde day_fact (no escanea vista resolved).
+    Reconstruye KPIs semiaditivos y ratios desde la vista resolved canónica.
     """
     if target_month.day != 1:
         target_month = target_month.replace(day=1)
@@ -1033,7 +1084,7 @@ def load_business_slice_week_for_month(
     )
     deleted = cur.rowcount
 
-    rollup_sql = _WEEK_ROLLUP_FROM_DAY_FACT.format(fact_week=FACT_WEEK, fact_day=FACT_DAY)
+    rollup_sql = _WEEK_AGG_FROM_RESOLVED.format(fact_week=FACT_WEEK, resolved=V_RESOLVED)
     cur.execute(rollup_sql, (first_monday, next_monday_after_end))
     inserted = cur.rowcount
 

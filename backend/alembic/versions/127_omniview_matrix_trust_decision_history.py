@@ -29,6 +29,17 @@ def upgrade() -> None:
         )
     """)
     op.execute("""
+        ALTER TABLE ops.omniview_matrix_trust_history
+        ADD COLUMN IF NOT EXISTS evaluated_at timestamptz NOT NULL DEFAULT now(),
+        ADD COLUMN IF NOT EXISTS decision_mode text,
+        ADD COLUMN IF NOT EXISTS confidence_score smallint,
+        ADD COLUMN IF NOT EXISTS coverage_score numeric,
+        ADD COLUMN IF NOT EXISTS freshness_score numeric,
+        ADD COLUMN IF NOT EXISTS consistency_score numeric,
+        ADD COLUMN IF NOT EXISTS top_codes text[],
+        ADD COLUMN IF NOT EXISTS payload jsonb
+    """)
+    op.execute("""
         CREATE INDEX IF NOT EXISTS ix_omniview_matrix_trust_hist_period_eval
         ON ops.omniview_matrix_trust_history (period_key DESC, evaluated_at DESC)
     """)

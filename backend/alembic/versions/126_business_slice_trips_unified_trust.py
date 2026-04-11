@@ -111,8 +111,8 @@ def upgrade() -> None:
             ORDER BY id, source_priority DESC, fecha_inicio_viaje DESC NULLS LAST
         )
         SELECT
-            c.id AS trip_id,
-            c.conductor_id AS driver_id,
+            c.id::varchar(255) AS trip_id,
+            c.conductor_id::varchar(100) AS driver_id,
             c.park_id,
             NULLIF(TRIM(COALESCE(dp.park_name::text, '')), '') AS park_name,
             NULLIF(TRIM(COALESCE(dp.country::text, '')), '') AS country,
@@ -158,8 +158,8 @@ def upgrade() -> None:
                 + COALESCE(c.pago_corporativo, 0)::numeric
             ) AS total_fare,
             c.condicion,
-            c.motivo_cancelacion,
-            c.source_table
+            c.source_table,
+            c.motivo_cancelacion
         FROM canon c
         LEFT JOIN dim.dim_park dp
             ON lower(trim(dp.park_id::text)) = lower(trim(c.park_id::text))
@@ -300,8 +300,8 @@ def downgrade() -> None:
             ORDER BY id, source_priority DESC, fecha_inicio_viaje DESC NULLS LAST
         )
         SELECT
-            c.id AS trip_id,
-            c.conductor_id AS driver_id,
+            c.id::varchar(255) AS trip_id,
+            c.conductor_id::varchar(100) AS driver_id,
             c.park_id,
             NULLIF(TRIM(COALESCE(dp.park_name::text, '')), '') AS park_name,
             NULLIF(TRIM(COALESCE(dp.country::text, '')), '') AS country,
