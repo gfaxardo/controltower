@@ -11,6 +11,24 @@ const api = axios.create({
   },
 })
 
+const STORAGE_TOKEN = 'ct_integral_token'
+
+api.interceptors.request.use((config) => {
+  try {
+    const token = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(STORAGE_TOKEN) : null
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+  } catch {
+    /* ignore */
+  }
+  return config
+})
+
+/** Login contra API Integral vía backend (/auth/login). validateStatus acepta 401 para leer message. */
+export const loginIntegral = (username, password) =>
+  api.post('/auth/login', { username, password }, { validateStatus: (s) => s >= 200 && s < 600 })
+
 // Instrumentación (Fase 1): en dev, log de requests y duración para detectar duplicados
 if (import.meta.env.DEV) {
   api.interceptors.request.use((config) => {

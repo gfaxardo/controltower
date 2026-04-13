@@ -89,6 +89,9 @@ class Settings(BaseSettings):
     # Backfill histórico: python -m scripts.backfill_real_lob_mvs --from YYYY-MM-01 --to YYYY-MM-01
     REAL_LOB_RECENT_DAYS: int = 90
 
+    # Login proxy hacia API Integral (mismo contrato que https://integral.yego.pro/login)
+    INTEGRAL_AUTH_LOGIN_URL: str = "https://api-int.yego.pro/api/auth/login"
+
     model_config = {
         "env_file": os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"),
         "case_sensitive": False,
