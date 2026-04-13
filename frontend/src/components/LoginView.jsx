@@ -109,6 +109,13 @@ export default function LoginView () {
         <p className="text-center text-slate-600 text-xs mt-8">
           Acceso con tu <span className="text-slate-500">usuario y contraseña corporativos YEGO</span>.
         </p>
+        {import.meta.env.DEV && (
+          <p className="text-center text-slate-500 text-[11px] mt-3 max-w-sm mx-auto leading-relaxed">
+            El login va en <span className="text-slate-400">HTTPS</span> directo a la API corporativa
+            (configurable con <code className="text-slate-400">VITE_INTEGRAL_AUTH_LOGIN_URL</code>). Si el navegador
+            bloquea la petición, la API debe permitir CORS desde este origen.
+          </p>
+        )}
       </div>
     </div>
   )
