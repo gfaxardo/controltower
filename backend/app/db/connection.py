@@ -1,4 +1,5 @@
 import logging
+import threading
 from contextlib import contextmanager
 from typing import Optional
 
@@ -11,6 +12,50 @@ from app.settings import settings
 logger = logging.getLogger(__name__)
 
 connection_pool = None
+
+# --- Cancelación al cerrar el cliente (AbortController / socket cerrado) ---
+# run_in_executor no interrumpe el hilo; registramos conexiones activas por thread id y
+# desde la corrutina FastAPI llamamos conn.cancel() → PostgreSQL corta la query (como pg_cancel_backend).
+_cancel_lock = threading.Lock()
+_conn_stack_by_thread: dict[int, list] = {}
+
+
+def register_active_pg_connection(conn) -> None:
+    if conn is None:
+        return
+    tid = threading.get_ident()
+    with _cancel_lock:
+        _conn_stack_by_thread.setdefault(tid, []).append(conn)
+
+
+def unregister_active_pg_connection(conn) -> None:
+    if conn is None:
+        return
+    tid = threading.get_ident()
+    with _cancel_lock:
+        st = _conn_stack_by_thread.get(tid)
+        if st and st and st[-1] is conn:
+            st.pop()
+        if st is not None and len(st) == 0:
+            del _conn_stack_by_thread[tid]
+
+
+def cancel_pg_queries_for_thread(tid: int) -> None:
+    """Envía cancelación al backend de Postgres para las conexiones activas de ese hilo worker."""
+    with _cancel_lock:
+        conns = list(_conn_stack_by_thread.get(tid, ()))
+    for c in reversed(conns):
+        try:
+            if c is not None and not c.closed:
+                c.cancel()
+                logger.info("Cliente desconectado: cancel() enviado a PostgreSQL (tid=%s)", tid)
+        except Exception as e:
+            logger.debug("cancel_pg_queries_for_thread: %s", e)
+
+
+def clear_pg_registrations_for_thread(tid: int) -> None:
+    with _cancel_lock:
+        _conn_stack_by_thread.pop(tid, None)
 
 
 def _get_connection_params():
@@ -73,6 +118,7 @@ def get_db():
     conn = None
     try:
         conn = connection_pool.getconn()
+        register_active_pg_connection(conn)
         yield conn
         conn.commit()
     except Exception as e:
@@ -86,6 +132,7 @@ def get_db():
         raise
     finally:
         if conn:
+            unregister_active_pg_connection(conn)
             connection_pool.putconn(conn)
 
 
@@ -140,6 +187,7 @@ def get_db_drill():
     body_exc: Optional[BaseException] = None
     try:
         conn = psycopg2.connect(**params)
+        register_active_pg_connection(conn)
         logger.info("Drill connection opened (options=statement_timeout=0)")
         yield conn
     except BaseException as e:
@@ -157,6 +205,7 @@ def get_db_drill():
         raise
     finally:
         if conn:
+            unregister_active_pg_connection(conn)
             if body_exc is None:
                 try:
                     if not conn.closed:
@@ -180,6 +229,7 @@ def get_db_quick(timeout_ms: int = 12000):
     conn = None
     try:
         conn = _get_connection_with_timeout(timeout_ms)
+        register_active_pg_connection(conn)
         yield conn
         conn.commit()
     except Exception as e:
@@ -193,6 +243,7 @@ def get_db_quick(timeout_ms: int = 12000):
         raise
     finally:
         if conn:
+            unregister_active_pg_connection(conn)
             conn.close()
 
 

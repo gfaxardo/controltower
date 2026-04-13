@@ -159,15 +159,20 @@ export default function FactStatusPanel ({ onClose }) {
   }
 
   // Estado del progreso en texto
-  const phaseLabel = {
-    materializing_enriched: 'Escaneando viajes del período…',
-    inserting_month_fact:   'Insertando month_fact…',
-    inserting_chunks:       `Insertando chunk ${prog?.current_chunk_idx}/${prog?.total_chunks}`,
-    week_rollup:            'Calculando semanas…',
-    done:                   '¡Completado!',
-    error:                  'Error',
-    cancelled:              'Cancelado',
-  }[prog?.phase] || 'Iniciando…'
+  const failedCount = prog?.failed_months?.length || 0
+  const phaseLabel = (() => {
+    const p = prog?.phase
+    if (p === 'done' && failedCount > 0) return 'Terminado con errores'
+    return {
+      materializing_enriched: 'Escaneando viajes del período…',
+      inserting_month_fact:   'Insertando month_fact…',
+      inserting_chunks:       `Insertando chunk ${prog?.current_chunk_idx}/${prog?.total_chunks}`,
+      week_rollup:            'Calculando semanas…',
+      done:                   '¡Completado!',
+      error:                  'Error',
+      cancelled:              'Cancelado',
+    }[p] || 'Iniciando…'
+  })()
 
   const phaseDesc = {
     materializing_enriched: 'La fase más larga (~5-7 min por mes). Lee y clasifica millones de viajes.',
@@ -260,19 +265,26 @@ export default function FactStatusPanel ({ onClose }) {
         {(isRunning || (isDone && prog?.phase === 'done')) && (
           <div className={`rounded-lg border px-3 py-3 space-y-2 ${
             prog?.phase === 'done'
-              ? 'border-emerald-200 bg-emerald-50'
+              ? (failedCount > 0 ? 'border-red-200 bg-red-50' : 'border-emerald-200 bg-emerald-50')
               : 'border-blue-100 bg-blue-50'
           }`}>
             {/* Fila superior: ícono + label + tiempo */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 {isRunning && <span className="w-3 h-3 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin flex-shrink-0" />}
-                {prog?.phase === 'done' && (
+                {prog?.phase === 'done' && failedCount === 0 && (
                   <svg className="w-4 h-4 text-emerald-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                   </svg>
                 )}
-                <span className={`text-xs font-semibold ${prog?.phase === 'done' ? 'text-emerald-700' : 'text-blue-800'}`}>
+                {prog?.phase === 'done' && failedCount > 0 && (
+                  <span className="text-red-600 text-sm flex-shrink-0" aria-hidden>✕</span>
+                )}
+                <span className={`text-xs font-semibold ${
+                  prog?.phase === 'done'
+                    ? (failedCount > 0 ? 'text-red-800' : 'text-emerald-700')
+                    : 'text-blue-800'
+                }`}>
                   {phaseLabel}
                 </span>
               </div>
@@ -293,7 +305,7 @@ export default function FactStatusPanel ({ onClose }) {
               <ProgressBar
                 value={prog?.done_months}
                 max={prog?.total_months}
-                color={prog?.phase === 'done' ? 'bg-emerald-500' : 'bg-slate-600'}
+                color={prog?.phase === 'done' ? (failedCount > 0 ? 'bg-red-400' : 'bg-emerald-500') : 'bg-slate-600'}
               />
             </div>
 
@@ -316,9 +328,31 @@ export default function FactStatusPanel ({ onClose }) {
               </div>
             )}
 
+            {prog?.phase === 'done' && failedCount > 0 && prog?.last_month_error && (
+              <p className="text-[10px] text-red-700 bg-red-100/80 border border-red-200 rounded px-2 py-1.5 font-mono break-all max-h-28 overflow-y-auto">
+                {prog.last_month_error}
+              </p>
+            )}
+            {prog?.phase === 'done' && failedCount > 0 && (prog?.failed_months?.length || 0) > 0 && (
+              <p className="text-[10px] text-red-800">
+                Meses con fallo: <strong>{(prog.failed_months || []).join(', ')}</strong>
+                {' '}(sesión terminada, revisá logs del backend)
+              </p>
+            )}
             {/* Pie: contadores + cancelar */}
             <div className="flex items-center justify-between text-[10px] text-gray-500 pt-0.5">
-              <span>{(prog?.day_inserted_total || 0).toLocaleString()} filas · {prog?.completed_months?.length || 0} meses OK</span>
+              <span>
+                {(prog?.day_inserted_total || 0).toLocaleString()} filas day
+                {typeof prog?.week_inserted_total === 'number' && prog.week_inserted_total > 0
+                  ? ` · ${prog.week_inserted_total.toLocaleString()} week`
+                  : ''}
+                {' · '}
+                {(prog?.completed_months?.length || 0) - (prog?.empty_source_months?.length || 0)} meses con datos
+                {(prog?.empty_source_months?.length || 0) > 0 && (
+                  <> · {prog.empty_source_months.length} sin viajes (fuente vacía)</>
+                )}
+                {failedCount > 0 && <> · <span className="text-red-600 font-semibold">{failedCount} fallidos</span></>}
+              </span>
               {isRunning && (
                 <button type="button" onClick={handleCancel}
                   className="text-red-500 hover:text-red-700 underline">

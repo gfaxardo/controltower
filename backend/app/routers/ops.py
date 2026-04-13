@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Query, HTTPException, Body
+import threading
+from contextlib import suppress
+
+from fastapi import APIRouter, Query, HTTPException, Body, Request
 import os
 import json
 import time as _time
@@ -184,6 +187,40 @@ import time
 async def _run_sync(func, *args, **kwargs):
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, functools.partial(func, *args, **kwargs))
+
+
+async def _run_sync_request(request: Request, func, *args, **kwargs):
+    """Como _run_sync, pero si el cliente cierra la petición (AbortController, pestaña), llama conn.cancel() en Postgres."""
+    from app.db.connection import cancel_pg_queries_for_thread, clear_pg_registrations_for_thread
+
+    state: dict = {"tid": None}
+
+    def _wrapper():
+        tid = threading.get_ident()
+        state["tid"] = tid
+        try:
+            return func(*args, **kwargs)
+        finally:
+            clear_pg_registrations_for_thread(tid)
+            state["tid"] = None
+
+    async def _watch_disconnect():
+        while True:
+            if await request.is_disconnected():
+                tid = state.get("tid")
+                if tid is not None:
+                    cancel_pg_queries_for_thread(tid)
+                return
+            await asyncio.sleep(0.15)
+
+    watcher = asyncio.create_task(_watch_disconnect())
+    loop = asyncio.get_event_loop()
+    try:
+        return await loop.run_in_executor(None, _wrapper)
+    finally:
+        watcher.cancel()
+        with suppress(asyncio.CancelledError):
+            await watcher
 
 logger = logging.getLogger(__name__)
 logger.info("ops router: _run_sync uses run_in_executor (Python 3.8 compatible)")
@@ -2679,9 +2716,9 @@ async def get_overlap_monthly_endpoint(
 
 
 @router.get("/business-slice/filters")
-async def business_slice_filters():
+async def business_slice_filters(request: Request):
     try:
-        return await _run_sync(get_business_slice_filters)
+        return await _run_sync_request(request, get_business_slice_filters)
     except Exception as e:
         logger.error("business-slice/filters: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -2689,6 +2726,7 @@ async def business_slice_filters():
 
 @router.get("/business-slice/monthly")
 async def business_slice_monthly(
+    request: Request,
     country: Optional[str] = Query(None),
     city: Optional[str] = Query(None),
     business_slice: Optional[str] = Query(None, description="Nombre de tajada (business_slice_name)"),
@@ -2741,7 +2779,7 @@ async def business_slice_monthly(
             )
             return rows, meta
 
-        data, meta = await _run_sync(_monthly_bundle)
+        data, meta = await _run_sync_request(request, _monthly_bundle)
         return {"data": data, "total": len(data), "meta": meta}
     except Exception as e:
         logger.error("business-slice/monthly: %s", e)
@@ -2750,11 +2788,14 @@ async def business_slice_monthly(
 
 @router.get("/business-slice/coverage")
 async def business_slice_coverage(
+    request: Request,
     year: Optional[int] = Query(None),
     limit_months: int = Query(36, ge=1, le=120),
 ):
     try:
-        return await _run_sync(get_business_slice_coverage, year=year, limit_months=limit_months)
+        return await _run_sync_request(
+            request, get_business_slice_coverage, year=year, limit_months=limit_months
+        )
     except Exception as e:
         logger.error("business-slice/coverage: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -2762,13 +2803,15 @@ async def business_slice_coverage(
 
 @router.get("/business-slice/coverage-summary")
 async def business_slice_coverage_summary(
+    request: Request,
     country: Optional[str] = Query(None),
     city: Optional[str] = Query(None),
     year: Optional[int] = Query(None),
     month: Optional[int] = Query(None, ge=1, le=12),
 ):
     try:
-        return await _run_sync(
+        return await _run_sync_request(
+            request,
             get_business_slice_coverage_summary,
             country=country, city=city, year=year, month=month,
         )
@@ -2785,13 +2828,14 @@ async def business_slice_coverage_summary(
 
 @router.get("/business-slice/unmatched")
 async def business_slice_unmatched(
+    request: Request,
     country: Optional[str] = Query(None),
     city: Optional[str] = Query(None),
     limit: int = Query(80, ge=1, le=500),
 ):
     try:
-        data = await _run_sync(
-            get_business_slice_unmatched, country=country, city=city, limit=limit
+        data = await _run_sync_request(
+            request, get_business_slice_unmatched, country=country, city=city, limit=limit
         )
         return {"data": data, "total": len(data)}
     except Exception as e:
@@ -2801,13 +2845,14 @@ async def business_slice_unmatched(
 
 @router.get("/business-slice/conflicts")
 async def business_slice_conflicts(
+    request: Request,
     country: Optional[str] = Query(None),
     city: Optional[str] = Query(None),
     limit: int = Query(80, ge=1, le=500),
 ):
     try:
-        data = await _run_sync(
-            get_business_slice_conflicts, country=country, city=city, limit=limit
+        data = await _run_sync_request(
+            request, get_business_slice_conflicts, country=country, city=city, limit=limit
         )
         return {"data": data, "total": len(data)}
     except Exception as e:
@@ -2816,9 +2861,9 @@ async def business_slice_conflicts(
 
 
 @router.get("/business-slice/subfleets")
-async def business_slice_subfleets():
+async def business_slice_subfleets(request: Request):
     try:
-        data = await _run_sync(get_business_slice_subfleets)
+        data = await _run_sync_request(request, get_business_slice_subfleets)
         return {"data": data, "total": len(data)}
     except Exception as e:
         logger.error("business-slice/subfleets: %s", e)
@@ -2827,6 +2872,7 @@ async def business_slice_subfleets():
 
 @router.get("/business-slice/weekly")
 async def business_slice_weekly(
+    request: Request,
     country: Optional[str] = Query(None),
     city: Optional[str] = Query(None),
     business_slice: Optional[str] = Query(None),
@@ -2869,7 +2915,7 @@ async def business_slice_weekly(
             )
             return rows, meta
 
-        data, meta = await _run_sync(_weekly_bundle)
+        data, meta = await _run_sync_request(request, _weekly_bundle)
         return {"data": data, "total": len(data), "meta": meta}
     except Exception as e:
         logger.error("business-slice/weekly: %s", e)
@@ -2878,6 +2924,7 @@ async def business_slice_weekly(
 
 @router.get("/business-slice/daily")
 async def business_slice_daily(
+    request: Request,
     country: Optional[str] = Query(None),
     city: Optional[str] = Query(None),
     business_slice: Optional[str] = Query(None),
@@ -2922,7 +2969,7 @@ async def business_slice_daily(
             )
             return rows, meta
 
-        data, meta = await _run_sync(_daily_bundle)
+        data, meta = await _run_sync_request(request, _daily_bundle)
         return {"data": data, "total": len(data), "meta": meta}
     except Exception as e:
         logger.error("business-slice/daily: %s", e)
@@ -2930,10 +2977,12 @@ async def business_slice_daily(
 
 
 @router.get("/business-slice/plan-join-stub")
-async def business_slice_plan_join_stub(limit: int = Query(500, ge=1, le=2000)):
+async def business_slice_plan_join_stub(
+    request: Request, limit: int = Query(500, ge=1, le=2000)
+):
     """Contrato futuro Plan vs Real por business_slice (sin datos Plan)."""
     try:
-        data = await _run_sync(get_plan_business_slice_stub, limit=limit)
+        data = await _run_sync_request(request, get_plan_business_slice_stub, limit=limit)
         return {"data": data, "total": len(data)}
     except Exception as e:
         logger.error("business-slice/plan-join-stub: %s", e)
@@ -2942,6 +2991,7 @@ async def business_slice_plan_join_stub(limit: int = Query(500, ge=1, le=2000)):
 
 @router.get("/business-slice/omniview")
 async def business_slice_omniview(
+    request: Request,
     granularity: Literal["monthly", "weekly", "daily"] = Query(
         ...,
         description="Granularidad temporal: monthly (MoM), weekly (WoW), daily (vs mismo día -7).",
@@ -2976,7 +3026,8 @@ async def business_slice_omniview(
     Mensual: detalle desde `ops.real_business_slice_month_fact`; subtotales/totales desde vista resuelta.
     """
     try:
-        return await _run_sync(
+        return await _run_sync_request(
+            request,
             get_business_slice_omniview,
             granularity=granularity,
             period=period,
@@ -2998,10 +3049,10 @@ async def business_slice_omniview(
 
 
 @router.get("/business-slice/matrix-operational-trust")
-async def business_slice_matrix_operational_trust():
+async def business_slice_matrix_operational_trust(request: Request):
     """Trust operativo OK|warning|blocked para Omniview Matrix (validación de integridad)."""
     try:
-        return await _run_sync(get_matrix_operational_trust_api_payload)
+        return await _run_sync_request(request, get_matrix_operational_trust_api_payload)
     except Exception as e:
         logger.exception("business-slice/matrix-operational-trust")
         raise HTTPException(status_code=500, detail=str(e))

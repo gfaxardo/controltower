@@ -76,6 +76,8 @@ const miniSelectCls = 'border border-gray-200 rounded-md text-xs px-2 py-1 bg-wh
 
 /** Si true (p. ej. VITE_OMNIVIEW_MATRIX_MANUAL_LOAD en .env.development), no se llama a la API pesada hasta pulsar «Cargar datos». */
 const MANUAL_LOAD = import.meta.env.VITE_OMNIVIEW_MATRIX_MANUAL_LOAD === 'true'
+/** Tras cargar la matriz: breve pausa antes de coverage-summary (antes 3s; backend devuelve datos en el primer miss con filtros). */
+const COVERAGE_FETCH_DELAY_MS = 400
 
 function toMetricMap (raw) {
   const out = new Map()
@@ -257,6 +259,8 @@ export default function BusinessSliceOmniviewMatrix () {
 
   const abortRef = useRef(null)
   const debounceRef = useRef(null)
+  /** Evita tratar el primer render con consultas activas como «recién habilitado» (solo transición manual false→true). */
+  const wasHeavyEnabledRef = useRef(heavyQueriesEnabled)
 
   // doLoad: ejecuta la carga real de la matriz + lanza coverage-summary DESPUÉS (con retraso).
   // Acepta un AbortController.signal para poder cancelar si el usuario cambia filtros mientras carga.
@@ -288,16 +292,18 @@ export default function BusinessSliceOmniviewMatrix () {
       if (!showSubfleets) data = data.filter((r) => !r.is_subfleet)
       setRows(data)
       setLoadingTasks((t) => { const n = { ...t }; delete n.matrix; return n })
+      // Mostrar la matriz en cuanto llega /monthly (o weekly/daily). El sleep de cobertura no debe
+      // mantener loading=true o la UI parece «colgada» aunque rows ya esté poblado.
+      setLoading(false)
 
-      // Coverage-summary se lanza DESPUÉS de que la matriz cargó, con 3s de retraso para no
-      // competir con las queries principales de la BD.
+      // Coverage-summary tras la matriz: pequeño staggering para no competir con el cierre de /monthly.
       const coverageParams = {}
       if (country) coverageParams.country = country
       if (city) coverageParams.city = city
       if (year != null && year !== '') coverageParams.year = Number(year)
       if (month) coverageParams.month = Number(month)
       setLoadingTasks((t) => ({ ...t, coverage: 'Cobertura (en espera…)' }))
-      await new Promise((resolve) => setTimeout(resolve, 3000))
+      await new Promise((resolve) => setTimeout(resolve, COVERAGE_FETCH_DELAY_MS))
       if (signal?.aborted) {
         setLoadingTasks((t) => { const n = { ...t }; delete n.coverage; return n })
         return
@@ -325,25 +331,35 @@ export default function BusinessSliceOmniviewMatrix () {
     }
   }, [grain, country, city, businessSlice, fleet, showSubfleets, year, month, blockedByCountry])
 
-  // scheduledLoad: debounce de 600ms antes de lanzar doLoad. Cancela la request anterior si
-  // el usuario cambia filtros antes de que termine.
-  const scheduledLoad = useCallback(() => {
+  useEffect(() => {
+    if (!heavyQueriesEnabled) {
+      wasHeavyEnabledRef.current = false
+      return
+    }
+    const justEnabled = !wasHeavyEnabledRef.current
+    wasHeavyEnabledRef.current = true
+
+    if (justEnabled) {
+      clearTimeout(debounceRef.current)
+      abortRef.current?.abort('filter-change')
+      abortRef.current = new AbortController()
+      doLoad(abortRef.current.signal)
+      return () => {
+        abortRef.current?.abort('unmount')
+      }
+    }
+
     clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
       abortRef.current?.abort('filter-change')
       abortRef.current = new AbortController()
       doLoad(abortRef.current.signal)
     }, 600)
-  }, [doLoad])
-
-  useEffect(() => {
-    if (!heavyQueriesEnabled) return
-    scheduledLoad()
     return () => {
       clearTimeout(debounceRef.current)
       abortRef.current?.abort('unmount')
     }
-  }, [scheduledLoad, heavyQueriesEnabled])
+  }, [heavyQueriesEnabled, doLoad])
 
   // loadData: función pública para refrescos manuales (botones, etc.) sin debounce.
   const loadData = useCallback(() => {
