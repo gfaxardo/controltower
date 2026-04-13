@@ -2235,10 +2235,15 @@ def check_freshness(findings: list[dict[str, Any]]) -> dict[str, Any]:
                     "error",
                     "freshness",
                     "DAY_FACT_DATE_GAPS",
-                    f"Se detectaron {len(gap_rows)} día(s) sin filas en day_fact en lookback {GAP_LOOKBACK_DAYS}d (muestra: {misses[:5]}).",
+                    (
+                        f"Se detectaron {len(gap_rows)} día(s) sin filas en day_fact: ventana de {GAP_LOOKBACK_DAYS} días "
+                        f"calendario hacia atrás desde MAX(trip_date) global en day_fact ({dmax}). "
+                        f"Esa auditoría no usa el año del filtro de la Matrix (p. ej. puede listar 2025 aunque mires 2026). "
+                        f"Muestra: {misses[:5]}."
+                    ),
                     "Series diarias/semanales con huecos; WoW y rollups pueden quedar desalineados.",
-                    "Re-ejecutar load_business_slice_day_for_month para meses afectados; verificar fallos parciales.",
-                    {"gap_count": len(gap_rows), "sample": misses},
+                    "Materializar el/los mes(es) que cubran esas fechas en day_fact (p. ej. dic-2025 si falta 31-dic).",
+                    {"gap_count": len(gap_rows), "sample": misses, "day_fact_max": str(dmax)},
                 )
         except Exception as e:
             _add(
