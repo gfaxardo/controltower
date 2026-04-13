@@ -544,6 +544,60 @@ GROUP BY
     r.is_subfleet, r.subfleet_name, r.parent_fleet_name
 """
 
+# Misma forma canónica que week desde resolved, pero agregando desde day_fact ya materializado
+# (usado por backfill_runner tras cargar chunks diarios; evita V_RESOLVED).
+_WEEK_ROLLUP_FROM_DAY_FACT = """
+INSERT INTO {fact_week}
+SELECT
+    date_trunc('week', d.trip_date)::date AS week_start,
+    d.country,
+    d.city,
+    d.business_slice_name,
+    d.fleet_display_name,
+    d.is_subfleet,
+    d.subfleet_name,
+    d.parent_fleet_name,
+    SUM(d.trips_completed)::bigint AS trips_completed,
+    SUM(d.trips_cancelled)::bigint AS trips_cancelled,
+    SUM(COALESCE(d.active_drivers, 0))::bigint AS active_drivers,
+    CASE WHEN SUM(COALESCE(d.ticket_count_completed, 0)) > 0
+         THEN SUM(COALESCE(d.ticket_sum_completed, 0)) / SUM(d.ticket_count_completed)
+         ELSE NULL
+    END AS avg_ticket,
+    CASE WHEN SUM(COALESCE(d.total_fare_completed_positive_sum, 0)) > 0
+         THEN SUM(COALESCE(d.revenue_yego_net, 0)) / SUM(d.total_fare_completed_positive_sum)
+         ELSE NULL
+    END AS commission_pct,
+    CASE WHEN SUM(COALESCE(d.active_drivers, 0)) > 0
+         THEN SUM(d.trips_completed)::numeric / SUM(d.active_drivers)
+         ELSE NULL
+    END AS trips_per_driver,
+    SUM(COALESCE(d.revenue_yego_net, 0)) AS revenue_yego_net,
+    CASE WHEN SUM(d.trips_completed + d.trips_cancelled) > 0
+         THEN SUM(d.trips_cancelled)::numeric / SUM(d.trips_completed + d.trips_cancelled)
+         ELSE NULL
+    END AS cancel_rate_pct,
+    now() AS refreshed_at,
+    now() AS loaded_at,
+    SUM(COALESCE(d.revenue_yego_final, 0)) AS revenue_yego_final,
+    CASE WHEN SUM(d.trips_completed) > 0
+         THEN SUM(COALESCE(d.revenue_real_coverage_pct, 0) * d.trips_completed) / SUM(d.trips_completed)
+         ELSE NULL
+    END AS revenue_real_coverage_pct,
+    SUM(COALESCE(d.revenue_proxy_trips, 0))::bigint AS revenue_proxy_trips,
+    SUM(COALESCE(d.revenue_real_trips, 0))::bigint AS revenue_real_trips,
+    SUM(COALESCE(d.ticket_sum_completed, 0)) AS ticket_sum_completed,
+    SUM(COALESCE(d.ticket_count_completed, 0))::bigint AS ticket_count_completed,
+    SUM(COALESCE(d.total_fare_completed_positive_sum, 0)) AS total_fare_completed_positive_sum
+FROM {fact_day} d
+WHERE d.trip_date >= %s::date
+  AND d.trip_date < %s::date
+GROUP BY
+    date_trunc('week', d.trip_date),
+    d.country, d.city, d.business_slice_name, d.fleet_display_name,
+    d.is_subfleet, d.subfleet_name, d.parent_fleet_name
+"""
+
 # ---------------------------------------------------------------------------
 # SQL: hour_fact (sin cambios, sigue usando vista resolved acotada por rango)
 # ---------------------------------------------------------------------------
