@@ -138,6 +138,8 @@ export default function BusinessSliceOmniviewMatrix () {
   const trustAbortRef = useRef(null)
   const freshnessAbortRef = useRef(null)
   const filtersAbortRef = useRef(null)
+  const trustStartDelayRef = useRef(null)
+  const freshnessDelayRef = useRef(null)
 
   useEffect(() => {
     const ctrl = new AbortController()
@@ -147,6 +149,10 @@ export default function BusinessSliceOmniviewMatrix () {
       .catch(() => {})
     return () => ctrl.abort('unmount')
   }, [])
+
+  /** Retraso antes de trust/frescura para que /monthly tome pool y CPU primero (evita el “colgado” al abrir con todo en paralelo). */
+  const SECONDARY_TRUST_DELAY_MS = 1500
+  const SECONDARY_FRESHNESS_DELAY_MS = 2800
 
   const trustPollRef = useRef(null)
   useEffect(() => {
@@ -195,9 +201,13 @@ export default function BusinessSliceOmniviewMatrix () {
         })
     }
 
-    fetchTrust()
+    trustStartDelayRef.current = setTimeout(() => {
+      if (!cancelled) fetchTrust()
+    }, SECONDARY_TRUST_DELAY_MS)
+
     return () => {
       cancelled = true
+      clearTimeout(trustStartDelayRef.current)
       ctrl.abort('unmount')
       clearTimeout(trustPollRef.current)
     }
@@ -207,12 +217,17 @@ export default function BusinessSliceOmniviewMatrix () {
     if (!heavyQueriesEnabled) return
     const ctrl = new AbortController()
     freshnessAbortRef.current = ctrl
-    setLoadingTasks((t) => ({ ...t, freshness: 'Frescura de datos' }))
-    getDataFreshnessGlobal({ group: 'operational' }, { signal: ctrl.signal })
-      .then(setFreshnessInfo)
-      .catch(() => {})
-      .finally(() => setLoadingTasks((t) => { const n = { ...t }; delete n.freshness; return n }))
-    return () => ctrl.abort('unmount')
+    freshnessDelayRef.current = setTimeout(() => {
+      setLoadingTasks((t) => ({ ...t, freshness: 'Frescura de datos' }))
+      getDataFreshnessGlobal({ group: 'operational' }, { signal: ctrl.signal })
+        .then(setFreshnessInfo)
+        .catch(() => {})
+        .finally(() => setLoadingTasks((t) => { const n = { ...t }; delete n.freshness; return n }))
+    }, SECONDARY_FRESHNESS_DELAY_MS)
+    return () => {
+      clearTimeout(freshnessDelayRef.current)
+      ctrl.abort('unmount')
+    }
   }, [heavyQueriesEnabled])
 
   const countries = filtersMeta?.countries || []
@@ -340,6 +355,8 @@ export default function BusinessSliceOmniviewMatrix () {
   /** Cancela TODAS las requests en vuelo (incluido debounce pendiente). */
   const cancelAll = useCallback(() => {
     clearTimeout(debounceRef.current)
+    clearTimeout(trustStartDelayRef.current)
+    clearTimeout(freshnessDelayRef.current)
     abortRef.current?.abort('user-cancel')
     trustAbortRef.current?.abort('user-cancel')
     freshnessAbortRef.current?.abort('user-cancel')
