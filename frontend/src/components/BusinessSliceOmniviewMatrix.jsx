@@ -41,6 +41,13 @@ import BusinessSliceInsightsPanel from './BusinessSliceInsightsPanel.jsx'
 import BusinessSliceInsightSettings from './BusinessSliceInsightSettings.jsx'
 import MatrixExecutiveBanner from './MatrixExecutiveBanner.jsx'
 import FactStatusPanel from './FactStatusPanel.jsx'
+import OmniviewDataHelp from './omniview/OmniviewDataHelp.jsx'
+import {
+  FilterSelect,
+  YearSelect,
+  MonthSelect,
+  normalizeOmniviewYear,
+} from './omniview/OmniviewFilterPrimitives.jsx'
 
 const GRAINS = [
   { id: 'monthly', label: 'Mensual' },
@@ -71,8 +78,10 @@ const modeCls = (active) =>
     active ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50'
   }`
 
-const selectCls = 'border border-gray-200 rounded-md text-sm px-2.5 py-1.5 bg-white focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none text-gray-700'
-const miniSelectCls = 'border border-gray-200 rounded-md text-xs px-2 py-1 bg-white outline-none text-gray-600 focus:ring-1 focus:ring-blue-400'
+const selectCls =
+  'uppercase border border-gray-200 rounded-md text-sm px-2.5 py-1.5 bg-white focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none text-gray-700 tracking-wide'
+const miniSelectCls =
+  'uppercase border border-gray-200 rounded-md text-xs px-2 py-1 bg-white outline-none text-gray-600 focus:ring-1 focus:ring-blue-400 tracking-wide'
 
 /** Si true (p. ej. VITE_OMNIVIEW_MATRIX_MANUAL_LOAD en .env.development), no se llama a la API pesada hasta pulsar «Cargar datos». */
 const MANUAL_LOAD = import.meta.env.VITE_OMNIVIEW_MATRIX_MANUAL_LOAD === 'true'
@@ -101,7 +110,7 @@ export default function BusinessSliceOmniviewMatrix () {
   const [businessSlice, setBusinessSlice] = useState(saved?.businessSlice || '')
   const [fleet, setFleet] = useState(saved?.fleet || '')
   const [showSubfleets, setShowSubfleets] = useState(saved?.showSubfleets ?? true)
-  const [year, setYear] = useState(saved?.year ?? new Date().getFullYear())
+  const [year, setYear] = useState(() => normalizeOmniviewYear(saved?.year ?? new Date().getFullYear()))
   const [month, setMonth] = useState(saved?.month || '')
   const [sortKey, setSortKey] = useState(saved?.sortKey || 'alpha')
   const [focusedKpi, setFocusedKpi] = useState(saved?.focusedKpi || 'trips_completed')
@@ -637,7 +646,7 @@ export default function BusinessSliceOmniviewMatrix () {
               <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Grano</span>
               <div className="flex gap-1">
                 {GRAINS.map((g) => (
-                  <button key={g.id} type="button" className={btnCls(grain === g.id)} onClick={() => setGrain(g.id)}>{g.label}</button>
+                  <button key={g.id} type="button" className={`${btnCls(grain === g.id)} uppercase tracking-wide`} onClick={() => setGrain(g.id)}>{g.label}</button>
                 ))}
               </div>
             </div>
@@ -655,29 +664,21 @@ export default function BusinessSliceOmniviewMatrix () {
             <div className="hidden sm:block self-stretch w-px bg-gray-100 mx-1" />
 
             {/* Periodo */}
-            <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Año</span>
-              <input type="number" className={selectCls + ' w-20'} value={year}
-                onChange={(e) => setYear(e.target.value === '' ? '' : Number(e.target.value))} />
-            </div>
+            <YearSelect value={year} onChange={setYear} />
 
             {(grain === 'monthly' || grain === 'daily') && (
-              <div className="flex flex-col gap-1">
-                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Mes</span>
-                <select className={selectCls + ' w-24'} value={month} onChange={(e) => setMonth(e.target.value)}>
-                  <option value="">Todos</option>
-                  {['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'].map((m, i) => (
-                    <option key={i + 1} value={i + 1}>{m}</option>
-                  ))}
-                </select>
-              </div>
+              <MonthSelect value={month} onChange={setMonth} />
             )}
 
-            <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none self-end pb-1.5">
+            <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none self-end pb-1.5 uppercase tracking-wide">
               <input type="checkbox" checked={showSubfleets} onChange={(e) => setShowSubfleets(e.target.checked)}
                 className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5" />
               Subflotas
             </label>
+          </div>
+
+          <div className="px-4 py-2 border-t border-gray-100 bg-slate-50/40">
+            <OmniviewDataHelp />
           </div>
 
           {/* Fila 2: Controles de visualización */}
@@ -1013,22 +1014,3 @@ function OperationalContextBar ({ grain, periodStates, allPeriods, comparisonMet
     </div>
   )
 }
-
-function FilterSelect ({ label, value, onChange, options, placeholder, required }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
-        {label}{required && <span className="text-red-500 ml-0.5">*</span>}
-      </span>
-      <select
-        className={`border rounded-md text-sm px-2.5 py-1.5 bg-white focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none min-w-[130px] text-gray-700 transition-colors ${
-          required && !value ? 'border-amber-400 bg-amber-50 text-amber-900' : 'border-gray-200 hover:border-gray-300'
-        }`}
-        value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">{placeholder}</option>
-        {options.map((o) => <option key={o} value={o}>{o}</option>)}
-      </select>
-    </div>
-  )
-}
-

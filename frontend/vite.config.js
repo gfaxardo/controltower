@@ -3,6 +3,10 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  // ECharts + import desde echarts-for-react/esm/core: fuerza pre-bundle estable (evita 504 Outdated Optimize Dep).
+  optimizeDeps: {
+    include: ['echarts', 'echarts-for-react', 'echarts-for-react/esm/core', 'tslib'],
+  },
   // Producción: build para raíz del dominio (ej. http://162.55.214.109/)
   base: '/',
   server: {
