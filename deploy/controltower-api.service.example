@@ -1,0 +1,20 @@
+[Unit]
+Description=YEGO Control Tower API (FastAPI / uvicorn)
+After=network.target
+
+[Service]
+Type=simple
+# Ajusta la ruta: /root/controltower/backend, /opt/controltower/backend, etc.
+WorkingDirectory=/opt/controltower/backend
+EnvironmentFile=-/opt/controltower/backend/.env
+# Sin reload en producción: en .env pon ENVIRONMENT=production (o cualquier valor distinto de "dev")
+ExecStart=/opt/controltower/backend/venv/bin/python run_server.py
+Restart=on-failure
+RestartSec=5
+
+# Opcional: usuario sin privilegios (crea el usuario y dale permiso al directorio del proyecto)
+# User=www-data
+# Group=www-data
+
+[Install]
+WantedBy=multi-user.target

@@ -55,8 +55,12 @@ class Settings(BaseSettings):
     BACKEND_PORT: int = 8000
     
     CORS_ORIGINS_STR: str = Field(
-        default="http://localhost:5173,http://localhost:3000,http://162.55.214.109,https://162.55.214.109",
-        alias="CORS_ORIGINS"
+        default=(
+            "http://localhost:5173,http://localhost:3000,"
+            "http://162.55.214.109,https://162.55.214.109,"
+            "http://5.161.86.63,https://5.161.86.63"
+        ),
+        alias="CORS_ORIGINS",
     )
     
     @property
@@ -76,6 +80,9 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "dev"
     
     DATABASE_URL: str = ""
+
+    # Destino del login (solo servidor; el front usa /api/auth/login relativo).
+    INTEGRAL_AUTH_LOGIN_URL: str = "https://api-int.yego.pro/api/auth/login"
 
     # Fuente REAL mensual: True = cadena canónica (real_drill_dim_fact); False = legacy (mv_real_trips_monthly).
     # New consumers must use canonical only. Ver docs/REAL_CANONICAL_CHAIN.md y CONTROL_TOWER_REAL_CANONICALIZATION_PLAN.md.

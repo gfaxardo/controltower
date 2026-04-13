@@ -25,22 +25,25 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-/** URL HTTPS del login corporativo (mismo endpoint que Integral). Override: VITE_INTEGRAL_AUTH_LOGIN_URL */
-const INTEGRAL_AUTH_LOGIN_URL = (import.meta.env.VITE_INTEGRAL_AUTH_LOGIN_URL || 'https://api-int.yego.pro/api/auth/login').trim()
+/**
+ * Solo ruta relativa al mismo origen (nginx → FastAPI → api-int). Nunca https://api-int… en el bundle
+ * (provoca CORS si el navegador llama directo a otro dominio).
+ */
+const CORPORATE_LOGIN_PATH = '/api/auth/login'
+
+const loginHttp = axios.create({
+  timeout: 30000,
+  headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+})
 
 /**
- * Login directo a la API corporativa (HTTPS). No pasa por el backend local.
  * validateStatus acepta 401 para leer message en AuthContext.
  */
 export const loginIntegral = (username, password) =>
-  axios.post(
-    INTEGRAL_AUTH_LOGIN_URL,
+  loginHttp.post(
+    CORPORATE_LOGIN_PATH,
     { username, password },
-    {
-      validateStatus: (s) => s >= 200 && s < 600,
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      timeout: 30000
-    }
+    { validateStatus: (s) => s >= 200 && s < 600 }
   )
 
 // Instrumentación (Fase 1): en dev, log de requests y duración para detectar duplicados

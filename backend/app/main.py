@@ -5,7 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from app.settings import settings
 from app.startup_checks import run_startup_checks
 from app.startup_state import set_startup_report
-from app.routers import plan, real, core, ops, health, ingestion, phase2b, phase2c, driver_lifecycle, controltower, observability, real_vs_projection
+from app.routers import auth, plan, real, core, ops, health, ingestion, phase2b, phase2c, driver_lifecycle, controltower, observability, real_vs_projection
 import logging
 import time
 import uuid
@@ -74,6 +74,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(plan.router)
 app.include_router(real.router)
 app.include_router(core.router)

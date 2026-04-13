@@ -1,0 +1,14 @@
+# Fragmento para el server que sirve Control Tower (ej. http://5.161.86.63).
+# El frontend usa POST /api/auth/login en el MISMO origen; Nginx reenvía a api-int y el navegador no hace CORS.
+#
+# Colocar ANTES del location /api/ que apunta al backend Python (si existe), para que /api/auth tenga prioridad.
+
+location /api/auth/ {
+    proxy_pass https://api-int.yego.pro;
+    proxy_http_version 1.1;
+    proxy_ssl_server_name on;
+    proxy_set_header Host api-int.yego.pro;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header Connection "";
+}
