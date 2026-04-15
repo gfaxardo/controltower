@@ -2,6 +2,14 @@ import { useMemo, useState, memo } from 'react'
 import BusinessSliceOmniviewMatrixHeader, { COL1_W, COL2_W, HEADER_H_COMFORTABLE, HEADER_H_COMPACT } from './BusinessSliceOmniviewMatrixHeader.jsx'
 import BusinessSliceOmniviewMatrixCell from './BusinessSliceOmniviewMatrixCell.jsx'
 import { MATRIX_KPIS, computeDeltas, computeTotalsDeltas, fmtValue, fmtDelta, signalColorForKpi, signalArrow, sortLineEntries, periodLabel as periodLabelFn, trustIssueSummaryForTooltip, trustPeriodCellOverlayClass, resolveCellTrustVisual, resolveTotalsTrustVisual } from './omniview/omniviewMatrixUtils.js'
+import {
+  computeProjectionDeltas,
+  computeProjectionTotalsDeltas,
+  fmtAttainment,
+  projectionSignalColor,
+  SIGNAL_DOT,
+  PROJECTION_KPIS,
+} from './omniview/projectionMatrixUtils.js'
 
 export default function BusinessSliceOmniviewMatrixTable ({
   matrix,
@@ -16,11 +24,13 @@ export default function BusinessSliceOmniviewMatrixTable ({
   periodStates,
   matrixTrust = null,
   focusedKpi = 'trips_completed',
+  mode = 'evolution',
 }) {
+  const isProjection = mode === 'projection'
   const { cities, allPeriods, totals, comparisonTotals, comparisonMeta } = matrix
   const [collapsed, setCollapsed] = useState(new Set())
   const headerH = compact ? HEADER_H_COMPACT : HEADER_H_COMFORTABLE
-  const trustLine = useMemo(() => trustIssueSummaryForTooltip(matrixTrust), [matrixTrust])
+  const trustLine = useMemo(() => isProjection ? null : trustIssueSummaryForTooltip(matrixTrust), [matrixTrust, isProjection])
   const activeKpi = useMemo(
     () => MATRIX_KPIS.find((kpi) => kpi.key === focusedKpi) || MATRIX_KPIS.find((kpi) => kpi.key === 'trips_completed') || MATRIX_KPIS[0],
     [focusedKpi]
@@ -28,16 +38,20 @@ export default function BusinessSliceOmniviewMatrixTable ({
 
   const cityEntries = useMemo(() => {
     return [...cities.entries()].sort((a, b) => {
-      const aUn = a[1].city === 'UNMAPPED' ? 1 : 0
-      const bUn = b[1].city === 'UNMAPPED' ? 1 : 0
-      if (aUn !== bUn) return aUn - bUn
+      if (!isProjection) {
+        const aUn = a[1].city === 'UNMAPPED' ? 1 : 0
+        const bUn = b[1].city === 'UNMAPPED' ? 1 : 0
+        if (aUn !== bUn) return aUn - bUn
+      }
       return a[0].localeCompare(b[0])
     })
-  }, [cities])
+  }, [cities, isProjection])
 
   const totalsDeltas = useMemo(
-    () => computeTotalsDeltas(totals, allPeriods, periodStates, comparisonTotals, comparisonMeta),
-    [totals, allPeriods, periodStates, comparisonTotals, comparisonMeta]
+    () => isProjection
+      ? computeProjectionTotalsDeltas(totals, allPeriods)
+      : computeTotalsDeltas(totals, allPeriods, periodStates, comparisonTotals, comparisonMeta),
+    [totals, allPeriods, periodStates, comparisonTotals, comparisonMeta, isProjection]
   )
 
   const toggleCity = (ck) => {
@@ -52,7 +66,11 @@ export default function BusinessSliceOmniviewMatrixTable ({
   if (!allPeriods.length) {
     return (
       <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50/80 p-10 text-center">
-        <p className="text-xs text-gray-500">Sin datos para la combinación de filtros y grano seleccionados.</p>
+        <p className="text-xs text-gray-500">
+          {isProjection
+            ? 'Sin datos de proyección para la combinación de filtros seleccionados.'
+            : 'Sin datos para la combinación de filtros y grano seleccionados.'}
+        </p>
       </div>
     )
   }
@@ -71,14 +89,17 @@ export default function BusinessSliceOmniviewMatrixTable ({
             ))}
           </colgroup>
 
-          <BusinessSliceOmniviewMatrixHeader allPeriods={allPeriods} grain={grain} compact={compact} periodStates={periodStates} matrixTrust={matrixTrust} focusedKpi={activeKpi} />
+          <BusinessSliceOmniviewMatrixHeader allPeriods={allPeriods} grain={grain} compact={compact} periodStates={periodStates} matrixTrust={isProjection ? null : matrixTrust} focusedKpi={activeKpi} />
 
           <tbody>
-            <TotalsRow allPeriods={allPeriods} totalsDeltas={totalsDeltas} compact={compact} headerH={headerH} grain={grain} matrixTrust={matrixTrust} trustLine={trustLine} focusedKpi={activeKpi} />
+            {isProjection
+              ? <ProjectionTotalsRow allPeriods={allPeriods} totalsDeltas={totalsDeltas} compact={compact} headerH={headerH} focusedKpi={activeKpi} />
+              : <TotalsRow allPeriods={allPeriods} totalsDeltas={totalsDeltas} compact={compact} headerH={headerH} grain={grain} matrixTrust={matrixTrust} trustLine={trustLine} focusedKpi={activeKpi} />
+            }
 
             {cityEntries.map(([cityKey, cityData]) => {
               const isCollapsed = collapsed.has(cityKey)
-              const lineEntries = sortLineEntries([...cityData.lines.entries()], sortKey, {
+              const lineEntries = sortLineEntries([...cityData.lines.entries()], sortKey, isProjection ? {} : {
                 lineImpactMap,
                 cityKey,
               })
@@ -96,12 +117,13 @@ export default function BusinessSliceOmniviewMatrixTable ({
                   selectedCell={selectedCell}
                   grain={grain}
                   compact={compact}
-                  insightCellMap={insightCellMap}
-                  insightMode={insightMode}
+                  insightCellMap={isProjection ? null : insightCellMap}
+                  insightMode={isProjection ? false : insightMode}
                   periodStates={periodStates}
-                  matrixTrust={matrixTrust}
-                  trustLine={trustLine}
+                  matrixTrust={isProjection ? null : matrixTrust}
+                  trustLine={isProjection ? null : trustLine}
                   focusedKpi={activeKpi}
+                  mode={mode}
                 />
               )
             })}
@@ -156,7 +178,59 @@ const TotalsRow = memo(function TotalsRow ({ allPeriods, totalsDeltas, compact, 
   )
 })
 
-function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, onToggle, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi }) {
+const ProjectionTotalsRow = memo(function ProjectionTotalsRow ({ allPeriods, totalsDeltas, compact, headerH, focusedKpi }) {
+  const py = compact ? 'py-px' : 'py-0.5'
+  const valSize = compact ? 'text-[10px]' : 'text-[11px]'
+  const deltaSize = compact ? 'text-[8px]' : 'text-[9px]'
+  const isProjectable = PROJECTION_KPIS.includes(focusedKpi.key)
+
+  return (
+    <tr
+      className="bg-slate-800/[.06] border-b-2 border-slate-300 font-semibold"
+      style={{ position: 'sticky', top: headerH, zIndex: 18 }}
+    >
+      <td className={`sticky left-0 z-10 px-2 ${py} ${valSize} font-bold text-slate-600 uppercase tracking-wide border-r border-slate-200`}
+        style={{ backgroundColor: 'rgb(243,244,248)', minWidth: COL1_W }}>Total</td>
+      <td className={`sticky z-10 px-2 ${py} border-r border-slate-200`}
+        style={{ left: COL1_W, backgroundColor: 'rgb(243,244,248)', minWidth: COL2_W }} />
+      {allPeriods.map((pk, periodIdx) => {
+        const pDeltas = totalsDeltas.get(pk)
+        const zebra = periodIdx % 2 === 1
+        const d = pDeltas?.[focusedKpi.key]
+        const bgStyle = zebra ? { backgroundColor: 'rgb(238,240,245)' } : { backgroundColor: 'rgb(243,244,248)' }
+
+        if (!d) return <td key={`t-${pk}-${focusedKpi.key}`} className={`px-1 ${py} text-center ${valSize} text-gray-300 border-r border-gray-200/60`} style={bgStyle}>—</td>
+
+        const val = fmtValue(d.value, focusedKpi.key)
+
+        if (!isProjectable || !d.isProjection) {
+          return (
+            <td key={`t-${pk}-${focusedKpi.key}`} className={`px-1 ${py} text-center whitespace-nowrap border-r border-gray-200/60`} style={bgStyle}>
+              <div className={`${valSize} font-bold text-slate-700 leading-none`}>{val}</div>
+            </td>
+          )
+        }
+
+        const att = fmtAttainment(d.attainment_pct)
+        const signal = d.signal || 'no_data'
+        const dotClass = SIGNAL_DOT[signal] || SIGNAL_DOT.no_data
+        const color = projectionSignalColor(signal)
+
+        return (
+          <td key={`t-${pk}-${focusedKpi.key}`} className={`px-1 ${py} text-center whitespace-nowrap border-r border-gray-200/60`} style={bgStyle}>
+            <div className={`${valSize} font-bold text-slate-700 leading-none`}>{val}</div>
+            <div className={`${deltaSize} leading-none font-semibold mt-px flex items-center justify-center gap-0.5`}>
+              <span className={`inline-block w-1.5 h-1.5 rounded-full ${dotClass} flex-shrink-0`} />
+              <span style={{ color }}>{att}</span>
+            </div>
+          </td>
+        )
+      })}
+    </tr>
+  )
+})
+
+function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, onToggle, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode }) {
   const totalCols = allPeriods.length
   const py = compact ? 'py-1' : 'py-1.5'
   const fontSize = compact ? 'text-[11px]' : 'text-xs'
@@ -178,14 +252,20 @@ function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, o
         <LineRow key={lineKey} cityKey={cityKey} cityName={cityData.city} lineKey={lineKey} lineData={lineData}
           allPeriods={allPeriods} onCellClick={onCellClick} selectedCell={selectedCell} grain={grain} compact={compact}
           insightCellMap={insightCellMap} insightMode={insightMode} periodStates={periodStates}
-          matrixTrust={matrixTrust} trustLine={trustLine} focusedKpi={focusedKpi} />
+          matrixTrust={matrixTrust} trustLine={trustLine} focusedKpi={focusedKpi} mode={mode} />
       ))}
     </>
   )
 }
 
-function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi }) {
-  const deltas = useMemo(() => computeDeltas(lineData.periods, allPeriods, periodStates), [lineData.periods, allPeriods, periodStates])
+function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode }) {
+  const isProjection = mode === 'projection'
+  const deltas = useMemo(
+    () => isProjection
+      ? computeProjectionDeltas(lineData.periods, allPeriods)
+      : computeDeltas(lineData.periods, allPeriods, periodStates),
+    [lineData.periods, allPeriods, periodStates, isProjection]
+  )
   const isSubfleet = lineData.is_subfleet
   const py = compact ? 'py-px' : 'py-1'
   const fontSize = compact ? 'text-[11px]' : 'text-xs'
@@ -195,10 +275,10 @@ function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClic
       <td className={`sticky left-0 z-10 bg-inherit border-r border-gray-100 ${py}`} style={{ width: COL1_W, minWidth: COL1_W }} />
       <td className={`sticky z-10 bg-inherit px-2 ${py} ${fontSize} text-gray-700 font-medium border-r border-gray-200 whitespace-nowrap overflow-hidden text-ellipsis`}
         style={{ left: COL1_W, width: COL2_W, minWidth: COL2_W }}
-        title={`${lineData.business_slice_name} · ${lineData.fleet_display_name}${isSubfleet ? ` (sub: ${lineData.subfleet_name})` : ''}`}>
+        title={`${lineData.business_slice_name}${lineData.fleet_display_name && lineData.fleet_display_name !== '—' && lineData.fleet_display_name !== lineData.business_slice_name ? ` · ${lineData.fleet_display_name}` : ''}${isSubfleet ? ` (sub: ${lineData.subfleet_name})` : ''}`}>
         {isSubfleet && <span className="text-gray-400 mr-0.5 text-[10px]">└</span>}
         <span className={isSubfleet ? 'text-gray-500' : 'text-gray-800'}>{lineData.business_slice_name}</span>
-        {lineData.fleet_display_name && lineData.fleet_display_name !== '—' && (
+        {lineData.fleet_display_name && lineData.fleet_display_name !== '—' && lineData.fleet_display_name !== lineData.business_slice_name && (
           <span className="text-[9px] text-gray-400 ml-1">{lineData.fleet_display_name}</span>
         )}
       </td>
@@ -206,21 +286,22 @@ function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClic
       {allPeriods.map((pk, periodIdx) => {
         const periodDeltas = deltas.get(pk)
         const pLabel = periodLabelFn(pk, grain)
-        const pState = periodStates?.get(pk)
+        const pState = isProjection ? null : periodStates?.get(pk)
         const cellId = `${cityKey}::${lineKey}::${pk}::${focusedKpi.key}`
         const delta = periodDeltas ? periodDeltas[focusedKpi.key] : null
-        const insightSev = insightCellMap?.get(cellId) || null
-        const ptv = resolveCellTrustVisual(matrixTrust, grain, cityName, lineData.business_slice_name, pk, focusedKpi.key)
+        const insightSev = isProjection ? null : (insightCellMap?.get(cellId) || null)
+        const ptv = isProjection ? null : resolveCellTrustVisual(matrixTrust, grain, cityName, lineData.business_slice_name, pk, focusedKpi.key)
         return (
           <BusinessSliceOmniviewMatrixCell
             key={cellId} kpiKey={focusedKpi.key} kpi={focusedKpi} delta={delta}
             isSelected={selectedCell === cellId} compact={compact} periodIdx={periodIdx}
             cityName={cityName} lineName={lineData.business_slice_name} periodLbl={pLabel}
-            insightSeverity={insightSev} insightMode={insightMode} periodState={pState} grain={grain}
+            insightSeverity={insightSev} insightMode={isProjection ? false : insightMode} periodState={pState} grain={grain}
             periodTrustVisual={ptv} trustLine={trustLine}
             matrixTrust={matrixTrust}
             periodKey={pk}
             matrixCellId={cellId}
+            mode={mode}
             onClick={() => onCellClick?.({
               id: cellId, cityKey, lineKey, period: pk, kpiKey: focusedKpi.key,
               lineData, periodDeltas, raw: lineData.periods.get(pk)?.raw,

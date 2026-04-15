@@ -1,4 +1,8 @@
 /**
+ * @deprecated FASE 3.1B — Este componente ya no se usa en producción.
+ * La lógica de proyección fue absorbida por BusinessSliceOmniviewMatrixTable
+ * (prop mode="projection"). Se conserva por seguridad y referencia.
+ *
  * BusinessSliceOmniviewProjectionTable — tabla de proyección que reutiliza
  * la misma estructura visual de Omniview Matrix (header, ciudades, tajadas).
  */

@@ -421,6 +421,168 @@ async def get_missing(
         raise
 
 
+@router.get("/versions")
+async def get_plan_versions():
+    """
+    Lista todas las versiones del plan disponibles en ops.plan_trips_monthly,
+    ordenadas por fecha de creación descendente.
+    """
+    try:
+        from app.db.connection import get_db
+        with get_db() as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute("""
+                    SELECT
+                        plan_version,
+                        MIN(created_at) AS created_at,
+                        COUNT(*) AS rows
+                    FROM ops.plan_trips_monthly
+                    GROUP BY plan_version
+                    ORDER BY MIN(created_at) DESC
+                """)
+                results = cursor.fetchall()
+                return [
+                    {
+                        "plan_version": r[0],
+                        "created_at": r[1].isoformat() if r[1] else None,
+                        "rows": r[2],
+                    }
+                    for r in results
+                ]
+            finally:
+                cursor.close()
+    except Exception as e:
+        logger.error(f"Error al obtener versiones del plan: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/upload_ruta27_ui")
+async def upload_plan_ruta27_ui(file: UploadFile = File(...)):
+    """
+    Sube un archivo de proyección desde la UI. Detecta automáticamente el formato:
+
+    1. Plantilla Control Tower multi-hoja (TRIPS / REVENUE / DRIVERS):
+       Columnas dimensionales: country, city, linea_negocio.
+       Columnas de métricas: YYYY-MM (ej. 2026-01, 2026-02...).
+       avg_ticket_plan se deriva como revenue/trips cuando trips > 0.
+       segment se inserta NULL (plantilla agregada sin desglose b2b/b2c).
+
+    2. Formato long/tabular Ruta 27 (compatibilidad existente):
+       CSV o Excel con columnas: country, city, lob_base, segment, year, month,
+       trips_plan, active_drivers_plan, avg_ticket_plan.
+
+    Genera plan_version automática con timestamp. Inserta en ops.plan_trips_monthly
+    sin modificar datos existentes ni versiones anteriores.
+    """
+    fn = (file.filename or "").lower()
+    if not fn.endswith(('.csv', '.xlsx', '.xls')):
+        raise HTTPException(
+            status_code=400,
+            detail="El archivo debe ser CSV (.csv) o Excel (.xlsx, .xls)"
+        )
+
+    try:
+        file_content = await file.read()
+        plan_version = f"ruta27_{datetime.now().strftime('%Y_%m_%d')}"
+
+        # ── Detección de formato ──────────────────────────────────────────
+        from app.services.plan_template_parser_service import (
+            is_control_tower_template,
+            parse_control_tower_template,
+            ingest_control_tower_rows,
+        )
+
+        if is_control_tower_template(file_content, file.filename):
+            # ── Plantilla Control Tower (multi-hoja TRIPS/REVENUE/DRIVERS) ──
+            logger.info("upload_ruta27_ui: formato=plantilla_control_tower archivo=%s", file.filename)
+            rows, warnings = parse_control_tower_template(file_content, file.filename)
+            final_version, inserted_count = ingest_control_tower_rows(rows, plan_version)
+
+            return {
+                "success":             True,
+                "plan_version":        final_version,
+                "rows_inserted":       inserted_count,
+                "source_file_name":    file.filename,
+                "uploaded_at":         datetime.now().isoformat(),
+                "format_detected":     "plantilla_control_tower",
+                "warnings":            warnings,
+                "message": (
+                    f"Plantilla Control Tower procesada: {inserted_count} registros "
+                    f"con versión {final_version}"
+                    + (f". {len(warnings)} advertencia(s)." if warnings else ".")
+                ),
+            }
+
+        # ── Formato long/tabular Ruta 27 (flujo existente intacto) ─────────
+        logger.info("upload_ruta27_ui: formato=long_tabular_ruta27 archivo=%s", file.filename)
+
+        if fn.endswith(('.xlsx', '.xls')):
+            try:
+                import pandas as pd
+                import io as _io
+                df = pd.read_excel(_io.BytesIO(file_content), sheet_name=0)
+                csv_content = df.to_csv(index=False).encode('utf-8')
+            except ImportError:
+                raise HTTPException(
+                    status_code=500,
+                    detail="pandas no está instalado en el servidor. Sube un archivo CSV."
+                )
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"No se pudo leer el Excel: {str(e)}"
+                )
+        else:
+            csv_content = file_content
+
+        with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.csv') as tmp_file:
+            tmp_file.write(csv_content)
+            tmp_path = tmp_file.name
+
+        try:
+            backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            script_path = os.path.join(backend_dir, 'scripts', 'ingest_plan_from_csv_ruta27.py')
+
+            if not os.path.exists(script_path):
+                raise FileNotFoundError(f"Script de ingesta no encontrado: {script_path}")
+
+            spec = importlib.util.spec_from_file_location("ingest_plan_from_csv_ruta27", script_path)
+            ingest_module = importlib.util.module_from_spec(spec)
+            sys.modules['ingest_plan_from_csv_ruta27'] = ingest_module
+            spec.loader.exec_module(ingest_module)
+
+            final_version, inserted_count = ingest_module.ingest_plan_from_csv(tmp_path, plan_version)
+
+            return {
+                "success":          True,
+                "plan_version":     final_version,
+                "rows_inserted":    inserted_count,
+                "source_file_name": file.filename,
+                "uploaded_at":      datetime.now().isoformat(),
+                "format_detected":  "long_tabular_ruta27",
+                "warnings":         [],
+                "message": (
+                    f"Plan cargado exitosamente: {inserted_count} registros "
+                    f"con versión {final_version}."
+                ),
+            }
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        # Errores de validación orientados al usuario (desde el parser)
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error al subir plan UI: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error al procesar el archivo: {str(e)}")
+
+
 @router.post("/upload_control_loop_projection")
 async def upload_control_loop_projection(
     file: UploadFile = File(...),

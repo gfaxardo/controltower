@@ -1,3 +1,8 @@
+/**
+ * @deprecated FASE 3.1B — Este componente ya no se usa en producción.
+ * La lógica de celda de proyección fue absorbida por BusinessSliceOmniviewMatrixCell
+ * (prop mode="projection"). Se conserva por seguridad y referencia.
+ */
 import { memo } from 'react'
 import { fmtValue } from './omniview/omniviewMatrixUtils.js'
 import {

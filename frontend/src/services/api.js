@@ -118,6 +118,23 @@ export const uploadControlLoopProjection = async (file, planVersion = null) => {
   return response.data
 }
 
+/** Lista versiones del plan desde ops.plan_trips_monthly. */
+export const getPlanVersions = async () => {
+  const response = await api.get('/plan/versions', { timeout: 10000 })
+  return response.data
+}
+
+/** Sube archivo CSV o Excel (Ruta 27) desde la UI. Genera versión con timestamp automático. */
+export const uploadPlanRuta27UI = async (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  const response = await api.post('/plan/upload_ruta27_ui', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 600000, // 10 min — ingesta puede tardar ~2min en DB remota lenta
+  })
+  return response.data
+}
+
 export const getControlLoopPlanVsReal = async (params = {}) => {
   const response = await api.get('/ops/control-loop/plan-vs-real', { params })
   return response.data

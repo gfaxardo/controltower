@@ -11,12 +11,15 @@ Aditivo: no modifica servicios ni tablas existentes.
 from __future__ import annotations
 
 import logging
+from calendar import monthrange
 from collections import defaultdict
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from psycopg2.extras import RealDictCursor
 
+from app.config.control_loop_lob_mapping import resolve_excel_line_to_canonical
+from app.contracts.data_contract import remove_accents
 from app.db.connection import get_db
 from app.services.business_slice_service import FACT_DAILY, FACT_MONTHLY, FACT_WEEKLY
 from app.services.control_loop_business_slice_resolve import (
@@ -40,6 +43,9 @@ _COUNTRY_NORM = {
 
 _COUNTRY_FULL = {"pe": "peru", "co": "colombia"}
 
+# Nombres de país tal como aparecen en ops.business_slice_mapping_rules
+_COUNTRY_FOR_RULES = {"pe": "Perú", "co": "Colombia"}
+
 
 def _norm_country(raw: str) -> str:
     return _COUNTRY_NORM.get((raw or "").strip().lower(), (raw or "").strip().lower())
@@ -47,6 +53,23 @@ def _norm_country(raw: str) -> str:
 
 def _to_full_country(code: str) -> str:
     return _COUNTRY_FULL.get(code, code)
+
+
+def _country_to_rules_name(raw: str) -> str:
+    """Convierte cualquier forma de país al nombre exacto en business_slice_mapping_rules."""
+    code = _norm_country(raw)
+    return _COUNTRY_FOR_RULES.get(code, raw)
+
+
+def _country_to_fact_name(raw: str) -> str:
+    """Convierte cualquier forma de país al nombre en FACT_MONTHLY (lowercase, sin tilde)."""
+    code = _norm_country(raw)
+    return _COUNTRY_FULL.get(code, remove_accents((raw or "").strip()).lower())
+
+
+def _city_to_fact_name(raw: str) -> str:
+    """Normaliza ciudad al formato de FACT_MONTHLY: lowercase sin tildes."""
+    return remove_accents((raw or "").strip()).lower()
 
 
 def _month_key(d) -> str:
@@ -101,22 +124,47 @@ def get_omniview_projection(
             },
         }
 
+    # Geos en formato que ops.business_slice_mapping_rules entiende: "Perú"/"Colombia" + ciudad con tildes
     geos: Set[Tuple[str, str]] = set()
     for p in plan_rows:
-        geos.add((str(p["country"]), str(p["city"])))
+        co_rules = _country_to_rules_name(str(p["country"]))
+        ci_raw = str(p["city"])
+        geos.add((co_rules, ci_raw))
 
     idx = load_rules_index_for_geos(geos)
     map_rows = load_map_fallback_rows()
 
     plan_by_key = _resolve_and_index_plan(plan_rows, idx, map_rows)
 
+    # Separar filas resueltas de no resueltas para trazabilidad
+    resolved_plan_by_key: Dict[Tuple, Dict] = {}
+    unresolved_list: List[Dict] = []
+    for key, plan in plan_by_key.items():
+        if plan.get("resolution_status") == "resolved":
+            resolved_plan_by_key[key] = plan
+        else:
+            unresolved_list.append({
+                "raw_city": plan.get("raw_city", ""),
+                "city_norm": plan.get("city", ""),
+                "raw_lob": plan.get("raw_lob", ""),
+                "bsn_fallback": plan.get("business_slice_name", ""),
+                "resolution_source": plan.get("resolution_source", "unresolved"),
+            })
+
+    if unresolved_list:
+        logger.warning(
+            "get_omniview_projection: %d filas del plan sin resolver a tajada canónica — %s",
+            len(unresolved_list),
+            [f"{u['raw_city']}:{u['raw_lob']}" for u in unresolved_list[:5]],
+        )
+
     with get_db() as conn:
         if grain == "monthly":
-            result_rows = _build_monthly(conn, plan_by_key, today, country, city, business_slice, year, month)
+            result_rows = _build_monthly(conn, resolved_plan_by_key, today, country, city, business_slice, year, month)
         elif grain == "weekly":
-            result_rows = _build_weekly(conn, plan_by_key, today, country, city, business_slice, year, month)
+            result_rows = _build_weekly(conn, resolved_plan_by_key, today, country, city, business_slice, year, month)
         else:
-            result_rows = _build_daily(conn, plan_by_key, today, country, city, business_slice, year, month)
+            result_rows = _build_daily(conn, resolved_plan_by_key, today, country, city, business_slice, year, month)
 
     curve_summary = _compute_curve_summary(result_rows)
 
@@ -136,6 +184,10 @@ def get_omniview_projection(
             "plan_loaded_at": last_loaded,
             "curve_summary": curve_summary,
             "kpis_with_projection": list(PROJECTABLE_KPIS),
+            "unresolved": {
+                "count": len(unresolved_list),
+                "rows": unresolved_list,
+            },
         },
     }
 
@@ -147,6 +199,12 @@ def _load_plan(
     year: Optional[int],
     month: Optional[int],
 ) -> List[Dict[str, Any]]:
+    """
+    Carga filas del plan para la version dada.
+    Fuente primaria: ops.v_plan_projection_control_loop (staging.control_loop_plan_metric_long).
+    Fuente secundaria: ops.plan_trips_monthly (planes subidos via upload_ruta27_ui).
+    Si la fuente primaria no tiene filas para plan_version, se usa la secundaria.
+    """
     params: List[Any] = [plan_version]
     clauses = ["plan_version = %s"]
 
@@ -158,27 +216,76 @@ def _load_plan(
     if city:
         clauses.append("lower(trim(city)) = lower(trim(%s))")
         params.append(city.strip().lower())
-    if year:
-        clauses.append("EXTRACT(YEAR FROM period_date) = %s")
-        params.append(year)
-    if month:
-        clauses.append("EXTRACT(MONTH FROM period_date) = %s")
-        params.append(month)
 
-    sql = f"""
+    where = " AND ".join(clauses)
+
+    # ── Fuente primaria: vista control loop ──────────────────────────────
+    primary_params = list(params)
+    primary_clauses = list(clauses)
+    if year:
+        primary_clauses.append("EXTRACT(YEAR FROM period_date) = %s")
+        primary_params.append(year)
+    if month:
+        primary_clauses.append("EXTRACT(MONTH FROM period_date) = %s")
+        primary_params.append(month)
+
+    primary_sql = f"""
         SELECT plan_version, period_date, country, city,
                linea_negocio_canonica, linea_negocio_excel,
                projected_trips, projected_revenue, projected_active_drivers,
                last_loaded_at
         FROM ops.v_plan_projection_control_loop
-        WHERE {' AND '.join(clauses)}
+        WHERE {' AND '.join(primary_clauses)}
     """
 
     with get_db() as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute(sql, params)
+        cur.execute(primary_sql, primary_params)
         rows = [dict(r) for r in cur.fetchall()]
         cur.close()
+
+    if rows:
+        return rows
+
+    # ── Fuente secundaria: ops.plan_trips_monthly ────────────────────────
+    # Se activa cuando la vista no tiene datos para la version pedida
+    # (planes subidos via upload_ruta27_ui / plantilla Control Tower).
+    secondary_params = list(params)
+    secondary_clauses = list(clauses)
+    if year:
+        secondary_clauses.append("EXTRACT(YEAR FROM month) = %s")
+        secondary_params.append(year)
+    if month:
+        secondary_clauses.append("EXTRACT(MONTH FROM month) = %s")
+        secondary_params.append(month)
+
+    secondary_sql = f"""
+        SELECT
+            plan_version,
+            month                   AS period_date,
+            country,
+            city,
+            lob_base                AS linea_negocio_canonica,
+            lob_base                AS linea_negocio_excel,
+            projected_trips,
+            projected_revenue,
+            projected_drivers       AS projected_active_drivers,
+            created_at              AS last_loaded_at
+        FROM ops.plan_trips_monthly
+        WHERE {' AND '.join(secondary_clauses)}
+    """
+
+    with get_db() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(secondary_sql, secondary_params)
+        rows = [dict(r) for r in cur.fetchall()]
+        cur.close()
+
+    if rows:
+        logger.info(
+            "_load_plan: usando fuente secundaria (ops.plan_trips_monthly) "
+            "para plan_version=%s — %d filas", plan_version, len(rows)
+        )
 
     return rows
 
@@ -188,42 +295,70 @@ def _resolve_and_index_plan(
     idx,
     map_rows: List[dict],
 ) -> Dict[Tuple[str, str, str, str], Dict[str, Any]]:
-    """Resolve plan lines to business_slice_name and index by (month, country, city, bsn)."""
+    """
+    Resuelve líneas de plan a business_slice_name canónico e indexa por
+    (month, country_fact, city_fact, bsn_lower).
+
+    Normalización de formatos:
+    - country: cualquier forma → "peru"/"colombia" (formato FACT_MONTHLY)
+    - city: cualquier forma → lowercase sin tildes (formato FACT_MONTHLY)
+    - bsn: nombre canónico de tajada desde business_slice_mapping_rules
+
+    Para lookup en reglas se usa "Perú"/"Colombia" + ciudad con tildes
+    (formato exact de ops.business_slice_mapping_rules).
+    """
     result: Dict[Tuple[str, str, str, str], Dict[str, Any]] = {}
 
     for p in plan_rows:
-        co = str(p["country"])
-        ci = str(p["city"])
+        ci_raw = str(p["city"])
+        co_raw = str(p["country"])
+
+        # Formato para lookup en reglas (ops.business_slice_mapping_rules)
+        co_rules = _country_to_rules_name(co_raw)   # "Perú" / "Colombia"
+
+        # Formato para matchear FACT_MONTHLY (display y clave real_map)
+        co_fact = _country_to_fact_name(co_raw)     # "peru" / "colombia"
+        ci_fact = _city_to_fact_name(ci_raw)         # "lima", "bogota" (sin tildes, lowercase)
+
         lob_excel = str(p.get("linea_negocio_excel") or "")
         lob_canon = str(p.get("linea_negocio_canonica") or "")
 
-        bsn, source = resolve_to_business_slice_name(idx, map_rows, co, ci, lob_excel, lob_canon)
+        # Derivar clave canónica snake_case ("auto_taxi") para PLAN_LINE_TO_SLICE_CANDIDATES.
+        # Necesario cuando el plan almacena etiquetas de display ("Auto Taxi") en vez de la clave.
+        canon_key, _ = resolve_excel_line_to_canonical(lob_excel or lob_canon)
+        plan_line_key = canon_key or lob_canon or lob_excel
+
+        # Resolver usando formato de reglas para país/ciudad
+        bsn, source = resolve_to_business_slice_name(
+            idx, map_rows, co_rules, ci_raw, lob_excel, plan_line_key
+        )
+        is_resolved = bool(bsn) and source != "unresolved"
         if not bsn:
             bsn = lob_excel or lob_canon or "__unresolved__"
 
         mk = _month_key(p["period_date"])
-        key = (mk, co.strip().lower(), ci.strip().lower(), bsn.strip().lower())
+        # Clave canónica: usa formato FACT_MONTHLY para matchear real_map correctamente
+        key = (mk, co_fact, ci_fact, bsn.strip().lower())
 
         if key in result:
             existing = result[key]
-            for metric_key, plan_key in [
-                ("projected_trips", "projected_trips"),
-                ("projected_revenue", "projected_revenue"),
-                ("projected_active_drivers", "projected_active_drivers"),
-            ]:
-                ev = _safe_float(existing.get(plan_key))
-                nv = _safe_float(p.get(plan_key))
+            for metric_key in ("projected_trips", "projected_revenue", "projected_active_drivers"):
+                ev = _safe_float(existing.get(metric_key))
+                nv = _safe_float(p.get(metric_key))
                 if ev is not None and nv is not None:
-                    existing[plan_key] = ev + nv
+                    existing[metric_key] = ev + nv
                 elif nv is not None:
-                    existing[plan_key] = nv
+                    existing[metric_key] = nv
         else:
             result[key] = {
                 "period_date": p["period_date"],
-                "country": co,
-                "city": ci,
+                "country": co_fact,        # "peru"/"colombia" — mismo que FACT_MONTHLY
+                "city": ci_fact,           # "lima"/"bogota" — mismo que FACT_MONTHLY
+                "raw_city": ci_raw,        # "LIMA PE", "Bogotá" — para auditoría
+                "raw_lob": lob_excel or lob_canon,
                 "business_slice_name": bsn,
                 "resolution_source": source,
+                "resolution_status": "resolved" if is_resolved else "unresolved",
                 "projected_trips": _safe_float(p.get("projected_trips")),
                 "projected_revenue": _safe_float(p.get("projected_revenue")),
                 "projected_active_drivers": _safe_float(p.get("projected_active_drivers")),
@@ -273,7 +408,13 @@ def _build_monthly(
         row = _build_no_plan_row(real_data, mk, "monthly")
         result.append(row)
 
-    result.sort(key=lambda r: (r.get("month", ""), r.get("country", ""), r.get("city", ""), r.get("business_slice_name", "")))
+    # Perú primero (PE), luego Colombia (CO); dentro de cada país por ciudad y LOB
+    result.sort(key=lambda r: (
+        r.get("month", ""),
+        0 if r.get("country", "") == "peru" else 1,
+        r.get("city", ""),
+        r.get("business_slice_name", ""),
+    ))
     return result
 
 
@@ -301,8 +442,8 @@ def _build_projection_row_monthly(
     grain: str,
 ) -> Dict[str, Any]:
     bsn = plan["business_slice_name"]
-    co_full = plan["country"]
-    ci = plan["city"]
+    co_full = plan["country"]   # "peru"/"colombia" — formato FACT_MONTHLY
+    ci = plan["city"]           # "lima"/"bogota" — formato FACT_MONTHLY
 
     real_key = (_month_key(month_date), co_norm, ci_norm, bsn_lower)
     real = real_map.get(real_key, {})
@@ -311,10 +452,21 @@ def _build_projection_row_monthly(
         "country": co_full,
         "city": ci,
         "business_slice_name": bsn,
-        "fleet_display_name": bsn,
+        "fleet_display_name": "",  # evita duplicación visual "Auto Taxi · Auto Taxi"
         "is_subfleet": False,
         "subfleet_name": "",
         "month": _month_key(month_date),
+    }
+
+    # Para meses completos (pasados y futuros), cutoff_day == último día del mes
+    # → ratio esperado = 1.0. Solo el mes actual parcial necesita la curva estacional.
+    days_in_month = monthrange(month_date.year, month_date.month)[1]
+    is_full_month = cutoff_day >= days_in_month
+    _full_month_curve = {
+        "expected_ratio_to_date": 1.0,
+        "curve_method": "full_month",
+        "confidence": "exact",
+        "fallback_level": 0,
     }
 
     for kpi in PROJECTABLE_KPIS:
@@ -336,8 +488,12 @@ def _build_projection_row_monthly(
 
         actual = _safe_float(real.get(real_kpi_key))
 
-        curve = compute_expected_ratio(
-            _to_full_country(co_norm), ci, bsn, kpi, month_date, cutoff_day, conn=conn,
+        curve = (
+            _full_month_curve
+            if is_full_month
+            else compute_expected_ratio(
+                _to_full_country(co_norm), ci, bsn, kpi, month_date, cutoff_day, conn=conn,
+            )
         )
         expected_ratio = curve["expected_ratio_to_date"]
         expected_to_date = plan_total * expected_ratio if plan_total is not None else None

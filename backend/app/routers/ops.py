@@ -33,6 +33,7 @@ from app.services.control_loop_plan_vs_real_service import (
 from app.services.projection_expected_progress_service import (
     get_omniview_projection,
 )
+from app.utils.json_sanitizer import sanitize_for_json
 from app.settings import settings
 from app.services.plan_real_split_service import (
     get_real_monthly,
@@ -452,7 +453,7 @@ async def business_slice_omniview_projection(
             year=year,
             month=month,
         )
-        return data
+        return sanitize_for_json(data)
     except Exception as e:
         logger.exception("business-slice/omniview-projection")
         raise HTTPException(status_code=500, detail=str(e))

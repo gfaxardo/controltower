@@ -12,6 +12,8 @@ import {
   getMatrixOperationalTrust,
   getControlLoopPlanVersions,
   getOmniviewProjection,
+  getPlanVersions,
+  uploadPlanRuta27UI,
 } from '../services/api.js'
 import {
   buildMatrix,
@@ -38,9 +40,10 @@ import { INSIGHT_CONFIG } from './omniview/insightConfig.js'
 import { detectInsights, buildInsightCellMap } from './omniview/insightEngine.js'
 import { loadInsightUserPatch, mergeInsightRuntimeConfig } from './omniview/insightUserSettings.js'
 import BusinessSliceOmniviewMatrixTable from './BusinessSliceOmniviewMatrixTable.jsx'
-import BusinessSliceOmniviewProjectionTable from './BusinessSliceOmniviewProjectionTable.jsx'
-import { buildProjectionMatrix } from './omniview/projectionMatrixUtils.js'
+import { buildProjectionMatrix, PROJECTION_KPIS, fmtAttainment, projectionSignalColor, SIGNAL_DOT } from './omniview/projectionMatrixUtils.js'
 import BusinessSliceOmniviewInspector from './BusinessSliceOmniviewInspector.jsx'
+import OmniviewPriorityPanel from './OmniviewPriorityPanel.jsx'
+import OmniviewProjectionDrill from './OmniviewProjectionDrill.jsx'
 import BusinessSliceInsightsPanel from './BusinessSliceInsightsPanel.jsx'
 import BusinessSliceInsightSettings from './BusinessSliceInsightSettings.jsx'
 import MatrixExecutiveBanner from './MatrixExecutiveBanner.jsx'
@@ -134,6 +137,13 @@ export default function BusinessSliceOmniviewMatrix () {
   const [projectionRows, setProjectionRows] = useState([])
   const [projectionMeta, setProjectionMeta] = useState(null)
 
+  const [uploadModalOpen, setUploadModalOpen] = useState(false)
+  const [uploadFile, setUploadFile] = useState(null)
+  const [uploadLoading, setUploadLoading] = useState(false)
+  const [uploadError, setUploadError] = useState(null)
+  const [uploadSuccess, setUploadSuccess] = useState(null)
+  const uploadInputRef = useRef(null)
+
   const isProjectionMode = viewMode === 'proyeccion'
 
   const needsCountry = grain === 'weekly' || grain === 'daily'
@@ -143,15 +153,28 @@ export default function BusinessSliceOmniviewMatrix () {
     persistState({ grain, compact, country, city, businessSlice, fleet, showSubfleets, year, month, sortKey, focusedKpi, viewMode, planVersion })
   }, [grain, compact, country, city, businessSlice, fleet, showSubfleets, year, month, sortKey, focusedKpi, viewMode, planVersion])
 
+  const loadPlanVersions = useCallback((autoSelect = false) => {
+    Promise.allSettled([
+      getPlanVersions(),
+      getControlLoopPlanVersions(),
+    ]).then(([r1, r2]) => {
+      const fromPlan = r1.status === 'fulfilled'
+        ? (Array.isArray(r1.value) ? r1.value.map((v) => v?.plan_version ?? v) : [])
+        : []
+      const fromCL = r2.status === 'fulfilled'
+        ? (Array.isArray(r2.value) ? r2.value : (r2.value?.data || []))
+        : []
+      const merged = [...new Set([...fromPlan, ...fromCL])].filter(Boolean)
+      setPlanVersions(merged)
+      if ((autoSelect || !planVersion) && merged.length > 0) {
+        setPlanVersion(merged[0])
+      }
+    })
+  }, [planVersion]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (isProjectionMode) {
-      getControlLoopPlanVersions()
-        .then((data) => {
-          const versions = Array.isArray(data) ? data : (data?.data || [])
-          setPlanVersions(versions)
-          if (!planVersion && versions.length > 0) setPlanVersion(versions[0])
-        })
-        .catch(() => setPlanVersions([]))
+      loadPlanVersions()
     }
   }, [isProjectionMode]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -597,6 +620,29 @@ export default function BusinessSliceOmniviewMatrix () {
       .catch(() => {})
   }, [])
 
+  const handleUploadSubmit = useCallback(async () => {
+    if (!uploadFile) return
+    setUploadLoading(true)
+    setUploadError(null)
+    setUploadSuccess(null)
+    try {
+      const result = await uploadPlanRuta27UI(uploadFile)
+      setUploadSuccess(result)
+      setUploadFile(null)
+      if (uploadInputRef.current) uploadInputRef.current.value = ''
+      loadPlanVersions(true)
+      setTimeout(() => {
+        setUploadModalOpen(false)
+        setUploadSuccess(null)
+      }, 2000)
+    } catch (e) {
+      const detail = e?.response?.data?.detail
+      setUploadError(typeof detail === 'string' ? detail : e.message || 'Error al subir el archivo')
+    } finally {
+      setUploadLoading(false)
+    }
+  }, [uploadFile, loadPlanVersions])
+
   const sortSelectOptions = useMemo(() => {
     const impactOpt = SORT_OPTIONS.find((o) => o.id === 'impact_desc')
     const rest = SORT_OPTIONS.filter((o) => o.id !== 'impact_desc')
@@ -761,6 +807,17 @@ export default function BusinessSliceOmniviewMatrix () {
                   ) : (
                     <span className="text-[10px] text-amber-600 font-medium">Sin versiones</span>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => { setUploadModalOpen(true); setUploadError(null); setUploadSuccess(null) }}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                    title="Subir archivo de proyección"
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    Subir
+                  </button>
                 </div>
               </>
             )}
@@ -994,22 +1051,85 @@ export default function BusinessSliceOmniviewMatrix () {
           </div>
         )}
 
-        {/* ── Matrix (Vs Proyección) ──────────────────────────────── */}
+        {/* ── Prioridades del periodo (Vs Proyección) — FASE 3.3 ───── */}
+        {heavyQueriesEnabled && !loading && isProjectionMode && projMatrix && projectionRows.length > 0 && (
+          <OmniviewPriorityPanel
+            projMatrix={projMatrix}
+            focusedKpi={focusedKpi}
+            grain={grain}
+            compact={compact}
+            onCellNavigate={handleCellClick}
+          />
+        )}
+
+        {/* ── Matrix + Drill (Vs Proyección) ─────────────────────── */}
         {heavyQueriesEnabled && !loading && isProjectionMode && projMatrix && projectionRows.length > 0 && (
           <div className="flex gap-3 items-start">
             <div className="flex-1 min-w-0">
-              <BusinessSliceOmniviewProjectionTable
+              <BusinessSliceOmniviewMatrixTable
                 matrix={projMatrix} grain={grain} compact={compact} sortKey={sortKey}
                 onCellClick={handleCellClick} selectedCell={selectedCell}
                 periodStates={periodStates}
                 focusedKpi={focusedKpi}
+                mode="projection"
               />
+            </div>
+            <OmniviewProjectionDrill
+              selection={selection} grain={grain} compact={compact}
+              onClose={() => { setSelection(null); setSelectedCell(null) }}
+              projectionMeta={projectionMeta}
+              planVersion={planVersion}
+            />
+          </div>
+        )}
+
+        {/* ── Badge de filas no resueltas a tajada canónica ──────── */}
+        {heavyQueriesEnabled && !loading && isProjectionMode && projectionMeta?.unresolved?.count > 0 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-2.5 flex items-start gap-2.5">
+            <svg className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z" />
+            </svg>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-amber-800">
+                {projectionMeta.unresolved.count} filas del plan sin mapear a tajada canónica
+              </p>
+              <p className="text-[11px] text-amber-600 mt-0.5">
+                {projectionMeta.unresolved.rows.slice(0, 5).map((r, i) => (
+                  <span key={i} className="mr-2 font-mono">{r.raw_city}/{r.raw_lob}</span>
+                ))}
+                {projectionMeta.unresolved.count > 5 && <span className="text-amber-500">…y {projectionMeta.unresolved.count - 5} más</span>}
+              </p>
             </div>
           </div>
         )}
 
         {/* ── Sin proyección cargada ──────────────────────────────── */}
-        {heavyQueriesEnabled && !loading && isProjectionMode && !planVersion && (
+        {heavyQueriesEnabled && !loading && isProjectionMode && planVersions.length === 0 && (
+          <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50/60 px-6 py-10 text-center flex flex-col items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
+              <svg className="w-6 h-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-amber-800">No hay proyección cargada</p>
+              <p className="mt-1 text-xs text-amber-600 max-w-sm mx-auto">
+                Para activar la comparación Plan vs Real, sube un archivo de proyección en formato Ruta 27 (CSV o Excel).
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setUploadModalOpen(true); setUploadError(null); setUploadSuccess(null) }}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              Subir archivo de proyección
+            </button>
+          </div>
+        )}
+        {heavyQueriesEnabled && !loading && isProjectionMode && planVersions.length > 0 && !planVersion && (
           <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50/60 px-6 py-8 text-center">
             <p className="text-sm font-semibold text-amber-800">Selecciona una versión de plan</p>
             <p className="mt-1 text-xs text-amber-600">Para ver la comparación Plan vs Real, selecciona una versión de proyección en el selector de arriba.</p>
@@ -1022,6 +1142,175 @@ export default function BusinessSliceOmniviewMatrix () {
           </div>
         )}
       </div>
+
+      {/* ── Modal subida de proyección ──────────────────────────── */}
+      {uploadModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                  <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Subir archivo de proyección</p>
+                  <p className="text-[11px] text-gray-500">Formato Ruta 27 · CSV o Excel</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setUploadModalOpen(false); setUploadFile(null); setUploadError(null); setUploadSuccess(null) }}
+                className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded"
+                disabled={uploadLoading}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-5 space-y-4">
+              {/* Zona de selección de archivo */}
+              <div
+                className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-colors group"
+                onClick={() => uploadInputRef.current?.click()}
+              >
+                <svg className="w-8 h-8 text-gray-300 group-hover:text-blue-400 mx-auto mb-2 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                </svg>
+                {uploadFile ? (
+                  <div>
+                    <p className="text-sm font-semibold text-blue-700">{uploadFile.name}</p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">{(uploadFile.size / 1024).toFixed(1)} KB · Haz clic para cambiar</p>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-sm text-gray-500 font-medium">Haz clic para seleccionar archivo</p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">CSV o Excel (.xlsx) · Formato Ruta 27</p>
+                  </div>
+                )}
+                <input
+                  ref={uploadInputRef}
+                  type="file"
+                  className="hidden"
+                  accept=".csv,.xlsx,.xls"
+                  onChange={(e) => { setUploadFile(e.target.files?.[0] || null); setUploadError(null) }}
+                />
+              </div>
+
+              {/* Formatos aceptados */}
+              <div className="bg-gray-50 rounded-lg px-3 py-2.5 space-y-2.5">
+                <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Formatos aceptados</p>
+                <div className="space-y-1.5">
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5 flex-shrink-0 w-4 h-4 rounded bg-blue-100 text-blue-700 text-[9px] font-bold flex items-center justify-center">1</span>
+                    <div>
+                      <p className="text-[10px] font-semibold text-gray-700">Plantilla Control Tower (Excel multi-hoja)</p>
+                      <p className="text-[10px] text-gray-500 leading-relaxed">
+                        Hojas: <span className="font-mono">TRIPS · REVENUE · DRIVERS</span><br />
+                        Columnas fijas: <span className="font-mono">country, city, linea_negocio</span><br />
+                        Columnas de meses: <span className="font-mono">2026-01, 2026-02…</span>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5 flex-shrink-0 w-4 h-4 rounded bg-gray-200 text-gray-600 text-[9px] font-bold flex items-center justify-center">2</span>
+                    <div>
+                      <p className="text-[10px] font-semibold text-gray-700">Formato long/tabular Ruta 27 (CSV o Excel)</p>
+                      <p className="text-[10px] text-gray-500 font-mono leading-relaxed">
+                        country, city, lob_base, segment,<br />
+                        year, month, trips_plan,<br />
+                        active_drivers_plan, avg_ticket_plan
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Error */}
+              {uploadError && (
+                <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+                  <svg className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                  </svg>
+                  <p className="text-xs text-red-700">{uploadError}</p>
+                </div>
+              )}
+
+              {/* Éxito */}
+              {uploadSuccess && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2.5 space-y-1">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-emerald-800">{uploadSuccess.plan_version}</p>
+                      <p className="text-[11px] text-emerald-600">
+                        {uploadSuccess.rows_inserted?.toLocaleString()} registros cargados
+                        {uploadSuccess.format_detected === 'plantilla_control_tower' && (
+                          <span className="ml-1.5 px-1 py-px bg-emerald-100 rounded text-[9px] font-semibold">Plantilla CT</span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  {uploadSuccess.warnings?.length > 0 && (
+                    <div className="pl-6 space-y-0.5">
+                      {uploadSuccess.warnings.map((w, i) => (
+                        <p key={i} className="text-[10px] text-amber-700">{w}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-100 space-y-2">
+              {uploadLoading && (
+                <div className="flex items-center gap-2 text-[11px] text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                  <span className="inline-block w-3 h-3 border-[1.5px] border-blue-300 border-t-blue-600 rounded-full animate-spin flex-shrink-0" />
+                  <span>Procesando archivo e insertando datos en la base de datos. Esto puede tardar hasta 2 minutos con conexión remota. No cierres esta ventana.</span>
+                </div>
+              )}
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setUploadModalOpen(false); setUploadFile(null); setUploadError(null); setUploadSuccess(null) }}
+                  disabled={uploadLoading}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleUploadSubmit}
+                  disabled={!uploadFile || uploadLoading || !!uploadSuccess}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {uploadLoading ? (
+                    <>
+                      <span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Procesando…
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                      </svg>
+                      Subir proyección
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1145,23 +1434,23 @@ function ProjectionContextBar ({ grain, projMatrix, projectionMeta, planVersion,
   const lastTotals = lastPk ? totals?.get(lastPk) : null
 
   const curveSummary = projectionMeta?.curve_summary || {}
-  const kpisWithProjection = projectionMeta?.kpis_with_projection || []
 
-  const tripsTotal = lastTotals?.trips_completed_projected_total
-  const tripsReal = lastTotals?.trips_completed
-  const tripsExpected = lastTotals?.trips_completed_projected_expected
-  const tripsAttainment = lastTotals?.trips_completed_attainment_pct
-  const tripsSignal = lastTotals?.trips_completed_signal || 'no_data'
-  const tripsGap = lastTotals?.trips_completed_gap_to_expected
-
-  const signalDot = tripsSignal === 'green' ? 'bg-emerald-500'
-    : tripsSignal === 'warning' ? 'bg-amber-500'
-    : tripsSignal === 'danger' ? 'bg-red-500'
-    : 'bg-gray-300'
+  const KPI_LABELS = { trips_completed: 'Trips', revenue_yego_net: 'Revenue', active_drivers: 'Drivers' }
 
   const methodsStr = curveSummary.by_method
     ? Object.entries(curveSummary.by_method).map(([m, c]) => `${m}: ${c}`).join(', ')
     : ''
+
+  const avgConf = curveSummary.avg_confidence
+  const confBadgeCls = avgConf === 'high' ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+    : avgConf === 'medium' ? 'bg-amber-100 text-amber-800 border-amber-200'
+    : avgConf ? 'bg-red-100 text-red-800 border-red-200'
+    : ''
+  const confLabel = avgConf === 'high' ? 'Alta confianza'
+    : avgConf === 'medium' ? 'Media'
+    : avgConf === 'low' ? 'Baja'
+    : avgConf === 'fallback' ? 'Fallback'
+    : null
 
   return (
     <div className={`rounded-lg border border-slate-200 bg-slate-50 shadow-sm px-4 ${py} flex flex-wrap items-center gap-x-4 gap-y-1`}>
@@ -1181,42 +1470,41 @@ function ProjectionContextBar ({ grain, projMatrix, projectionMeta, planVersion,
         Grano: <strong className="uppercase">{grain}</strong>
       </span>
 
-      {tripsTotal != null && (
-        <span className="text-[10px] text-slate-600">
-          Plan trips: <strong>{Number(tripsTotal).toLocaleString()}</strong>
-        </span>
-      )}
+      <div className="w-px h-3 bg-gray-200 hidden sm:block" />
 
-      {tripsReal != null && (
-        <span className="text-[10px] text-slate-600">
-          Real: <strong>{Number(tripsReal).toLocaleString()}</strong>
-        </span>
-      )}
+      {PROJECTION_KPIS.map(kpi => {
+        const plan = lastTotals?.[`${kpi}_projected_total`]
+        const real = lastTotals?.[kpi]
+        const expected = lastTotals?.[`${kpi}_projected_expected`]
+        const attainment = lastTotals?.[`${kpi}_attainment_pct`]
+        const signal = lastTotals?.[`${kpi}_signal`] || 'no_data'
+        const gap = lastTotals?.[`${kpi}_gap_to_expected`]
+        const dot = SIGNAL_DOT[signal] || SIGNAL_DOT.no_data
+        const attColor = projectionSignalColor(signal)
+        const label = KPI_LABELS[kpi] || kpi
 
-      {tripsExpected != null && (
-        <span className="text-[10px] text-slate-600">
-          Expected: <strong>{Number(tripsExpected).toLocaleString()}</strong>
-        </span>
-      )}
+        if (plan == null && real == null) return null
 
-      {tripsAttainment != null && (
-        <span className="inline-flex items-center gap-1 text-[10px] font-medium">
-          <span className={`w-1.5 h-1.5 rounded-full ${signalDot} inline-block`} />
-          <span className={tripsSignal === 'green' ? 'text-emerald-700' : tripsSignal === 'warning' ? 'text-amber-700' : tripsSignal === 'danger' ? 'text-red-700' : 'text-slate-500'}>
-            Attainment: {tripsAttainment.toFixed(1)}%
+        return (
+          <span key={kpi} className="inline-flex items-center gap-1.5 text-[10px] text-slate-600">
+            <strong className="text-slate-700">{label}:</strong>
+            {plan != null && <span>P {Number(plan).toLocaleString()}</span>}
+            {real != null && <span>R {Number(real).toLocaleString()}</span>}
+            {attainment != null && (
+              <span className="inline-flex items-center gap-0.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${dot} inline-block`} />
+                <span style={{ color: attColor }} className="font-semibold">{fmtAttainment(attainment)}</span>
+              </span>
+            )}
+            {gap != null && <span className="text-slate-400">Gap {gap >= 0 ? '+' : ''}{Number(gap).toLocaleString()}</span>}
           </span>
-        </span>
-      )}
+        )
+      })}
 
-      {tripsGap != null && (
-        <span className="text-[10px] text-slate-500">
-          Gap: {tripsGap >= 0 ? '+' : ''}{Number(tripsGap).toLocaleString()}
-        </span>
-      )}
-
-      {curveSummary.avg_confidence && (
-        <span className="text-[10px] text-slate-500 ml-auto" title={methodsStr || undefined}>
-          Curva: {curveSummary.avg_confidence} · {curveSummary.total_combinations || 0} combinaciones
+      {confLabel && (
+        <span className={`ml-auto inline-block px-1.5 py-px rounded text-[9px] font-semibold border ${confBadgeCls}`} title={methodsStr || undefined}>
+          {confLabel}
+          {curveSummary.total_combinations ? ` · ${curveSummary.total_combinations} comb.` : ''}
         </span>
       )}
     </div>

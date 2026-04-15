@@ -244,6 +244,19 @@ export function computeProjectionTotalsDeltas (totals, allPeriods) {
   return result
 }
 
+const CURVE_SOURCE_LABELS = {
+  city_slice_3m: 'Ciudad + Tajada (3 meses)',
+  city_all_3m: 'Ciudad total (3 meses)',
+  country_slice_3m: 'País + Tajada (3 meses)',
+  country_all_3m: 'País total (3 meses)',
+  linear_fallback: 'Lineal (fallback)',
+}
+
+export function describeCurveSource (method) {
+  if (!method) return '—'
+  return CURVE_SOURCE_LABELS[method] || method
+}
+
 export function buildProjectionCellTooltip (kpi, delta, cityName, lineName, periodLbl) {
   const parts = [`${cityName} · ${lineName}`, `Periodo: ${periodLbl}`, `KPI: ${kpi?.label || '—'}`]
   if (!delta) return parts.join('\n')
@@ -255,8 +268,11 @@ export function buildProjectionCellTooltip (kpi, delta, cityName, lineName, peri
     if (delta.projected_total != null) parts.push(`Plan total periodo: ${_fmtNum(delta.projected_total)}`)
     if (delta.attainment_pct != null) parts.push(`Cumplimiento: ${delta.attainment_pct.toFixed(1)}%`)
     if (delta.gap_to_expected != null) parts.push(`Gap vs expected: ${delta.gap_to_expected >= 0 ? '+' : ''}${_fmtNum(delta.gap_to_expected)}`)
-    if (delta.curve_method) parts.push(`Método curva: ${delta.curve_method}`)
+    parts.push('')
+    if (delta.curve_method) parts.push(`Base: ${describeCurveSource(delta.curve_method)}`)
     if (delta.curve_confidence) parts.push(`Confianza: ${delta.curve_confidence}`)
+    if (delta.fallback_level != null) parts.push(`Nivel fallback: ${delta.fallback_level}`)
+    if (delta.expected_ratio != null) parts.push(`Ratio esperado: ${(delta.expected_ratio * 100).toFixed(1)}%`)
   } else {
     if (delta.value != null) parts.push(`Valor: ${_fmtNum(delta.value)}`)
     parts.push('(Sin proyección para este KPI)')
