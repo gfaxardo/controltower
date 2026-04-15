@@ -30,6 +30,9 @@ from app.services.control_loop_plan_vs_real_service import (
     get_control_loop_plan_vs_real,
     list_control_loop_plan_versions,
 )
+from app.services.projection_expected_progress_service import (
+    get_omniview_projection,
+)
 from app.settings import settings
 from app.services.plan_real_split_service import (
     get_real_monthly,
@@ -420,6 +423,38 @@ async def control_loop_plan_vs_real_endpoint(
         return {"data": data, "total_records": len(data)}
     except Exception as e:
         logger.exception("control-loop/plan-vs-real")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/business-slice/omniview-projection")
+async def business_slice_omniview_projection(
+    plan_version: str = Query(..., description="Plan version activa (staging Control Loop)"),
+    grain: Literal["monthly", "weekly", "daily"] = Query("monthly"),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    business_slice: Optional[str] = Query(None, description="Filtrar por tajada (business_slice_name)"),
+    year: Optional[int] = Query(None),
+    month: Optional[int] = Query(None),
+):
+    """
+    Omniview Projection Mode — Plan vs Real con curva estacional.
+    Devuelve filas compatibles con la matriz Omniview, con métricas de
+    cumplimiento (attainment) basadas en expected_to_date no lineal.
+    Aditivo: no modifica contratos de /monthly, /weekly, /daily.
+    """
+    try:
+        data = get_omniview_projection(
+            plan_version=plan_version,
+            grain=grain,
+            country=country,
+            city=city,
+            business_slice=business_slice,
+            year=year,
+            month=month,
+        )
+        return data
+    except Exception as e:
+        logger.exception("business-slice/omniview-projection")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -128,6 +128,11 @@ export const getControlLoopPlanVersions = async () => {
   return response.data
 }
 
+export const getOmniviewProjection = async (params = {}, { signal } = {}) => {
+  const response = await api.get('/ops/business-slice/omniview-projection', { params, signal })
+  return response.data
+}
+
 export const getCoreMonthlySummary = async (filters = {}) => {
   const response = await api.get('/core/summary/monthly', { params: filters })
   return response.data

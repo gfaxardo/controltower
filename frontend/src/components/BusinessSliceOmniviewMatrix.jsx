@@ -10,6 +10,8 @@ import {
   getDataFreshnessGlobal,
   getBusinessSliceCoverageSummary,
   getMatrixOperationalTrust,
+  getControlLoopPlanVersions,
+  getOmniviewProjection,
 } from '../services/api.js'
 import {
   buildMatrix,
@@ -36,6 +38,8 @@ import { INSIGHT_CONFIG } from './omniview/insightConfig.js'
 import { detectInsights, buildInsightCellMap } from './omniview/insightEngine.js'
 import { loadInsightUserPatch, mergeInsightRuntimeConfig } from './omniview/insightUserSettings.js'
 import BusinessSliceOmniviewMatrixTable from './BusinessSliceOmniviewMatrixTable.jsx'
+import BusinessSliceOmniviewProjectionTable from './BusinessSliceOmniviewProjectionTable.jsx'
+import { buildProjectionMatrix } from './omniview/projectionMatrixUtils.js'
 import BusinessSliceOmniviewInspector from './BusinessSliceOmniviewInspector.jsx'
 import BusinessSliceInsightsPanel from './BusinessSliceInsightsPanel.jsx'
 import BusinessSliceInsightSettings from './BusinessSliceInsightSettings.jsx'
@@ -124,12 +128,32 @@ export default function BusinessSliceOmniviewMatrix () {
   const [selectedCell, setSelectedCell] = useState(null)
   const [selection, setSelection] = useState(null)
 
+  const [viewMode, setViewMode] = useState(saved?.viewMode || 'evolucion')
+  const [planVersion, setPlanVersion] = useState(saved?.planVersion || '')
+  const [planVersions, setPlanVersions] = useState([])
+  const [projectionRows, setProjectionRows] = useState([])
+  const [projectionMeta, setProjectionMeta] = useState(null)
+
+  const isProjectionMode = viewMode === 'proyeccion'
+
   const needsCountry = grain === 'weekly' || grain === 'daily'
   const blockedByCountry = needsCountry && !country
 
   useEffect(() => {
-    persistState({ grain, compact, country, city, businessSlice, fleet, showSubfleets, year, month, sortKey, focusedKpi })
-  }, [grain, compact, country, city, businessSlice, fleet, showSubfleets, year, month, sortKey, focusedKpi])
+    persistState({ grain, compact, country, city, businessSlice, fleet, showSubfleets, year, month, sortKey, focusedKpi, viewMode, planVersion })
+  }, [grain, compact, country, city, businessSlice, fleet, showSubfleets, year, month, sortKey, focusedKpi, viewMode, planVersion])
+
+  useEffect(() => {
+    if (isProjectionMode) {
+      getControlLoopPlanVersions()
+        .then((data) => {
+          const versions = Array.isArray(data) ? data : (data?.data || [])
+          setPlanVersions(versions)
+          if (!planVersion && versions.length > 0) setPlanVersion(versions[0])
+        })
+        .catch(() => setPlanVersions([]))
+    }
+  }, [isProjectionMode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [freshnessInfo, setFreshnessInfo] = useState(null)
   const [sliceMaxTripDate, setSliceMaxTripDate] = useState(null)
@@ -271,9 +295,44 @@ export default function BusinessSliceOmniviewMatrix () {
   /** Evita tratar el primer render con consultas activas como «recién habilitado» (solo transición manual false→true). */
   const wasHeavyEnabledRef = useRef(heavyQueriesEnabled)
 
+  const doLoadProjection = useCallback(async (signal) => {
+    if (!planVersion) {
+      setProjectionRows([])
+      setProjectionMeta(null)
+      setErr(null)
+      setLoading(false)
+      return
+    }
+    setLoading(true); setErr(null)
+    setLoadingTasks((t) => ({ ...t, matrix: 'Proyección vs Real' }))
+    try {
+      const params = { plan_version: planVersion, grain }
+      if (country) params.country = country
+      if (city) params.city = city
+      if (businessSlice) params.business_slice = businessSlice
+      if (year != null && year !== '') params.year = Number(year)
+      if (month) params.month = Number(month)
+      const res = await getOmniviewProjection(params, { signal })
+      const data = Array.isArray(res?.data) ? res.data : []
+      setProjectionRows(data)
+      setProjectionMeta(res?.meta ?? null)
+    } catch (e) {
+      if (e?.code === 'ERR_CANCELED' || e?.name === 'CanceledError' || e?.name === 'AbortError') return
+      const detail = e?.response?.data?.detail
+      setErr((typeof detail === 'string' ? detail : detail?.message) || e.message || 'Error cargando proyección')
+      setProjectionRows([])
+      setProjectionMeta(null)
+    } finally {
+      setLoading(false)
+      setLoadingTasks((t) => { const n = { ...t }; delete n.matrix; return n })
+    }
+  }, [grain, country, city, businessSlice, year, month, planVersion])
+
   // doLoad: ejecuta la carga real de la matriz + lanza coverage-summary DESPUÉS (con retraso).
-  // Acepta un AbortController.signal para poder cancelar si el usuario cambia filtros mientras carga.
   const doLoad = useCallback(async (signal) => {
+    if (isProjectionMode) {
+      return doLoadProjection(signal)
+    }
     if (blockedByCountry) {
       setRows([])
       setMatrixMeta(null)
@@ -301,11 +360,8 @@ export default function BusinessSliceOmniviewMatrix () {
       if (!showSubfleets) data = data.filter((r) => !r.is_subfleet)
       setRows(data)
       setLoadingTasks((t) => { const n = { ...t }; delete n.matrix; return n })
-      // Mostrar la matriz en cuanto llega /monthly (o weekly/daily). El sleep de cobertura no debe
-      // mantener loading=true o la UI parece «colgada» aunque rows ya esté poblado.
       setLoading(false)
 
-      // Coverage-summary tras la matriz: pequeño staggering para no competir con el cierre de /monthly.
       const coverageParams = {}
       if (country) coverageParams.country = country
       if (city) coverageParams.city = city
@@ -338,7 +394,7 @@ export default function BusinessSliceOmniviewMatrix () {
       setLoading(false)
       setLoadingTasks((t) => { const n = { ...t }; delete n.matrix; return n })
     }
-  }, [grain, country, city, businessSlice, fleet, showSubfleets, year, month, blockedByCountry])
+  }, [grain, country, city, businessSlice, fleet, showSubfleets, year, month, blockedByCountry, isProjectionMode, doLoadProjection])
 
   useEffect(() => {
     if (!heavyQueriesEnabled) {
@@ -388,6 +444,7 @@ export default function BusinessSliceOmniviewMatrix () {
     filtersAbortRef.current?.abort('user-cancel')
   }, [])
 
+  const projMatrix = useMemo(() => isProjectionMode ? buildProjectionMatrix(projectionRows, grain) : null, [projectionRows, grain, isProjectionMode])
   const baseMatrix = useMemo(() => buildMatrix(rows, grain), [rows, grain])
   const backendTotals = useMemo(() => toMetricMap(matrixMeta?.period_totals), [matrixMeta?.period_totals])
   const backendComparisonTotals = useMemo(
@@ -683,7 +740,35 @@ export default function BusinessSliceOmniviewMatrix () {
 
           {/* Fila 2: Controles de visualización */}
           <div className="px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-2 bg-gray-50/60">
+            {/* Modo Evolución / Vs Proyección */}
+            <div className="flex items-center gap-1">
+              <span className="text-[11px] font-medium text-gray-400 mr-1">Modo</span>
+              <div className="flex gap-1">
+                <button type="button" className={btnCls(viewMode === 'evolucion')} onClick={() => setViewMode('evolucion')}>Evolución</button>
+                <button type="button" className={btnCls(viewMode === 'proyeccion')} onClick={() => setViewMode('proyeccion')}>Vs Proyección</button>
+              </div>
+            </div>
+
+            {isProjectionMode && (
+              <>
+                <div className="w-px h-4 bg-gray-200 hidden sm:block" />
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-medium text-gray-400">Plan</span>
+                  {planVersions.length > 0 ? (
+                    <select className={miniSelectCls} value={planVersion} onChange={(e) => setPlanVersion(e.target.value)}>
+                      {planVersions.map((v) => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  ) : (
+                    <span className="text-[10px] text-amber-600 font-medium">Sin versiones</span>
+                  )}
+                </div>
+              </>
+            )}
+
+            <div className="w-px h-4 bg-gray-200 hidden sm:block" />
+
             {/* Modo Data / Insight */}
+            {!isProjectionMode && (
             <div className="flex items-center gap-1">
               <span className="text-[11px] font-medium text-gray-400 mr-1">Vista</span>
               <div className="flex gap-1">
@@ -696,6 +781,7 @@ export default function BusinessSliceOmniviewMatrix () {
                 </button>
               </div>
             </div>
+            )}
 
             <div className="w-px h-4 bg-gray-200 hidden sm:block" />
 
@@ -807,8 +893,8 @@ export default function BusinessSliceOmniviewMatrix () {
           </div>
         )}
 
-        {/* ── Context bar ───────────────────────────────────────── */}
-        {heavyQueriesEnabled && !blockedByCountry && rows.length > 0 && (
+        {/* ── Context bar (Evolución) ──────────────────────────── */}
+        {heavyQueriesEnabled && !blockedByCountry && !isProjectionMode && rows.length > 0 && (
           <OperationalContextBar
             grain={grain} periodStates={periodStates} allPeriods={matrix.allPeriods}
             comparisonMeta={matrix.comparisonMeta}
@@ -819,8 +905,16 @@ export default function BusinessSliceOmniviewMatrix () {
           />
         )}
 
+        {/* ── Context bar (Vs Proyección) ─────────────────────── */}
+        {heavyQueriesEnabled && isProjectionMode && projectionRows.length > 0 && (
+          <ProjectionContextBar
+            grain={grain} projMatrix={projMatrix} projectionMeta={projectionMeta}
+            planVersion={planVersion} compact={compact}
+          />
+        )}
+
         {/* ── KPI focus mode ────────────────────────────────────── */}
-        {heavyQueriesEnabled && !blockedByCountry && rows.length > 0 && (
+        {heavyQueriesEnabled && !blockedByCountry && ((!isProjectionMode && rows.length > 0) || (isProjectionMode && projectionRows.length > 0)) && (
           <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
             <div className="flex flex-wrap items-center gap-3">
               <div>
@@ -844,7 +938,7 @@ export default function BusinessSliceOmniviewMatrix () {
         )}
 
         {/* ── Insights Panel (additive, between focus and Matrix) ── */}
-        {heavyQueriesEnabled && !blockedByCountry && insights.length > 0 && (
+        {heavyQueriesEnabled && !blockedByCountry && !isProjectionMode && insights.length > 0 && (
           <BusinessSliceInsightsPanel
             insights={insights}
             onInsightClick={handleInsightClick}
@@ -874,8 +968,8 @@ export default function BusinessSliceOmniviewMatrix () {
           </div>
         )}
 
-        {/* ── Matrix + Inspector ─────────────────────────────────── */}
-        {heavyQueriesEnabled && !loading && !blockedByCountry && rows.length > 0 && (
+        {/* ── Matrix + Inspector (Evolución) ─────────────────────── */}
+        {heavyQueriesEnabled && !loading && !blockedByCountry && !isProjectionMode && rows.length > 0 && (
           <div className="flex gap-3 items-start">
             <div className="flex-1 min-w-0">
               <BusinessSliceOmniviewMatrixTable
@@ -897,6 +991,34 @@ export default function BusinessSliceOmniviewMatrix () {
               matrixMeta={matrixMeta}
               onTrustStateRefresh={refreshMatrixTrust}
             />
+          </div>
+        )}
+
+        {/* ── Matrix (Vs Proyección) ──────────────────────────────── */}
+        {heavyQueriesEnabled && !loading && isProjectionMode && projMatrix && projectionRows.length > 0 && (
+          <div className="flex gap-3 items-start">
+            <div className="flex-1 min-w-0">
+              <BusinessSliceOmniviewProjectionTable
+                matrix={projMatrix} grain={grain} compact={compact} sortKey={sortKey}
+                onCellClick={handleCellClick} selectedCell={selectedCell}
+                periodStates={periodStates}
+                focusedKpi={focusedKpi}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ── Sin proyección cargada ──────────────────────────────── */}
+        {heavyQueriesEnabled && !loading && isProjectionMode && !planVersion && (
+          <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50/60 px-6 py-8 text-center">
+            <p className="text-sm font-semibold text-amber-800">Selecciona una versión de plan</p>
+            <p className="mt-1 text-xs text-amber-600">Para ver la comparación Plan vs Real, selecciona una versión de proyección en el selector de arriba.</p>
+          </div>
+        )}
+        {heavyQueriesEnabled && !loading && isProjectionMode && planVersion && projectionRows.length === 0 && !err && (
+          <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/80 px-6 py-8 text-center">
+            <p className="text-sm font-semibold text-gray-600">Sin datos de proyección</p>
+            <p className="mt-1 text-xs text-gray-500">No hay datos de proyección para la versión seleccionada con los filtros actuales.</p>
           </div>
         )}
       </div>
@@ -1009,6 +1131,92 @@ function OperationalContextBar ({ grain, periodStates, allPeriods, comparisonMet
       {matrixMeta?.period_states?.length > 0 && (
         <span className="text-[10px] text-slate-500 hidden lg:inline" title="State Engine: max por período en day_fact (no solo global)">
           Estados: backend · máx global {matrixMeta.slice_max_trip_date || '—'} · por período ✓
+        </span>
+      )}
+    </div>
+  )
+}
+
+function ProjectionContextBar ({ grain, projMatrix, projectionMeta, planVersion, compact }) {
+  const py = compact ? 'py-1' : 'py-1.5'
+  const allPeriods = projMatrix?.allPeriods || []
+  const totals = projMatrix?.totals
+  const lastPk = allPeriods.length > 0 ? allPeriods[allPeriods.length - 1] : null
+  const lastTotals = lastPk ? totals?.get(lastPk) : null
+
+  const curveSummary = projectionMeta?.curve_summary || {}
+  const kpisWithProjection = projectionMeta?.kpis_with_projection || []
+
+  const tripsTotal = lastTotals?.trips_completed_projected_total
+  const tripsReal = lastTotals?.trips_completed
+  const tripsExpected = lastTotals?.trips_completed_projected_expected
+  const tripsAttainment = lastTotals?.trips_completed_attainment_pct
+  const tripsSignal = lastTotals?.trips_completed_signal || 'no_data'
+  const tripsGap = lastTotals?.trips_completed_gap_to_expected
+
+  const signalDot = tripsSignal === 'green' ? 'bg-emerald-500'
+    : tripsSignal === 'warning' ? 'bg-amber-500'
+    : tripsSignal === 'danger' ? 'bg-red-500'
+    : 'bg-gray-300'
+
+  const methodsStr = curveSummary.by_method
+    ? Object.entries(curveSummary.by_method).map(([m, c]) => `${m}: ${c}`).join(', ')
+    : ''
+
+  return (
+    <div className={`rounded-lg border border-slate-200 bg-slate-50 shadow-sm px-4 ${py} flex flex-wrap items-center gap-x-4 gap-y-1`}>
+      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Proyección</span>
+
+      <span className="text-[10px] text-slate-600">
+        Plan: <strong>{planVersion || '—'}</strong>
+      </span>
+
+      {projectionMeta?.plan_loaded_at && (
+        <span className="text-[10px] text-slate-500">
+          Cargado: {projectionMeta.plan_loaded_at}
+        </span>
+      )}
+
+      <span className="text-[10px] text-slate-600">
+        Grano: <strong className="uppercase">{grain}</strong>
+      </span>
+
+      {tripsTotal != null && (
+        <span className="text-[10px] text-slate-600">
+          Plan trips: <strong>{Number(tripsTotal).toLocaleString()}</strong>
+        </span>
+      )}
+
+      {tripsReal != null && (
+        <span className="text-[10px] text-slate-600">
+          Real: <strong>{Number(tripsReal).toLocaleString()}</strong>
+        </span>
+      )}
+
+      {tripsExpected != null && (
+        <span className="text-[10px] text-slate-600">
+          Expected: <strong>{Number(tripsExpected).toLocaleString()}</strong>
+        </span>
+      )}
+
+      {tripsAttainment != null && (
+        <span className="inline-flex items-center gap-1 text-[10px] font-medium">
+          <span className={`w-1.5 h-1.5 rounded-full ${signalDot} inline-block`} />
+          <span className={tripsSignal === 'green' ? 'text-emerald-700' : tripsSignal === 'warning' ? 'text-amber-700' : tripsSignal === 'danger' ? 'text-red-700' : 'text-slate-500'}>
+            Attainment: {tripsAttainment.toFixed(1)}%
+          </span>
+        </span>
+      )}
+
+      {tripsGap != null && (
+        <span className="text-[10px] text-slate-500">
+          Gap: {tripsGap >= 0 ? '+' : ''}{Number(tripsGap).toLocaleString()}
+        </span>
+      )}
+
+      {curveSummary.avg_confidence && (
+        <span className="text-[10px] text-slate-500 ml-auto" title={methodsStr || undefined}>
+          Curva: {curveSummary.avg_confidence} · {curveSummary.total_combinations || 0} combinaciones
         </span>
       )}
     </div>
