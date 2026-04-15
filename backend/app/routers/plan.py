@@ -420,3 +420,31 @@ async def get_missing(
         logger.error(f"Error al obtener datos faltantes: {e}")
         raise
 
+
+@router.post("/upload_control_loop_projection")
+async def upload_control_loop_projection(
+    file: UploadFile = File(...),
+    plan_version: Optional[str] = Query(
+        None,
+        description="Versión del plan (ej. control_loop_2026_Q1). Si se omite, se genera un id con timestamp.",
+    ),
+):
+    """
+    Carga aditiva de la plantilla agregada (Excel: hojas TRIPS, REVENUE, DRIVERS; o CSV equivalente).
+    Transformación wide→long, mapping de líneas, staging en `staging.control_loop_plan_metric_long`.
+    No modifica Omniview ni plan_long_*.
+    """
+    fn = (file.filename or "").lower()
+    if not fn.endswith((".xlsx", ".xls", ".csv")):
+        raise HTTPException(status_code=400, detail="Archivo debe ser .xlsx, .xls o .csv")
+    try:
+        from app.services.control_loop_upload_service import run_control_loop_upload
+
+        content = await file.read()
+        return run_control_loop_upload(content, file.filename, plan_version=plan_version)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("upload_control_loop_projection")
+        raise HTTPException(status_code=500, detail=str(e))
+

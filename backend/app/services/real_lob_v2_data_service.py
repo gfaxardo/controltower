@@ -8,11 +8,29 @@ from psycopg2.extras import RealDictCursor
 from typing import Optional, List, Dict, Any, Tuple
 import logging
 
+from app.services.serving_guardrails import (
+    QueryMode as _QM,
+    ServingPolicy,
+    SourceType as _ST,
+    context_from_policy,
+    execute_db_gated_query,
+    register_policy,
+)
+
 logger = logging.getLogger(__name__)
 
 MV_MONTHLY = "ops.mv_real_lob_month_v2"
 MV_WEEKLY = "ops.mv_real_lob_week_v2"
 DATA_TIMEOUT_MS = 20000
+
+_SERVING_POLICY = ServingPolicy(
+    feature_name="Real LOB v2 data",
+    query_mode=_QM.SERVING,
+    preferred_source=MV_MONTHLY,
+    preferred_source_type=_ST.MV,
+    strict_mode=True,
+)
+register_policy(_SERVING_POLICY)
 
 AGG_LEVELS_MONTHLY = [
     "DETALLE", "TOTAL_PAIS", "TOTAL_CIUDAD", "TOTAL_PARK",
@@ -68,8 +86,11 @@ def get_real_lob_v2_data(
                 )
                 SELECT * FROM agg {order_sql}
             """
-            cur.execute(sql, params)
-            rows = [dict(r) for r in cur.fetchall()]
+            _ctx = context_from_policy(_SERVING_POLICY, source_name=mv)
+            rows = execute_db_gated_query(
+                _ctx, _SERVING_POLICY, cur, sql, params,
+                source_name=mv, source_type="mv",
+            )
             _serialize_rows(rows, period_col)
             # Totales: sumar trips y b2b_trips de rows (coherencia)
             total_trips = sum(int(r.get("trips") or 0) for r in rows)

@@ -19,6 +19,7 @@ import BusinessSliceView from './components/BusinessSliceView'
 import BusinessSliceOmniview from './components/BusinessSliceOmniview'
 import BusinessSliceOmniviewMatrix from './components/BusinessSliceOmniviewMatrix'
 import BusinessSliceOmniviewReports from './components/BusinessSliceOmniviewReports'
+import ControlLoopPlanVsRealView from './components/ControlLoopPlanVsRealView'
 import RealOperationalView from './components/RealOperationalView'
 import DriverLifecycleView from './components/DriverLifecycleView'
 import SupplyView from './components/SupplyView'
@@ -81,6 +82,7 @@ const PLAN_SUBTABS = [
 
 const OPERACION_SUBTABS = [
   { id: 'omniview_matrix', label: 'Omniview Matrix' },
+  { id: 'control_loop_pvr', label: 'Control Loop Plan vs Real' },
   { id: 'reportes', label: 'Reportes' },
   { id: 'lob_drill', label: 'Real LOB / Drill' },
   { id: 'business_slice', label: 'Business Slice' },
@@ -105,6 +107,7 @@ const ROUTE_MAP = [
   { path: '/operacion/business-slice', tab: TAB_OPERACION, sub: 'business_slice' },
   { path: '/operacion/omniview', tab: TAB_OPERACION, sub: 'business_slice_omniview' },
   { path: '/operacion/omniview-matrix', tab: TAB_OPERACION, sub: 'omniview_matrix' },
+  { path: '/operacion/control-loop-plan-vs-real', tab: TAB_OPERACION, sub: 'control_loop_pvr' },
   { path: '/operacion/reportes', tab: TAB_OPERACION, sub: 'reportes' },
   { path: '/plan', tab: TAB_PLAN, sub: 'acciones' },
   { path: '/plan/acciones', tab: TAB_PLAN, sub: 'acciones' },
@@ -132,6 +135,7 @@ const SUB_URL = {
   business_slice: '/operacion/business-slice',
   business_slice_omniview: '/operacion/omniview',
   omniview_matrix: '/operacion/omniview-matrix',
+  control_loop_pvr: '/operacion/control-loop-plan-vs-real',
   reportes: '/operacion/reportes',
   // Plan
   acciones: '/plan/acciones',
@@ -412,7 +416,7 @@ function ControlTowerApp () {
 
         {/* Omniview Matrix tiene su propia barra de contexto y controla su carga manualmente;
             se omiten los banners globales para no generar confusión ni queries adicionales. */}
-        {operacionSubTab !== 'omniview_matrix' && operacionSubTab !== 'reportes' && (
+        {operacionSubTab !== 'omniview_matrix' && operacionSubTab !== 'control_loop_pvr' && operacionSubTab !== 'reportes' && (
           <GlobalFreshnessBanner
             activeTab={
               activeTab === TAB_OPERACION || (activeTab === TAB_PERFORMANCE && performanceSubTab === 'real')
@@ -423,7 +427,7 @@ function ControlTowerApp () {
         )}
 
         {(activeTab === TAB_PERFORMANCE && performanceSubTab === 'real') && <RealMarginQualityCard />}
-        {(activeTab === TAB_OPERACION && operacionSubTab !== 'omniview_matrix' && operacionSubTab !== 'reportes') && <RealMarginQualityCard />}
+        {(activeTab === TAB_OPERACION && operacionSubTab !== 'omniview_matrix' && operacionSubTab !== 'control_loop_pvr' && operacionSubTab !== 'reportes') && <RealMarginQualityCard />}
 
         <CollapsibleFilters onFilterChange={handleFilterChange} />
 
@@ -473,6 +477,7 @@ function ControlTowerApp () {
             {operacionSubTab === 'business_slice' && <BusinessSliceView key={`business-slice-${refreshKey}`} />}
             {operacionSubTab === 'business_slice_omniview' && <BusinessSliceOmniview key={`business-slice-omniview-${refreshKey}`} />}
             {operacionSubTab === 'omniview_matrix' && <BusinessSliceOmniviewMatrix key={`bs-omniview-matrix-${refreshKey}`} />}
+            {operacionSubTab === 'control_loop_pvr' && <ControlLoopPlanVsRealView key={`control-loop-pvr-${refreshKey}`} />}
             {operacionSubTab === 'reportes' && <BusinessSliceOmniviewReports key={`bs-omniview-reports-${refreshKey}`} />}
           </section>
         )}

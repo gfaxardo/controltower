@@ -748,6 +748,22 @@ def _fetch_resolved_period_totals(
             year=year,
             month=month,
         )
+    from app.services.serving_guardrails import (
+        ServingPolicy, QueryMode, SourceType,
+        assert_serving_source, trace_source_usage,
+    )
+    _fallback_policy = ServingPolicy(
+        feature_name="Omniview period totals (non-standard grain)",
+        query_mode=QueryMode.SERVING,
+        preferred_source=FACT_MONTHLY,
+        preferred_source_type=SourceType.FACT,
+        strict_mode=True,
+    )
+    assert_serving_source(_fallback_policy, V_RESOLVED)
+    trace_source_usage(
+        _fallback_policy, V_RESOLVED, source_type="resolved",
+        fallback_used=True, fallback_reason=f"non-standard grain={grain!r}",
+    )
     w, p = _resolved_period_where_clauses(
         grain,
         country=country,
@@ -1639,6 +1655,9 @@ def get_business_slice_coverage(
         )
         by_city = [_serialize_row(dict(r)) for r in cur.fetchall()]
 
+        # SERVING_DISCIPLINE: These two queries use V_RESOLVED because they need
+        # resolution_status (resolved/unmatched/conflict) which is not in fact tables.
+        # Classified as drill/audit, not serving normal. Acceptable per architecture doc.
         slice_params: list[Any] = []
         slice_year_clause = ""
         if year is not None:

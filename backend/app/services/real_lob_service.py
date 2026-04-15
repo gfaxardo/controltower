@@ -5,11 +5,29 @@ from psycopg2.extras import RealDictCursor
 import logging
 from typing import Optional, List, Dict, Any
 
+from app.services.serving_guardrails import (
+    QueryMode as _QM,
+    ServingPolicy,
+    SourceType as _ST,
+    context_from_policy,
+    execute_db_gated_query,
+    register_policy,
+)
+
 logger = logging.getLogger(__name__)
 
 MV_MONTHLY = "ops.mv_real_trips_by_lob_month"
 MV_WEEKLY = "ops.mv_real_trips_by_lob_week"
 REAL_LOB_STATEMENT_TIMEOUT_MS = 15000
+
+_SERVING_POLICY = ServingPolicy(
+    feature_name="Real LOB monthly",
+    query_mode=_QM.SERVING,
+    preferred_source=MV_MONTHLY,
+    preferred_source_type=_ST.MV,
+    strict_mode=True,
+)
+register_policy(_SERVING_POLICY)
 
 
 def _is_dev() -> bool:
@@ -107,7 +125,9 @@ def get_real_lob_monthly(
                     params.append(default_month)
 
             where_clause = " AND ".join(where) if where else "TRUE"
-            cursor.execute(
+            _ctx = context_from_policy(_SERVING_POLICY, source_name=MV_MONTHLY)
+            rows = execute_db_gated_query(
+                _ctx, _SERVING_POLICY, cursor,
                 f"""
                 SELECT country, city, lob, month_start, trips, revenue, max_trip_ts, is_open, currency
                 FROM {MV_MONTHLY}
@@ -115,8 +135,8 @@ def get_real_lob_monthly(
                 ORDER BY month_start ASC, trips DESC
                 """,
                 params,
+                source_name=MV_MONTHLY, source_type="mv",
             )
-            rows = cursor.fetchall()
             out = []
             for r in rows:
                 row = dict(r)
@@ -179,7 +199,9 @@ def get_real_lob_weekly(
                     params.append(default_week)
 
             where_clause = " AND ".join(where) if where else "TRUE"
-            cursor.execute(
+            _ctx = context_from_policy(_SERVING_POLICY, source_name=MV_WEEKLY)
+            rows = execute_db_gated_query(
+                _ctx, _SERVING_POLICY, cursor,
                 f"""
                 SELECT country, city, lob, week_start, trips, revenue, max_trip_ts, is_open, currency
                 FROM {MV_WEEKLY}
@@ -187,8 +209,8 @@ def get_real_lob_weekly(
                 ORDER BY week_start DESC, trips DESC
                 """,
                 params,
+                source_name=MV_WEEKLY, source_type="mv",
             )
-            rows = cursor.fetchall()
             out = []
             for r in rows:
                 row = dict(r)

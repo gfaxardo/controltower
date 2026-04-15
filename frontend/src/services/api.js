@@ -104,6 +104,30 @@ export const uploadPlanRuta27 = async (file, planVersion = null, replaceAll = fa
   return response.data
 }
 
+/** Proyección agregada Control Loop (Excel TRIPS/REVENUE/DRIVERS o CSV). */
+export const uploadControlLoopProjection = async (file, planVersion = null) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  let url = '/plan/upload_control_loop_projection'
+  if (planVersion) {
+    url += `?plan_version=${encodeURIComponent(planVersion)}`
+  }
+  const response = await api.post(url, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return response.data
+}
+
+export const getControlLoopPlanVsReal = async (params = {}) => {
+  const response = await api.get('/ops/control-loop/plan-vs-real', { params })
+  return response.data
+}
+
+export const getControlLoopPlanVersions = async () => {
+  const response = await api.get('/ops/control-loop/plan-versions')
+  return response.data
+}
+
 export const getCoreMonthlySummary = async (filters = {}) => {
   const response = await api.get('/core/summary/monthly', { params: filters })
   return response.data

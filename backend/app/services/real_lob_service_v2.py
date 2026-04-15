@@ -5,11 +5,29 @@ from psycopg2.extras import RealDictCursor
 import logging
 from typing import Optional, List, Dict, Any
 
+from app.services.serving_guardrails import (
+    QueryMode as _QM,
+    ServingPolicy,
+    SourceType as _ST,
+    context_from_policy,
+    execute_db_gated_query,
+    register_policy,
+)
+
 logger = logging.getLogger(__name__)
 
 MV_MONTHLY_V2 = "ops.mv_real_lob_month_v2"
 MV_WEEKLY_V2 = "ops.mv_real_lob_week_v2"
 REAL_LOB_TIMEOUT_MS = 15000
+
+_SERVING_POLICY = ServingPolicy(
+    feature_name="Real LOB monthly v2",
+    query_mode=_QM.SERVING,
+    preferred_source=MV_MONTHLY_V2,
+    preferred_source_type=_ST.MV,
+    strict_mode=True,
+)
+register_policy(_SERVING_POLICY)
 
 
 def _is_dev() -> bool:
@@ -96,7 +114,9 @@ def get_real_lob_monthly_v2(
                     params.append(default_month)
 
             where_clause = " AND ".join(where) if where else "TRUE"
-            cursor.execute(
+            _ctx = context_from_policy(_SERVING_POLICY, source_name=MV_MONTHLY_V2)
+            rows = execute_db_gated_query(
+                _ctx, _SERVING_POLICY, cursor,
                 f"""
                 SELECT country, city, park_id, park_name, lob_group, real_tipo_servicio_norm, segment_tag,
                        month_start, trips, revenue, max_trip_ts, is_open
@@ -105,8 +125,8 @@ def get_real_lob_monthly_v2(
                 ORDER BY month_start ASC, trips DESC
                 """,
                 params,
+                source_name=MV_MONTHLY_V2, source_type="mv",
             )
-            rows = cursor.fetchall()
             out = []
             for r in rows:
                 row = dict(r)
@@ -178,7 +198,9 @@ def get_real_lob_weekly_v2(
                     params.append(default_week)
 
             where_clause = " AND ".join(where) if where else "TRUE"
-            cursor.execute(
+            _ctx = context_from_policy(_SERVING_POLICY, source_name=MV_WEEKLY_V2)
+            rows = execute_db_gated_query(
+                _ctx, _SERVING_POLICY, cursor,
                 f"""
                 SELECT country, city, park_id, park_name, lob_group, real_tipo_servicio_norm, segment_tag,
                        week_start, trips, revenue, max_trip_ts, is_open
@@ -187,8 +209,8 @@ def get_real_lob_weekly_v2(
                 ORDER BY week_start DESC, trips DESC
                 """,
                 params,
+                source_name=MV_WEEKLY_V2, source_type="mv",
             )
-            rows = cursor.fetchall()
             out = []
             for r in rows:
                 row = dict(r)

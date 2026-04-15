@@ -26,6 +26,10 @@ from app.services.plan_vs_real_service import (
     get_latest_parity_audit,
     log_plan_vs_real_source_usage,
 )
+from app.services.control_loop_plan_vs_real_service import (
+    get_control_loop_plan_vs_real,
+    list_control_loop_plan_versions,
+)
 from app.settings import settings
 from app.services.plan_real_split_service import (
     get_real_monthly,
@@ -378,6 +382,46 @@ async def get_plan_vs_real_monthly_endpoint(
     except Exception as e:
         logger.error(f"Error al obtener comparación Plan vs Real: {e}")
         raise HTTPException(status_code=500, detail=f"Error al obtener comparación Plan vs Real: {str(e)}")
+
+
+@router.get("/control-loop/plan-versions")
+async def control_loop_plan_versions_endpoint():
+    """Lista `plan_version` disponibles en staging Control Loop."""
+    try:
+        versions = list_control_loop_plan_versions()
+        return {"plan_versions": versions, "total": len(versions)}
+    except Exception as e:
+        logger.error("control-loop/plan-versions: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/control-loop/plan-vs-real")
+async def control_loop_plan_vs_real_endpoint(
+    plan_version: str = Query(..., description="Versión de plan cargada (staging Control Loop)"),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    linea_negocio: Optional[str] = Query(None, description="Línea canónica (ej. auto_taxi)"),
+    period_from: Optional[str] = Query(None, description="YYYY-MM inicio"),
+    period_to: Optional[str] = Query(None, description="YYYY-MM fin"),
+):
+    """
+    Comparación Plan vs Real para la proyección agregada Control Loop.
+    No usa Omniview Matrix ni `ops.v_plan_vs_real_realkey_final`.
+    """
+    try:
+        data = get_control_loop_plan_vs_real(
+            plan_version=plan_version,
+            country=country,
+            city=city,
+            linea_negocio=linea_negocio,
+            period_from=period_from,
+            period_to=period_to,
+        )
+        return {"data": data, "total_records": len(data)}
+    except Exception as e:
+        logger.exception("control-loop/plan-vs-real")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/plan-vs-real/alerts")
 async def get_plan_vs_real_alerts_endpoint(
@@ -1876,6 +1920,50 @@ async def get_system_health_endpoint():
         return get_system_health()
     except Exception as e:
         logger.error("GET /ops/system-health: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/diagnostics/serving-sources")
+async def get_serving_sources_diagnostics():
+    """Serving enforcement diagnostics: compliance, freshness, forbidden sources, hard-gate status."""
+    try:
+        from app.utils.source_trace import get_serving_diagnostics_full, get_unguarded_features
+        from app.services.serving_guardrails import (
+            get_usage_log, FORBIDDEN_SERVING_SOURCES, get_all_declared_policies,
+            get_db_guard_mode, get_db_gate_log,
+        )
+        from app.db.connection import get_db
+
+        with get_db() as conn:
+            diagnostics = get_serving_diagnostics_full(conn)
+
+        compliant = sum(1 for d in diagnostics if d["compliance_status"] == "COMPLIANT")
+        warnings = sum(1 for d in diagnostics if d["compliance_status"] == "WARNING")
+        non_compliant = sum(1 for d in diagnostics if d["compliance_status"] == "NON_COMPLIANT")
+        unknown = sum(1 for d in diagnostics if d["compliance_status"] == "UNKNOWN")
+
+        policies = get_all_declared_policies()
+        unguarded = get_unguarded_features()
+
+        return {
+            "diagnostics": diagnostics,
+            "total": len(diagnostics),
+            "summary": {
+                "compliant": compliant,
+                "warnings": warnings,
+                "non_compliant": non_compliant,
+                "unknown": unknown,
+                "policies_declared": len(policies),
+                "unguarded_features": len(unguarded),
+                "db_guard_mode": get_db_guard_mode().value,
+            },
+            "forbidden_serving_sources": FORBIDDEN_SERVING_SOURCES,
+            "unguarded_features": unguarded,
+            "recent_usage_log": get_usage_log()[-20:],
+            "db_gate_log": get_db_gate_log()[-10:],
+        }
+    except Exception as e:
+        logger.error("GET /ops/diagnostics/serving-sources: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

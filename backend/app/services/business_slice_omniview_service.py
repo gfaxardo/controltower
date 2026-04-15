@@ -1,9 +1,13 @@
 """
 Business Slice Omniview — modelo canónico backend (REAL only, sin Plan).
 
-Fuentes:
+Fuentes (fact-first discipline):
 - monthly: ops.real_business_slice_month_fact
-- weekly / daily: ops.v_real_trips_business_slice_resolved (agregados ampliados con componentes)
+- weekly: ops.real_business_slice_week_fact
+- daily: ops.real_business_slice_day_fact
+
+Resolved view (ops.v_real_trips_business_slice_resolved) is retained for
+build/reconciliation only and NOT used for normal serving.
 
 Comparativos:
 - monthly: MoM (mes civil vs mes anterior)
@@ -18,6 +22,7 @@ Ver docs/BUSINESS_SLICE_OMNIVIEW_BACKEND.md.
 from __future__ import annotations
 
 import calendar
+import math
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
@@ -26,7 +31,35 @@ from typing import Any, Literal, Optional
 from psycopg2.extras import RealDictCursor
 
 from app.db.connection import get_db, get_db_drill
-from app.services.business_slice_service import FACT_MONTHLY, V_RESOLVED, _json_safe_scalar
+from app.services.business_slice_service import (
+    FACT_DAILY,
+    FACT_MONTHLY,
+    FACT_WEEKLY,
+    V_RESOLVED,
+    _json_safe_scalar,
+)
+from app.services.serving_guardrails import (
+    QueryMode as _QM,
+    ServingPolicy,
+    SourceType as _ST,
+    context_from_policy,
+    execute_db_gated_query,
+    register_policy,
+)
+
+_SERVING_POLICY = ServingPolicy(
+    feature_name="Omniview Matrix",
+    query_mode=_QM.SERVING,
+    preferred_source=FACT_MONTHLY,
+    preferred_source_type=_ST.FACT,
+    forbidden_sources=[
+        "ops.v_real_trips_business_slice_resolved",
+        "ops.v_real_trips_enriched_base",
+    ],
+    strict_mode=True,
+    require_preferred_source_match=True,
+)
+register_policy(_SERVING_POLICY)
 
 # --- Umbrales señalización (contractuales) ---
 THRESHOLD_DELTA_PCT_POINTS: float = 5.0  # variación relativa % (ej. +5% viajes)
@@ -383,6 +416,10 @@ def compute_deltas(
             signals[k] = "no_data"
             deltas[k] = entry
             continue
+        if math.isnan(fc) or math.isinf(fc) or math.isnan(fp) or math.isinf(fp):
+            signals[k] = "no_data"
+            deltas[k] = entry
+            continue
         entry["delta_abs"] = fc - fp
         if k == "commission_pct":
             entry["delta_abs_pp"] = (fc - fp) * 100.0
@@ -555,6 +592,124 @@ def _fetch_resolved_rollup_by_country(
     return by_country, total
 
 
+def _filters_fact(
+    country: Optional[str],
+    city: Optional[str],
+    business_slice: Optional[str],
+    fleet: Optional[str],
+    subfleet: Optional[str],
+    include_subfleets: bool,
+) -> tuple[list[str], list[Any]]:
+    """Shared filter builder for fact tables (same column names as resolved)."""
+    w: list[str] = []
+    p: list[Any] = []
+    if country and str(country).strip():
+        w.append("country IS NOT NULL AND LOWER(TRIM(country::text)) = LOWER(TRIM(%s))")
+        p.append(str(country).strip())
+    if city and str(city).strip():
+        w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
+        p.append(str(city).strip())
+    if business_slice and str(business_slice).strip():
+        w.append("business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) = LOWER(TRIM(%s))")
+        p.append(str(business_slice).strip())
+    if fleet and str(fleet).strip():
+        w.append("fleet_display_name IS NOT NULL AND LOWER(TRIM(fleet_display_name::text)) = LOWER(TRIM(%s))")
+        p.append(str(fleet).strip())
+    if subfleet and str(subfleet).strip():
+        w.append("subfleet_name IS NOT NULL AND LOWER(TRIM(subfleet_name::text)) = LOWER(TRIM(%s))")
+        p.append(str(subfleet).strip())
+    if not include_subfleets:
+        w.append("is_subfleet IS NOT TRUE")
+    return w, p
+
+
+def _fetch_fact_slice_rows(
+    cur,
+    fact_table: str,
+    time_column: str,
+    time_value: Any,
+    country: Optional[str],
+    city: Optional[str],
+    business_slice: Optional[str],
+    fleet: Optional[str],
+    subfleet: Optional[str],
+    include_subfleets: bool,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Fact-first replacement for _fetch_resolved_slice_rows: reads pre-aggregated facts."""
+    fw, fp = _filters_fact(country, city, business_slice, fleet, subfleet, include_subfleets)
+    where = [f"{time_column} = %s"] + fw
+    sql = f"""
+        SELECT country, city, business_slice_name, fleet_display_name,
+               is_subfleet, subfleet_name, parent_fleet_name,
+               trips_completed, trips_cancelled, active_drivers,
+               avg_ticket, commission_pct, trips_per_driver,
+               revenue_yego_net,
+               COALESCE(revenue_yego_final, revenue_yego_net) AS completed_revenue_sum,
+               total_fare_completed_positive_sum AS completed_total_fare_sum
+        FROM {fact_table}
+        WHERE {" AND ".join(where)}
+        ORDER BY trips_completed DESC
+        LIMIT %s
+    """
+    params = [time_value] + fp + [min(max(limit, 1), 10000)]
+    _ctx = context_from_policy(_SERVING_POLICY, source_name=fact_table)
+    return execute_db_gated_query(
+        _ctx, _SERVING_POLICY, cur, sql, params,
+        source_name=fact_table, source_type="fact",
+    )
+
+
+def _fetch_fact_rollup_by_country(
+    cur,
+    fact_table: str,
+    time_column: str,
+    time_value: Any,
+    country: Optional[str],
+    city: Optional[str],
+    business_slice: Optional[str],
+    fleet: Optional[str],
+    subfleet: Optional[str],
+    include_subfleets: bool,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Fact-first replacement for _fetch_resolved_rollup_by_country: rollups from pre-aggregated facts."""
+    fw, fp = _filters_fact(country, city, business_slice, fleet, subfleet, include_subfleets)
+    where = [f"{time_column} = %s"] + fw
+    wh = " AND ".join(where)
+    agg = """
+        SUM(trips_completed) AS trips_completed,
+        SUM(trips_cancelled) AS trips_cancelled,
+        SUM(active_drivers) AS active_drivers,
+        CASE WHEN SUM(trips_completed) > 0
+             THEN SUM(COALESCE(avg_ticket, 0) * trips_completed) / SUM(trips_completed)
+             ELSE NULL END AS avg_ticket,
+        SUM(COALESCE(revenue_yego_final, revenue_yego_net, 0)) AS completed_revenue_sum,
+        SUM(total_fare_completed_positive_sum) AS completed_total_fare_sum,
+        CASE WHEN SUM(total_fare_completed_positive_sum) > 0
+             THEN SUM(COALESCE(revenue_yego_final, revenue_yego_net, 0))
+                  / NULLIF(SUM(total_fare_completed_positive_sum), 0)
+             ELSE NULL END AS commission_pct,
+        CASE WHEN SUM(active_drivers) > 0
+             THEN SUM(trips_completed)::numeric / SUM(active_drivers)
+             ELSE NULL END AS trips_per_driver,
+        SUM(COALESCE(revenue_yego_final, revenue_yego_net, 0)) AS revenue_yego_net
+    """
+    params = [time_value] + fp
+    _ctx = context_from_policy(_SERVING_POLICY, source_name=fact_table)
+    by_country = execute_db_gated_query(
+        _ctx, _SERVING_POLICY, cur,
+        f"SELECT country, {agg} FROM {fact_table} WHERE {wh} GROUP BY country ORDER BY country",
+        params, source_name=fact_table, source_type="fact",
+    )
+    total_rows = execute_db_gated_query(
+        _ctx, _SERVING_POLICY, cur,
+        f"SELECT {agg} FROM {fact_table} WHERE {wh}",
+        params, source_name=fact_table, source_type="fact",
+    )
+    total = total_rows[0] if total_rows else {}
+    return by_country, total
+
+
 def _fetch_monthly_fact_rows(
     cur, month: date, country: Optional[str], city: Optional[str], business_slice: Optional[str],
     fleet: Optional[str], subfleet: Optional[str], include_subfleets: bool, limit: int,
@@ -592,8 +747,11 @@ def _fetch_monthly_fact_rows(
         LIMIT %s
     """
     p.append(min(max(limit, 1), 10000))
-    cur.execute(sql, p)
-    return [dict(r) for r in cur.fetchall()]
+    _ctx = context_from_policy(_SERVING_POLICY, source_name=FACT_MONTHLY)
+    return execute_db_gated_query(
+        _ctx, _SERVING_POLICY, cur, sql, p,
+        source_name=FACT_MONTHLY, source_type="fact",
+    )
 
 
 def _month_fact_row_to_metric_row(r: dict[str, Any]) -> dict[str, Any]:
@@ -657,66 +815,46 @@ def get_business_slice_omniview(
                     cur, win.previous_start, country, city, business_slice,
                     fleet, subfleet, include_subfleets, limit_rows,
                 )
-                rc_rollup, rc_total = _fetch_resolved_rollup_by_country(
-                    cur,
-                    "trip_month = %s",
-                    [win.current_start],
+                rc_rollup, rc_total = _fetch_fact_rollup_by_country(
+                    cur, FACT_MONTHLY, "month", win.current_start,
                     country, city, business_slice, fleet, subfleet, include_subfleets,
                 )
-                rp_rollup, rp_total = _fetch_resolved_rollup_by_country(
-                    cur,
-                    "trip_month = %s",
-                    [win.previous_start],
+                rp_rollup, rp_total = _fetch_fact_rollup_by_country(
+                    cur, FACT_MONTHLY, "month", win.previous_start,
                     country, city, business_slice, fleet, subfleet, include_subfleets,
                 )
             elif g == "weekly":
-                cur_cur = _fetch_resolved_slice_rows(
-                    cur,
-                    "trip_week = %s",
-                    [win.current_start],
+                cur_cur = _fetch_fact_slice_rows(
+                    cur, FACT_WEEKLY, "week_start", win.current_start,
                     country, city, business_slice, fleet, subfleet, include_subfleets, limit_rows,
                 )
-                cur_prev = _fetch_resolved_slice_rows(
-                    cur,
-                    "trip_week = %s",
-                    [win.previous_start],
+                cur_prev = _fetch_fact_slice_rows(
+                    cur, FACT_WEEKLY, "week_start", win.previous_start,
                     country, city, business_slice, fleet, subfleet, include_subfleets, limit_rows,
                 )
-                rc_rollup, rc_total = _fetch_resolved_rollup_by_country(
-                    cur,
-                    "trip_week = %s",
-                    [win.current_start],
+                rc_rollup, rc_total = _fetch_fact_rollup_by_country(
+                    cur, FACT_WEEKLY, "week_start", win.current_start,
                     country, city, business_slice, fleet, subfleet, include_subfleets,
                 )
-                rp_rollup, rp_total = _fetch_resolved_rollup_by_country(
-                    cur,
-                    "trip_week = %s",
-                    [win.previous_start],
+                rp_rollup, rp_total = _fetch_fact_rollup_by_country(
+                    cur, FACT_WEEKLY, "week_start", win.previous_start,
                     country, city, business_slice, fleet, subfleet, include_subfleets,
                 )
             else:
-                cur_cur = _fetch_resolved_slice_rows(
-                    cur,
-                    "trip_date = %s",
-                    [win.current_start],
+                cur_cur = _fetch_fact_slice_rows(
+                    cur, FACT_DAILY, "trip_date", win.current_start,
                     country, city, business_slice, fleet, subfleet, include_subfleets, limit_rows,
                 )
-                cur_prev = _fetch_resolved_slice_rows(
-                    cur,
-                    "trip_date = %s",
-                    [win.previous_start],
+                cur_prev = _fetch_fact_slice_rows(
+                    cur, FACT_DAILY, "trip_date", win.previous_start,
                     country, city, business_slice, fleet, subfleet, include_subfleets, limit_rows,
                 )
-                rc_rollup, rc_total = _fetch_resolved_rollup_by_country(
-                    cur,
-                    "trip_date = %s",
-                    [win.current_start],
+                rc_rollup, rc_total = _fetch_fact_rollup_by_country(
+                    cur, FACT_DAILY, "trip_date", win.current_start,
                     country, city, business_slice, fleet, subfleet, include_subfleets,
                 )
-                rp_rollup, rp_total = _fetch_resolved_rollup_by_country(
-                    cur,
-                    "trip_date = %s",
-                    [win.previous_start],
+                rp_rollup, rp_total = _fetch_fact_rollup_by_country(
+                    cur, FACT_DAILY, "trip_date", win.previous_start,
                     country, city, business_slice, fleet, subfleet, include_subfleets,
                 )
         finally:
@@ -803,9 +941,13 @@ def get_business_slice_omniview(
 
     if g == "monthly":
         detail_source = FACT_MONTHLY
+        totals_source = FACT_MONTHLY
+    elif g == "weekly":
+        detail_source = FACT_WEEKLY
+        totals_source = FACT_WEEKLY
     else:
-        detail_source = V_RESOLVED
-    totals_source = V_RESOLVED
+        detail_source = FACT_DAILY
+        totals_source = FACT_DAILY
 
     warnings: list[str] = []
     if mixed_currency:
