@@ -46,7 +46,13 @@ def coverage_from_clause(cursor) -> Tuple[str, bool]:
     """
     cursor.execute("SELECT to_regclass(%s)", (VIEW_V_REAL_DATA_COVERAGE,))
     row = cursor.fetchone()
-    reg = row[0] if row else None
+    # RealDictCursor devuelve dict; índice numérico falla → usar nombre de columna.
+    if row is None:
+        reg = None
+    elif isinstance(row, dict):
+        reg = next(iter(row.values()), None)
+    else:
+        reg = row[0]
     if reg:
         return VIEW_V_REAL_DATA_COVERAGE, False
     logger.warning(

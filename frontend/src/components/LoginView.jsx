@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
-/** Pantalla de acceso Control Tower — autenticación contra la API corporativa (api-int.yego.pro). */
+/** Pantalla de acceso — POST /api/auth/login (mismo origen; el backend habla con api-int). */
 export default function LoginView () {
   const { login } = useAuth()
   const navigate = useNavigate()
@@ -111,9 +111,9 @@ export default function LoginView () {
         </p>
         {import.meta.env.DEV && (
           <p className="text-center text-slate-500 text-[11px] mt-3 max-w-sm mx-auto leading-relaxed">
-            El login va en <span className="text-slate-400">HTTPS</span> directo a la API corporativa
-            (configurable con <code className="text-slate-400">VITE_INTEGRAL_AUTH_LOGIN_URL</code>). Si el navegador
-            bloquea la petición, la API debe permitir CORS desde este origen.
+            Dev: login a <code className="text-slate-400">/api/auth/login</code> → backend → api-int. Si en prod ves CORS
+            hacia api-int, el JS desplegado está viejo: vuelve a <code className="text-slate-400">npm run build</code> y
+            copia <code className="text-slate-400">dist/</code>.
           </p>
         )}
       </div>
