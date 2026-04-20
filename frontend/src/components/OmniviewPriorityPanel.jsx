@@ -76,6 +76,7 @@ export default function OmniviewPriorityPanel ({ projMatrix, focusedKpi, grain, 
             fontSize={fontSize}
             accent="red"
             onClick={handleClick}
+            compact={!!compact}
           />
           <PriorityColumn
             title="Watch (sobrecumplimiento)"
@@ -85,6 +86,7 @@ export default function OmniviewPriorityPanel ({ projMatrix, focusedKpi, grain, 
             fontSize={fontSize}
             accent="green"
             onClick={handleClick}
+            compact={!!compact}
             watchMode
           />
         </div>
@@ -102,6 +104,7 @@ function PriorityColumn ({
   accent,
   onClick,
   watchMode = false,
+  compact = false,
 }) {
   const headerBg = accent === 'red' ? 'bg-red-50/50' : 'bg-emerald-50/50'
   const headerText = accent === 'red' ? 'text-red-800' : 'text-emerald-800'
@@ -164,7 +167,14 @@ function PriorityColumn ({
                   </td>
                   {!watchMode && (
                     <td className={`px-1 ${py} ${fontSize} text-right text-gray-700 font-mono tabular-nums`}>
-                      {a.priority_score != null ? a.priority_score.toFixed(0) : '—'}
+                      <span className="inline-flex items-center justify-end gap-0.5">
+                        {a.priority_score != null ? a.priority_score.toFixed(0) : '—'}
+                        {a.projection_confidence === 'low' && (
+                          <span className="text-[7px] font-bold text-amber-700 border border-amber-300 rounded px-0.5" title="Baja confianza de proyección">
+                            Baja conf.
+                          </span>
+                        )}
+                      </span>
                     </td>
                   )}
                   <td className={`px-1 ${py} ${fontSize} text-right whitespace-nowrap`}>

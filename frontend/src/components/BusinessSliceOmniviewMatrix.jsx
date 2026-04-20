@@ -12,8 +12,10 @@ import {
   getMatrixOperationalTrust,
   getControlLoopPlanVersions,
   getOmniviewProjection,
+  getBusinessSliceRealFreshness,
   getPlanVersions,
   uploadPlanRuta27UI,
+  getPlanMappingAudit,
 } from '../services/api.js'
 import {
   buildMatrix,
@@ -94,6 +96,12 @@ const miniSelectCls =
 const MANUAL_LOAD = import.meta.env.VITE_OMNIVIEW_MATRIX_MANUAL_LOAD === 'true'
 /** Tras cargar la matriz: breve pausa antes de coverage-summary (antes 3s; backend devuelve datos en el primer miss con filtros). */
 const COVERAGE_FETCH_DELAY_MS = 400
+
+function formatSliceRealLoadedAt (iso) {
+  if (!iso || typeof iso !== 'string') return null
+  const s = iso.replace('T', ' ').replace(/\.\d+Z?$/, '').replace(/Z$/, '').trim()
+  return s.length > 19 ? s.slice(0, 19) : s
+}
 
 function toMetricMap (raw) {
   const out = new Map()
@@ -180,6 +188,7 @@ export default function BusinessSliceOmniviewMatrix () {
 
   const [freshnessInfo, setFreshnessInfo] = useState(null)
   const [sliceMaxTripDate, setSliceMaxTripDate] = useState(null)
+  const [sliceRealFreshness, setSliceRealFreshness] = useState(null)
   const [coverageSummary, setCoverageSummary] = useState(null)
   const [matrixMeta, setMatrixMeta] = useState(null)
   const [matrixTrust, setMatrixTrust] = useState(null)
@@ -288,6 +297,68 @@ export default function BusinessSliceOmniviewMatrix () {
     }
   }, [heavyQueriesEnabled])
 
+  useEffect(() => {
+    if (!heavyQueriesEnabled) {
+      setSliceRealFreshness(null)
+      return
+    }
+    if (grain !== 'weekly' && grain !== 'daily') {
+      setSliceRealFreshness(null)
+      return
+    }
+    const ctrl = new AbortController()
+    getBusinessSliceRealFreshness({ signal: ctrl.signal })
+      .then(setSliceRealFreshness)
+      .catch(() => setSliceRealFreshness(null))
+    return () => ctrl.abort('unmount')
+  }, [heavyQueriesEnabled, grain])
+
+  const sliceRealFreshnessBanner = useMemo(() => {
+    if (!heavyQueriesEnabled || (grain !== 'weekly' && grain !== 'daily') || !sliceRealFreshness) return null
+    const st = sliceRealFreshness.status || sliceRealFreshness.overall_status || 'unknown'
+    const up = sliceRealFreshness.upstream || {}
+    const aggDate = sliceRealFreshness.aggregated?.day_fact?.max_trip_date || sliceRealFreshness.day_fact?.max_trip_date
+    const loaded =
+      formatSliceRealLoadedAt(sliceRealFreshness.last_refresh_at) ||
+      formatSliceRealLoadedAt(sliceRealFreshness.aggregated?.day_fact?.max_loaded_at) ||
+      formatSliceRealLoadedAt(sliceRealFreshness.day_fact?.max_loaded_at)
+    const border =
+      st === 'critical' ? 'border-red-200 bg-red-50 text-red-900'
+        : st === 'stale' ? 'border-amber-200 bg-amber-50 text-amber-900'
+          : st === 'empty' || st === 'unknown' ? 'border-slate-200 bg-slate-50 text-slate-800'
+            : 'border-emerald-200 bg-emerald-50 text-emerald-900'
+    const emoji = st === 'critical' ? '🔴' : st === 'stale' ? '🟡' : st === 'fresh' ? '🟢' : '🟡'
+    let mainLine = ''
+    if (st === 'fresh') {
+      mainLine = `Datos actualizados hasta: ${aggDate || '—'}${loaded ? ` · ${loaded}` : ''}`
+    } else if (st === 'stale') {
+      mainLine = `Datos con retraso (última actualización: ${loaded || aggDate || '—'})`
+    } else if (st === 'critical') {
+      mainLine = 'Datos desactualizados — posible problema de carga'
+    } else {
+      mainLine = `Estado REAL: ${st}${aggDate ? ` · agregado hasta ${aggDate}` : ''}`
+    }
+    return (
+      <div
+        className={`mt-2 rounded-lg border px-3 py-2 text-xs ${border}`}
+        role="status"
+      >
+        <span className="mr-1" aria-hidden>{emoji}</span>
+        <span className="font-medium">{mainLine}</span>
+        {sliceRealFreshness.lag_days != null && sliceRealFreshness.lag_days > 0 && (
+          <span className="ml-1">· lag {sliceRealFreshness.lag_days} día(s)</span>
+        )}
+        {up.status && up.status !== 'fresh' && (
+          <span className="block mt-1 text-slate-600">
+            Fuente viajes ({up.source || 'upstream'}): {up.status}
+            {up.max_event_date ? ` · max ${up.max_event_date}` : ''}
+            {up.error ? ` · ${up.error}` : ''}
+          </span>
+        )}
+      </div>
+    )
+  }, [heavyQueriesEnabled, grain, sliceRealFreshness])
+
   const countries = filtersMeta?.countries || []
   const allCities = filtersMeta?.cities || []
   const slices = filtersMeta?.business_slices || []
@@ -319,6 +390,15 @@ export default function BusinessSliceOmniviewMatrix () {
   const wasHeavyEnabledRef = useRef(heavyQueriesEnabled)
 
   const doLoadProjection = useCallback(async (signal) => {
+    // Guardrail: semanal/diario requiere país para evitar scope ilimitado
+    // (sin país → O(todas_tajadas × semanas × KPIs × SQL) → cuelgue)
+    if (blockedByCountry) {
+      setProjectionRows([])
+      setProjectionMeta(null)
+      setErr(null)
+      setLoading(false)
+      return
+    }
     if (!planVersion) {
       setProjectionRows([])
       setProjectionMeta(null)
@@ -336,7 +416,19 @@ export default function BusinessSliceOmniviewMatrix () {
       if (year != null && year !== '') params.year = Number(year)
       if (month) params.month = Number(month)
       const res = await getOmniviewProjection(params, { signal })
-      const data = Array.isArray(res?.data) ? res.data : []
+      console.log('projection response', res?.data, res?.meta)
+      let data = Array.isArray(res?.data) ? res.data : []
+      const pwrRows = res?.meta?.plan_without_real?.rows
+      if (
+        data.length === 0 &&
+        Array.isArray(pwrRows) &&
+        pwrRows.length > 0
+      ) {
+        if (import.meta.env.DEV) {
+          console.warn('[omniview projection] data vacío; usando meta.plan_without_real.rows como fallback')
+        }
+        data = [...pwrRows]
+      }
       setProjectionRows(data)
       setProjectionMeta(res?.meta ?? null)
     } catch (e) {
@@ -349,7 +441,7 @@ export default function BusinessSliceOmniviewMatrix () {
       setLoading(false)
       setLoadingTasks((t) => { const n = { ...t }; delete n.matrix; return n })
     }
-  }, [grain, country, city, businessSlice, year, month, planVersion])
+  }, [grain, country, city, businessSlice, year, month, planVersion, blockedByCountry])
 
   // doLoad: ejecuta la carga real de la matriz + lanza coverage-summary DESPUÉS (con retraso).
   const doLoad = useCallback(async (signal) => {
@@ -468,6 +560,21 @@ export default function BusinessSliceOmniviewMatrix () {
   }, [])
 
   const projMatrix = useMemo(() => isProjectionMode ? buildProjectionMatrix(projectionRows, grain) : null, [projectionRows, grain, isProjectionMode])
+
+  /** Vs Proyección: estado vacío tras cargar (país obligatorio W/D, plan sin real, o sin datos). */
+  const projectionEmptyKind = useMemo(() => {
+    if (!heavyQueriesEnabled || loading || !isProjectionMode || !planVersion || projectionRows.length > 0 || err) {
+      return null
+    }
+    if (blockedByCountry && (grain === 'weekly' || grain === 'daily')) {
+      return 'needs_country'
+    }
+    const pwrN = Number(projectionMeta?.plan_without_real?.count ?? 0)
+    const pwrR = projectionMeta?.plan_without_real?.rows
+    const hasPwr = pwrN > 0 || (Array.isArray(pwrR) && pwrR.length > 0)
+    return hasPwr ? 'plan_without_real' : 'no_data'
+  }, [heavyQueriesEnabled, loading, isProjectionMode, planVersion, projectionRows.length, err, projectionMeta, blockedByCountry, grain])
+
   const baseMatrix = useMemo(() => buildMatrix(rows, grain), [rows, grain])
   const backendTotals = useMemo(() => toMetricMap(matrixMeta?.period_totals), [matrixMeta?.period_totals])
   const backendComparisonTotals = useMemo(
@@ -892,7 +999,11 @@ export default function BusinessSliceOmniviewMatrix () {
               <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z" />
               </svg>
-              Selecciona un <strong className="mx-0.5">país</strong> para habilitar el análisis semanal o diario.
+              {isProjectionMode ? (
+                <>Selecciona un <strong className="mx-0.5">país</strong> para derivar la proyección semanal o diaria desde el plan mensual.</>
+              ) : (
+                <>Selecciona un <strong className="mx-0.5">país</strong> para habilitar el análisis semanal o diario.</>
+              )}
             </div>
           )}
 
@@ -950,6 +1061,8 @@ export default function BusinessSliceOmniviewMatrix () {
           </div>
         )}
 
+        {sliceRealFreshnessBanner}
+
         {/* ── Context bar (Evolución) ──────────────────────────── */}
         {heavyQueriesEnabled && !blockedByCountry && !isProjectionMode && rows.length > 0 && (
           <OperationalContextBar
@@ -967,6 +1080,15 @@ export default function BusinessSliceOmniviewMatrix () {
           <ProjectionContextBar
             grain={grain} projMatrix={projMatrix} projectionMeta={projectionMeta}
             planVersion={planVersion} compact={compact}
+          />
+        )}
+
+        {/* ── Badge de filas no mapeadas (interactivo) ───────────────────── */}
+        {heavyQueriesEnabled && !loading && isProjectionMode && projectionMeta?.unresolved?.count > 0 && (
+          <UnmappedBadge
+            count={projectionMeta.unresolved.count}
+            rows={projectionMeta.unresolved.rows}
+            planVersion={planVersion}
           />
         )}
 
@@ -1083,24 +1205,19 @@ export default function BusinessSliceOmniviewMatrix () {
           </div>
         )}
 
-        {/* ── Badge de filas no resueltas a tajada canónica ──────── */}
-        {heavyQueriesEnabled && !loading && isProjectionMode && projectionMeta?.unresolved?.count > 0 && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-2.5 flex items-start gap-2.5">
-            <svg className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z" />
-            </svg>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-amber-800">
-                {projectionMeta.unresolved.count} filas del plan sin mapear a tajada canónica
-              </p>
-              <p className="text-[11px] text-amber-600 mt-0.5">
-                {projectionMeta.unresolved.rows.slice(0, 5).map((r, i) => (
-                  <span key={i} className="mr-2 font-mono">{r.raw_city}/{r.raw_lob}</span>
-                ))}
-                {projectionMeta.unresolved.count > 5 && <span className="text-amber-500">…y {projectionMeta.unresolved.count - 5} más</span>}
-              </p>
-            </div>
-          </div>
+        {/* ── Plan sin ejecución real (sección QA) ───────────────── */}
+        {heavyQueriesEnabled && !loading && isProjectionMode && projectionMeta?.plan_without_real?.count > 0 && (
+          <PlanWithoutRealSection
+            rows={projectionMeta.plan_without_real.rows}
+            count={projectionMeta.plan_without_real.count}
+            grain={grain}
+            planVersion={planVersion}
+          />
+        )}
+
+        {/* ── Estadísticas de reconciliación ─────────────────────── */}
+        {heavyQueriesEnabled && !loading && isProjectionMode && projectionMeta?.reconciliation && (
+          <ReconciliationSummaryBar reconciliation={projectionMeta.reconciliation} />
         )}
 
         {/* ── Sin proyección cargada ──────────────────────────────── */}
@@ -1135,7 +1252,25 @@ export default function BusinessSliceOmniviewMatrix () {
             <p className="mt-1 text-xs text-amber-600">Para ver la comparación Plan vs Real, selecciona una versión de proyección en el selector de arriba.</p>
           </div>
         )}
-        {heavyQueriesEnabled && !loading && isProjectionMode && planVersion && projectionRows.length === 0 && !err && (
+        {projectionEmptyKind === 'needs_country' && (
+          <div className="rounded-xl border border-dashed border-amber-200 bg-amber-50/70 px-6 py-8 text-center">
+            <p className="text-sm font-semibold text-amber-900">Selecciona un país</p>
+            <p className="mt-1 text-xs text-amber-800 max-w-md mx-auto">
+              Para semanal o diario en Vs Proyección hace falta país: la meta se deriva del plan mensual y el real se filtra por país.
+            </p>
+          </div>
+        )}
+        {projectionEmptyKind === 'plan_without_real' && (
+          <div className="rounded-xl border border-dashed border-amber-200 bg-amber-50/70 px-6 py-8 text-center">
+            <p className="text-sm font-semibold text-amber-900">Hay proyección cargada pero no hay ejecución asociada</p>
+            <p className="mt-1 text-xs text-amber-800 max-w-md mx-auto">
+              {(grain === 'weekly' || grain === 'daily')
+                ? 'Proyección derivada desde el plan mensual, sin ejecución real aún para estos filtros. Revisa reconciliación y el panel «Plan sin ejecución».'
+                : 'El backend reporta plan sin filas reales coincidentes para estos filtros. Revisa reconciliación y el panel «Plan sin ejecución» abajo, o los logs del servidor (counts plan_rows / real_rows).'}
+            </p>
+          </div>
+        )}
+        {projectionEmptyKind === 'no_data' && (
           <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/80 px-6 py-8 text-center">
             <p className="text-sm font-semibold text-gray-600">Sin datos de proyección</p>
             <p className="mt-1 text-xs text-gray-500">No hay datos de proyección para la versión seleccionada con los filtros actuales.</p>
@@ -1506,6 +1641,245 @@ function ProjectionContextBar ({ grain, projMatrix, projectionMeta, planVersion,
           {confLabel}
           {curveSummary.total_combinations ? ` · ${curveSummary.total_combinations} comb.` : ''}
         </span>
+      )}
+    </div>
+  )
+}
+
+// ─── Barra de reconciliación ──────────────────────────────────────────────────
+function ReconciliationSummaryBar ({ reconciliation }) {
+  const {
+    matched = 0,
+    missing_plan = 0,
+    plan_without_real: pwr = 0,
+    unresolved_plan = 0,
+    total_real_rows = 0,
+    total_display_rows = null,
+  } = reconciliation
+  const chips = [
+    { label: 'Con plan', value: matched, color: 'text-emerald-700 bg-emerald-50 border-emerald-200', title: 'Filas con real y plan matched' },
+    { label: 'Sin proyección', value: missing_plan, color: 'text-slate-500 bg-slate-50 border-slate-200', title: 'Real existe, sin plan correspondiente' },
+    { label: 'Plan sin real', value: pwr, color: 'text-amber-600 bg-amber-50 border-amber-200', title: 'Plan resuelto, sin ejecución visible' },
+    { label: 'Sin mapear', value: unresolved_plan, color: 'text-red-600 bg-red-50 border-red-200', title: 'Plan no resuelto a tajada canónica' },
+  ]
+  return (
+    <div className="flex items-center gap-3 flex-wrap px-1">
+      <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Reconciliación:</span>
+      {chips.map(c => (
+        <span key={c.label} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${c.color}`} title={c.title}>
+          {c.label} <span className="font-bold">{c.value}</span>
+        </span>
+      ))}
+      <span className="text-[10px] text-gray-300">
+        ({total_real_rows} filas reales base
+        {total_display_rows != null ? ` · ${total_display_rows} filas en respuesta` : ''})
+      </span>
+    </div>
+  )
+}
+
+// ─── Sección "Plan sin ejecución real" ────────────────────────────────────────
+function PlanWithoutRealSection ({ rows = [], count, grain, planVersion }) {
+  const [open, setOpen] = useState(false)
+
+  // Agrupar por (country, city, business_slice_name)
+  const groups = {}
+  for (const r of rows) {
+    const k = `${r.country}::${r.city}::${r.business_slice_name}`
+    if (!groups[k]) {
+      groups[k] = {
+        country: r.country, city: r.city,
+        business_slice_name: r.business_slice_name,
+        periods: [],
+      }
+    }
+    const period = r.month || r.week_start || r.trip_date || '—'
+    groups[k].periods.push(period)
+  }
+  const groupList = Object.values(groups).sort((a, b) => {
+    const co = (a.country || '').localeCompare(b.country || '')
+    if (co !== 0) return co
+    return (a.city || '').localeCompare(b.city || '')
+  })
+
+  return (
+    <div className="rounded-lg border border-blue-200 bg-blue-50/50 shadow-sm overflow-hidden">
+      <div className="px-4 py-2.5 flex items-center gap-2.5">
+        <div className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0" />
+        <div className="flex-1">
+          <p className="text-xs font-bold text-blue-800">
+            {count} fila{count !== 1 ? 's' : ''} con plan pero sin ejecución real
+          </p>
+          <p className="text-[11px] text-blue-600 mt-0.5">
+            Estas tajadas tienen plan resuelto pero no hay ejecución real cargada para ese período.
+            No aparecen en la matriz principal; se muestran aquí para auditoría.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen(o => !o)}
+          className="flex-shrink-0 px-2.5 py-1 rounded text-[11px] font-semibold border border-blue-200 bg-white text-blue-600 hover:bg-blue-100 transition-colors"
+        >
+          {open ? 'Cerrar' : `Ver ${groupList.length} tajadas`}
+        </button>
+      </div>
+
+      {open && (
+        <div className="border-t border-blue-100 bg-white px-4 py-3">
+          <div className="overflow-x-auto rounded border border-gray-100">
+            <table className="text-[10px] w-full border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-slate-500 uppercase tracking-wide">
+                  <th className="px-2 py-1 text-left font-semibold border-b border-gray-100">País</th>
+                  <th className="px-2 py-1 text-left font-semibold border-b border-gray-100">Ciudad</th>
+                  <th className="px-2 py-1 text-left font-semibold border-b border-gray-100">Tajada</th>
+                  <th className="px-2 py-1 text-left font-semibold border-b border-gray-100">Períodos sin real</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groupList.map((g, i) => (
+                  <tr key={i} className={i % 2 === 1 ? 'bg-blue-50/20' : ''}>
+                    <td className="px-2 py-1 border-b border-gray-50 font-mono text-gray-600">{g.country}</td>
+                    <td className="px-2 py-1 border-b border-gray-50 font-mono text-gray-600">{g.city}</td>
+                    <td className="px-2 py-1 border-b border-gray-50 font-medium text-blue-700">{g.business_slice_name}</td>
+                    <td className="px-2 py-1 border-b border-gray-50 text-gray-400">{g.periods.sort().join(', ')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[10px] text-gray-400 mt-2">
+            Auditoría completa: <code className="bg-gray-50 px-1 rounded">GET /plan/reconciliation-audit?plan_version={planVersion}</code>
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Badge interactivo de filas no mapeadas ───────────────────────────────────
+function UnmappedBadge ({ count, rows = [], planVersion }) {
+  const [open, setOpen] = useState(false)
+  const [auditData, setAuditData] = useState(null)
+  const [auditLoading, setAuditLoading] = useState(false)
+  const [auditErr, setAuditErr] = useState(null)
+
+  const handleOpenAudit = async () => {
+    setOpen(true)
+    if (auditData || auditLoading) return
+    setAuditLoading(true)
+    setAuditErr(null)
+    try {
+      const data = await getPlanMappingAudit(planVersion)
+      setAuditData(data)
+    } catch (e) {
+      setAuditErr('No se pudo cargar el detalle de auditoría.')
+    } finally {
+      setAuditLoading(false)
+    }
+  }
+
+  const alertLevel = auditData?.alert_level
+  const coveragePct = auditData?.coverage_pct
+
+  return (
+    <div className="rounded-lg border border-amber-300 bg-amber-50 shadow-sm overflow-hidden">
+      {/* ── Cabecera del badge ─────────────────────────────── */}
+      <div className="px-4 py-2.5 flex items-start gap-2.5">
+        <svg className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z" />
+        </svg>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-xs font-bold text-amber-900">
+              ⚠ {count} fila{count !== 1 ? 's' : ''} del plan no mapeada{count !== 1 ? 's' : ''} a tajada canónica
+            </p>
+            {coveragePct != null && (
+              <span className={`text-[10px] px-1.5 py-px rounded font-semibold ${
+                alertLevel === 'critical' ? 'bg-red-100 text-red-700'
+                  : alertLevel === 'warning' ? 'bg-amber-200 text-amber-800'
+                  : 'bg-green-100 text-green-700'
+              }`}>
+                Cobertura: {coveragePct.toFixed(1)}%
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-amber-700 mt-0.5">
+            Estas filas <strong>no aparecen en la matriz</strong>. Verificar raw_city / raw_lob o agregar alias.
+          </p>
+          <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
+            {rows.slice(0, 6).map((r, i) => (
+              <span key={i} className="text-[10px] font-mono text-amber-800 bg-amber-100 px-1 rounded">
+                {r.raw_city}/{r.raw_lob}
+              </span>
+            ))}
+            {count > 6 && <span className="text-[10px] text-amber-500">…y {count - 6} más</span>}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={open ? () => setOpen(false) : handleOpenAudit}
+          className="flex-shrink-0 px-2.5 py-1 rounded text-[11px] font-semibold border border-amber-300 bg-white text-amber-700 hover:bg-amber-100 transition-colors"
+        >
+          {open ? 'Cerrar' : 'Ver detalle'}
+        </button>
+      </div>
+
+      {/* ── Panel de detalle expandible ──────────────────── */}
+      {open && (
+        <div className="border-t border-amber-200 bg-white px-4 py-3">
+          {auditLoading && (
+            <div className="flex items-center gap-2 text-xs text-gray-500 py-2">
+              <span className="w-3.5 h-3.5 border-2 border-gray-200 border-t-amber-500 rounded-full animate-spin" />
+              Cargando auditoría completa…
+            </div>
+          )}
+          {auditErr && <p className="text-xs text-red-600">{auditErr}</p>}
+          {auditData && !auditLoading && (
+            <div className="space-y-3">
+              {/* Resumen */}
+              <div className="flex flex-wrap gap-4 text-xs">
+                <span><span className="text-gray-400">Total plan:</span> <strong>{auditData.total_rows}</strong></span>
+                <span><span className="text-gray-400">Resueltos:</span> <strong className="text-emerald-700">{auditData.resolved}</strong></span>
+                <span><span className="text-gray-400">Sin mapear:</span> <strong className="text-red-600">{auditData.unresolved}</strong></span>
+                <span><span className="text-gray-400">Cobertura:</span> <strong className={alertLevel === 'critical' ? 'text-red-600' : alertLevel === 'warning' ? 'text-amber-600' : 'text-emerald-700'}>{auditData.coverage_pct?.toFixed(1)}%</strong></span>
+                <span><span className="text-gray-400">Aliases conocidos:</span> <strong>{auditData.alias_map_size}</strong></span>
+              </div>
+              {/* Tabla de no mapeados */}
+              {auditData.unresolved_items?.length > 0 && (
+                <div className="overflow-x-auto rounded border border-gray-100">
+                  <table className="text-[10px] w-full border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-500 uppercase tracking-wide">
+                        <th className="px-2 py-1 text-left font-semibold border-b border-gray-100">País</th>
+                        <th className="px-2 py-1 text-left font-semibold border-b border-gray-100">Ciudad</th>
+                        <th className="px-2 py-1 text-left font-semibold border-b border-gray-100">raw_lob</th>
+                        <th className="px-2 py-1 text-left font-semibold border-b border-gray-100">Alias resuelto</th>
+                        <th className="px-2 py-1 text-left font-semibold border-b border-gray-100">Motivo</th>
+                        <th className="px-2 py-1 text-left font-semibold border-b border-gray-100">Periodo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {auditData.unresolved_items.map((item, i) => (
+                        <tr key={i} className={i % 2 === 1 ? 'bg-red-50/30' : ''}>
+                          <td className="px-2 py-1 border-b border-gray-50 font-mono">{item.raw_country}</td>
+                          <td className="px-2 py-1 border-b border-gray-50 font-mono">{item.raw_city}</td>
+                          <td className="px-2 py-1 border-b border-gray-50 font-mono text-red-700">{item.raw_lob}</td>
+                          <td className="px-2 py-1 border-b border-gray-50 text-gray-400">{item.canonical_lob_base || '—'}</td>
+                          <td className="px-2 py-1 border-b border-gray-50 text-amber-700 max-w-xs truncate" title={item.resolution_note}>{item.resolution_note}</td>
+                          <td className="px-2 py-1 border-b border-gray-50 text-gray-500">{item.period}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <p className="text-[10px] text-gray-400">
+                Endpoint: <code className="bg-gray-50 px-1 rounded">GET /plan/mapping-audit?plan_version={planVersion}</code>
+              </p>
+            </div>
+          )}
+        </div>
       )}
     </div>
   )

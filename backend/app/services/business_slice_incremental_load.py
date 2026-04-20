@@ -1118,7 +1118,10 @@ def load_business_slice_week_for_month(
 ) -> int:
     """
     Calcula week_fact para todas las semanas que tocan el mes objetivo.
-    Reconstruye KPIs semiaditivos y ratios desde la vista resolved canónica.
+    Usa _WEEK_ROLLUP_FROM_DAY_FACT (rápido, desde day_fact ya calculado)
+    en lugar de la vista global V_RESOLVED (lenta, scan completo).
+
+    Prerequisito: day_fact debe estar cargado para el mes antes de llamar a esta función.
     """
     if target_month.day != 1:
         target_month = target_month.replace(day=1)
@@ -1138,7 +1141,7 @@ def load_business_slice_week_for_month(
     )
     deleted = cur.rowcount
 
-    rollup_sql = _WEEK_AGG_FROM_RESOLVED.format(fact_week=FACT_WEEK, resolved=V_RESOLVED)
+    rollup_sql = _WEEK_ROLLUP_FROM_DAY_FACT.format(fact_week=FACT_WEEK, fact_day=FACT_DAY)
     cur.execute(rollup_sql, (first_monday, next_monday_after_end))
     inserted = cur.rowcount
 

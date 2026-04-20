@@ -13,6 +13,8 @@ import uuid
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+_omniview_real_refresh_scheduler = None
+
 app = FastAPI(title="YEGO Control Tower API", version="2.0.0")
 
 # Request logging: path, duration, status, optional query params for /ops/ (performance baseline)
@@ -113,6 +115,74 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Error en startup: {e}")
         raise
+
+    global _omniview_real_refresh_scheduler
+    if settings.OMNIVIEW_REAL_REFRESH_ENABLED or settings.OMNIVIEW_REAL_WATCHDOG_ENABLED:
+        try:
+            from apscheduler.schedulers.background import BackgroundScheduler
+
+            from app.omniview_real_scheduler_info import attach_omniview_scheduler
+            from app.services.business_slice_real_refresh_job import (
+                run_business_slice_real_refresh_job,
+            )
+            from app.services.real_data_watchdog_service import run_real_data_watchdog
+
+            _omniview_real_refresh_scheduler = BackgroundScheduler(daemon=True)
+
+            if settings.OMNIVIEW_REAL_REFRESH_ENABLED:
+                interval = max(15, int(settings.OMNIVIEW_REAL_REFRESH_INTERVAL_MINUTES))
+                _omniview_real_refresh_scheduler.add_job(
+                    run_business_slice_real_refresh_job,
+                    "interval",
+                    minutes=interval,
+                    id="omniview_business_slice_real_refresh",
+                    replace_existing=True,
+                    max_instances=1,
+                    coalesce=True,
+                    misfire_grace_time=300,
+                )
+                logger.info(
+                    "Omniview REAL refresh programado: cada %s min (day_fact + week_fact, 2 meses).",
+                    interval,
+                )
+
+            if settings.OMNIVIEW_REAL_WATCHDOG_ENABLED:
+                wd_min = max(5, int(settings.OMNIVIEW_REAL_WATCHDOG_INTERVAL_MINUTES))
+                _omniview_real_refresh_scheduler.add_job(
+                    run_real_data_watchdog,
+                    "interval",
+                    minutes=wd_min,
+                    id="omniview_real_data_watchdog",
+                    replace_existing=True,
+                    max_instances=1,
+                    coalesce=True,
+                    misfire_grace_time=120,
+                )
+                logger.info(
+                    "Omniview REAL watchdog programado: cada %s min.",
+                    wd_min,
+                )
+
+            _omniview_real_refresh_scheduler.start()
+            attach_omniview_scheduler(_omniview_real_refresh_scheduler)
+            logger.info("APScheduler Omniview (refresh/watchdog) iniciado.")
+        except Exception as e:
+            logger.exception(
+                "No se pudo iniciar Omniview APScheduler (continuando sin él): %s",
+                e,
+            )
+
+
+@app.on_event("shutdown")
+async def shutdown_omniview_real_refresh_scheduler():
+    global _omniview_real_refresh_scheduler
+    if _omniview_real_refresh_scheduler is not None:
+        try:
+            _omniview_real_refresh_scheduler.shutdown(wait=False)
+        except Exception as e:
+            logger.debug("shutdown scheduler: %s", e)
+        _omniview_real_refresh_scheduler = None
+
 
 @app.get("/")
 async def root():

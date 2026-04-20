@@ -150,6 +150,47 @@ export const getOmniviewProjection = async (params = {}, { signal } = {}) => {
   return response.data
 }
 
+/** Frescura del REAL agregado (day/week/month facts) que alimenta Omniview semanal/diario. */
+export const getBusinessSliceRealFreshness = async ({ signal } = {}) => {
+  const response = await api.get('/ops/business-slice/real-freshness', { signal })
+  return response.data
+}
+
+/** Resumen de filas del plan no mapeadas a tajada canónica. */
+export const getPlanUnmappedSummary = async (planVersion, { signal } = {}) => {
+  const response = await api.get('/plan/unmapped-summary', { params: { plan_version: planVersion }, signal })
+  return response.data
+}
+
+/** Auditoría completa de cobertura de mapeo del plan. */
+export const getPlanMappingAudit = async (planVersion, { signal } = {}) => {
+  const response = await api.get('/plan/mapping-audit', { params: { plan_version: planVersion }, signal })
+  return response.data
+}
+
+/** Projection Integrity / Control: auditoría de derivación semanal-diaria */
+export const getProjectionIntegrityAudit = async (planVersion, { year, month, signal } = {}) => {
+  const params = { plan_version: planVersion }
+  if (year != null) params.year = year
+  if (month != null) params.month = month
+  const response = await api.get('/plan/projection-integrity-audit', { params, signal })
+  return response.data
+}
+
+/** Catálogo de aliases LOB conocidos. */
+export const getLobAliasCatalog = async () => {
+  const response = await api.get('/plan/lob-alias-catalog')
+  return response.data
+}
+
+/** Auditoría de reconciliación Plan vs Real (matched, missing_plan, plan_without_real, unresolved). */
+export const getPlanReconciliationAudit = async (planVersion, { lobFilter, signal } = {}) => {
+  const params = { plan_version: planVersion }
+  if (lobFilter) params.lob_filter = lobFilter
+  const response = await api.get('/plan/reconciliation-audit', { params, signal })
+  return response.data
+}
+
 export const getCoreMonthlySummary = async (filters = {}) => {
   const response = await api.get('/core/summary/monthly', { params: filters })
   return response.data

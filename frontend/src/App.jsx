@@ -18,6 +18,7 @@ import RealLOBDrillView from './components/RealLOBDrillView'
 import BusinessSliceView from './components/BusinessSliceView'
 import BusinessSliceOmniview from './components/BusinessSliceOmniview'
 import BusinessSliceOmniviewMatrix from './components/BusinessSliceOmniviewMatrix'
+import OmniviewErrorBoundary from './components/OmniviewErrorBoundary'
 import BusinessSliceOmniviewReports from './components/BusinessSliceOmniviewReports'
 import ControlLoopPlanVsRealView from './components/ControlLoopPlanVsRealView'
 import RealOperationalView from './components/RealOperationalView'
@@ -476,7 +477,11 @@ function ControlTowerApp () {
             {operacionSubTab === 'lob_drill' && <RealLOBDrillView key={`real-lob-drill-${refreshKey}`} />}
             {operacionSubTab === 'business_slice' && <BusinessSliceView key={`business-slice-${refreshKey}`} />}
             {operacionSubTab === 'business_slice_omniview' && <BusinessSliceOmniview key={`business-slice-omniview-${refreshKey}`} />}
-            {operacionSubTab === 'omniview_matrix' && <BusinessSliceOmniviewMatrix key={`bs-omniview-matrix-${refreshKey}`} />}
+            {operacionSubTab === 'omniview_matrix' && (
+              <OmniviewErrorBoundary key={`bs-omniview-matrix-${refreshKey}`}>
+                <BusinessSliceOmniviewMatrix />
+              </OmniviewErrorBoundary>
+            )}
             {operacionSubTab === 'control_loop_pvr' && <ControlLoopPlanVsRealView key={`control-loop-pvr-${refreshKey}`} />}
             {operacionSubTab === 'reportes' && <BusinessSliceOmniviewReports key={`bs-omniview-reports-${refreshKey}`} />}
           </section>

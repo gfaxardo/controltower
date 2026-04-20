@@ -278,6 +278,14 @@ export function buildAlertPayload ({
     rootCauseResult
   )
 
+  const trustNotes = []
+  if (delta?.projection_confidence === 'low') {
+    trustNotes.push('Proyección de baja confianza — validar curva antes de escalar decisión.')
+  }
+  if (delta?.projection_anomaly) {
+    trustNotes.push('Anomalía de curva detectada — verificar distribución histórica.')
+  }
+
   return {
     alert_id: _randomId(),
     feature_source: FEATURE_SOURCE,
@@ -305,6 +313,9 @@ export function buildAlertPayload ({
     impact_basis,
     ...action,
     curve_confidence: delta?.curve_confidence ?? null,
+    projection_confidence: delta?.projection_confidence ?? null,
+    projection_anomaly: !!delta?.projection_anomaly,
+    trust_notes: trustNotes,
     signal: delta?.signal ?? 'no_data',
     score_breakdown,
     navigation,

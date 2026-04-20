@@ -3,6 +3,7 @@ from app.services.plan_parser_service import parse_proyeccion_sheet_legacy as pa
 from app.services.plan_parser_service import _separate_by_universe, _find_missing_combos
 from app.adapters.plan_repo import save_plan_rows, save_plan_rows_raw, save_plan_projection_raw, calculate_file_hash, get_plan_data
 from app.models.schemas import PlanUploadResponse
+from app.utils.json_sanitizer import sanitize_for_json
 from typing import Optional, List, Dict
 from datetime import datetime
 import logging
@@ -608,5 +609,150 @@ async def upload_control_loop_projection(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.exception("upload_control_loop_projection")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FASE 3.3.C — Endpoints de normalización y auditoría de plan
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/unmapped-summary")
+async def get_plan_unmapped_summary(
+    plan_version: str = Query(..., description="Versión de plan (ej. ruta27_2026_04_15_6)"),
+):
+    """
+    Devuelve las filas del plan que NO pudieron mapearse a tajada canónica (business_slice_name).
+
+    Incluye por cada fila no mapeada:
+    - raw_country, raw_city, raw_lob (exactamente como vienen del plan)
+    - canonical_country, canonical_city (normalizados)
+    - canonical_lob_base (resultado del alias map; None si no hay alias)
+    - resolution_status: siempre 'unresolved' en esta lista
+    - resolution_note: motivo (ej. 'raw_lob_not_found_in_alias_map: ...')
+    - period: mes del plan donde ocurre
+
+    count_unique_pairs: número de combinaciones (raw_city, raw_lob) distintas.
+    coverage_pct: % de filas totales del plan que SÍ se resolvieron.
+
+    Si coverage_pct < 99 → WARNING.
+    Si coverage_pct < 95 → CRITICAL.
+    """
+    try:
+        from app.services.plan_normalization_service import get_plan_unmapped_summary
+        result = get_plan_unmapped_summary(plan_version)
+        return sanitize_for_json(result)
+    except Exception as e:
+        logger.exception("plan/unmapped-summary")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/mapping-audit")
+async def get_plan_mapping_audit(
+    plan_version: str = Query(..., description="Versión de plan a auditar"),
+):
+    """
+    Auditoría completa de cobertura del plan: cuántas filas se resolvieron,
+    cuántas no, y por qué.
+
+    Respuesta:
+    - total_rows: filas totales del plan
+    - resolved: filas con business_slice_name resuelto
+    - unresolved: filas sin resolución
+    - coverage_pct: % de cobertura
+    - alert_level: 'ok' (≥99%), 'warning' (≥95%), 'critical' (<95%), 'no_data'
+    - by_resolution_source: distribución por fuente de resolución
+    - alias_map_size: cuántos aliases conoce el sistema actualmente
+    - unresolved_items: detalle de cada fila sin resolver con trazabilidad completa
+
+    Usar este endpoint para:
+    - Diagnosticar por qué un raw_lob no se mapea
+    - Ver cobertura antes de usar el plan en Omniview
+    - Documentar qué LOBs necesitan nuevo alias
+    """
+    try:
+        from app.services.plan_normalization_service import get_plan_mapping_audit
+        result = get_plan_mapping_audit(plan_version)
+        return sanitize_for_json(result)
+    except Exception as e:
+        logger.exception("plan/mapping-audit")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/projection-integrity-audit")
+async def projection_integrity_audit_endpoint(
+    plan_version: str = Query(..., description="Versión de plan"),
+    year: Optional[int] = Query(None, description="Año calendario (opcional; default mes actual)"),
+    month: Optional[int] = Query(None, ge=1, le=12, description="Mes 1-12 (opcional)"),
+):
+    """
+    Projection Integrity Engine — lista de issues: alineación iso/mes-fin, conservación,
+    volatilidad semanal y uso de fallback en curvas (derivación mensual).
+    """
+    try:
+        from app.services.plan_normalization_service import get_projection_integrity_audit
+
+        result = get_projection_integrity_audit(plan_version, year=year, month=month)
+        return sanitize_for_json(result)
+    except Exception as e:
+        logger.exception("plan/projection-integrity-audit")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/reconciliation-audit")
+async def get_plan_reconciliation_audit_endpoint(
+    plan_version: str = Query(..., description="Versión de plan a auditar"),
+    lob_filter: Optional[str] = Query(None, description="Filtrar por LOB (ej. 'yma', 'ymm', 'delivery')"),
+):
+    """
+    Auditoría completa de reconciliación Plan vs Real.
+
+    Responde la pregunta: "¿Por qué tal tajada no aparece en la matriz?"
+
+    Retorna:
+    - **matched**: filas con plan y real cruzados correctamente
+    - **missing_plan**: ejecución real sin plan correspondiente
+    - **plan_without_real**: plan resuelto pero sin ejecución visible
+    - **unresolved_plan**: plan cuyo raw_lob no mapeó a business_slice_name
+    - **alias_missing**: subconjunto de unresolved donde el raw_lob no tiene alias
+    - **city_slice_missing**: subconjunto donde el alias existe pero la ciudad no tiene la tajada activa
+    - **duplicate_visual_keys**: visual_row_key repetidas (causa de filas duplicadas)
+    - **qa_cities_summary**: resumen por ciudad QA (Lima, Trujillo, Arequipa, Cali, Bogotá, etc.)
+    - **yma_ymm_audit**: audit específico para YMA/YMM por mes y ciudad
+    - **items**: detalle completo de cada categoría
+
+    Use `lob_filter=yma` para ver específicamente el audit de YMA.
+    Use `lob_filter=ymm` para YMM.
+    """
+    try:
+        from app.services.plan_reconciliation_service import get_plan_reconciliation_audit
+        result = get_plan_reconciliation_audit(plan_version, lob_filter=lob_filter)
+        return sanitize_for_json(result)
+    except Exception as e:
+        logger.exception("plan/reconciliation-audit")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/lob-alias-catalog")
+async def get_lob_alias_catalog():
+    """
+    Devuelve el catálogo completo de aliases LOB conocidos por el sistema.
+
+    Útil para:
+    - Verificar si un raw_lob está en el sistema antes de subir un plan
+    - Auditar qué aliases existen
+    - Identificar gaps de cobertura
+    """
+    try:
+        from app.config.control_loop_lob_mapping import list_alias_map_for_audit
+        aliases = list_alias_map_for_audit()
+        return {
+            "count": len(aliases),
+            "aliases": [
+                {"raw_lob_name": k, "canonical_lob_base": v}
+                for k, v in sorted(aliases.items())
+            ],
+        }
+    except Exception as e:
+        logger.exception("plan/lob-alias-catalog")
         raise HTTPException(status_code=500, detail=str(e))
 

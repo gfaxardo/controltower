@@ -96,6 +96,89 @@ class Settings(BaseSettings):
     # Backfill histórico: python -m scripts.backfill_real_lob_mvs --from YYYY-MM-01 --to YYYY-MM-01
     REAL_LOB_RECENT_DAYS: int = 90
 
+    # ── Omniview Matrix: refresh automático day_fact + week_fact (loader incremental) ──
+    OMNIVIEW_REAL_REFRESH_ENABLED: bool = Field(
+        default=False,
+        description="Si True, APScheduler ejecuta recarga day/week fact periódicamente (mes actual + anterior).",
+    )
+    OMNIVIEW_REAL_REFRESH_INTERVAL_MINUTES: int = Field(
+        default=60,
+        ge=15,
+        le=1440,
+        description="Intervalo del job de refresh (mín. 15 min).",
+    )
+    OMNIVIEW_REAL_REFRESH_TIMEOUT_MS: int = Field(
+        default=1_800_000,
+        description="statement_timeout para el job (default 30 min).",
+    )
+    OMNIVIEW_REAL_FRESH_LAG_STALE_DAYS: int = Field(
+        default=1,
+        ge=0,
+        description="Lag días MAX(trip_date) vs hoy para marcar stale en /real-freshness.",
+    )
+    OMNIVIEW_REAL_FRESH_LAG_CRITICAL_DAYS: int = Field(
+        default=2,
+        ge=0,
+        description="Lag días para marcar critical.",
+    )
+    OMNIVIEW_UPSTREAM_MODE: str = Field(
+        default="table",
+        description="Upstream para freshness: 'table' (OMNIVIEW_UPSTREAM_TRIPS_TABLE) o 'canon' (ops.v_trips_real_canon).",
+    )
+    OMNIVIEW_UPSTREAM_TRIPS_TABLE: str = Field(
+        default="public.trips_2026",
+        description="schema.tabla para MAX(fecha) en modo table.",
+    )
+    OMNIVIEW_UPSTREAM_DATE_COLUMN: str = Field(
+        default="fecha_inicio_viaje",
+        description="Columna de fecha en la tabla upstream (solo identificadores seguros).",
+    )
+    OMNIVIEW_UPSTREAM_RECENT_DAYS: int = Field(
+        default=7,
+        ge=1,
+        le=90,
+        description="Ventana (días) para row_count_recent en upstream.",
+    )
+    OMNIVIEW_REAL_REFRESH_MIN_INTERVAL_MINUTES: int = Field(
+        default=15,
+        ge=1,
+        le=1440,
+        description="No ejecutar refresh si hubo una corrida hace menos de estos minutos (cooldown).",
+    )
+    OMNIVIEW_REAL_WATCHDOG_ENABLED: bool = Field(
+        default=False,
+        description="Si True, job watchdog + auto-recovery (requiere scheduler en main).",
+    )
+    OMNIVIEW_REAL_WATCHDOG_INTERVAL_MINUTES: int = Field(
+        default=15,
+        ge=5,
+        le=1440,
+        description="Intervalo del watchdog.",
+    )
+    REAL_FRESHNESS_ALERT_WEBHOOK: str = Field(
+        default="",
+        description="URL opcional POST JSON en alertas del watchdog (vacío = desactivado).",
+    )
+
+    # ── Projection Integrity Engine (Omniview proyección derivada mensual) ──
+    PROJECTION_SMOOTHING_ALPHA_WEEK: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Blend curva histórica vs uniforme semanal (week_share_of_month).",
+    )
+    PROJECTION_SMOOTHING_ALPHA_DAY: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Blend curva histórica vs progreso lineal por día (ratio acumulado mensual y share diario).",
+    )
+    PROJECTION_CONSERVATION_TOLERANCE_PCT: float = Field(
+        default=0.1,
+        ge=0.0,
+        description="Tolerancia %% para drift de conservación sin ajuste (además de drift_abs<=1).",
+    )
+
     model_config = {
         "env_file": os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"),
         "case_sensitive": False,

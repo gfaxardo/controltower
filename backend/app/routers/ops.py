@@ -33,6 +33,10 @@ from app.services.control_loop_plan_vs_real_service import (
 from app.services.projection_expected_progress_service import (
     get_omniview_projection,
 )
+from app.services.business_slice_real_freshness_service import (
+    get_omniview_business_slice_real_freshness,
+)
+from app.services.business_slice_real_refresh_job import run_business_slice_real_refresh_job
 from app.utils.json_sanitizer import sanitize_for_json
 from app.settings import settings
 from app.services.plan_real_split_service import (
@@ -421,7 +425,7 @@ async def control_loop_plan_vs_real_endpoint(
             period_from=period_from,
             period_to=period_to,
         )
-        return {"data": data, "total_records": len(data)}
+        return sanitize_for_json({"data": data, "total_records": len(data)})
     except Exception as e:
         logger.exception("control-loop/plan-vs-real")
         raise HTTPException(status_code=500, detail=str(e))
@@ -456,6 +460,35 @@ async def business_slice_omniview_projection(
         return sanitize_for_json(data)
     except Exception as e:
         logger.exception("business-slice/omniview-projection")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/business-slice/real-freshness")
+async def business_slice_real_freshness_endpoint():
+    """
+    Freshness Omniview: upstream (trips base) + facts agregados (day/week/month),
+    status global (peor caso), lag combinado, last_refresh_at, next_scheduled_run.
+    """
+    try:
+        return sanitize_for_json(get_omniview_business_slice_real_freshness())
+    except Exception as e:
+        logger.exception("business-slice/real-freshness")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/business-slice/real-refresh-omniview")
+async def business_slice_real_refresh_omniview_endpoint(
+    force: bool = Query(False, description="Si True, ignora cooldown entre corridas."),
+):
+    """
+    Ejecuta recarga operacional de day_fact + week_fact (mes actual y anterior).
+    Puede tardar minutos; usar desde cron, Task Scheduler o admin.
+    """
+    try:
+        result = await _run_sync(run_business_slice_real_refresh_job, force)
+        return sanitize_for_json(result)
+    except Exception as e:
+        logger.exception("business-slice/real-refresh-omniview")
         raise HTTPException(status_code=500, detail=str(e))
 
 

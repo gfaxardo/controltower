@@ -6,9 +6,13 @@ import {
   computeProjectionDeltas,
   computeProjectionTotalsDeltas,
   fmtAttainment,
+  fmtGap,
+  fmtGapPct,
+  basisSuffix,
   projectionSignalColor,
   SIGNAL_DOT,
   PROJECTION_KPIS,
+  countryRank,
 } from './omniview/projectionMatrixUtils.js'
 
 export default function BusinessSliceOmniviewMatrixTable ({
@@ -27,7 +31,7 @@ export default function BusinessSliceOmniviewMatrixTable ({
   mode = 'evolution',
 }) {
   const isProjection = mode === 'projection'
-  const { cities, allPeriods, totals, comparisonTotals, comparisonMeta } = matrix
+  const { cities, allPeriods, totals, comparisonTotals, comparisonMeta, cityVolumeMap, lineVolumeMap } = matrix
   const [collapsed, setCollapsed] = useState(new Set())
   const headerH = compact ? HEADER_H_COMPACT : HEADER_H_COMFORTABLE
   const trustLine = useMemo(() => isProjection ? null : trustIssueSummaryForTooltip(matrixTrust), [matrixTrust, isProjection])
@@ -38,14 +42,27 @@ export default function BusinessSliceOmniviewMatrixTable ({
 
   const cityEntries = useMemo(() => {
     return [...cities.entries()].sort((a, b) => {
+      const [aKey, aData] = a
+      const [bKey, bData] = b
+
       if (!isProjection) {
-        const aUn = a[1].city === 'UNMAPPED' ? 1 : 0
-        const bUn = b[1].city === 'UNMAPPED' ? 1 : 0
+        // Evolución: UNMAPPED al final, luego alfabético
+        const aUn = aData.city === 'UNMAPPED' ? 1 : 0
+        const bUn = bData.city === 'UNMAPPED' ? 1 : 0
         if (aUn !== bUn) return aUn - bUn
+        return aKey.localeCompare(bKey)
       }
-      return a[0].localeCompare(b[0])
+
+      // Proyección: Perú arriba, Colombia abajo; dentro de país por mayor volumen proyectado
+      const rankA = countryRank(aData.country)
+      const rankB = countryRank(bData.country)
+      if (rankA !== rankB) return rankA - rankB
+      const volA = cityVolumeMap?.get(aKey) ?? 0
+      const volB = cityVolumeMap?.get(bKey) ?? 0
+      if (volB !== volA) return volB - volA
+      return aKey.localeCompare(bKey)
     })
-  }, [cities, isProjection])
+  }, [cities, isProjection, cityVolumeMap])
 
   const totalsDeltas = useMemo(
     () => isProjection
@@ -75,7 +92,10 @@ export default function BusinessSliceOmniviewMatrixTable ({
     )
   }
 
-  const colW = compact ? 58 : 66
+  // Proyección usa columnas más anchas para acomodar el formato Proy/Real/Av/Gap
+  const colW = isProjection
+    ? (compact ? 72 : 90)
+    : (compact ? 58 : 66)
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden" data-omniview-matrix-table>
@@ -99,10 +119,22 @@ export default function BusinessSliceOmniviewMatrixTable ({
 
             {cityEntries.map(([cityKey, cityData]) => {
               const isCollapsed = collapsed.has(cityKey)
-              const lineEntries = sortLineEntries([...cityData.lines.entries()], sortKey, isProjection ? {} : {
-                lineImpactMap,
-                cityKey,
-              })
+
+              // En proyección: ordenar líneas por mayor volumen proyectado (trips)
+              let lineEntries
+              if (isProjection) {
+                lineEntries = [...cityData.lines.entries()].sort((a, b) => {
+                  const va = lineVolumeMap?.get(`${cityKey}::${a[0]}`) ?? 0
+                  const vb = lineVolumeMap?.get(`${cityKey}::${b[0]}`) ?? 0
+                  if (vb !== va) return vb - va
+                  return a[1].business_slice_name.localeCompare(b[1].business_slice_name)
+                })
+              } else {
+                lineEntries = sortLineEntries([...cityData.lines.entries()], sortKey, {
+                  lineImpactMap,
+                  cityKey,
+                })
+              }
 
               return (
                 <CityBlock
@@ -179,9 +211,9 @@ const TotalsRow = memo(function TotalsRow ({ allPeriods, totalsDeltas, compact, 
 })
 
 const ProjectionTotalsRow = memo(function ProjectionTotalsRow ({ allPeriods, totalsDeltas, compact, headerH, focusedKpi }) {
-  const py = compact ? 'py-px' : 'py-0.5'
-  const valSize = compact ? 'text-[10px]' : 'text-[11px]'
-  const deltaSize = compact ? 'text-[8px]' : 'text-[9px]'
+  const py = compact ? 'py-0.5' : 'py-1'
+  const valSize = compact ? 'text-[9px]' : 'text-[9px]'
+  const lblSize = compact ? 'text-[7px]' : 'text-[8px]'
   const isProjectable = PROJECTION_KPIS.includes(focusedKpi.key)
 
   return (
@@ -199,30 +231,84 @@ const ProjectionTotalsRow = memo(function ProjectionTotalsRow ({ allPeriods, tot
         const d = pDeltas?.[focusedKpi.key]
         const bgStyle = zebra ? { backgroundColor: 'rgb(238,240,245)' } : { backgroundColor: 'rgb(243,244,248)' }
 
-        if (!d) return <td key={`t-${pk}-${focusedKpi.key}`} className={`px-1 ${py} text-center ${valSize} text-gray-300 border-r border-gray-200/60`} style={bgStyle}>—</td>
-
-        const val = fmtValue(d.value, focusedKpi.key)
+        if (!d) return (
+          <td key={`t-${pk}-${focusedKpi.key}`} className={`px-1 ${py} text-center ${lblSize} text-gray-300 border-r border-gray-200/60`} style={bgStyle}>—</td>
+        )
 
         if (!isProjectable || !d.isProjection) {
+          const val = fmtValue(d.value, focusedKpi.key)
           return (
             <td key={`t-${pk}-${focusedKpi.key}`} className={`px-1 ${py} text-center whitespace-nowrap border-r border-gray-200/60`} style={bgStyle}>
               <div className={`${valSize} font-bold text-slate-700 leading-none`}>{val}</div>
+              <div className={`${lblSize} leading-none text-gray-300 mt-px`}>sin plan</div>
             </td>
           )
         }
 
-        const att = fmtAttainment(d.attainment_pct)
-        const signal = d.signal || 'no_data'
+        const projected    = d.projected_total
+        const actual       = d.value
+        const att          = d.attainment_pct
+        const gap          = d.gap_to_expected
+        const gapPct       = d.gap_pct
+        const basis        = d.comparison_basis
+        const sfx          = basisSuffix(basis)            // '(E)', '(F)', ''
+        const hasPlan      = (projected ?? 0) > 0
+        const hasReal      = actual != null && actual > 0
+        const hasNegActual = actual != null && actual < 0
+
+        const projStr = hasPlan ? fmtValue(projected, focusedKpi.key) : '—'
+        const realStr = hasReal
+          ? fmtValue(actual, focusedKpi.key)
+          : hasNegActual ? fmtValue(actual, focusedKpi.key) : (actual === 0 ? '0' : '—')
+
+        // avance con sufijo base
+        const rawAv   = hasPlan ? fmtAttainment(hasReal && !hasNegActual ? att : 0) : '—'
+        const avStr   = (rawAv !== '—' && sfx) ? `${rawAv} ${sfx}` : rawAv
+        const gapStr  = gap != null ? fmtGap(gap, focusedKpi.key) : null
+        const gapPctStr = fmtGapPct(gapPct)
+
+        const signal   = hasNegActual ? 'danger' : (d.signal || 'no_data')
         const dotClass = SIGNAL_DOT[signal] || SIGNAL_DOT.no_data
-        const color = projectionSignalColor(signal)
+        const attColor = projectionSignalColor(signal)
+
+        const tooltipParts = [
+          `TOTAL · ${focusedKpi.label}`,
+          basis ? `Base: ${basis === 'expected_to_date_month' || basis === 'expected_to_date_week' ? 'Expected al corte' : 'Plan período completo'}` : null,
+          ``,
+          `Plan (mes):    ${projStr}`,
+          `Expected${sfx || ''}:  ${hasPlan ? fmtValue(d.projected_expected, focusedKpi.key) : '—'}`,
+          `Real:          ${realStr}`,
+          ``,
+          `Avance ${sfx}:  ${avStr}`,
+          gapStr ? `Gap absoluto:  ${gapStr}` : null,
+          gapPctStr ? `Gap %:         ${gapPctStr}` : null,
+          ``,
+          `Nota: Total usa suma(real) / suma(expected), no promedio de %`,
+        ].filter(v => v !== null).join('\n')
 
         return (
-          <td key={`t-${pk}-${focusedKpi.key}`} className={`px-1 ${py} text-center whitespace-nowrap border-r border-gray-200/60`} style={bgStyle}>
-            <div className={`${valSize} font-bold text-slate-700 leading-none`}>{val}</div>
-            <div className={`${deltaSize} leading-none font-semibold mt-px flex items-center justify-center gap-0.5`}>
-              <span className={`inline-block w-1.5 h-1.5 rounded-full ${dotClass} flex-shrink-0`} />
-              <span style={{ color }}>{att}</span>
+          <td key={`t-${pk}-${focusedKpi.key}`}
+            className={`px-1 ${py} text-center whitespace-nowrap border-r border-gray-200/60`}
+            style={bgStyle}
+            title={tooltipParts}
+          >
+            {/* Proy (expected) */}
+            <div className={`${lblSize} text-gray-400 leading-none`}>
+              <span className="text-gray-300">↑</span> {projStr}
             </div>
+            {/* Real */}
+            <div className={`${valSize} font-bold leading-none mt-px ${hasReal ? 'text-slate-700' : hasNegActual ? 'text-red-700' : 'text-gray-400'}`}>
+              {realStr}
+            </div>
+            {/* Avance con sufijo */}
+            <div className={`${lblSize} leading-none font-semibold mt-px flex items-center justify-center gap-0.5`}>
+              <span className={`inline-block w-1.5 h-1.5 rounded-full ${dotClass} flex-shrink-0`} />
+              <span style={{ color: attColor }}>{avStr}</span>
+            </div>
+            {/* Gap absoluto */}
+            {gapStr && (
+              <div className={`${lblSize} leading-none mt-px text-gray-400`}>{gapStr}</div>
+            )}
           </td>
         )
       })}

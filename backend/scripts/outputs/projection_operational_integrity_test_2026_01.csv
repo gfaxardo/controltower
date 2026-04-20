@@ -1,0 +1,19 @@
+city,tajada,month,kpi,monthly_plan,weekly_sum,daily_sum,weekly_drift_abs,weekly_drift_pct,daily_drift_abs,daily_drift_pct,max_weekly_variation_pct,max_daily_variation_pct,fallback_level,confidence_status,verdict
+lima,auto regular,2026-01,trips_completed,,0,0,,,,,0.0,0.0,,,NO_DATA
+lima,auto regular,2026-01,revenue_yego_net,,0,0,,,,,0.0,0.0,,,NO_DATA
+lima,auto regular,2026-01,active_drivers,,0,0,,,,,0.0,0.0,,,NO_DATA
+lima,delivery,2026-01,trips_completed,,0,0,,,,,0.0,0.0,,,NO_DATA
+lima,delivery,2026-01,revenue_yego_net,,0,0,,,,,0.0,0.0,,,NO_DATA
+lima,delivery,2026-01,active_drivers,,0,0,,,,,0.0,0.0,,,NO_DATA
+lima,cargo,2026-01,trips_completed,,0,0,,,,,0.0,0.0,,,NO_DATA
+lima,cargo,2026-01,revenue_yego_net,,0,0,,,,,0.0,0.0,,,NO_DATA
+lima,cargo,2026-01,active_drivers,,0,0,,,,,0.0,0.0,,,NO_DATA
+cali,auto regular,2026-01,trips_completed,,0,0,,,,,0.0,0.0,,,NO_DATA
+cali,auto regular,2026-01,revenue_yego_net,,0,0,,,,,0.0,0.0,,,NO_DATA
+cali,auto regular,2026-01,active_drivers,,0,0,,,,,0.0,0.0,,,NO_DATA
+cali,delivery,2026-01,trips_completed,,0,0,,,,,0.0,0.0,,,NO_DATA
+cali,delivery,2026-01,revenue_yego_net,,0,0,,,,,0.0,0.0,,,NO_DATA
+cali,delivery,2026-01,active_drivers,,0,0,,,,,0.0,0.0,,,NO_DATA
+barranquilla,auto regular,2026-01,trips_completed,,0,0,,,,,0.0,0.0,,,NO_DATA
+barranquilla,auto regular,2026-01,revenue_yego_net,,0,0,,,,,0.0,0.0,,,NO_DATA
+barranquilla,auto regular,2026-01,active_drivers,,0,0,,,,,0.0,0.0,,,NO_DATA

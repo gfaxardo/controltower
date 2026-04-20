@@ -133,6 +133,33 @@ function DrillContent ({ selection, grain, compact, onClose, projectionMeta, pla
         )}
 
         {/* Curve detail */}
+        {delta?.isProjection && (
+          <div className="px-4 py-3 bg-amber-50/30 border-b border-amber-100/80">
+            <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Confianza de proyección</h4>
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <span className={`inline-block px-1.5 py-px rounded text-[9px] font-bold border ${
+                (delta.projection_confidence === 'high' || !delta.projection_confidence)
+                  ? 'bg-emerald-100 text-emerald-900 border-emerald-200'
+                  : delta.projection_confidence === 'medium'
+                    ? 'bg-amber-100 text-amber-900 border-amber-200'
+                    : 'bg-red-100 text-red-900 border-red-200'
+              }`}>
+                {!delta.projection_confidence || delta.projection_confidence === 'high'
+                  ? 'Alta'
+                  : delta.projection_confidence === 'medium'
+                    ? 'Media'
+                    : 'Baja'}
+              </span>
+              {delta.projection_anomaly && (
+                <span className="text-[9px] font-semibold text-amber-800 border border-amber-300 rounded px-1">Anomalía vol.</span>
+              )}
+            </div>
+            <p className="text-[9px] text-gray-600 leading-snug">
+              Basado en nivel de fallback de trips y magnitud del ajuste de conservación en la celda.
+            </p>
+          </div>
+        )}
+
         {delta?.isProjection && delta.curve_method && (
           <div className="px-4 py-3">
             <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Detalle curva</h4>
@@ -153,6 +180,15 @@ function DrillContent ({ selection, grain, compact, onClose, projectionMeta, pla
                 <>
                   <span className={labelCls}>Ratio esperado</span>
                   <span className={valueCls}>{(delta.expected_ratio * 100).toFixed(1)}%</span>
+                </>
+              )}
+              {delta.conservation_adjustment_applied && (
+                <>
+                  <span className={labelCls}>Ajuste conservación</span>
+                  <span className={valueCls}>
+                    {delta.conservation_adjustment_value != null ? `${delta.conservation_adjustment_value >= 0 ? '+' : ''}${delta.conservation_adjustment_value}` : 'sí'}
+                    {' '}(últ. período)
+                  </span>
                 </>
               )}
             </div>
@@ -407,6 +443,13 @@ function ActionSection ({ drillAlert, compact }) {
         <div className="rounded-md bg-violet-50 border border-violet-100 px-2 py-1.5">
           <div className={`${fontSize} text-violet-900 font-medium`}>{drillAlert.suggested_action_text}</div>
         </div>
+        {Array.isArray(drillAlert.trust_notes) && drillAlert.trust_notes.length > 0 && (
+          <div className="rounded-md bg-slate-50 border border-slate-200 px-2 py-1.5 space-y-0.5">
+            {drillAlert.trust_notes.map((tn, i) => (
+              <div key={i} className={`${fontSize} text-slate-700`}>{tn}</div>
+            ))}
+          </div>
+        )}
       </div>
 
       <button
