@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 from app.db.connection import get_db, get_db_audit
 from app.services.business_slice_incremental_load import (
     load_business_slice_day_for_month,
+    load_business_slice_month,
     load_business_slice_week_for_month,
 )
 from app.services.business_slice_service import FACT_DAILY
@@ -22,6 +23,17 @@ from app.services.upstream_real_status_service import get_upstream_real_status
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _refresh_month_fact_enabled() -> bool:
+    """Flag para incluir month_fact en el refresh job operativo.
+
+    FASE_KPI_CONSISTENCY: por defecto activado, ya que la falta de refresco
+    del month_fact es la causa raíz dominante de ROLLUP_MISMATCH (day_fact
+    sí se refresca cada cooldown). Puede desactivarse vía settings si el
+    coste de re-materializar el mes resulta demasiado alto en producción.
+    """
+    return bool(getattr(settings, "OMNIVIEW_REAL_REFRESH_INCLUDE_MONTH_FACT", True))
 
 _last_refresh_completed_ts: float = 0.0
 
@@ -111,6 +123,8 @@ def run_business_slice_real_refresh_job(force: bool = False) -> Dict[str, Any]:
         timeout_ms,
     )
 
+    include_month_fact = _refresh_month_fact_enabled()
+
     for mo in months:
         mo_label = mo.isoformat()[:7]
         try:
@@ -123,13 +137,28 @@ def run_business_slice_real_refresh_job(force: bool = False) -> Dict[str, Any]:
                 logger.info("omniview_real_refresh_job week_fact month=%s", mo_label)
                 nw = load_business_slice_week_for_month(cur, mo, conn)
                 conn.commit()
+                # FASE_KPI_CONSISTENCY: incluir month_fact para mantener
+                # los tres granos sincronizados y evitar ROLLUP_MISMATCH
+                # por staleness del fact mensual.
+                nm: int | None = None
+                if include_month_fact:
+                    logger.info("omniview_real_refresh_job month_fact month=%s", mo_label)
+                    nm = load_business_slice_month(cur, mo, conn)
+                    conn.commit()
                 cur.close()
             dt = time.perf_counter() - t_m
-            log_lines.append(f"{mo_label}: day_rows={nd} week_rows={nw} {dt:.1f}s")
-            logger.info(
-                "omniview_real_refresh_job month=%s day_rows=%s week_rows=%s duration_s=%.1f",
-                mo_label, nd, nw, dt,
-            )
+            if include_month_fact:
+                log_lines.append(f"{mo_label}: day_rows={nd} week_rows={nw} month_rows={nm} {dt:.1f}s")
+                logger.info(
+                    "omniview_real_refresh_job month=%s day_rows=%s week_rows=%s month_rows=%s duration_s=%.1f",
+                    mo_label, nd, nw, nm, dt,
+                )
+            else:
+                log_lines.append(f"{mo_label}: day_rows={nd} week_rows={nw} {dt:.1f}s")
+                logger.info(
+                    "omniview_real_refresh_job month=%s day_rows=%s week_rows=%s duration_s=%.1f",
+                    mo_label, nd, nw, dt,
+                )
         except Exception as e:
             logger.exception("omniview_real_refresh_job month=%s", mo_label)
             errors.append({"month": mo_label, "error": str(e)})

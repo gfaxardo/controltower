@@ -1,0 +1,141 @@
+country,city,business_slice,kpi,month,monthly_value,weekly_sum,daily_sum,weekly_max,daily_max,expected_rule,comparable_across_grains,status,issue_note
+colombia,barranquilla,Auto regular,commission_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,barranquilla,Auto regular,trips_completed,2025-12-01,39051.0,42038.0,39051.0,9790.0,1582.0,exact_sum,True,fail,SUM(weekly)=42038 vs monthly=39051
+colombia,barranquilla,Auto regular,avg_ticket,2025-12-01,12882.03329065301,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,barranquilla,Auto regular,active_drivers,2025-12-01,423.0,4445.0,4118.0,1021.0,155.0,not_directly_comparable,False,fail,monthly(423) < max(weekly)=1021
+colombia,barranquilla,Auto regular,revenue_yego_net,2025-12-01,0.0,-1225105.0,0.0,0.0,0.0,exact_sum,True,fail,SUM(weekly)=-1.2251e+06 vs monthly=0
+colombia,barranquilla,Auto regular,cancel_rate_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,barranquilla,Auto regular,trips_per_driver,2025-12-01,92.31914893617021,0.0,0.0,0.0,0.0,not_directly_comparable,False,expected_non_comparable,"Derivado de drivers únicos: validado por fórmula scope-by-scope, no por suma."
+colombia,barranquilla,Delivery moto,commission_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,barranquilla,Delivery moto,trips_completed,2025-12-01,3567.0,3760.0,3567.0,881.0,166.0,exact_sum,True,fail,SUM(weekly)=3760 vs monthly=3567
+colombia,barranquilla,Delivery moto,avg_ticket,2025-12-01,5892.514718250631,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,barranquilla,Delivery moto,active_drivers,2025-12-01,73.0,476.0,451.0,108.0,21.0,not_directly_comparable,False,fail,monthly(73) < max(weekly)=108
+colombia,barranquilla,Delivery moto,revenue_yego_net,2025-12-01,0.0,-21212.0,0.0,0.0,0.0,exact_sum,True,fail,SUM(weekly)=-21212 vs monthly=0
+colombia,barranquilla,Delivery moto,cancel_rate_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,barranquilla,Delivery moto,trips_per_driver,2025-12-01,48.863013698630134,0.0,0.0,0.0,0.0,not_directly_comparable,False,expected_non_comparable,"Derivado de drivers únicos: validado por fórmula scope-by-scope, no por suma."
+colombia,bogota,Carga,commission_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,bogota,Carga,trips_completed,2025-12-01,4819.0,5055.0,4819.0,1167.0,301.0,exact_sum,True,fail,SUM(weekly)=5055 vs monthly=4819
+colombia,bogota,Carga,avg_ticket,2025-12-01,67639.42726706786,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,bogota,Carga,active_drivers,2025-12-01,264.0,1784.0,1682.0,385.0,104.0,not_directly_comparable,False,fail,monthly(264) < max(weekly)=385
+colombia,bogota,Carga,revenue_yego_net,2025-12-01,0.0,-558124.0,0.0,0.0,0.0,exact_sum,True,fail,SUM(weekly)=-558124 vs monthly=0
+colombia,bogota,Carga,cancel_rate_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,bogota,Carga,trips_per_driver,2025-12-01,18.25378787878788,0.0,0.0,0.0,0.0,not_directly_comparable,False,expected_non_comparable,"Derivado de drivers únicos: validado por fórmula scope-by-scope, no por suma."
+colombia,bucaramanga,Auto regular,commission_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,bucaramanga,Auto regular,trips_completed,2025-12-01,7.0,7.0,7.0,4.0,2.0,exact_sum,True,ok,
+colombia,bucaramanga,Auto regular,avg_ticket,2025-12-01,25314.285714285714,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,bucaramanga,Auto regular,active_drivers,2025-12-01,2.0,7.0,7.0,4.0,2.0,not_directly_comparable,False,fail,monthly(2) < max(weekly)=4
+colombia,bucaramanga,Auto regular,revenue_yego_net,2025-12-01,0.0,0.0,0.0,0.0,0.0,exact_sum,True,ok,
+colombia,bucaramanga,Auto regular,cancel_rate_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,bucaramanga,Auto regular,trips_per_driver,2025-12-01,3.5,0.0,0.0,0.0,0.0,not_directly_comparable,False,expected_non_comparable,"Derivado de drivers únicos: validado por fórmula scope-by-scope, no por suma."
+colombia,bucaramanga,Taxi Moto,commission_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,bucaramanga,Taxi Moto,trips_completed,2025-12-01,136.0,152.0,136.0,55.0,21.0,exact_sum,True,fail,SUM(weekly)=152 vs monthly=136
+colombia,bucaramanga,Taxi Moto,avg_ticket,2025-12-01,4763.235294117647,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,bucaramanga,Taxi Moto,active_drivers,2025-12-01,3.0,25.0,23.0,10.0,2.0,not_directly_comparable,False,fail,monthly(3) < max(weekly)=10
+colombia,bucaramanga,Taxi Moto,revenue_yego_net,2025-12-01,0.0,-1937.5,0.0,0.0,0.0,exact_sum,True,fail,SUM(weekly)=-1937.5 vs monthly=0
+colombia,bucaramanga,Taxi Moto,cancel_rate_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,bucaramanga,Taxi Moto,trips_per_driver,2025-12-01,45.333333333333336,0.0,0.0,0.0,0.0,not_directly_comparable,False,expected_non_comparable,"Derivado de drivers únicos: validado por fórmula scope-by-scope, no por suma."
+colombia,cali,Auto regular,commission_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,cali,Auto regular,trips_completed,2025-12-01,214371.0,234151.0,214371.0,52014.0,8557.0,exact_sum,True,fail,SUM(weekly)=234151 vs monthly=214371
+colombia,cali,Auto regular,avg_ticket,2025-12-01,15074.87999776089,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,cali,Auto regular,active_drivers,2025-12-01,1588.0,23088.0,21093.0,4995.0,791.0,not_directly_comparable,False,fail,monthly(1588) < max(weekly)=4995
+colombia,cali,Auto regular,revenue_yego_net,2025-12-01,0.0,-9468272.5,0.0,0.0,0.0,exact_sum,True,fail,SUM(weekly)=-9.46827e+06 vs monthly=0
+colombia,cali,Auto regular,cancel_rate_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,cali,Auto regular,trips_per_driver,2025-12-01,134.99433249370276,0.0,0.0,0.0,0.0,not_directly_comparable,False,expected_non_comparable,"Derivado de drivers únicos: validado por fórmula scope-by-scope, no por suma."
+colombia,cali,Taxi Moto,commission_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,cali,Taxi Moto,trips_completed,2025-12-01,81576.0,86691.0,81576.0,19612.0,3276.0,exact_sum,True,fail,SUM(weekly)=86691 vs monthly=81576
+colombia,cali,Taxi Moto,avg_ticket,2025-12-01,7601.393809377873,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,cali,Taxi Moto,active_drivers,2025-12-01,949.0,10277.0,9590.0,2288.0,382.0,not_directly_comparable,False,fail,monthly(949) < max(weekly)=2288
+colombia,cali,Taxi Moto,revenue_yego_net,2025-12-01,0.0,-900161.5,0.0,0.0,0.0,exact_sum,True,fail,SUM(weekly)=-900162 vs monthly=0
+colombia,cali,Taxi Moto,cancel_rate_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,cali,Taxi Moto,trips_per_driver,2025-12-01,85.95995785036881,0.0,0.0,0.0,0.0,not_directly_comparable,False,expected_non_comparable,"Derivado de drivers únicos: validado por fórmula scope-by-scope, no por suma."
+colombia,cucuta,Auto regular,commission_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,cucuta,Auto regular,trips_completed,2025-12-01,133.0,136.0,133.0,51.0,17.0,exact_sum,True,fail,SUM(weekly)=136 vs monthly=133
+colombia,cucuta,Auto regular,avg_ticket,2025-12-01,17850.375939849622,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,cucuta,Auto regular,active_drivers,2025-12-01,5.0,32.0,30.0,8.0,3.0,not_directly_comparable,False,fail,monthly(5) < max(weekly)=8
+colombia,cucuta,Auto regular,revenue_yego_net,2025-12-01,0.0,-996.0,0.0,0.0,0.0,exact_sum,True,fail,SUM(weekly)=-996 vs monthly=0
+colombia,cucuta,Auto regular,cancel_rate_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,cucuta,Auto regular,trips_per_driver,2025-12-01,26.6,0.0,0.0,0.0,0.0,not_directly_comparable,False,expected_non_comparable,"Derivado de drivers únicos: validado por fórmula scope-by-scope, no por suma."
+colombia,cucuta,Taxi Moto,commission_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,cucuta,Taxi Moto,trips_completed,2025-12-01,534.0,534.0,534.0,135.0,38.0,exact_sum,True,ok,
+colombia,cucuta,Taxi Moto,avg_ticket,2025-12-01,7501.310861423221,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,cucuta,Taxi Moto,active_drivers,2025-12-01,1.0,25.0,25.0,7.0,1.0,not_directly_comparable,False,fail,monthly(1) < max(weekly)=7
+colombia,cucuta,Taxi Moto,revenue_yego_net,2025-12-01,0.0,0.0,0.0,0.0,0.0,exact_sum,True,ok,
+colombia,cucuta,Taxi Moto,cancel_rate_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,cucuta,Taxi Moto,trips_per_driver,2025-12-01,534.0,0.0,0.0,0.0,0.0,not_directly_comparable,False,expected_non_comparable,"Derivado de drivers únicos: validado por fórmula scope-by-scope, no por suma."
+colombia,medellin,Auto regular,commission_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,medellin,Auto regular,trips_completed,2025-12-01,2949.0,3166.0,2949.0,816.0,144.0,exact_sum,True,fail,SUM(weekly)=3166 vs monthly=2949
+colombia,medellin,Auto regular,avg_ticket,2025-12-01,15457.477110885045,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,medellin,Auto regular,active_drivers,2025-12-01,107.0,618.0,566.0,138.0,23.0,not_directly_comparable,False,fail,monthly(107) < max(weekly)=138
+colombia,medellin,Auto regular,revenue_yego_net,2025-12-01,0.0,-112956.0,0.0,0.0,0.0,exact_sum,True,fail,SUM(weekly)=-112956 vs monthly=0
+colombia,medellin,Auto regular,cancel_rate_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,medellin,Auto regular,trips_per_driver,2025-12-01,27.560747663551403,0.0,0.0,0.0,0.0,not_directly_comparable,False,expected_non_comparable,"Derivado de drivers únicos: validado por fórmula scope-by-scope, no por suma."
+colombia,medellin,Delivery moto,commission_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,medellin,Delivery moto,trips_completed,2025-12-01,32.0,33.0,32.0,16.0,7.0,exact_sum,True,ok,
+colombia,medellin,Delivery moto,avg_ticket,2025-12-01,8600.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,medellin,Delivery moto,active_drivers,2025-12-01,8.0,15.0,14.0,6.0,2.0,not_directly_comparable,False,expected_non_comparable,Distinct count: monthly NO equivale a SUM(weekly|daily); rangos razonables verificados.
+colombia,medellin,Delivery moto,revenue_yego_net,2025-12-01,0.0,-225.0,0.0,0.0,0.0,exact_sum,True,fail,SUM(weekly)=-225 vs monthly=0
+colombia,medellin,Delivery moto,cancel_rate_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,medellin,Delivery moto,trips_per_driver,2025-12-01,4.0,0.0,0.0,0.0,0.0,not_directly_comparable,False,expected_non_comparable,"Derivado de drivers únicos: validado por fórmula scope-by-scope, no por suma."
+colombia,medellin,Taxi Moto,commission_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,medellin,Taxi Moto,trips_completed,2025-12-01,1211.0,1254.0,1211.0,306.0,74.0,exact_sum,True,fail,SUM(weekly)=1254 vs monthly=1211
+colombia,medellin,Taxi Moto,avg_ticket,2025-12-01,7690.008257638316,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,medellin,Taxi Moto,active_drivers,2025-12-01,33.0,157.0,147.0,36.0,9.0,not_directly_comparable,False,fail,monthly(33) < max(weekly)=36
+colombia,medellin,Taxi Moto,revenue_yego_net,2025-12-01,0.0,-7225.5,0.0,0.0,0.0,exact_sum,True,fail,SUM(weekly)=-7225.5 vs monthly=0
+colombia,medellin,Taxi Moto,cancel_rate_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+colombia,medellin,Taxi Moto,trips_per_driver,2025-12-01,36.696969696969695,0.0,0.0,0.0,0.0,not_directly_comparable,False,expected_non_comparable,"Derivado de drivers únicos: validado por fórmula scope-by-scope, no por suma."
+peru,arequipa,Auto regular,commission_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,arequipa,Auto regular,trips_completed,2025-12-01,19621.0,21432.0,19621.0,5119.0,831.0,exact_sum,True,fail,SUM(weekly)=21432 vs monthly=19621
+peru,arequipa,Auto regular,avg_ticket,2025-12-01,10.546164823403496,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,arequipa,Auto regular,active_drivers,2025-12-01,263.0,2663.0,2416.0,604.0,92.0,not_directly_comparable,False,fail,monthly(263) < max(weekly)=604
+peru,arequipa,Auto regular,revenue_yego_net,2025-12-01,0.0,-546.6,0.0,0.0,0.0,exact_sum,True,fail,SUM(weekly)=-546.6 vs monthly=0
+peru,arequipa,Auto regular,cancel_rate_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,arequipa,Auto regular,trips_per_driver,2025-12-01,74.60456273764258,0.0,0.0,0.0,0.0,not_directly_comparable,False,expected_non_comparable,"Derivado de drivers únicos: validado por fórmula scope-by-scope, no por suma."
+peru,lima,Auto regular,commission_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,lima,Auto regular,trips_completed,2025-12-01,436291.0,486714.0,436291.0,102367.0,17712.0,exact_sum,True,fail,SUM(weekly)=486714 vs monthly=436291
+peru,lima,Auto regular,avg_ticket,2025-12-01,16.19212769517453,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,lima,Auto regular,active_drivers,2025-12-01,4774.0,60591.0,54296.0,12491.0,1990.0,not_directly_comparable,False,fail,monthly(4774) < max(weekly)=12491
+peru,lima,Auto regular,revenue_yego_net,2025-12-01,0.0,-22651.1,0.0,0.0,0.0,exact_sum,True,fail,SUM(weekly)=-22651.1 vs monthly=0
+peru,lima,Auto regular,cancel_rate_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,lima,Auto regular,trips_per_driver,2025-12-01,91.38898198575617,0.0,0.0,0.0,0.0,not_directly_comparable,False,expected_non_comparable,"Derivado de drivers únicos: validado por fórmula scope-by-scope, no por suma."
+peru,lima,Carga,commission_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,lima,Carga,trips_completed,2025-12-01,936.0,1010.0,936.0,293.0,51.0,exact_sum,True,fail,SUM(weekly)=1010 vs monthly=936
+peru,lima,Carga,avg_ticket,2025-12-01,62.387713675213675,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,lima,Carga,active_drivers,2025-12-01,50.0,422.0,386.0,109.0,18.0,not_directly_comparable,False,fail,monthly(50) < max(weekly)=109
+peru,lima,Carga,revenue_yego_net,2025-12-01,0.0,-203.2,0.0,0.0,0.0,exact_sum,True,fail,SUM(weekly)=-203.2 vs monthly=0
+peru,lima,Carga,cancel_rate_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,lima,Carga,trips_per_driver,2025-12-01,18.72,0.0,0.0,0.0,0.0,not_directly_comparable,False,expected_non_comparable,"Derivado de drivers únicos: validado por fórmula scope-by-scope, no por suma."
+peru,lima,Delivery,commission_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,lima,Delivery,trips_completed,2025-12-01,9224.0,9974.0,9224.0,2406.0,449.0,exact_sum,True,fail,SUM(weekly)=9974 vs monthly=9224
+peru,lima,Delivery,avg_ticket,2025-12-01,10.609784258456202,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,lima,Delivery,active_drivers,2025-12-01,131.0,1107.0,1021.0,245.0,46.0,not_directly_comparable,False,fail,monthly(131) < max(weekly)=245
+peru,lima,Delivery,revenue_yego_net,2025-12-01,0.0,-247.5,0.0,0.0,0.0,exact_sum,True,fail,SUM(weekly)=-247.5 vs monthly=0
+peru,lima,Delivery,cancel_rate_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,lima,Delivery,trips_per_driver,2025-12-01,70.41221374045801,0.0,0.0,0.0,0.0,not_directly_comparable,False,expected_non_comparable,"Derivado de drivers únicos: validado por fórmula scope-by-scope, no por suma."
+peru,lima,PRO,commission_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,lima,PRO,trips_completed,2025-12-01,22994.0,25648.0,22994.0,5863.0,988.0,exact_sum,True,fail,SUM(weekly)=25648 vs monthly=22994
+peru,lima,PRO,avg_ticket,2025-12-01,11.826954857788989,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,lima,PRO,active_drivers,2025-12-01,52.0,1301.0,1163.0,282.0,44.0,not_directly_comparable,False,fail,monthly(52) < max(weekly)=282
+peru,lima,PRO,revenue_yego_net,2025-12-01,0.0,-302.3,0.0,0.0,0.0,exact_sum,True,fail,SUM(weekly)=-302.3 vs monthly=0
+peru,lima,PRO,cancel_rate_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,lima,PRO,trips_per_driver,2025-12-01,442.1923076923077,0.0,0.0,0.0,0.0,not_directly_comparable,False,expected_non_comparable,"Derivado de drivers únicos: validado por fórmula scope-by-scope, no por suma."
+peru,lima,Tuk Tuk,commission_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,lima,Tuk Tuk,trips_completed,2025-12-01,18603.0,20985.0,18603.0,4712.0,863.0,exact_sum,True,fail,SUM(weekly)=20985 vs monthly=18603
+peru,lima,Tuk Tuk,avg_ticket,2025-12-01,4.105101327742837,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,lima,Tuk Tuk,active_drivers,2025-12-01,93.0,1092.0,958.0,257.0,48.0,not_directly_comparable,False,fail,monthly(93) < max(weekly)=257
+peru,lima,Tuk Tuk,revenue_yego_net,2025-12-01,0.0,-248.7,0.0,0.0,0.0,exact_sum,True,fail,SUM(weekly)=-248.7 vs monthly=0
+peru,lima,Tuk Tuk,cancel_rate_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,lima,Tuk Tuk,trips_per_driver,2025-12-01,200.03225806451613,0.0,0.0,0.0,0.0,not_directly_comparable,False,expected_non_comparable,"Derivado de drivers únicos: validado por fórmula scope-by-scope, no por suma."
+peru,lima,YMA,commission_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,lima,YMA,trips_completed,2025-12-01,6373.0,7217.0,6373.0,1583.0,312.0,exact_sum,True,fail,SUM(weekly)=7217 vs monthly=6373
+peru,lima,YMA,avg_ticket,2025-12-01,14.48374391966107,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,lima,YMA,active_drivers,2025-12-01,23.0,511.0,453.0,107.0,17.0,not_directly_comparable,False,fail,monthly(23) < max(weekly)=107
+peru,lima,YMA,revenue_yego_net,2025-12-01,0.0,-337.1,0.0,0.0,0.0,exact_sum,True,fail,SUM(weekly)=-337.1 vs monthly=0
+peru,lima,YMA,cancel_rate_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,lima,YMA,trips_per_driver,2025-12-01,277.0869565217391,0.0,0.0,0.0,0.0,not_directly_comparable,False,expected_non_comparable,"Derivado de drivers únicos: validado por fórmula scope-by-scope, no por suma."
+peru,trujillo,Auto regular,commission_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,trujillo,Auto regular,trips_completed,2025-12-01,39562.0,44394.0,39562.0,9570.0,1563.0,exact_sum,True,fail,SUM(weekly)=44394 vs monthly=39562
+peru,trujillo,Auto regular,avg_ticket,2025-12-01,8.79141600525757,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,trujillo,Auto regular,active_drivers,2025-12-01,452.0,4917.0,4378.0,1028.0,173.0,not_directly_comparable,False,fail,monthly(452) < max(weekly)=1028
+peru,trujillo,Auto regular,revenue_yego_net,2025-12-01,0.0,-1350.7,0.0,0.0,0.0,exact_sum,True,fail,SUM(weekly)=-1350.7 vs monthly=0
+peru,trujillo,Auto regular,cancel_rate_pct,2025-12-01,0.0,0.0,0.0,0.0,0.0,same_formula_different_scope,True,expected_non_comparable,Ratio: misma fórmula a distinto scope; consistencia interna OK.
+peru,trujillo,Auto regular,trips_per_driver,2025-12-01,87.52654867256638,0.0,0.0,0.0,0.0,not_directly_comparable,False,expected_non_comparable,"Derivado de drivers únicos: validado por fórmula scope-by-scope, no por suma."

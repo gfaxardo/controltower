@@ -11,6 +11,8 @@ import {
   PROJECTION_KPIS,
   getProjectionStatusLabel,
   getProjectionStatusColors,
+  isKpiComparableAcrossGrains,
+  getKpiComparabilityBadge,
 } from './omniview/projectionMatrixUtils.js'
 
 export default memo(function BusinessSliceOmniviewMatrixCell ({
@@ -292,6 +294,16 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
           title={delta.projection_anomaly ? 'Anomalía de volatilidad en derivación' : 'Baja confianza de proyección (fallback/ajuste)'}
           aria-hidden
         />
+      )}
+      {/* FASE_KPI_CONSISTENCY: badge discreto cuando el KPI no es comparable por suma entre granos */}
+      {!isKpiComparableAcrossGrains(kpiKey) && (
+        <span
+          className="absolute bottom-0.5 right-0.5 px-0.5 text-[6px] font-semibold leading-none rounded-sm bg-slate-200/80 text-slate-600"
+          title={`${getKpiComparabilityBadge(kpiKey)?.label || ''}: comparación por scope, no por suma entre granos.`}
+          aria-hidden
+        >
+          {getKpiComparabilityBadge(kpiKey)?.short || '≠Σ'}
+        </span>
       )}
 
       {/* Fila 1: Proyectado */}

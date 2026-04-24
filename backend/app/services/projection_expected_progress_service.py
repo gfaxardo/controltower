@@ -43,6 +43,21 @@ from app.services.seasonality_curve_engine import (
 logger = logging.getLogger(__name__)
 
 
+# FASE_KPI_CONSISTENCY: subset de PROJECTABLE_KPIS que SÍ es aditivo entre granos.
+# Solo estos KPIs deben someterse a conservation reconciliation y validaciones de
+# SUM(weekly|daily) == monthly. active_drivers (semi_additive_distinct) se proyecta
+# para visualización pero NO se reconcilia: forzar SUM(weekly_drivers)==monthly_drivers
+# es semánticamente incorrecto.
+try:
+    from app.config.kpi_aggregation_rules import is_kpi_additive as _is_kpi_additive_contract
+
+    ADDITIVE_PROJECTABLE_KPIS: Tuple[str, ...] = tuple(
+        k for k in PROJECTABLE_KPIS if _is_kpi_additive_contract(k)
+    )
+except Exception:  # pragma: no cover - degradado a literal seguro
+    ADDITIVE_PROJECTABLE_KPIS = ("trips_completed", "revenue_yego_net")
+
+
 def _conservation_tolerance_ok(drift_abs: float, monthly_plan: Optional[float]) -> bool:
     """OK si drift pequeño en abs o en %% respecto al plan mensual."""
     if monthly_plan is None:
@@ -98,7 +113,10 @@ def _reconcile_weekly_conservation(
             continue
         group_rows.sort(key=lambda x: (x.get("week_start") or ""))
 
-        for kpi in PROJECTABLE_KPIS:
+        # FASE_KPI_CONSISTENCY: reconciliar conservation solo sobre KPIs aditivos
+        # (trips_completed, revenue_yego_net). active_drivers se proyecta pero
+        # NO se reconcilia (semi_additive_distinct).
+        for kpi in ADDITIVE_PROJECTABLE_KPIS:
             plan_total = _safe_float(plan.get(_plan_column(kpi)))
             if plan_total is None:
                 continue
@@ -159,7 +177,8 @@ def _reconcile_daily_conservation(
             continue
         group_rows.sort(key=lambda x: (x.get("trip_date") or ""))
 
-        for kpi in PROJECTABLE_KPIS:
+        # FASE_KPI_CONSISTENCY: reconciliar conservation solo sobre KPIs aditivos.
+        for kpi in ADDITIVE_PROJECTABLE_KPIS:
             plan_total = _safe_float(plan.get(_plan_column(kpi)))
             if plan_total is None:
                 continue
@@ -565,6 +584,9 @@ def get_omniview_projection(
                 },
                 "conservation": {},
                 "qa_checks": {},
+                "kpi_contract": (lambda: __import__(
+                    "app.config.kpi_aggregation_rules", fromlist=["kpi_contract_for_meta"]
+                ).kpi_contract_for_meta())(),
                 "message": "No hay proyección cargada para esta versión / filtros.",
             },
         }
@@ -715,6 +737,13 @@ def get_omniview_projection(
             last_loaded = str(la)
             break
 
+    try:
+        from app.config.kpi_aggregation_rules import kpi_contract_for_meta as _kpi_contract_for_meta
+        kpi_contract_meta = _kpi_contract_for_meta()
+    except Exception as _e_contract:
+        logger.debug("kpi_contract_for_meta unavailable: %s", _e_contract)
+        kpi_contract_meta = {}
+
     return {
         "granularity": grain,
         "plan_version": plan_version,
@@ -738,6 +767,10 @@ def get_omniview_projection(
             "conservation": conservation_meta,
             "qa_checks": qa_checks_payload,
             "kpis_with_projection": list(PROJECTABLE_KPIS),
+            # FASE_KPI_CONSISTENCY: contrato cross-grain para que la UI sepa
+            # qué KPIs son aditivos, distinct y ratios, y qué notas mostrar
+            # en tooltip / drill / badges sin inducir comparaciones inválidas.
+            "kpi_contract": kpi_contract_meta,
             # ── No mapeados (sin resolución a tajada) ──────────────────────────
             "unresolved": {
                 "count": len(unresolved_list),

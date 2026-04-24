@@ -156,6 +156,61 @@ export const getBusinessSliceRealFreshness = async ({ signal } = {}) => {
   return response.data
 }
 
+/**
+ * FASE_KPI_CONSISTENCY: auditoría de consistencia KPI por grano (mes/semana/día).
+ * Devuelve summary + rows con status: ok | expected_non_comparable | warning | fail.
+ * Ejecuta el contrato de `kpi_aggregation_rules.py` (mismo motor que el script CLI).
+ *
+ * @param {{ month?: string, months?: number, country?: string, city?: string }} opts
+ *   month en formato YYYY-MM o YYYY-MM-DD; months = nº de meses hacia atrás.
+ */
+export const fetchKpiConsistencyAudit = async ({
+  month,
+  months = 1,
+  country,
+  city,
+} = {}, { signal } = {}) => {
+  const params = { months }
+  if (month) params.month = month
+  if (country) params.country = country
+  if (city) params.city = city
+  const response = await api.get('/ops/kpi-consistency-audit', { params, signal })
+  return response.data
+}
+
+/**
+ * FASE_KPI_CONSISTENCY: diagnóstico fuerte de ROLLUP_MISMATCH para un mes.
+ * Cada celda lleva `suspected_cause` (stale_month_fact, stale_day_fact,
+ * duplication_or_mapping, filter_mismatch_vs_resolved, mapping_mismatch_*, negligible).
+ *
+ * @param {{ month: string, country?: string, city?: string, businessSlice?: string, includeResolved?: boolean }} opts
+ */
+export const fetchRollupMismatchAudit = async ({
+  month,
+  country,
+  city,
+  businessSlice,
+  includeResolved = false,
+} = {}, { signal } = {}) => {
+  const params = { month, include_resolved: includeResolved }
+  if (country) params.country = country
+  if (city) params.city = city
+  if (businessSlice) params.business_slice = businessSlice
+  const response = await api.get('/ops/rollup-mismatch-audit', { params, signal })
+  return response.data
+}
+
+/**
+ * FASE_VALIDATION_FIX: reporte de decision readiness por KPI.
+ * Devuelve { summary, rows } donde rows tiene decision_status por KPI:
+ *   decision_ready | scope_only | formula_only | restricted
+ * Es un endpoint estático (no depende de parámetros de filtro).
+ */
+export const fetchDecisionReadiness = async ({ signal } = {}) => {
+  const response = await api.get('/ops/decision-readiness', { signal })
+  return response.data
+}
+
 /** Resumen de filas del plan no mapeadas a tajada canónica. */
 export const getPlanUnmappedSummary = async (planVersion, { signal } = {}) => {
   const response = await api.get('/plan/unmapped-summary', { params: { plan_version: planVersion }, signal })

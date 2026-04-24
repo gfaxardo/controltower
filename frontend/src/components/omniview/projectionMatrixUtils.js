@@ -11,6 +11,204 @@ import { MATRIX_KPIS, periodKey as basePeriodKey } from './omniviewMatrixUtils.j
 
 export const PROJECTION_KPIS = ['trips_completed', 'revenue_yego_net', 'active_drivers']
 
+/* ────────────────────────────────────────────────────────────────────────────
+ * FASE_KPI_CONSISTENCY: contrato KPI cross-grain en el cliente.
+ *
+ * Fuente de verdad oficial: backend `meta.kpi_contract` en la respuesta de
+ * `/ops/business-slice/omniview-projection`. Este fallback estático garantiza
+ * que la UI puede renderizar badges y notas incluso si el backend aún no envía
+ * el contrato (por ejemplo, en versiones antiguas o si la llamada falló).
+ * ────────────────────────────────────────────────────────────────────────── */
+export const KPI_AGGREGATION_TYPE = {
+  ADDITIVE: 'additive',
+  SEMI_ADDITIVE: 'semi_additive_distinct',
+  RATIO: 'non_additive_ratio',
+  DERIVED_RATIO: 'derived_ratio',
+}
+
+export const KPI_COMPARISON_RULE = {
+  EXACT_SUM: 'exact_sum',
+  SAME_FORMULA: 'same_formula_different_scope',
+  NOT_COMPARABLE: 'not_directly_comparable',
+}
+
+/**
+ * FASE_VALIDATION_FIX: cada entrada del fallback ahora incluye los campos
+ * de decision readiness alineados con el contrato backend.
+ *
+ * decision_status:
+ *   - 'decision_ready'  : aditivo, comparable, permite drift alerts y scoring.
+ *   - 'scope_only'      : semi_additive; comparar solo vs plan del mismo scope.
+ *   - 'formula_only'    : ratio; comparable por fórmula recomputada, no por suma.
+ *   - 'restricted'      : no usar en decisiones cross-grain ni en alertas aditivas.
+ */
+export const KPI_CONTRACT_FALLBACK = {
+  trips_completed: {
+    aggregation_type: KPI_AGGREGATION_TYPE.ADDITIVE,
+    comparable_across_grains: true,
+    comparison_rule: KPI_COMPARISON_RULE.EXACT_SUM,
+    recommended_ui_note: 'Aditivo: la suma de días del mes equivale al mensual.',
+    allowed_for_cross_grain_decision: true,
+    allowed_for_drift_alerts: true,
+    allowed_for_priority_scoring: true,
+    decision_status: 'decision_ready',
+    decision_note: 'Usar daily_in_month como base. La suma ISO semanal puede incluir días de otro mes.',
+  },
+  trips_cancelled: {
+    aggregation_type: KPI_AGGREGATION_TYPE.ADDITIVE,
+    comparable_across_grains: true,
+    comparison_rule: KPI_COMPARISON_RULE.EXACT_SUM,
+    recommended_ui_note: 'Aditivo: la suma de días del mes equivale al mensual.',
+    allowed_for_cross_grain_decision: true,
+    allowed_for_drift_alerts: true,
+    allowed_for_priority_scoring: false,
+    decision_status: 'decision_ready',
+    decision_note: 'Componente de cancel_rate. No es KPI principal de scoring.',
+  },
+  revenue_yego_net: {
+    aggregation_type: KPI_AGGREGATION_TYPE.ADDITIVE,
+    comparable_across_grains: true,
+    comparison_rule: KPI_COMPARISON_RULE.EXACT_SUM,
+    recommended_ui_note: 'Aditivo: la suma de días del mes equivale al mensual.',
+    allowed_for_cross_grain_decision: true,
+    allowed_for_drift_alerts: true,
+    allowed_for_priority_scoring: true,
+    decision_status: 'decision_ready',
+    decision_note: 'KPI de revenue aditivo; comparar vs plan mensual o acumulado diario.',
+  },
+  active_drivers: {
+    aggregation_type: KPI_AGGREGATION_TYPE.SEMI_ADDITIVE,
+    comparable_across_grains: false,
+    comparison_rule: KPI_COMPARISON_RULE.NOT_COMPARABLE,
+    recommended_ui_note: 'Drivers únicos del periodo. No sumar entre granos. Leer por scope.',
+    allowed_for_cross_grain_decision: false,
+    allowed_for_drift_alerts: true,
+    allowed_for_priority_scoring: true,
+    decision_status: 'scope_only',
+    decision_note: 'Brecha válida SOLO vs plan del mismo scope (mensual vs plan mensual). No comparar suma semanal contra mensual.',
+  },
+  avg_ticket: {
+    aggregation_type: KPI_AGGREGATION_TYPE.RATIO,
+    comparable_across_grains: true,
+    comparison_rule: KPI_COMPARISON_RULE.SAME_FORMULA,
+    recommended_ui_note: 'Ratio: misma fórmula aplicada a distinto periodo. Comparar por scope, no por suma.',
+    allowed_for_cross_grain_decision: true,
+    allowed_for_drift_alerts: false,
+    allowed_for_priority_scoring: false,
+    decision_status: 'formula_only',
+    decision_note: 'Comparable si se recomputa ticket_sum/ticket_count para cada scope. No alertas aditivas entre granos.',
+  },
+  commission_pct: {
+    aggregation_type: KPI_AGGREGATION_TYPE.RATIO,
+    comparable_across_grains: true,
+    comparison_rule: KPI_COMPARISON_RULE.SAME_FORMULA,
+    recommended_ui_note: 'Ratio: misma fórmula aplicada a distinto periodo. Comparar por scope, no por suma.',
+    allowed_for_cross_grain_decision: true,
+    allowed_for_drift_alerts: false,
+    allowed_for_priority_scoring: false,
+    decision_status: 'formula_only',
+    decision_note: 'Recomputa rev/fare para cada scope. No alertas aditivas entre granos.',
+  },
+  cancel_rate_pct: {
+    aggregation_type: KPI_AGGREGATION_TYPE.RATIO,
+    comparable_across_grains: true,
+    comparison_rule: KPI_COMPARISON_RULE.SAME_FORMULA,
+    recommended_ui_note: 'Ratio: misma fórmula aplicada a distinto periodo. Comparar por scope, no por suma.',
+    allowed_for_cross_grain_decision: true,
+    allowed_for_drift_alerts: false,
+    allowed_for_priority_scoring: false,
+    decision_status: 'formula_only',
+    decision_note: 'Usar solo para comparar la tasa del periodo contra plan del mismo scope.',
+  },
+  trips_per_driver: {
+    aggregation_type: KPI_AGGREGATION_TYPE.DERIVED_RATIO,
+    comparable_across_grains: false,
+    comparison_rule: KPI_COMPARISON_RULE.NOT_COMPARABLE,
+    recommended_ui_note: 'Derivado de drivers únicos. No comparable por suma entre granos. Leer por scope.',
+    allowed_for_cross_grain_decision: false,
+    allowed_for_drift_alerts: false,
+    allowed_for_priority_scoring: false,
+    decision_status: 'restricted',
+    decision_note: 'No usar en decisiones cross-grain ni en alertas de brecha aditiva.',
+  },
+}
+
+export function getKpiContract (kpiKey, contractFromMeta) {
+  if (contractFromMeta && contractFromMeta[kpiKey]) return contractFromMeta[kpiKey]
+  return KPI_CONTRACT_FALLBACK[kpiKey] || null
+}
+
+export function isKpiComparableAcrossGrains (kpiKey, contractFromMeta) {
+  const c = getKpiContract(kpiKey, contractFromMeta)
+  return c ? !!c.comparable_across_grains : true
+}
+
+export function getKpiComparabilityBadge (kpiKey, contractFromMeta) {
+  const c = getKpiContract(kpiKey, contractFromMeta)
+  if (!c) return null
+  switch (c.aggregation_type) {
+    case KPI_AGGREGATION_TYPE.ADDITIVE:
+      return { label: 'Aditivo', tone: 'emerald', short: 'Σ' }
+    case KPI_AGGREGATION_TYPE.SEMI_ADDITIVE:
+      return { label: 'Distinct', tone: 'slate', short: '≠Σ' }
+    case KPI_AGGREGATION_TYPE.RATIO:
+      return { label: 'Ratio', tone: 'sky', short: '%' }
+    case KPI_AGGREGATION_TYPE.DERIVED_RATIO:
+      return { label: 'Derivado', tone: 'amber', short: 'd/' }
+    default:
+      return null
+  }
+}
+
+export function getKpiComparabilityNote (kpiKey, contractFromMeta) {
+  const c = getKpiContract(kpiKey, contractFromMeta)
+  return c ? (c.recommended_ui_note || c.diagnostic_note || '') : ''
+}
+
+/**
+ * FASE_VALIDATION_FIX: devuelve el estado de decision readiness del KPI.
+ * 'decision_ready' | 'scope_only' | 'formula_only' | 'restricted'
+ */
+export function getKpiDecisionStatus (kpiKey, contractFromMeta) {
+  const c = getKpiContract(kpiKey, contractFromMeta)
+  return c?.decision_status || 'restricted'
+}
+
+/**
+ * FASE_VALIDATION_FIX: devuelve la nota de uso correcto para el KPI.
+ */
+export function getKpiDecisionNote (kpiKey, contractFromMeta) {
+  const c = getKpiContract(kpiKey, contractFromMeta)
+  return c?.decision_note || ''
+}
+
+/**
+ * FASE_VALIDATION_FIX: devuelve badge visual con color semántico para decision status.
+ */
+export function getKpiDecisionBadge (kpiKey, contractFromMeta) {
+  const status = getKpiDecisionStatus(kpiKey, contractFromMeta)
+  switch (status) {
+    case 'decision_ready':
+      return { label: 'Decision Ready', tone: 'emerald', short: '✓' }
+    case 'scope_only':
+      return { label: 'Scope Only', tone: 'amber', short: 'S' }
+    case 'formula_only':
+      return { label: 'Formula Only', tone: 'sky', short: 'F' }
+    case 'restricted':
+      return { label: 'Restricted', tone: 'red', short: '⊘' }
+    default:
+      return null
+  }
+}
+
+/**
+ * True si el KPI puede usarse en alertas de brecha aditiva (gap_abs, gap_pct).
+ */
+export function isKpiAllowedForDriftAlerts (kpiKey, contractFromMeta) {
+  const c = getKpiContract(kpiKey, contractFromMeta)
+  return c ? !!c.allowed_for_drift_alerts : false
+}
+
 export const SIGNAL_COLORS = {
   green: '#16a34a',
   warning: '#d97706',
@@ -402,8 +600,15 @@ export function basisSuffix (basis) {
   return ''
 }
 
-export function buildProjectionCellTooltip (kpi, delta, cityName, lineName, periodLbl) {
+export function buildProjectionCellTooltip (kpi, delta, cityName, lineName, periodLbl, kpiContract) {
   const parts = [`${cityName} · ${lineName}`, `Periodo: ${periodLbl}`, `KPI: ${kpi?.label || '—'}`]
+
+  // FASE_KPI_CONSISTENCY: contrato cross-grain (badge + nota canónica)
+  const badge = kpi?.key ? getKpiComparabilityBadge(kpi.key, kpiContract) : null
+  const compNote = kpi?.key ? getKpiComparabilityNote(kpi.key, kpiContract) : ''
+  if (badge) parts.push(`Tipo: ${badge.label}`)
+  if (compNote) parts.push(compNote)
+
   if (!delta) {
     parts.push('', 'Sin datos para este periodo / línea.')
     return parts.join('\n')

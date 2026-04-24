@@ -1,8 +1,20 @@
 /**
- * alertingEngine.js — FASE 3.3
+ * alertingEngine.js — FASE 3.3 + FASE_VALIDATION_FIX
  *
  * Priorización, severidad y mapeo a acciones operativas (determinístico, explicable).
  * Sin llamadas a API. Sin ML.
+ *
+ * FASE_VALIDATION_FIX — blindaje de KPIs no aditivos:
+ *   - trips_completed y revenue_yego_net: aditivos → alertas aditivas permitidas.
+ *   - active_drivers: semi_additive_distinct → permitido en alertas SOLO si la
+ *     comparación es vs plan del MISMO scope (mensual vs plan mensual).
+ *     NO se usa como base de suma cross-grain.
+ *   - avg_ticket, commission_pct, cancel_rate_pct: ratio → NO en alertas aditivas.
+ *   - trips_per_driver: derived_ratio → RESTRICTED; no en ninguna alerta aditiva.
+ *
+ * El alerting engine opera sobre PROJECTION_KPIS (trips, revenue, active_drivers),
+ * que ya excluye ratio/derived_ratio. El score de active_drivers se attenúa con
+ * SCOPE_ONLY_ATTENUATOR para reflejar que su brecha es de scope, no de suma.
  */
 
 import { computeProjectionDeltas, PROJECTION_KPIS } from './projectionMatrixUtils.js'
@@ -11,12 +23,45 @@ import { computeRootCause } from './rootCauseEngine.js'
 const FEATURE_SOURCE = 'omniview_projection'
 const HANDOFF_VERSION = '1.0'
 
-/** Pesos de KPI (documentados): trips ligeramente más crítico que revenue que drivers. */
+/**
+ * Pesos de KPI en el priority_score (0-100):
+ *   trips_completed  : aditivo, principal volumen → peso alto.
+ *   revenue_yego_net : aditivo, impacto económico → peso alto.
+ *   active_drivers   : scope_only (semi_additive_distinct) → peso moderado.
+ *                      La brecha vs plan se interpreta dentro del mismo scope mensual,
+ *                      NO como suma de drivers semanales vs mensual.
+ *
+ * KPIs ratio (avg_ticket, commission_pct, cancel_rate_pct) y derived_ratio
+ * (trips_per_driver) NO están en PROJECTION_KPIS y no participan en scoring.
+ */
 export const KPI_WEIGHT = {
   trips_completed: 40,
   revenue_yego_net: 38,
-  active_drivers: 32,
+  active_drivers: 32,    // scope_only — ver SCOPE_ONLY_ATTENUATOR
 }
+
+/**
+ * Atenuador para KPIs scope_only (active_drivers).
+ * La brecha de un distinct-count no se debe escalar igual que un aditivo puro:
+ * un gap de -20 drivers en un mes podría no tener la misma urgencia que
+ * -20% de trips (depende del scope). Se aplica sobre el gap_component.
+ */
+const SCOPE_ONLY_ATTENUATOR = {
+  active_drivers: 0.80,   // atenúa 20% el gap_component para evitar falsos CRITICAL
+}
+
+/**
+ * KPIs que NO deben gatillar alertas de brecha aditiva.
+ * Están explícitamente excluidos del PROJECTION_KPIS ya, pero esta lista
+ * es el guardrail documental de por qué no deben añadirse.
+ */
+export const NON_ADDITIVE_KPIS_EXCLUDED_FROM_ALERTS = [
+  'avg_ticket',       // non_additive_ratio   → formula_only
+  'commission_pct',   // non_additive_ratio   → formula_only
+  'cancel_rate_pct',  // non_additive_ratio   → formula_only
+  'trips_per_driver', // derived_ratio        → restricted
+  'trips_cancelled',  // additive pero componente; no es KPI de scoring principal
+]
 
 const SIGNAL_POINTS = {
   danger: 20,
@@ -52,9 +97,23 @@ function _safeNum (v) {
 /**
  * Score 0–100 explicable.
  * Base: brecha relativa vs expected (cap 40 pts) escalada por peso de KPI + puntos por semáforo.
- * Ajuste: grano + confianza de curva.
+ * Ajuste: grano + confianza de curva + atenuador scope_only (para active_drivers).
+ *
+ * FASE_VALIDATION_FIX: para KPIs scope_only (active_drivers), el gap_component
+ * se atenúa con SCOPE_ONLY_ATTENUATOR[kpiKey] para evitar falsos CRITICAL
+ * causados por la naturaleza distinct-count del KPI.
  */
 export function computePriorityScore (delta, kpiKey, grain, rootCauseResult = null) {
+  // Guardrail: KPIs no aditivos excluidos no deberían llegar aquí,
+  // pero si lo hacen, devolvemos score 0 para no generar alertas falsas.
+  if (NON_ADDITIVE_KPIS_EXCLUDED_FROM_ALERTS.includes(kpiKey)) {
+    return {
+      priority_score: 0,
+      score_breakdown: { excluded_reason: 'non_additive_kpi_excluded_from_alerts' },
+      impact_basis: `KPI ${kpiKey} excluido de alertas aditivas (non_additive/derived_ratio).`,
+    }
+  }
+
   const expected = _safeNum(delta?.projected_expected)
   const gap = _safeNum(delta?.gap_to_expected)
   const signal = delta?.signal || 'no_data'
@@ -66,7 +125,9 @@ export function computePriorityScore (delta, kpiKey, grain, rootCauseResult = nu
       : 0
 
   const w = KPI_WEIGHT[kpiKey] ?? 35
-  const gapComponent = _clamp(relGapPct * (w / 40), 0, 40)
+  // FASE_VALIDATION_FIX: atenuar gap_component para scope_only KPIs
+  const scopeAttenuator = SCOPE_ONLY_ATTENUATOR[kpiKey] ?? 1.0
+  const gapComponent = _clamp(relGapPct * (w / 40) * scopeAttenuator, 0, 40)
   const signalComponent = SIGNAL_POINTS[signal] ?? 0
 
   const rawPreGrain = gapComponent + signalComponent
@@ -80,6 +141,7 @@ export function computePriorityScore (delta, kpiKey, grain, rootCauseResult = nu
     gap_component: Math.round(gapComponent * 100) / 100,
     signal_component: signalComponent,
     kpi_weight: w,
+    scope_attenuator: scopeAttenuator,
     grain_factor: g,
     confidence_multiplier: confMult,
     curve_confidence: conf,
@@ -87,8 +149,12 @@ export function computePriorityScore (delta, kpiKey, grain, rootCauseResult = nu
     main_driver_key: rootCauseResult?.main_driver?.key ?? null,
   }
 
+  const scopeNote = scopeAttenuator < 1.0
+    ? ` [scope_only ×${scopeAttenuator}]`
+    : ''
+
   const impact_basis =
-    `Brecha vs expected (${relGapPct.toFixed(1)}% del expected) + semáforo (${signal}) ` +
+    `Brecha vs expected (${relGapPct.toFixed(1)}% del expected)${scopeNote} + semáforo (${signal}) ` +
     `× grano (${g}) × confianza curva (${confMult})`
 
   return {
@@ -284,6 +350,13 @@ export function buildAlertPayload ({
   }
   if (delta?.projection_anomaly) {
     trustNotes.push('Anomalía de curva detectada — verificar distribución histórica.')
+  }
+  // FASE_VALIDATION_FIX: añadir nota de interpretación para KPIs scope_only
+  if (kpiKey === 'active_drivers') {
+    trustNotes.push(
+      'Drivers únicos (scope_only): brecha vs plan del mismo scope. ' +
+      'No comparar contra suma de semanas o días — son distintos scopes.'
+    )
   }
 
   return {

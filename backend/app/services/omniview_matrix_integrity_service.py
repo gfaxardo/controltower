@@ -65,6 +65,8 @@ OPERATIONAL_WARNING_CODES = frozenset(
         "MONTH_COMPARE_SKIPPED",
         "MONTH_COMPARE_FAILED",
         "ROLLUP_CHECK_FAILED",
+        # FASE_KPI_CONSISTENCY: causa freshness-only del antiguo ROLLUP_MISMATCH.
+        "STALE_MONTH_FACT",
     }
 )
 
@@ -88,6 +90,8 @@ CODE_SEVERITY_WEIGHT: dict[str, int] = {
     "MONTHS_BELOW_MIN": 60,
     "WEEKS_BELOW_MIN": 58,
     "DAYS_BELOW_MIN": 56,
+    # FASE_KPI_CONSISTENCY: warning explícito por staleness conocido.
+    "STALE_MONTH_FACT": 65,
 }
 
 DEFAULT_ACTION_PLAYBOOK: dict[str, str] = {
@@ -136,6 +140,11 @@ ACTION_PLAYBOOK: dict[str, dict[str, str]] = {
         "action": "Reducir lag entre facts derivados y enriched_base.",
         "query": "SELECT MAX(trip_date) FROM ops.real_business_slice_day_fact; SELECT MAX(trip_date) FROM ops.v_real_trips_enriched_base WHERE trip_date >= CURRENT_DATE - 400;",
         "process": "Ejecutar incremental loaders day/week; revisar ventanas y TZ.",
+    },
+    "STALE_MONTH_FACT": {
+        "action": "Refrescar month_fact para alinear el total mensual con day_fact.",
+        "query": "SELECT month, MAX(refreshed_at) FROM ops.real_business_slice_month_fact GROUP BY 1 ORDER BY 1 DESC LIMIT 5;",
+        "process": "Ejecutar POST /ops/business-slice/real-refresh-omniview o esperar al próximo job (incluye month_fact).",
     },
 }
 
@@ -352,7 +361,7 @@ def build_affected_period_keys(findings: list[dict[str, Any]]) -> dict[str, Any]
                     weekly.add(_iso_monday(d).isoformat())
                 except (TypeError, ValueError):
                     continue
-        if code in ("ROLLUP_MISMATCH", "MONTH_TRIPS_MISMATCH", "MONTH_REVENUE_MISMATCH"):
+        if code in ("ROLLUP_MISMATCH", "MONTH_TRIPS_MISMATCH", "MONTH_REVENUE_MISMATCH", "STALE_MONTH_FACT"):
             p = ev.get("period")
             if p:
                 s = str(p)[:10]
@@ -395,7 +404,7 @@ def _period_keys_from_finding(f: dict[str, Any]) -> dict[str, list[str]]:
                 weekly.add(_iso_monday(d).isoformat())
             except (TypeError, ValueError):
                 continue
-    if code in ("ROLLUP_MISMATCH", "MONTH_TRIPS_MISMATCH", "MONTH_REVENUE_MISMATCH"):
+    if code in ("ROLLUP_MISMATCH", "MONTH_TRIPS_MISMATCH", "MONTH_REVENUE_MISMATCH", "STALE_MONTH_FACT"):
         p = ev.get("period")
         if p:
             monthly.add(str(p)[:10])
@@ -2508,7 +2517,17 @@ def check_revenue(findings: list[dict[str, Any]]) -> None:
 
 
 def check_consistency(findings: list[dict[str, Any]]) -> None:
-    """Suma de filas fact vs agregado raw por periodo reciente (viajes/revenue)."""
+    """Suma de filas fact vs agregado raw por periodo reciente (viajes/revenue).
+
+    FASE_KPI_CONSISTENCY:
+    - Antes: cualquier diff entre month_fact y day_fact => ROLLUP_MISMATCH (blocked).
+    - Ahora: si la diff coincide con un lag claro de refreshed_at (month_fact
+      mucho más viejo que day_fact), se reclasifica como STALE_MONTH_FACT
+      (warning), evitando bloquear Omniview por una causa de freshness conocida
+      y solucionable (relanzar refresh del mes).
+    - Sólo cuando los refreshed_at son consistentes y la diff persiste se sigue
+      emitiendo ROLLUP_MISMATCH (blocked) — error real de cálculo / mapping.
+    """
     try:
         rows = _q_all(
             """
@@ -2523,7 +2542,8 @@ def check_consistency(findings: list[dict[str, Any]]) -> None:
                 SELECT
                     f.month AS period_key,
                     SUM(f.trips_completed)::numeric AS rows_trips,
-                    SUM(f.revenue_yego_net)::numeric AS rows_revenue
+                    SUM(f.revenue_yego_net)::numeric AS rows_revenue,
+                    MAX(f.refreshed_at) AS month_refreshed_at
                 FROM ops.real_business_slice_month_fact f
                 JOIN periods p ON p.month = f.month
                 GROUP BY f.month
@@ -2532,7 +2552,8 @@ def check_consistency(findings: list[dict[str, Any]]) -> None:
                 SELECT
                     date_trunc('month', d.trip_date)::date AS period_key,
                     SUM(d.trips_completed)::numeric AS total_trips,
-                    SUM(d.revenue_yego_net)::numeric AS total_revenue
+                    SUM(d.revenue_yego_net)::numeric AS total_revenue,
+                    MAX(d.refreshed_at) AS day_refreshed_at
                 FROM ops.real_business_slice_day_fact d
                 JOIN periods p ON date_trunc('month', d.trip_date)::date = p.month
                 GROUP BY 1
@@ -2544,7 +2565,10 @@ def check_consistency(findings: list[dict[str, Any]]) -> None:
                 (rs.rows_trips - dt.total_trips) AS trips_diff,
                 rs.rows_revenue,
                 dt.total_revenue,
-                (rs.rows_revenue - dt.total_revenue) AS rev_diff
+                (rs.rows_revenue - dt.total_revenue) AS rev_diff,
+                rs.month_refreshed_at,
+                dt.day_refreshed_at,
+                EXTRACT(EPOCH FROM (dt.day_refreshed_at - rs.month_refreshed_at)) AS refresh_lag_seconds
             FROM rows_sum rs
             JOIN day_tot dt USING (period_key)
             """,
@@ -2559,24 +2583,57 @@ def check_consistency(findings: list[dict[str, Any]]) -> None:
                 if rr
                 else abs(rd) > REVENUE_ABS_EPS
             )
-            if trip_bad or rev_bad:
-                mlist: list[str] = []
-                if trip_bad:
-                    mlist.append("trips_completed")
-                if rev_bad:
-                    mlist.append("revenue_yego_net")
-                per = r.get("period")
+            if not (trip_bad or rev_bad):
+                continue
+
+            mlist: list[str] = []
+            if trip_bad:
+                mlist.append("trips_completed")
+            if rev_bad:
+                mlist.append("revenue_yego_net")
+            per = r.get("period")
+
+            # FASE_KPI_CONSISTENCY: clasificar por lag de refreshed_at.
+            # day_fact >> month_fact por +12h y day_total > month_rows ⇒ STALE_MONTH_FACT
+            try:
+                lag_s = float(r.get("refresh_lag_seconds") or 0)
+            except (TypeError, ValueError):
+                lag_s = 0.0
+            day_t = float(r.get("total_trips") or 0)
+            mon_t = float(r.get("rows_trips") or 0)
+            stale_month = (
+                lag_s >= 12 * 3600
+                and day_t >= mon_t
+            )
+
+            if stale_month:
                 _add(
                     findings,
-                    "error",
-                    "consistency",
-                    "ROLLUP_MISMATCH",
-                    f"Periodo {r.get('period')}: diff viajes={td}, diff revenue={rd}.",
-                    "Totales Matrix (suma de líneas) no igualan universo resolved por mes.",
-                    "Auditar dims duplicadas o faltantes en mapping; re-run carga mensual incremental.",
+                    "warn",
+                    "freshness",
+                    "STALE_MONTH_FACT",
+                    (
+                        f"Periodo {per}: month_fact desactualizado "
+                        f"(lag {int(lag_s/3600)}h vs day_fact). diff_trips={td}, diff_rev={rd}."
+                    ),
+                    "El total mensual de Omniview muestra menos viajes/revenue que la suma diaria reciente.",
+                    "Relanzar refresh del mes (incluyendo month_fact) o esperar al próximo job operativo.",
                     dict(r),
                     trace={"period": str(per)[:10] if per else None, "metrics": mlist},
                 )
+                continue
+
+            _add(
+                findings,
+                "error",
+                "consistency",
+                "ROLLUP_MISMATCH",
+                f"Periodo {per}: diff viajes={td}, diff revenue={rd}.",
+                "Totales Matrix (suma de líneas) no igualan universo resolved por mes.",
+                "Auditar dims duplicadas o faltantes en mapping; re-run carga mensual incremental.",
+                dict(r),
+                trace={"period": str(per)[:10] if per else None, "metrics": mlist},
+            )
     except Exception as e:
         _add(
             findings,

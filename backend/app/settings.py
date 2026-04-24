@@ -145,6 +145,13 @@ class Settings(BaseSettings):
         le=1440,
         description="No ejecutar refresh si hubo una corrida hace menos de estos minutos (cooldown).",
     )
+    # FASE_KPI_CONSISTENCY: el month_fact debe refrescarse en el mismo job
+    # que day_fact / week_fact para evitar ROLLUP_MISMATCH por staleness del
+    # fact mensual. Coste: re-materialización del mes (decenas de segundos).
+    OMNIVIEW_REAL_REFRESH_INCLUDE_MONTH_FACT: bool = Field(
+        default=True,
+        description="Si True, el refresh job operativo incluye también month_fact (mes actual + anterior).",
+    )
     OMNIVIEW_REAL_WATCHDOG_ENABLED: bool = Field(
         default=False,
         description="Si True, job watchdog + auto-recovery (requiere scheduler en main).",

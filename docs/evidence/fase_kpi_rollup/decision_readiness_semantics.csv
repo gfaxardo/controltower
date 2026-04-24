@@ -1,0 +1,8 @@
+kpi,type,decision_role,usable_for_alerts,db_column,note
+trips_completed,additive,decision_ready,True,trips_completed,Conteo de viajes completados. SUM(daily_in_month) == monthly.
+revenue,additive,decision_ready,True,revenue_yego_net,Revenue neto Yego. Aditivo: SUM(daily_in_month) == monthly.
+cancellations,additive,decision_ready,True,trips_cancelled,Cancelaciones. Aditivo: SUM(daily_in_month) == monthly.
+gmv,additive,decision_ready,True,total_fare_completed_positive_sum,GMV (facturación bruta). Proxy en BD: total_fare_completed_positive_sum. Aditivo: SUM(daily_in_month) == monthly.
+active_drivers,distinct,context_only,False,active_drivers,Drivers únicos que operaron en el periodo. NO sumar entre granos. Leer solo vs plan del mismo scope.
+avg_ticket,ratio,formula_only,False,avg_ticket,Ticket promedio = ticket_sum / ticket_count. Comparable solo recomputando la fórmula por scope. No sumar.
+take_rate,ratio,formula_only,False,commission_pct,Take rate = revenue_yego_net / total_fare. Comparable recomputando por scope. No promediar directamente.

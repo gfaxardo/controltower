@@ -492,6 +492,222 @@ async def business_slice_real_refresh_omniview_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ───────────────────────────────────────────────────────────────────────
+# FASE_KPI_CONSISTENCY: endpoints de auditoría operativa.
+# Reutilizan exactamente las funciones que usan los CLI scripts:
+#   backend/scripts/validate_kpi_grain_consistency.py
+#   backend/scripts/debug_rollup_mismatch.py
+# Read-only; no tocan tablas de hechos. Soportan format=json|csv.
+# ───────────────────────────────────────────────────────────────────────
+
+def _parse_month_param(month: Optional[str]) -> tuple[int, int]:
+    """
+    Acepta YYYY-MM o YYYY-MM-DD; si None, usa primer día del mes actual.
+    """
+    from datetime import date as _date
+    if not month:
+        d = _date.today().replace(day=1)
+        return d.year, d.month
+    s = str(month).strip()
+    try:
+        if len(s) == 7:  # YYYY-MM
+            y, m = s.split("-")
+            return int(y), int(m)
+        d = _date.fromisoformat(s)
+        return d.year, d.month
+    except Exception as ex:
+        raise HTTPException(status_code=400, detail=f"month inválido (esperado YYYY-MM o YYYY-MM-DD): {ex}")
+
+
+def _csv_response_from_rows(rows: list[dict], columns: list[str], filename: str) -> Response:
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=columns)
+    w.writeheader()
+    for r in rows:
+        w.writerow({k: ("" if r.get(k) is None else r.get(k)) for k in columns})
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/kpi-consistency-audit")
+async def kpi_consistency_audit_endpoint(
+    month: Optional[str] = Query(None, description="YYYY-MM o YYYY-MM-DD; default = mes actual."),
+    months: int = Query(1, ge=1, le=6, description="Cantidad de meses hacia atrás incluyendo el indicado."),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    format: Literal["json", "csv"] = Query("json"),
+):
+    """
+    Audita la consistencia KPI por grano para el rango [month - months + 1, month]
+    aplicando el contrato de `kpi_aggregation_rules.py`.
+
+    Status posibles por celda/KPI:
+      - ok                       (additive cuadra)
+      - expected_non_comparable  (semi_additive / ratio: comportamiento esperado)
+      - warning                  (regla desconocida o dudosa)
+      - fail                     (inconsistencia real, requiere acción)
+    """
+    from scripts.validate_kpi_grain_consistency import (
+        run_consistency_audit,
+        summarize as _summarize,
+        CSV_COLUMNS,
+    )
+    from datetime import date as _date
+
+    try:
+        y, m = _parse_month_param(month)
+
+        def _months_back(n: int) -> list[tuple[int, int]]:
+            out: list[tuple[int, int]] = []
+            yy, mm = y, m
+            for _ in range(n):
+                out.append((yy, mm))
+                mm -= 1
+                if mm == 0:
+                    mm = 12
+                    yy -= 1
+            return list(reversed(out))
+
+        def _do_run() -> dict:
+            all_rows: list[dict] = []
+            per_month: list[dict] = []
+            for yy, mm in _months_back(months):
+                rows = run_consistency_audit(yy, mm, country, city)
+                summary = _summarize(rows)
+                per_month.append({"month": _date(yy, mm, 1).isoformat(), "summary": summary})
+                all_rows.extend(rows)
+            return {
+                "rows": all_rows,
+                "per_month": per_month,
+                "summary_total": _summarize(all_rows),
+            }
+
+        result = await _run_sync(_do_run)
+
+        if format == "csv":
+            ts = _date(y, m, 1).isoformat()
+            return _csv_response_from_rows(
+                result["rows"],
+                CSV_COLUMNS,
+                f"kpi_consistency_audit_{ts}_back{months}.csv",
+            )
+
+        return sanitize_for_json({
+            "generated_at": _time.time(),
+            "params": {
+                "month": _date(y, m, 1).isoformat(),
+                "months": months,
+                "country": country,
+                "city": city,
+            },
+            "summary": result["summary_total"],
+            "per_month": result["per_month"],
+            "rows": result["rows"],
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("kpi-consistency-audit")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/rollup-mismatch-audit")
+async def rollup_mismatch_audit_endpoint(
+    month: str = Query(..., description="YYYY-MM o YYYY-MM-DD."),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    business_slice: Optional[str] = Query(None),
+    include_resolved: bool = Query(False, description="Si True, compara también vs v_real_trips_business_slice_resolved (más lento)."),
+    format: Literal["json", "csv"] = Query("json"),
+):
+    """
+    Diagnóstico fuerte de ROLLUP_MISMATCH para un mes:
+    compara month_fact vs SUM(day_fact) y, opcionalmente, vs v_real_trips_business_slice_resolved.
+    Cada celda lleva un `suspected_cause` (stale_month_fact, stale_day_fact,
+    duplication_or_mapping, filter_mismatch_vs_resolved, mapping_mismatch_*, negligible, etc.).
+    """
+    from scripts.debug_rollup_mismatch import (
+        run_audit,
+        summarize as _summarize,
+        CSV_COLUMNS,
+    )
+    from datetime import date as _date
+
+    try:
+        y, m = _parse_month_param(month)
+
+        def _do_run() -> dict:
+            rows = run_audit(y, m, country, city, business_slice, include_resolved)
+            return {"rows": rows, "summary": _summarize(rows)}
+
+        result = await _run_sync(_do_run)
+
+        if format == "csv":
+            return _csv_response_from_rows(
+                result["rows"],
+                CSV_COLUMNS,
+                f"rollup_mismatch_audit_{_date(y, m, 1).isoformat()}.csv",
+            )
+
+        return sanitize_for_json({
+            "generated_at": _time.time(),
+            "params": {
+                "month": _date(y, m, 1).isoformat(),
+                "country": country,
+                "city": city,
+                "business_slice": business_slice,
+                "include_resolved": include_resolved,
+            },
+            "summary": result["summary"],
+            "rows": result["rows"],
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("rollup-mismatch-audit")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/decision-readiness")
+async def decision_readiness_endpoint(
+    format: Literal["json", "csv"] = Query("json"),
+):
+    """
+    FASE_VALIDATION_FIX: reporte de decision readiness por KPI.
+    Devuelve el estado de cada KPI respecto a su usabilidad para decisiones
+    ejecutivas: decision_ready | scope_only | formula_only | restricted.
+
+    Sin parámetros de filtro — es estático (deriva del contrato KPI en memoria).
+    """
+    from scripts.report_decision_readiness import (
+        build_decision_readiness_rows,
+        CSV_COLUMNS as _DR_CSV_COLUMNS,
+    )
+
+    try:
+        rows = build_decision_readiness_rows()
+
+        summary: dict[str, list[str]] = {}
+        for r in rows:
+            s = r["decision_status"]
+            summary.setdefault(s, []).append(r["kpi"])
+
+        if format == "csv":
+            return _csv_response_from_rows(rows, _DR_CSV_COLUMNS, "decision_readiness.csv")
+
+        return sanitize_for_json({
+            "generated_at": _time.time(),
+            "summary": summary,
+            "rows": rows,
+        })
+    except Exception as e:
+        logger.exception("decision-readiness")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/plan-vs-real/alerts")
 async def get_plan_vs_real_alerts_endpoint(
     country: Optional[str] = Query(None, description="Filtrar por país"),

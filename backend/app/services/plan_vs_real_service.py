@@ -4,6 +4,16 @@ from psycopg2.extras import RealDictCursor
 import logging
 from typing import Optional, List, Dict, Any
 
+# FASE DECISION READINESS: importar semántica KPI para guardrail de alertas.
+# Las alertas de brecha (gap_trips_pct, gap_revenue_pct) solo usan KPIs
+# con decision_role == "decision_ready" (trips_completed, revenue, gmv, cancellations).
+# Los KPIs distinct (active_drivers) y ratio (avg_ticket, take_rate) quedan excluidos.
+try:
+    from app.config.kpi_semantics import KPI_SEMANTICS, is_decision_ready  # noqa: F401
+    _KPI_SEMANTICS_AVAILABLE = True
+except ImportError:
+    _KPI_SEMANTICS_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 # @deprecated — Prefer VIEW_REALKEY_CANONICAL cuando parity sea MATCH o MINOR_DIFF. No añadir nuevos consumidores.
@@ -260,3 +270,33 @@ def get_alerts_monthly(
     except Exception as e:
         logger.error(f"Error al obtener alertas Plan vs Real: {e}")
         raise
+
+
+# ─── FASE DECISION READINESS: guardrail de alertas por KPI semántico ─────────
+#
+# Esta función es el punto de extensión para consumidores que iteren sobre
+# múltiples KPIs dinámicamente. La query de get_alerts_monthly ya solo usa
+# "trips" y "revenue" (ambos decision_ready), por lo que es correcta sin
+# necesidad de filtro en SQL. El patrón siguiente aplica cuando se añadan
+# nuevos KPIs dinámicos:
+#
+#   from app.config.kpi_semantics import KPI_SEMANTICS
+#   for kpi, meta in KPI_SEMANTICS.items():
+#       if meta["decision_role"] != "decision_ready":
+#           continue          # ← guardrail: excluir distinct y ratio de alertas
+#       ... compute alerts for kpi ...
+
+def filter_decision_ready_kpis(kpi_list: List[str]) -> List[str]:
+    """
+    Filtra una lista de KPI keys para devolver solo los que tienen
+    decision_role == "decision_ready" según KPI_SEMANTICS.
+
+    Uso:
+        safe_kpis = filter_decision_ready_kpis(["trips_completed", "active_drivers", "avg_ticket"])
+        # → ["trips_completed"]
+
+    Garantiza que ningún KPI distinct o ratio se use como base de alerta aditiva.
+    """
+    if not _KPI_SEMANTICS_AVAILABLE:
+        return kpi_list
+    return [k for k in kpi_list if is_decision_ready(k)]

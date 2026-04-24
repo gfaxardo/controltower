@@ -1,0 +1,16 @@
+Data Freshness Debug  today=2026-04-21
+bottleneck=FACT_TABLES  s1_ok=True
+[OK]  trips_2026.fecha_finalizacion  max=2026-04-21  lag=0d
+[OK]  trips_2026 (solo 2026)  max=2026-04-21  lag=0d
+[OK]  real_business_slice_day_fact.trip_date  max=2026-04-20  lag=1d
+[OK]  real_business_slice_week_fact.week_start  max=2026-04-20  lag=1d
+[!!]  real_business_slice_month_fact.month  max=2026-04-01  lag=20d
+[!!]  staging_mv_real_lob_week_v2.week_start  max=2026-03-09  lag=43d
+ERR  staging_mv_real_lob_month_v2.month  max=None  lag=Noned
+[!!]  bsn_day_fact (dic25-ene26 range)  max=2026-01-10  lag=101d
+[?]  bsn_week_fact distinct week_starts (S1-2026)  max=2  lag=Noned
+[!!]  bsn_week_fact min_week_start dic2025  max=2025-12-01  lag=141d
+[!!]  staging_lob_week min_week_start dic2025  max=2025-12-01  lag=141d
+[?]  trips_2026 rows (dec25-jan10)  max=995996  lag=Noned
+[OK]  bsn_day_fact (solo 2026)  max=2026-04-20  lag=1d
+[OK]  bsn_week_fact (solo 2026)  max=2026-04-20  lag=1d

@@ -7,6 +7,13 @@ import {
   projectionSignalColor,
   SIGNAL_DOT,
   describeCurveSource,
+  getKpiContract,
+  getKpiComparabilityBadge,
+  getKpiComparabilityNote,
+  getKpiDecisionStatus,
+  getKpiDecisionNote,
+  getKpiDecisionBadge,
+  KPI_AGGREGATION_TYPE,
 } from './omniview/projectionMatrixUtils.js'
 import { computeRootCause, fmtImpact } from './omniview/rootCauseEngine.js'
 import { buildDrillAlertPayload, buildActionHandoff } from './omniview/alertingEngine.js'
@@ -124,6 +131,9 @@ function DrillContent ({ selection, grain, compact, onClose, projectionMeta, pla
       </div>
 
       <div className="divide-y divide-gray-100 max-h-[calc(100vh-200px)] overflow-y-auto">
+        {/* FASE_KPI_CONSISTENCY: Tipo de KPI y comparabilidad cross-grain */}
+        <KpiContractSection kpiKey={kpiKey} kpiContract={projectionMeta?.kpi_contract} labelCls={labelCls} valueCls={valueCls} />
+
         {/* Gap summary */}
         {delta?.isProjection && (
           <div className="px-4 py-3">
@@ -590,4 +600,84 @@ function _fmtCompact (v) {
   if (Math.abs(n) >= 1000000) return `${(n / 1000000).toFixed(2)}M`
   if (Math.abs(n) >= 1000) return `${(n / 1000).toFixed(1)}K`
   return n.toFixed(n % 1 === 0 ? 0 : 2)
+}
+
+/**
+ * FASE_KPI_CONSISTENCY — Sección "Tipo de KPI" en el drill.
+ *
+ * Muestra de forma explícita la naturaleza del KPI (aditivo, distinct, ratio,
+ * derivado), su comparabilidad cross-grain y la nota recomendada por el
+ * contrato. Esto evita que el usuario interprete sumas inválidas (ej. sumar
+ * `active_drivers` semanales) o promedios de promedios (ej. `avg_ticket`).
+ */
+function KpiContractSection ({ kpiKey, kpiContract, labelCls, valueCls }) {
+  if (!kpiKey) return null
+  const contract = getKpiContract(kpiKey, kpiContract)
+  if (!contract) return null
+  const badge = getKpiComparabilityBadge(kpiKey, kpiContract)
+  const note = getKpiComparabilityNote(kpiKey, kpiContract)
+  // FASE_VALIDATION_FIX: decision readiness
+  const decisionBadge = getKpiDecisionBadge(kpiKey, kpiContract)
+  const decisionNote = getKpiDecisionNote(kpiKey, kpiContract)
+
+  const toneCls = (tone) => {
+    switch (tone) {
+      case 'emerald': return 'bg-emerald-100 text-emerald-800 border-emerald-200'
+      case 'sky':     return 'bg-sky-100 text-sky-800 border-sky-200'
+      case 'amber':   return 'bg-amber-100 text-amber-800 border-amber-200'
+      case 'red':     return 'bg-red-100 text-red-800 border-red-200'
+      default:        return 'bg-slate-100 text-slate-700 border-slate-200'
+    }
+  }
+
+  const ruleLabel = (() => {
+    switch (contract.comparison_rule) {
+      case 'exact_sum': return 'SUM(días del mes) = mensual'
+      case 'same_formula_different_scope': return 'Misma fórmula, distinto scope'
+      case 'not_directly_comparable': return 'No comparable por suma'
+      default: return contract.comparison_rule || '—'
+    }
+  })()
+
+  return (
+    <div className="px-4 py-3 bg-slate-50/40">
+      <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Tipo de KPI</h4>
+      <div className="flex flex-wrap items-center gap-1.5 mb-2">
+        {badge && (
+          <span className={`inline-block px-1.5 py-px rounded text-[9px] font-bold border ${toneCls(badge.tone)}`}>
+            {badge.label}
+          </span>
+        )}
+        {decisionBadge && (
+          <span
+            className={`inline-block px-1.5 py-px rounded text-[9px] font-bold border ${toneCls(decisionBadge.tone)}`}
+            title={decisionNote || undefined}
+          >
+            {decisionBadge.label}
+          </span>
+        )}
+        <span className="text-[9px] text-slate-500">
+          {contract.comparable_across_grains ? 'Comparable por scope' : 'No comparable por suma entre granos'}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+        <span className={labelCls}>Regla</span>
+        <span className={valueCls}>{ruleLabel}</span>
+        {contract.allowed_for_drift_alerts === false && (
+          <>
+            <span className={labelCls}>Alertas aditivas</span>
+            <span className="text-[10px] text-amber-700 font-semibold">No aplica — leer por scope</span>
+          </>
+        )}
+      </div>
+      {note && (
+        <p className="mt-2 text-[10px] leading-snug text-slate-600">{note}</p>
+      )}
+      {decisionNote && (
+        <p className="mt-1 text-[10px] leading-snug text-slate-500 italic border-l-2 border-slate-300 pl-1.5">
+          {decisionNote}
+        </p>
+      )}
+    </div>
+  )
 }
