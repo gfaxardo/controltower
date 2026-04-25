@@ -144,6 +144,7 @@ export default function BusinessSliceOmniviewMatrix () {
   const [planVersions, setPlanVersions] = useState([])
   const [projectionRows, setProjectionRows] = useState([])
   const [projectionMeta, setProjectionMeta] = useState(null)
+  const [projectionResolvedKey, setProjectionResolvedKey] = useState(null)
 
   const [uploadModalOpen, setUploadModalOpen] = useState(false)
   const [uploadFile, setUploadFile] = useState(null)
@@ -156,7 +157,6 @@ export default function BusinessSliceOmniviewMatrix () {
 
   const needsCountry = grain === 'weekly' || grain === 'daily'
   const blockedByCountry = needsCountry && !country
-
   useEffect(() => {
     persistState({ grain, compact, country, city, businessSlice, fleet, showSubfleets, year, month, sortKey, focusedKpi, viewMode, planVersion })
   }, [grain, compact, country, city, businessSlice, fleet, showSubfleets, year, month, sortKey, focusedKpi, viewMode, planVersion])
@@ -201,6 +201,17 @@ export default function BusinessSliceOmniviewMatrix () {
    */
   const [loadingTasks, setLoadingTasks] = useState({})
   const activeTasks = Object.values(loadingTasks).filter(Boolean)
+  const projectionRequestKey = useMemo(
+    () => JSON.stringify({ grain, country, city, businessSlice, year, month, planVersion }),
+    [grain, country, city, businessSlice, year, month, planVersion]
+  )
+  const projectionPending =
+    heavyQueriesEnabled &&
+    isProjectionMode &&
+    !blockedByCountry &&
+    !!planVersion &&
+    projectionResolvedKey !== projectionRequestKey
+  const projectionReady = !loading && !projectionPending
 
   const trustAbortRef = useRef(null)
   const freshnessAbortRef = useRef(null)
@@ -390,6 +401,7 @@ export default function BusinessSliceOmniviewMatrix () {
   const wasHeavyEnabledRef = useRef(heavyQueriesEnabled)
 
   const doLoadProjection = useCallback(async (signal) => {
+    const requestKey = JSON.stringify({ grain, country, city, businessSlice, year, month, planVersion })
     // Guardrail: semanal/diario requiere país para evitar scope ilimitado
     // (sin país → O(todas_tajadas × semanas × KPIs × SQL) → cuelgue)
     if (blockedByCountry) {
@@ -431,12 +443,14 @@ export default function BusinessSliceOmniviewMatrix () {
       }
       setProjectionRows(data)
       setProjectionMeta(res?.meta ?? null)
+      setProjectionResolvedKey(requestKey)
     } catch (e) {
       if (e?.code === 'ERR_CANCELED' || e?.name === 'CanceledError' || e?.name === 'AbortError') return
       const detail = e?.response?.data?.detail
       setErr((typeof detail === 'string' ? detail : detail?.message) || e.message || 'Error cargando proyección')
       setProjectionRows([])
       setProjectionMeta(null)
+      setProjectionResolvedKey(requestKey)
     } finally {
       setLoading(false)
       setLoadingTasks((t) => { const n = { ...t }; delete n.matrix; return n })
@@ -512,6 +526,14 @@ export default function BusinessSliceOmniviewMatrix () {
   }, [grain, country, city, businessSlice, fleet, showSubfleets, year, month, blockedByCountry, isProjectionMode, doLoadProjection])
 
   useEffect(() => {
+    if (!heavyQueriesEnabled || !isProjectionMode) return
+    if (blockedByCountry || !planVersion) return
+    // Evita mostrar "sin datos" durante el debounce al cambiar filtros o grano.
+    setLoading(true)
+    setErr(null)
+  }, [heavyQueriesEnabled, isProjectionMode, blockedByCountry, planVersion, grain, country, city, businessSlice, year, month])
+
+  useEffect(() => {
     if (!heavyQueriesEnabled) {
       wasHeavyEnabledRef.current = false
       return
@@ -563,7 +585,7 @@ export default function BusinessSliceOmniviewMatrix () {
 
   /** Vs Proyección: estado vacío tras cargar (país obligatorio W/D, plan sin real, o sin datos). */
   const projectionEmptyKind = useMemo(() => {
-    if (!heavyQueriesEnabled || loading || !isProjectionMode || !planVersion || projectionRows.length > 0 || err) {
+    if (!heavyQueriesEnabled || loading || projectionPending || !isProjectionMode || !planVersion || projectionRows.length > 0 || err) {
       return null
     }
     if (blockedByCountry && (grain === 'weekly' || grain === 'daily')) {
@@ -573,7 +595,7 @@ export default function BusinessSliceOmniviewMatrix () {
     const pwrR = projectionMeta?.plan_without_real?.rows
     const hasPwr = pwrN > 0 || (Array.isArray(pwrR) && pwrR.length > 0)
     return hasPwr ? 'plan_without_real' : 'no_data'
-  }, [heavyQueriesEnabled, loading, isProjectionMode, planVersion, projectionRows.length, err, projectionMeta, blockedByCountry, grain])
+  }, [heavyQueriesEnabled, loading, projectionPending, isProjectionMode, planVersion, projectionRows.length, err, projectionMeta, blockedByCountry, grain])
 
   const baseMatrix = useMemo(() => buildMatrix(rows, grain), [rows, grain])
   const backendTotals = useMemo(() => toMetricMap(matrixMeta?.period_totals), [matrixMeta?.period_totals])
@@ -1084,7 +1106,7 @@ export default function BusinessSliceOmniviewMatrix () {
         )}
 
         {/* ── Badge de filas no mapeadas (interactivo) ───────────────────── */}
-        {heavyQueriesEnabled && !loading && isProjectionMode && projectionMeta?.unresolved?.count > 0 && (
+        {heavyQueriesEnabled && projectionReady && isProjectionMode && projectionMeta?.unresolved?.count > 0 && (
           <UnmappedBadge
             count={projectionMeta.unresolved.count}
             rows={projectionMeta.unresolved.rows}
@@ -1174,7 +1196,7 @@ export default function BusinessSliceOmniviewMatrix () {
         )}
 
         {/* ── Prioridades del periodo (Vs Proyección) — FASE 3.3 ───── */}
-        {heavyQueriesEnabled && !loading && isProjectionMode && projMatrix && projectionRows.length > 0 && (
+        {heavyQueriesEnabled && projectionReady && isProjectionMode && projMatrix && projectionRows.length > 0 && (
           <OmniviewPriorityPanel
             projMatrix={projMatrix}
             focusedKpi={focusedKpi}
@@ -1185,7 +1207,7 @@ export default function BusinessSliceOmniviewMatrix () {
         )}
 
         {/* ── Matrix + Drill (Vs Proyección) ─────────────────────── */}
-        {heavyQueriesEnabled && !loading && isProjectionMode && projMatrix && projectionRows.length > 0 && (
+        {heavyQueriesEnabled && projectionReady && isProjectionMode && projMatrix && projectionRows.length > 0 && (
           <div className="flex gap-3 items-start">
             <div className="flex-1 min-w-0">
               <BusinessSliceOmniviewMatrixTable
@@ -1206,7 +1228,7 @@ export default function BusinessSliceOmniviewMatrix () {
         )}
 
         {/* ── Plan sin ejecución real (sección QA) ───────────────── */}
-        {heavyQueriesEnabled && !loading && isProjectionMode && projectionMeta?.plan_without_real?.count > 0 && (
+        {heavyQueriesEnabled && projectionReady && isProjectionMode && projectionMeta?.plan_without_real?.count > 0 && (
           <PlanWithoutRealSection
             rows={projectionMeta.plan_without_real.rows}
             count={projectionMeta.plan_without_real.count}
@@ -1216,12 +1238,12 @@ export default function BusinessSliceOmniviewMatrix () {
         )}
 
         {/* ── Estadísticas de reconciliación ─────────────────────── */}
-        {heavyQueriesEnabled && !loading && isProjectionMode && projectionMeta?.reconciliation && (
+        {heavyQueriesEnabled && projectionReady && isProjectionMode && projectionMeta?.reconciliation && (
           <ReconciliationSummaryBar reconciliation={projectionMeta.reconciliation} />
         )}
 
         {/* ── Sin proyección cargada ──────────────────────────────── */}
-        {heavyQueriesEnabled && !loading && isProjectionMode && planVersions.length === 0 && (
+        {heavyQueriesEnabled && projectionReady && isProjectionMode && planVersions.length === 0 && (
           <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50/60 px-6 py-10 text-center flex flex-col items-center gap-4">
             <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
               <svg className="w-6 h-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -1246,7 +1268,7 @@ export default function BusinessSliceOmniviewMatrix () {
             </button>
           </div>
         )}
-        {heavyQueriesEnabled && !loading && isProjectionMode && planVersions.length > 0 && !planVersion && (
+        {heavyQueriesEnabled && projectionReady && isProjectionMode && planVersions.length > 0 && !planVersion && (
           <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50/60 px-6 py-8 text-center">
             <p className="text-sm font-semibold text-amber-800">Selecciona una versión de plan</p>
             <p className="mt-1 text-xs text-amber-600">Para ver la comparación Plan vs Real, selecciona una versión de proyección en el selector de arriba.</p>

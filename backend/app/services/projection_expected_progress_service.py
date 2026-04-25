@@ -4,7 +4,7 @@ Projection Expected Progress Service — orquestador para modo Omniview Proyecci
 Combina:
 - Plan mensualizado desde ops.v_plan_projection_control_loop
 - Real acumulado desde facts (month/week/day)
-- Curva estacional desde seasonality_curve_engine
+- Derivación semanal/diaria simple y trazable desde el plan mensual
 
 Aditivo: no modifica servicios ni tablas existentes.
 """
@@ -35,9 +35,7 @@ from app.services.omniview_semantics_service import (
 )
 from app.services.seasonality_curve_engine import (
     PROJECTABLE_KPIS,
-    compute_daily_expected_ratio,
     compute_expected_ratio,
-    compute_weekly_expected_ratio,
 )
 
 logger = logging.getLogger(__name__)
@@ -72,6 +70,235 @@ def _conservation_tolerance_ok(drift_abs: float, monthly_plan: Optional[float]) 
         tol_pct = 0.1
     drift_pct = (drift_abs / monthly_plan) * 100.0
     return drift_abs <= 1.0 or drift_pct <= tol_pct
+
+
+def _month_bounds(month_start: date) -> Tuple[date, date, int]:
+    first = month_start.replace(day=1)
+    days_in_month = monthrange(first.year, first.month)[1]
+    last = date(first.year, first.month, days_in_month)
+    return first, last, days_in_month
+
+
+_MONTH_SHORT_ES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+
+
+def _iter_month_dates(month_start: date) -> List[date]:
+    first, last, _ = _month_bounds(month_start)
+    dates: List[date] = []
+    current = first
+    while current <= last:
+        dates.append(current)
+        current += timedelta(days=1)
+    return dates
+
+
+def _iso_week_context(trip_date: date) -> Dict[str, Any]:
+    iso_year, iso_week, _ = trip_date.isocalendar()
+    week_start = trip_date - timedelta(days=trip_date.weekday())
+    week_end = week_start + timedelta(days=6)
+    week_label = f"S{iso_week}-{iso_year}"
+    if week_start.year != week_end.year:
+        week_range_label = (
+            f"{week_start.day} {_MONTH_SHORT_ES[week_start.month - 1]} {week_start.year} – "
+            f"{week_end.day} {_MONTH_SHORT_ES[week_end.month - 1]} {week_end.year}"
+        )
+    else:
+        week_range_label = (
+            f"{week_start.day} {_MONTH_SHORT_ES[week_start.month - 1]} – "
+            f"{week_end.day} {_MONTH_SHORT_ES[week_end.month - 1]}"
+        )
+    return {
+        "iso_year": iso_year,
+        "iso_week": iso_week,
+        "week_start": week_start.isoformat(),
+        "week_end": week_end.isoformat(),
+        "week_label": week_label,
+        "week_range_label": week_range_label,
+        "week_full_label": f"{week_label} · {week_range_label}",
+    }
+
+
+def _month_bucket_key(trip_date: date) -> str:
+    return f"{trip_date.year:04d}-{trip_date.month:02d}"
+
+
+def _round_distribution_to_total(
+    values: List[float],
+    total: float,
+    *,
+    lower_bound: Optional[float] = None,
+    upper_bound: Optional[float] = None,
+) -> List[float]:
+    rounded = [round(v, 2) for v in values]
+    diff = round(total - sum(rounded), 2)
+    if not rounded or abs(diff) < 0.01:
+        return rounded
+
+    candidate_indices = list(range(len(rounded) - 1, -1, -1))
+    for idx in candidate_indices:
+        candidate = round(rounded[idx] + diff, 2)
+        if lower_bound is not None and candidate < round(lower_bound, 2) - 0.01:
+            continue
+        if upper_bound is not None and candidate > round(upper_bound, 2) + 0.01:
+            continue
+        rounded[idx] = candidate
+        return rounded
+
+    rounded[-1] = round(rounded[-1] + diff, 2)
+    return rounded
+
+
+def _daily_plan_values(monthly_total: Optional[float], month_dates: List[date]) -> Dict[str, Optional[float]]:
+    if monthly_total is None:
+        return {trip_date.isoformat(): None for trip_date in month_dates}
+    if not month_dates:
+        return {}
+    total = float(monthly_total)
+    if abs(total) < 1e-9:
+        return {trip_date.isoformat(): 0.0 for trip_date in month_dates}
+    values = _round_distribution_to_total(
+        [total / len(month_dates) for _ in month_dates],
+        total,
+    )
+    return {
+        trip_date.isoformat(): value
+        for trip_date, value in zip(month_dates, values)
+    }
+
+
+def _build_plan_distribution(plan: Dict[str, Any], plan_month: date) -> Dict[str, Any]:
+    month_start = plan_month.replace(day=1)
+    month_dates = _iter_month_dates(month_start)
+    _, _, days_in_month = _month_bounds(month_start)
+    daily_plans: Dict[str, Dict[str, Optional[float]]] = {}
+    weekly_plans: Dict[str, Dict[str, Optional[float]]] = {kpi: {} for kpi in PROJECTABLE_KPIS}
+    weekly_rows: Dict[str, Dict[str, Any]] = {}
+    daily_rows: List[Dict[str, Any]] = []
+
+    iso_context_by_date = {
+        trip_date.isoformat(): _iso_week_context(trip_date)
+        for trip_date in month_dates
+    }
+
+    for kpi in PROJECTABLE_KPIS:
+        monthly_total = _safe_float(plan.get(_plan_column(kpi)))
+        daily_plans[kpi] = _daily_plan_values(monthly_total, month_dates)
+
+        for trip_date in month_dates:
+            trip_date_key = trip_date.isoformat()
+            iso_ctx = iso_context_by_date[trip_date_key]
+            week_start = iso_ctx["week_start"]
+            daily_value = daily_plans[kpi][trip_date_key]
+            weekly_plans[kpi][week_start] = round(
+                (weekly_plans[kpi].get(week_start) or 0.0) + (daily_value or 0.0),
+                2,
+            )
+
+    weekly_sum = {
+        kpi: round(sum(v for v in weekly_plans[kpi].values() if v is not None), 2)
+        for kpi in PROJECTABLE_KPIS
+    }
+    daily_sum = {
+        kpi: round(sum(v for v in daily_plans[kpi].values() if v is not None), 2)
+        for kpi in PROJECTABLE_KPIS
+    }
+
+    for trip_date in month_dates:
+        trip_date_key = trip_date.isoformat()
+        iso_ctx = iso_context_by_date[trip_date_key]
+        week_start = iso_ctx["week_start"]
+        month_bucket = _month_bucket_key(trip_date)
+        week_row = weekly_rows.setdefault(
+            week_start,
+            {
+                **iso_ctx,
+                "days_by_month": defaultdict(int),
+                "trip_dates": [],
+            },
+        )
+        week_row["days_by_month"][month_bucket] += 1
+        week_row["trip_dates"].append(trip_date_key)
+        daily_rows.append(
+            {
+                "trip_date": trip_date_key,
+                "year": trip_date.year,
+                "month_number": trip_date.month,
+                "month_source": _month_bucket_key(trip_date),
+                **iso_ctx,
+            }
+        )
+
+    for week_start, week_row in weekly_rows.items():
+        week_row["days_by_month"] = dict(sorted(week_row["days_by_month"].items()))
+        week_row["weekly_plan"] = {
+            kpi: weekly_plans[kpi].get(week_start)
+            for kpi in PROJECTABLE_KPIS
+        }
+        week_row["daily_plan"] = {
+            trip_date: {
+                kpi: daily_plans[kpi].get(trip_date)
+                for kpi in PROJECTABLE_KPIS
+            }
+            for trip_date in week_row["trip_dates"]
+        }
+
+    return {
+        "month": _month_key(month_start),
+        "days_in_month": days_in_month,
+        "month_source": _month_bucket_key(month_start),
+        "daily_rows": daily_rows,
+        "weekly_rows": [weekly_rows[k] for k in sorted(weekly_rows.keys())],
+        "weekly_plans": weekly_plans,
+        "daily_plans": daily_plans,
+        "weekly_sum": weekly_sum,
+        "daily_sum": daily_sum,
+    }
+
+
+def _distribution_debug_entry(
+    plan: Dict[str, Any],
+    plan_key: Tuple,
+    distribution: Dict[str, Any],
+    *,
+    grain: str,
+) -> Dict[str, Any]:
+    entry: Dict[str, Any] = {
+        "month": distribution["month"],
+        "month_source": distribution["month_source"],
+        "country": plan.get("country"),
+        "city": plan.get("city"),
+        "business_slice_name": plan.get("business_slice_name"),
+        "days_in_month": distribution["days_in_month"],
+        "weeks": [],
+        "days": distribution.get("daily_rows", []),
+        "weekly_sum": distribution.get("weekly_sum", {}),
+        "daily_sum": distribution.get("daily_sum", {}),
+    }
+
+    for segment in distribution["weekly_rows"]:
+        week_item: Dict[str, Any] = {
+            "week_start": segment["week_start"],
+            "week_end": segment["week_end"],
+            "iso_year": segment["iso_year"],
+            "iso_week": segment["iso_week"],
+            "week_label": segment["week_label"],
+            "week_range_label": segment["week_range_label"],
+            "week_full_label": segment["week_full_label"],
+            "days_by_month": segment["days_by_month"],
+            "weekly_plan": segment["weekly_plan"],
+        }
+        if grain in ("weekly", "daily"):
+            week_item["trip_dates"] = segment["trip_dates"]
+            week_item["daily_plan"] = segment["daily_plan"]
+        entry["weeks"].append(week_item)
+
+    entry["plan_key"] = {
+        "month": plan_key[0],
+        "country": plan_key[1],
+        "city": plan_key[2],
+        "business_slice_name": plan_key[3],
+    }
+    return entry
 
 
 def _slice_month_plan_key(r: Dict[str, Any]) -> Optional[Tuple]:
@@ -260,28 +487,48 @@ def _validate_weekly_output(
                 )
                 break
 
-    conserv_ok = 0
-    conserv_fail = 0
-    for key, plan in plan_by_key.items():
-        grp = [r for r in rows if _slice_month_plan_key(r) == key]
-        if len(grp) < 3:
-            continue
-        plan_total = _safe_float(plan.get("projected_trips"))
-        if plan_total is None:
-            continue
-        s = sum((_safe_float(r.get("trips_completed_projected_total")) or 0.0) for r in grp)
-        if _conservation_tolerance_ok(abs(plan_total - s), plan_total):
-            conserv_ok += 1
+    checks.append(
+        {
+            "name": "weekly_month_conservation_not_forced",
+            "passed": True,
+            "note": "weekly ISO cruza meses; no se exige SUM(weekly del mes) == monthly_plan",
+        }
+    )
+
+    seen_week_slots: Set[Tuple[str, str, str]] = set()
+    duplicated_slots: List[Dict[str, Any]] = []
+    missing_iso_meta = 0
+    for r in rows:
+        slot = (
+            r.get("week_start") or "",
+            (r.get("city") or "").strip().lower(),
+            (r.get("business_slice_name") or "").strip().lower(),
+        )
+        if slot in seen_week_slots:
+            duplicated_slots.append(
+                {
+                    "week_start": r.get("week_start"),
+                    "city": r.get("city"),
+                    "business_slice_name": r.get("business_slice_name"),
+                }
+            )
         else:
-            conserv_fail += 1
+            seen_week_slots.add(slot)
+        if not r.get("week_end") or not r.get("iso_year") or not r.get("iso_week"):
+            missing_iso_meta += 1
 
     checks.append(
         {
-            "name": "conservation_trips_sample",
-            "groups_checked_ge_3_weeks": conserv_ok + conserv_fail,
-            "passed_slices": conserv_ok,
-            "failed_slices": conserv_fail,
-            "passed": conserv_fail == 0,
+            "name": "iso_week_unique_slots",
+            "duplicates": duplicated_slots,
+            "passed": len(duplicated_slots) == 0,
+        }
+    )
+    checks.append(
+        {
+            "name": "iso_week_metadata_present",
+            "missing_rows": missing_iso_meta,
+            "passed": missing_iso_meta == 0,
         }
     )
 
@@ -513,6 +760,21 @@ def _city_to_fact_name(raw: str) -> str:
     return remove_accents((raw or "").strip()).lower()
 
 
+def _slice_to_fact_name(raw: str) -> str:
+    """Normaliza business_slice_name para joins Plan vs Real."""
+    return remove_accents((raw or "").strip()).lower()
+
+
+def _projection_join_key(period_key: str, country: Any, city: Any, business_slice: Any) -> Tuple[str, str, str, str]:
+    """Clave canónica compartida por plan resuelto y facts reales."""
+    return (
+        period_key,
+        _country_to_fact_name(str(country or "")),
+        _city_to_fact_name(str(city or "")),
+        _slice_to_fact_name(str(business_slice or "")),
+    )
+
+
 def _month_key(d) -> str:
     if hasattr(d, "strftime"):
         return d.strftime("%Y-%m-01")
@@ -538,6 +800,60 @@ def _safe_float(v) -> Optional[float]:
         return None
 
 
+def _semantic_ui_revenue(v: Any) -> Optional[float]:
+    """Revenue en semántica UI: signo positivo sin perder el raw audit trail."""
+    fv = _safe_float(v)
+    if fv is None:
+        return None
+    return abs(fv)
+
+
+def _copy_aux_real_metrics(row: Dict[str, Any], real_data: Optional[Dict[str, Any]]) -> None:
+    """Completa KPIs no proyectables para que la UI no pierda ejecución real."""
+    real = real_data or {}
+    row["trips_cancelled"] = _safe_float(real.get("real_trips_cancelled"))
+    row["avg_ticket"] = _safe_float(real.get("real_avg_ticket"))
+    row["commission_pct"] = _safe_float(real.get("real_commission_pct"))
+    row["trips_per_driver"] = _safe_float(real.get("real_trips_per_driver"))
+    row["cancel_rate_pct"] = _safe_float(real.get("real_cancel_rate_pct"))
+    row["revenue_yego_net_audit_raw"] = _safe_float(real.get("real_revenue_raw"))
+
+
+def _scope_months_for_weekly_iso(
+    year: Optional[int],
+    month: Optional[int],
+    today: date,
+) -> List[Tuple[int, int]]:
+    months: Set[Tuple[int, int]] = set()
+    for week_start in _get_weeks_for_scope(year, month, today):
+        for offset in range(7):
+            trip_date = week_start + timedelta(days=offset)
+            months.add((trip_date.year, trip_date.month))
+    return sorted(months)
+
+
+def _load_plan_for_projection_scope(
+    plan_version: str,
+    grain: str,
+    country: Optional[str],
+    city: Optional[str],
+    year: Optional[int],
+    month: Optional[int],
+    today: date,
+) -> List[Dict[str, Any]]:
+    if grain != "weekly":
+        return _load_plan(plan_version, country, city, year, month)
+
+    scope_months = _scope_months_for_weekly_iso(year, month, today)
+    if not scope_months:
+        return _load_plan(plan_version, country, city, year, month)
+
+    rows: List[Dict[str, Any]] = []
+    for scope_year, scope_month in scope_months:
+        rows.extend(_load_plan(plan_version, country, city, scope_year, scope_month))
+    return rows
+
+
 def get_omniview_projection(
     plan_version: str,
     grain: str = "monthly",
@@ -546,6 +862,7 @@ def get_omniview_projection(
     business_slice: Optional[str] = None,
     year: Optional[int] = None,
     month: Optional[int] = None,
+    debug_distribution: bool = False,
 ) -> Dict[str, Any]:
     """Main entry point for the Omniview Projection mode."""
     _t0 = time.perf_counter()
@@ -557,7 +874,9 @@ def get_omniview_projection(
     )
 
     _t1 = time.perf_counter()
-    plan_rows = _load_plan(plan_version, country, city, year, month)
+    plan_rows = _load_plan_for_projection_scope(
+        plan_version, grain, country, city, year, month, today
+    )
     logger.info("get_omniview_projection load_plan=%.2fs rows=%d", time.perf_counter() - _t1, len(plan_rows))
 
     if not plan_rows:
@@ -575,18 +894,21 @@ def get_omniview_projection(
                     "response_grain": grain,
                     "weekly_daily_from_monthly": grain in ("weekly", "daily"),
                     "derivation_source": "ops.v_plan_projection_control_loop",
-                    "smoothing_applied": True,
-                    "smoothing_alpha_week": 0.7,
-                    "smoothing_alpha_day": 0.7,
-                    "conservation_enforced": False,
+                    "distribution_model": "iso_week_from_daily_monthly_plan" if grain == "weekly" else ("daily_from_monthly_month_days" if grain == "daily" else "monthly_unchanged"),
+                    "smoothing_applied": False,
+                    "smoothing_alpha_week": None,
+                    "smoothing_alpha_day": None,
+                    "conservation_enforced": grain == "daily",
                     "year_end_weeks_included": [],
                     "fallback_level_summary": {},
+                    "guardrails": None,
                 },
                 "conservation": {},
                 "qa_checks": {},
                 "kpi_contract": (lambda: __import__(
                     "app.config.kpi_aggregation_rules", fromlist=["kpi_contract_for_meta"]
                 ).kpi_contract_for_meta())(),
+                "distribution_debug": {"enabled": debug_distribution, "grain": grain, "rows": []},
                 "message": "No hay proyección cargada para esta versión / filtros.",
             },
         }
@@ -637,17 +959,18 @@ def get_omniview_projection(
     )
 
     _t4 = time.perf_counter()
+    distribution_debug_rows: List[Dict[str, Any]] = []
     with get_db() as conn:
         if grain == "monthly":
             result_rows, plan_without_real, real_rows = _build_monthly(
                 conn, resolved_plan_by_key, today, country, city, business_slice, year, month
             )
         elif grain == "weekly":
-            result_rows, plan_without_real, real_rows = _build_weekly(
+            result_rows, plan_without_real, real_rows, distribution_debug_rows = _build_weekly(
                 conn, resolved_plan_by_key, today, country, city, business_slice, year, month
             )
         else:
-            result_rows, plan_without_real, real_rows = _build_daily(
+            result_rows, plan_without_real, real_rows, distribution_debug_rows = _build_daily(
                 conn, resolved_plan_by_key, today, country, city, business_slice, year, month
             )
 
@@ -662,7 +985,10 @@ def get_omniview_projection(
     conservation_meta: Dict[str, Any] = {}
     qa_checks_payload: Dict[str, Any] = {}
     if grain == "weekly":
-        conservation_meta = _reconcile_weekly_conservation(display_rows, resolved_plan_by_key)
+        conservation_meta = {
+            "weekly_sum_checked": False,
+            "note": "weekly_iso_from_daily: no se fuerza SUM(weekly dentro del mes) == monthly_plan",
+        }
         qa_checks_payload = _validate_weekly_output(
             display_rows, resolved_plan_by_key, year, month
         )
@@ -717,19 +1043,6 @@ def get_omniview_projection(
     fallback_level_summary = _fallback_level_summary(display_rows)
     logger.info("get_omniview_projection TOTAL=%.2fs", time.perf_counter() - _t0)
 
-    try:
-        from app.settings import settings as _settings_proj
-
-        smoothing_alpha_week = float(
-            getattr(_settings_proj, "PROJECTION_SMOOTHING_ALPHA_WEEK", 0.7)
-        )
-        smoothing_alpha_day = float(
-            getattr(_settings_proj, "PROJECTION_SMOOTHING_ALPHA_DAY", 0.7)
-        )
-    except Exception:
-        smoothing_alpha_week = 0.7
-        smoothing_alpha_day = 0.7
-
     last_loaded = None
     for p in plan_rows:
         la = p.get("last_loaded_at")
@@ -756,12 +1069,14 @@ def get_omniview_projection(
                 "response_grain": grain,
                 "weekly_daily_from_monthly": grain in ("weekly", "daily"),
                 "derivation_source": "ops.v_plan_projection_control_loop",
-                "smoothing_applied": True,
-                "smoothing_alpha_week": smoothing_alpha_week,
-                "smoothing_alpha_day": smoothing_alpha_day,
-                "conservation_enforced": grain in ("weekly", "daily"),
+                "distribution_model": "iso_week_from_daily_monthly_plan" if grain == "weekly" else ("daily_from_monthly_month_days" if grain == "daily" else "monthly_unchanged"),
+                "smoothing_applied": False,
+                "smoothing_alpha_week": None,
+                "smoothing_alpha_day": None,
+                "conservation_enforced": grain == "daily",
                 "year_end_weeks_included": year_end_weeks_included,
                 "fallback_level_summary": fallback_level_summary,
+                "guardrails": None,
             },
             "curve_summary": curve_summary,
             "conservation": conservation_meta,
@@ -780,6 +1095,11 @@ def get_omniview_projection(
             "plan_without_real": {
                 "count": len(plan_without_real),
                 "rows": plan_without_real,
+            },
+            "distribution_debug": {
+                "enabled": debug_distribution,
+                "grain": grain,
+                "rows": distribution_debug_rows if debug_distribution and grain in ("weekly", "daily") else [],
             },
             # ── Estadísticas de reconciliación ─────────────────────────────────
             "reconciliation": {
@@ -936,7 +1256,7 @@ def _resolve_and_index_plan(
 
         mk = _month_key(p["period_date"])
         # Clave canónica: usa formato FACT_MONTHLY para matchear real_map correctamente
-        key = (mk, co_fact, ci_fact, bsn.strip().lower())
+        key = _projection_join_key(mk, co_fact, ci_fact, bsn)
 
         if key in result:
             existing = result[key]
@@ -1159,6 +1479,7 @@ def _build_projection_row_monthly(
         row[f"{kpi}_expected_ratio"]     = expected_ratio
         row[f"{kpi}_comparison_basis"]   = comparison_basis       # campo canónico nuevo
 
+    _copy_aux_real_metrics(row, real)
     return row
 
 
@@ -1177,129 +1498,182 @@ def _scope_month_start(year: Optional[int], month: Optional[int], today: date) -
     return None
 
 
-def _fill_weekly_row_from_monthly_plan(
-    conn,
-    plan: Dict[str, Any],
-    plan_month: date,
-    week_start: date,
-    co_norm: str,
+def _build_iso_plan_maps(
+    plan_by_key: Dict[Tuple, Dict],
+) -> Tuple[Dict[Tuple, Dict[str, Any]], Dict[Tuple, Dict[str, Any]], List[Dict[str, Any]]]:
+    daily_plan_map: Dict[Tuple, Dict[str, Any]] = {}
+    weekly_plan_map: Dict[Tuple, Dict[str, Any]] = {}
+    distribution_debug: List[Dict[str, Any]] = []
+
+    for plan_key, plan in plan_by_key.items():
+        mk, co_norm, ci_norm, bsn_lower = plan_key
+        distribution = _build_plan_distribution(plan, date.fromisoformat(mk))
+        distribution_debug.append(
+            _distribution_debug_entry(plan, plan_key, distribution, grain="daily")
+        )
+
+        for day_meta in distribution["daily_rows"]:
+            trip_date = day_meta["trip_date"]
+            slot = (trip_date, co_norm, ci_norm, bsn_lower)
+            daily_plan_map[slot] = {
+                "country": plan["country"],
+                "city": plan["city"],
+                "business_slice_name": plan["business_slice_name"],
+                "month": distribution["month"],
+                "month_source": day_meta["month_source"],
+                "trip_date": trip_date,
+                "week_start": day_meta["week_start"],
+                "week_end": day_meta["week_end"],
+                "iso_year": day_meta["iso_year"],
+                "iso_week": day_meta["iso_week"],
+                "week_label": day_meta["week_label"],
+                "week_range_label": day_meta["week_range_label"],
+                "week_full_label": day_meta["week_full_label"],
+                "daily_plan": {
+                    kpi: distribution["daily_plans"][kpi].get(trip_date)
+                    for kpi in PROJECTABLE_KPIS
+                },
+                "monthly_totals": {
+                    kpi: _safe_float(plan.get(_plan_column(kpi)))
+                    for kpi in PROJECTABLE_KPIS
+                },
+            }
+
+        for week_meta in distribution["weekly_rows"]:
+            week_start = week_meta["week_start"]
+            slot = (week_start, co_norm, ci_norm, bsn_lower)
+            entry = weekly_plan_map.setdefault(
+                slot,
+                {
+                    "country": plan["country"],
+                    "city": plan["city"],
+                    "business_slice_name": plan["business_slice_name"],
+                    "month": None,
+                    "week_start": week_meta["week_start"],
+                    "week_end": week_meta["week_end"],
+                    "iso_year": week_meta["iso_year"],
+                    "iso_week": week_meta["iso_week"],
+                    "week_label": week_meta["week_label"],
+                    "week_range_label": week_meta["week_range_label"],
+                    "week_full_label": week_meta["week_full_label"],
+                    "days_by_month": defaultdict(int),
+                    "weekly_plan": {kpi: 0.0 for kpi in PROJECTABLE_KPIS},
+                },
+            )
+            for month_bucket, days_count in week_meta["days_by_month"].items():
+                entry["days_by_month"][month_bucket] += days_count
+            for kpi in PROJECTABLE_KPIS:
+                entry["weekly_plan"][kpi] = round(
+                    (entry["weekly_plan"].get(kpi) or 0.0)
+                    + (week_meta["weekly_plan"].get(kpi) or 0.0),
+                    2,
+                )
+
+    for entry in weekly_plan_map.values():
+        months_sorted = sorted(entry["days_by_month"].keys())
+        entry["days_by_month"] = dict(sorted(entry["days_by_month"].items()))
+        entry["month"] = f"{months_sorted[0]}-01" if months_sorted else None
+
+    return daily_plan_map, weekly_plan_map, distribution_debug
+
+
+def _build_weekly_row_from_iso_plan(
+    weekly_plan_data: Dict[str, Any],
     real_data: Optional[Dict[str, Any]],
     comparison_status: str,
-    _curve_cache: Dict,
-    _dist_cache: Dict,
-    today: date,
 ) -> Dict[str, Any]:
-    """Deriva KPIs semanales desde el plan mensual (seasonality_curve_engine)."""
-    bsn = plan["business_slice_name"]
-    co_full = plan["country"]
-    ci = plan["city"]
-    pm = plan_month.replace(day=1)
-    plan_month_key = _month_key(pm)
-
     row: Dict[str, Any] = {
-        "country": co_full,
-        "city": ci,
-        "business_slice_name": bsn,
+        "country": weekly_plan_data["country"],
+        "city": weekly_plan_data["city"],
+        "business_slice_name": weekly_plan_data["business_slice_name"],
         "fleet_display_name": "",
         "is_subfleet": False,
         "subfleet_name": "",
-        "week_start": week_start.isoformat(),
-        "month": plan_month_key,
+        "month": weekly_plan_data.get("month"),
+        "week_start": weekly_plan_data["week_start"],
+        "week_end": weekly_plan_data["week_end"],
+        "iso_year": weekly_plan_data["iso_year"],
+        "iso_week": weekly_plan_data["iso_week"],
+        "week_label": weekly_plan_data["week_label"],
+        "week_range_label": weekly_plan_data["week_range_label"],
+        "week_full_label": weekly_plan_data["week_full_label"],
+        "days_by_month": weekly_plan_data["days_by_month"],
+        "distribution_model": "iso_week_from_daily_monthly_plan",
         "comparison_status": comparison_status,
     }
 
-    week_end = week_start + timedelta(days=6)
-    cutoff_date = min(today, week_end)
-    is_full_week = cutoff_date >= week_end
-    week_comparison_basis = resolve_comparison_basis(is_full_week, "weekly")
-
     for kpi in PROJECTABLE_KPIS:
-        plan_total = _safe_float(plan.get(_plan_column(kpi)))
-        curve = compute_weekly_expected_ratio(
-            _to_full_country(co_norm), ci, bsn, kpi,
-            week_start, cutoff_date, pm, conn=conn,
-            _cache=_curve_cache, _dist_cache=_dist_cache,
-        )
-        week_expected = round(plan_total * curve["expected_ratio_to_date"], 2) if plan_total is not None else None
-        week_plan_total = round(plan_total * curve.get("week_share_of_month", 0), 2) if plan_total is not None else None
+        week_plan_total = _safe_float(weekly_plan_data["weekly_plan"].get(kpi))
         actual = _safe_float(real_data.get(_real_column(kpi))) if real_data else None
-
-        canon = compute_canonical_metrics(actual, week_expected, week_plan_total, week_comparison_basis)
+        canon = compute_canonical_metrics(actual, week_plan_total, week_plan_total, "full_week")
 
         row[kpi] = actual
-        row[f"{kpi}_projected_total"]    = week_plan_total
-        row[f"{kpi}_projected_expected"] = week_expected
-        row[f"{kpi}_attainment_pct"]     = canon["avance_pct"]
-        row[f"{kpi}_gap_to_expected"]    = canon["gap_abs"]
-        row[f"{kpi}_gap_pct"]            = canon["gap_pct"]
-        row[f"{kpi}_gap_to_full"]        = round(actual - week_plan_total, 2) if actual is not None and week_plan_total is not None else None
-        row[f"{kpi}_completion_pct"]     = round((actual / week_plan_total) * 100.0, 2) if actual is not None and week_plan_total and week_plan_total > 0 else None
-        row[f"{kpi}_signal"]             = resolve_signal(canon["avance_pct"], actual)
-        row[f"{kpi}_curve_method"]       = curve.get("curve_method", "linear_fallback")
-        row[f"{kpi}_curve_confidence"]   = curve.get("confidence", "fallback")
-        row[f"{kpi}_fallback_level"]     = curve.get("fallback_level", 5)
-        row[f"{kpi}_expected_ratio"]     = curve.get("expected_ratio_to_date", 0)
-        row[f"{kpi}_comparison_basis"]   = week_comparison_basis
+        row[f"{kpi}_projected_total"] = week_plan_total
+        row[f"{kpi}_projected_expected"] = week_plan_total
+        row[f"{kpi}_attainment_pct"] = canon["avance_pct"]
+        row[f"{kpi}_gap_to_expected"] = canon["gap_abs"]
+        row[f"{kpi}_gap_pct"] = canon["gap_pct"]
+        row[f"{kpi}_gap_to_full"] = round(actual - week_plan_total, 2) if actual is not None and week_plan_total is not None else None
+        row[f"{kpi}_completion_pct"] = round((actual / week_plan_total) * 100.0, 2) if actual is not None and week_plan_total and week_plan_total > 0 else None
+        row[f"{kpi}_signal"] = resolve_signal(canon["avance_pct"], actual)
+        row[f"{kpi}_curve_method"] = "iso_week_from_daily_monthly_plan"
+        row[f"{kpi}_curve_confidence"] = "exact"
+        row[f"{kpi}_fallback_level"] = 0
+        row[f"{kpi}_expected_ratio"] = None
+        row[f"{kpi}_comparison_basis"] = "full_week"
 
+    _copy_aux_real_metrics(row, real_data)
     return row
 
 
-def _fill_daily_row_from_monthly_plan(
-    conn,
-    plan: Dict[str, Any],
-    plan_month: date,
-    trip_date: date,
-    co_norm: str,
+def _build_daily_row_from_monthly_daily_plan(
+    daily_plan_data: Dict[str, Any],
     real_data: Optional[Dict[str, Any]],
     comparison_status: str,
-    _curve_cache: Dict,
-    _dist_cache: Dict,
 ) -> Dict[str, Any]:
-    """Deriva KPIs diarios desde el plan mensual."""
-    bsn = plan["business_slice_name"]
-    co_full = plan["country"]
-    ci = plan["city"]
-    pm = plan_month.replace(day=1)
-    plan_month_key = _month_key(pm)
-
     row: Dict[str, Any] = {
-        "country": co_full,
-        "city": ci,
-        "business_slice_name": bsn,
+        "country": daily_plan_data["country"],
+        "city": daily_plan_data["city"],
+        "business_slice_name": daily_plan_data["business_slice_name"],
         "fleet_display_name": "",
         "is_subfleet": False,
         "subfleet_name": "",
-        "trip_date": trip_date.isoformat(),
-        "month": plan_month_key,
+        "month": daily_plan_data["month"],
+        "month_source": daily_plan_data["month_source"],
+        "trip_date": daily_plan_data["trip_date"],
+        "week_start": daily_plan_data["week_start"],
+        "week_end": daily_plan_data["week_end"],
+        "iso_year": daily_plan_data["iso_year"],
+        "iso_week": daily_plan_data["iso_week"],
+        "week_label": daily_plan_data["week_label"],
+        "week_range_label": daily_plan_data["week_range_label"],
+        "week_full_label": daily_plan_data["week_full_label"],
+        "distribution_model": "daily_from_monthly_month_days",
         "comparison_status": comparison_status,
     }
 
     for kpi in PROJECTABLE_KPIS:
-        plan_total = _safe_float(plan.get(_plan_column(kpi)))
-        kpi_curve = compute_daily_expected_ratio(
-            _to_full_country(co_norm), ci, bsn, kpi, trip_date, pm, conn=conn,
-            _cache=_curve_cache, _dist_cache=_dist_cache,
-        )
-        daily_expected = round(plan_total * kpi_curve["expected_ratio_to_date"], 2) if plan_total is not None else None
+        daily_plan = _safe_float(daily_plan_data["daily_plan"].get(kpi))
+        monthly_total = _safe_float(daily_plan_data["monthly_totals"].get(kpi))
         actual = _safe_float(real_data.get(_real_column(kpi))) if real_data else None
-
-        canon = compute_canonical_metrics(actual, daily_expected, daily_expected, "full_day")
+        canon = compute_canonical_metrics(actual, daily_plan, daily_plan, "full_day")
 
         row[kpi] = actual
-        row[f"{kpi}_projected_total"]    = daily_expected
-        row[f"{kpi}_projected_expected"] = daily_expected
-        row[f"{kpi}_attainment_pct"]     = canon["avance_pct"]
-        row[f"{kpi}_gap_to_expected"]    = canon["gap_abs"]
-        row[f"{kpi}_gap_pct"]            = canon["gap_pct"]
-        row[f"{kpi}_gap_to_full"]        = canon["gap_abs"]
-        row[f"{kpi}_completion_pct"]     = canon["avance_pct"]
-        row[f"{kpi}_signal"]             = resolve_signal(canon["avance_pct"], actual)
-        row[f"{kpi}_curve_method"]       = kpi_curve.get("curve_method", "linear_fallback")
-        row[f"{kpi}_curve_confidence"]   = kpi_curve.get("confidence", "fallback")
-        row[f"{kpi}_fallback_level"]     = kpi_curve.get("fallback_level", 5)
-        row[f"{kpi}_expected_ratio"]     = kpi_curve.get("expected_ratio_to_date", 0)
-        row[f"{kpi}_comparison_basis"]   = "full_day"
+        row[f"{kpi}_projected_total"] = daily_plan
+        row[f"{kpi}_projected_expected"] = daily_plan
+        row[f"{kpi}_attainment_pct"] = canon["avance_pct"]
+        row[f"{kpi}_gap_to_expected"] = canon["gap_abs"]
+        row[f"{kpi}_gap_pct"] = canon["gap_pct"]
+        row[f"{kpi}_gap_to_full"] = canon["gap_abs"]
+        row[f"{kpi}_completion_pct"] = canon["avance_pct"]
+        row[f"{kpi}_signal"] = resolve_signal(canon["avance_pct"], actual)
+        row[f"{kpi}_curve_method"] = "daily_from_monthly_month_days"
+        row[f"{kpi}_curve_confidence"] = "exact"
+        row[f"{kpi}_fallback_level"] = 0
+        row[f"{kpi}_expected_ratio"] = round((daily_plan / monthly_total), 6) if monthly_total not in (None, 0) and daily_plan is not None else None
+        row[f"{kpi}_comparison_basis"] = "full_day"
 
+    _copy_aux_real_metrics(row, real_data)
     return row
 
 
@@ -1312,71 +1686,59 @@ def _build_weekly(
     business_slice: Optional[str],
     year: Optional[int],
     month: Optional[int],
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], int]:
-    """REAL-FIRST weekly. Plan semanal siempre derivado del mensual cargado (no hay plan W en BD)."""
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], int, List[Dict[str, Any]]]:
+    """REAL-FIRST weekly. Plan semanal ISO completo derivado desde daily_plan."""
     real_map = _load_real_weekly(conn, country, city, business_slice, year, month)
-    _curve_cache: Dict = {}
-    _dist_cache:  Dict = {}
+    _, weekly_plan_map, _distribution_debug = _build_iso_plan_maps(plan_by_key)
+    distribution_debug = [
+        {
+            "country": data["country"],
+            "city": data["city"],
+            "business_slice_name": data["business_slice_name"],
+            "week_start": data["week_start"],
+            "week_end": data["week_end"],
+            "iso_year": data["iso_year"],
+            "iso_week": data["iso_week"],
+            "week_label": data["week_label"],
+            "week_range_label": data["week_range_label"],
+            "week_full_label": data["week_full_label"],
+            "days_by_month": data["days_by_month"],
+            "weekly_plan": data["weekly_plan"],
+        }
+        for _, data in sorted(weekly_plan_map.items())
+    ]
 
     main_result: List[Dict[str, Any]] = []
-    seen_slots: Set[Tuple[str, str, str, str]] = set()
-
-    target_weeks = _get_weeks_for_scope(year, month, today)
-    scope_m = _scope_month_start(year, month, today)
-    scope_month_key = _month_key(scope_m) if scope_m else None
-
-    for week_start in target_weeks:
-        if scope_m and not _week_intersects_month(week_start, scope_m):
-            continue
-        plan_month_date = scope_m or date(week_start.year, week_start.month, 1)
-        plan_month_key = _month_key(plan_month_date.replace(day=1))
-
-        for real_key, real_data in real_map.items():
-            ws, co_norm, ci_norm, bsn_lower = real_key
-            if ws != week_start.isoformat():
-                continue
-            if business_slice and business_slice.strip().lower() != bsn_lower:
-                continue
-
-            slot = (ws, co_norm, ci_norm, bsn_lower)
-            plan_lookup_key = (plan_month_key, co_norm, ci_norm, bsn_lower)
-            plan = plan_by_key.get(plan_lookup_key)
-
-            if plan:
-                seen_slots.add(slot)
-                row = _fill_weekly_row_from_monthly_plan(
-                    conn, plan, plan_month_date, week_start, co_norm, real_data, "matched",
-                    _curve_cache, _dist_cache, today,
-                )
-            else:
-                seen_slots.add(slot)
-                row = _build_no_plan_row(real_data, week_start.isoformat(), "weekly")
-                row["month"] = plan_month_key
-
-            main_result.append(row)
-
     plan_without_real: List[Dict[str, Any]] = []
-    for plan_key, plan in plan_by_key.items():
-        mk, co_norm, ci_norm, bsn_lower = plan_key[0], plan_key[1], plan_key[2], plan_key[3]
-        if scope_month_key and mk != scope_month_key:
-            continue
-        plan_month = date.fromisoformat(mk)
+    target_week_keys = {week_start.isoformat() for week_start in _get_weeks_for_scope(year, month, today)}
 
-        for week_start in target_weeks:
-            if not _week_intersects_month(week_start, plan_month):
-                continue
-            slot = (week_start.isoformat(), co_norm, ci_norm, bsn_lower)
-            if slot in seen_slots:
-                continue
-            row = _fill_weekly_row_from_monthly_plan(
-                conn, plan, plan_month, week_start, co_norm, None, "plan_without_real",
-                _curve_cache, _dist_cache, today,
+    all_slots = sorted(set(real_map.keys()) | set(weekly_plan_map.keys()))
+    for slot in all_slots:
+        ws, _, _, bsn_lower = slot
+        if ws not in target_week_keys:
+            continue
+        if business_slice and business_slice.strip().lower() != bsn_lower:
+            continue
+
+        real_data = real_map.get(slot)
+        weekly_plan_data = weekly_plan_map.get(slot)
+
+        if weekly_plan_data and real_data:
+            main_result.append(
+                _build_weekly_row_from_iso_plan(weekly_plan_data, real_data, "matched")
             )
-            plan_without_real.append(row)
+        elif weekly_plan_data:
+            plan_without_real.append(
+                _build_weekly_row_from_iso_plan(weekly_plan_data, None, "plan_without_real")
+            )
+        elif real_data:
+            row = _build_no_plan_row(real_data, ws, "weekly")
+            row["week_end"] = (date.fromisoformat(ws) + timedelta(days=6)).isoformat()
+            main_result.append(row)
 
     main_result.sort(key=lambda r: (r.get("week_start", ""), r.get("country", ""), r.get("city", ""), r.get("business_slice_name", "")))
     plan_without_real.sort(key=lambda r: (r.get("week_start", ""), r.get("country", ""), r.get("city", ""), r.get("business_slice_name", "")))
-    return main_result, plan_without_real, len(real_map)
+    return main_result, plan_without_real, len(real_map), distribution_debug
 
 
 def _build_daily(
@@ -1388,71 +1750,41 @@ def _build_daily(
     business_slice: Optional[str],
     year: Optional[int],
     month: Optional[int],
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], int]:
-    """REAL-FIRST daily. Plan diario siempre derivado del mensual (no hay plan D en BD)."""
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], int, List[Dict[str, Any]]]:
+    """REAL-FIRST daily. Plan diario derivado directamente del mensual."""
     real_map = _load_real_daily(conn, country, city, business_slice, year, month)
-    _curve_cache: Dict = {}
-    _dist_cache:  Dict = {}
+    daily_plan_map, _, distribution_debug = _build_iso_plan_maps(plan_by_key)
 
     main_result: List[Dict[str, Any]] = []
-    seen_slots: Set[Tuple[str, str, str, str]] = set()
-
-    target_days = _get_days_for_scope(year, month, today)
-    scope_m = _scope_month_start(year, month, today)
-    scope_month_key = _month_key(scope_m) if scope_m else None
-
-    for trip_date in target_days:
-        day_month = date(trip_date.year, trip_date.month, 1)
-        if scope_m and day_month != scope_m:
-            continue
-        plan_month_key = _month_key(day_month)
-
-        for real_key, real_data in real_map.items():
-            td, co_norm, ci_norm, bsn_lower = real_key
-            if td != trip_date.isoformat():
-                continue
-            if business_slice and business_slice.strip().lower() != bsn_lower:
-                continue
-
-            slot = (td, co_norm, ci_norm, bsn_lower)
-            plan_lookup_key = (plan_month_key, co_norm, ci_norm, bsn_lower)
-            plan = plan_by_key.get(plan_lookup_key)
-
-            if plan:
-                seen_slots.add(slot)
-                row = _fill_daily_row_from_monthly_plan(
-                    conn, plan, day_month, trip_date, co_norm, real_data, "matched",
-                    _curve_cache, _dist_cache,
-                )
-            else:
-                seen_slots.add(slot)
-                row = _build_no_plan_row(real_data, trip_date.isoformat(), "daily")
-                row["month"] = plan_month_key
-
-            main_result.append(row)
-
     plan_without_real: List[Dict[str, Any]] = []
-    for plan_key, plan in plan_by_key.items():
-        mk, co_norm, ci_norm, bsn_lower = plan_key[0], plan_key[1], plan_key[2], plan_key[3]
-        if scope_month_key and mk != scope_month_key:
-            continue
-        plan_month = date.fromisoformat(mk)
+    target_day_keys = {trip_date.isoformat() for trip_date in _get_days_for_scope(year, month, today)}
 
-        for trip_date in target_days:
-            if date(trip_date.year, trip_date.month, 1) != plan_month:
-                continue
-            slot = (trip_date.isoformat(), co_norm, ci_norm, bsn_lower)
-            if slot in seen_slots:
-                continue
-            row = _fill_daily_row_from_monthly_plan(
-                conn, plan, plan_month, trip_date, co_norm, None, "plan_without_real",
-                _curve_cache, _dist_cache,
+    all_slots = sorted(set(real_map.keys()) | set(daily_plan_map.keys()))
+    for slot in all_slots:
+        td, _, _, bsn_lower = slot
+        if td not in target_day_keys:
+            continue
+        if business_slice and business_slice.strip().lower() != bsn_lower:
+            continue
+
+        real_data = real_map.get(slot)
+        daily_plan_data = daily_plan_map.get(slot)
+
+        if daily_plan_data and real_data:
+            main_result.append(
+                _build_daily_row_from_monthly_daily_plan(daily_plan_data, real_data, "matched")
             )
-            plan_without_real.append(row)
+        elif daily_plan_data:
+            plan_without_real.append(
+                _build_daily_row_from_monthly_daily_plan(daily_plan_data, None, "plan_without_real")
+            )
+        elif real_data:
+            row = _build_no_plan_row(real_data, td, "daily")
+            main_result.append(row)
 
     main_result.sort(key=lambda r: (r.get("trip_date", ""), r.get("country", ""), r.get("city", ""), r.get("business_slice_name", "")))
     plan_without_real.sort(key=lambda r: (r.get("trip_date", ""), r.get("country", ""), r.get("city", ""), r.get("business_slice_name", "")))
-    return main_result, plan_without_real, len(real_map)
+    return main_result, plan_without_real, len(real_map), distribution_debug
 
 
 # ── Real data loaders ──────────────────────────────────────────────────────
@@ -1478,8 +1810,14 @@ def _load_real_monthly(conn, country, city, business_slice, year, month):
     sql = f"""
         SELECT month, country, city, business_slice_name,
                trips_completed AS real_trips,
-               COALESCE(revenue_yego_final, revenue_yego_net) AS real_revenue,
-               active_drivers AS real_active_drivers
+               ABS(COALESCE(revenue_yego_final, revenue_yego_net)) AS real_revenue,
+               COALESCE(revenue_yego_final, revenue_yego_net) AS real_revenue_raw,
+               active_drivers AS real_active_drivers,
+               trips_cancelled AS real_trips_cancelled,
+               avg_ticket AS real_avg_ticket,
+               commission_pct AS real_commission_pct,
+               trips_per_driver AS real_trips_per_driver,
+               NULL::numeric AS real_cancel_rate_pct
         FROM {FACT_MONTHLY}
         WHERE {' AND '.join(clauses)}
     """
@@ -1492,10 +1830,12 @@ def _load_real_monthly(conn, country, city, business_slice, year, month):
     result = {}
     for r in rows:
         mk = _month_key(r["month"])
-        key = (mk,
-               (r["country"] or "").strip().lower(),
-               (r["city"] or "").strip().lower(),
-               (r["business_slice_name"] or "").strip().lower())
+        key = _projection_join_key(
+            mk,
+            r.get("country"),
+            r.get("city"),
+            r.get("business_slice_name"),
+        )
         result[key] = dict(r)
     return result
 
@@ -1521,8 +1861,13 @@ def _load_real_weekly(conn, country, city, business_slice, year, month):
         params.append(min_week_start)
         params.append(max_week_start)
     elif year is not None:
-        clauses.append("EXTRACT(YEAR FROM week_start) = %s")
-        params.append(year)
+        first_day = date(year, 1, 1)
+        last_day = date(year, 12, 31)
+        min_week_start = first_day - timedelta(days=first_day.weekday())
+        max_week_start = last_day - timedelta(days=last_day.weekday())
+        clauses.append("week_start >= %s AND week_start <= %s")
+        params.append(min_week_start)
+        params.append(max_week_start)
     elif month is not None:
         clauses.append("EXTRACT(MONTH FROM week_start) = %s")
         params.append(month)
@@ -1530,8 +1875,14 @@ def _load_real_weekly(conn, country, city, business_slice, year, month):
     sql = f"""
         SELECT week_start, country, city, business_slice_name,
                trips_completed AS real_trips,
-               COALESCE(revenue_yego_final, revenue_yego_net) AS real_revenue,
-               active_drivers AS real_active_drivers
+               ABS(COALESCE(revenue_yego_final, revenue_yego_net)) AS real_revenue,
+               COALESCE(revenue_yego_final, revenue_yego_net) AS real_revenue_raw,
+               active_drivers AS real_active_drivers,
+               trips_cancelled AS real_trips_cancelled,
+               avg_ticket AS real_avg_ticket,
+               commission_pct AS real_commission_pct,
+               trips_per_driver AS real_trips_per_driver,
+               cancel_rate_pct AS real_cancel_rate_pct
         FROM {FACT_WEEKLY}
         WHERE {' AND '.join(clauses)}
     """
@@ -1544,10 +1895,12 @@ def _load_real_weekly(conn, country, city, business_slice, year, month):
     result = {}
     for r in rows:
         ws = r["week_start"].isoformat() if hasattr(r["week_start"], "isoformat") else str(r["week_start"])[:10]
-        key = (ws,
-               (r["country"] or "").strip().lower(),
-               (r["city"] or "").strip().lower(),
-               (r["business_slice_name"] or "").strip().lower())
+        key = _projection_join_key(
+            ws,
+            r.get("country"),
+            r.get("city"),
+            r.get("business_slice_name"),
+        )
         result[key] = dict(r)
     return result
 
@@ -1573,8 +1926,14 @@ def _load_real_daily(conn, country, city, business_slice, year, month):
     sql = f"""
         SELECT trip_date, country, city, business_slice_name,
                trips_completed AS real_trips,
-               COALESCE(revenue_yego_final, revenue_yego_net) AS real_revenue,
-               active_drivers AS real_active_drivers
+               ABS(COALESCE(revenue_yego_final, revenue_yego_net)) AS real_revenue,
+               COALESCE(revenue_yego_final, revenue_yego_net) AS real_revenue_raw,
+               active_drivers AS real_active_drivers,
+               trips_cancelled AS real_trips_cancelled,
+               avg_ticket AS real_avg_ticket,
+               commission_pct AS real_commission_pct,
+               trips_per_driver AS real_trips_per_driver,
+               cancel_rate_pct AS real_cancel_rate_pct
         FROM {FACT_DAILY}
         WHERE {' AND '.join(clauses)}
     """
@@ -1587,10 +1946,12 @@ def _load_real_daily(conn, country, city, business_slice, year, month):
     result = {}
     for r in rows:
         td = r["trip_date"].isoformat() if hasattr(r["trip_date"], "isoformat") else str(r["trip_date"])[:10]
-        key = (td,
-               (r["country"] or "").strip().lower(),
-               (r["city"] or "").strip().lower(),
-               (r["business_slice_name"] or "").strip().lower())
+        key = _projection_join_key(
+            td,
+            r.get("country"),
+            r.get("city"),
+            r.get("business_slice_name"),
+        )
         result[key] = dict(r)
     return result
 
@@ -1631,8 +1992,25 @@ def _build_no_plan_row(real_data: Dict, period_key: str, grain: str) -> Dict[str
         row["month"] = period_key
     elif grain == "weekly":
         row["week_start"] = period_key
+        week_start = date.fromisoformat(period_key)
+        iso_ctx = _iso_week_context(week_start)
+        row["week_end"] = iso_ctx["week_end"]
+        row["iso_year"] = iso_ctx["iso_year"]
+        row["iso_week"] = iso_ctx["iso_week"]
+        row["week_label"] = iso_ctx["week_label"]
+        row["week_range_label"] = iso_ctx["week_range_label"]
+        row["week_full_label"] = iso_ctx["week_full_label"]
     else:
         row["trip_date"] = period_key
+        trip_date = date.fromisoformat(period_key)
+        iso_ctx = _iso_week_context(trip_date)
+        row["week_start"] = iso_ctx["week_start"]
+        row["week_end"] = iso_ctx["week_end"]
+        row["iso_year"] = iso_ctx["iso_year"]
+        row["iso_week"] = iso_ctx["iso_week"]
+        row["week_label"] = iso_ctx["week_label"]
+        row["week_range_label"] = iso_ctx["week_range_label"]
+        row["week_full_label"] = iso_ctx["week_full_label"]
 
     for kpi in PROJECTABLE_KPIS:
         real_kpi = _real_column(kpi)
@@ -1652,6 +2030,7 @@ def _build_no_plan_row(real_data: Dict, period_key: str, grain: str) -> Dict[str
         row[f"{kpi}_expected_ratio"]     = None
         row[f"{kpi}_comparison_basis"]   = "unknown"  # campo canónico nuevo
 
+    _copy_aux_real_metrics(row, real_data)
     return row
 
 
@@ -1670,7 +2049,8 @@ def _get_weeks_for_scope(year, month, today):
     else:
         last = date(first.year, 12, 31)
 
-    last = min(last, today)
+    if not year and not month:
+        last = min(last, today)
 
     monday = first - timedelta(days=first.weekday())
     weeks = []
@@ -1684,10 +2064,10 @@ def _get_days_for_scope(year, month, today):
     if year and month:
         first = date(year, month, 1)
         nxt = date(first.year + (first.month // 12), (first.month % 12) + 1, 1)
-        last = min(nxt - timedelta(days=1), today)
+        last = nxt - timedelta(days=1)
     elif year:
         first = date(year, 1, 1)
-        last = min(date(year, 12, 31), today)
+        last = date(year, 12, 31)
     else:
         first = date(today.year, today.month, 1)
         last = today
@@ -1697,8 +2077,7 @@ def _get_days_for_scope(year, month, today):
     while d <= last:
         days.append(d)
         d += timedelta(days=1)
-    # Mes explícito (year+month): todos los días del mes hasta hoy — suma diaria ≈ plan mensual.
-    if year and month:
+    if year:
         return days
     return days[-30:] if len(days) > 30 else days
 

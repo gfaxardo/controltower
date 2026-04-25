@@ -11,6 +11,20 @@ const api = axios.create({
   },
 })
 
+function resolveFinalUrl (config) {
+  try {
+    const path = config?.url || ''
+    if (/^https?:\/\//i.test(path)) return path
+    const base = config?.baseURL || ''
+    if (typeof window !== 'undefined') {
+      return new URL(`${base}${path}`, window.location.origin).toString()
+    }
+    return `${base}${path}`
+  } catch {
+    return `${config?.baseURL || ''}${config?.url || ''}`
+  }
+}
+
 const STORAGE_TOKEN = 'ct_integral_token'
 
 api.interceptors.request.use((config) => {
@@ -50,6 +64,7 @@ export const loginIntegral = (username, password) =>
 if (import.meta.env.DEV) {
   api.interceptors.request.use((config) => {
     config.metadata = { startTime: Date.now() }
+    console.debug('[API FINAL]', config.method?.toUpperCase(), resolveFinalUrl(config))
     return config
   })
   api.interceptors.response.use(

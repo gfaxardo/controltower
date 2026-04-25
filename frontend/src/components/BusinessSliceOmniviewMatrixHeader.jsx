@@ -1,5 +1,6 @@
 import { Fragment } from 'react'
 import { periodLabel, periodStateLabel, PERIOD_STATES, resolvePeriodTrustVisual, trustIssueSummaryForTooltip } from './omniview/omniviewMatrixUtils.js'
+import { projectionPeriodLabel, projectionPeriodSecondaryLabel } from './omniview/projectionMatrixUtils.js'
 
 export const COL1_W = 90
 export const COL2_W = 130
@@ -14,12 +15,14 @@ const STATE_BADGE_STYLES = {
   [PERIOD_STATES.FUTURE]: 'bg-slate-500/60 text-slate-200',
 }
 
-export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, compact, periodStates, matrixTrust = null, focusedKpi }) {
+export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, compact, periodStates, matrixTrust = null, focusedKpi, periodMeta = null, isProjection = false }) {
   const py1 = compact ? 'py-1' : 'py-1.5'
   const py2 = compact ? 'py-0.5' : 'py-1'
   const fontSize1 = compact ? 'text-[10px]' : 'text-xs'
   const fontSize2 = compact ? 'text-[9px]' : 'text-[10px]'
   const trustTip = trustIssueSummaryForTooltip(matrixTrust)
+  const renderPeriodLabel = (pk) => (isProjection ? projectionPeriodLabel(pk, grain, periodMeta) : periodLabel(pk, grain))
+  const renderPeriodSecondary = (pk) => (isProjection ? projectionPeriodSecondaryLabel(pk, grain, periodMeta) : null)
 
   return (
     <thead className="sticky top-0 z-20">
@@ -53,7 +56,14 @@ export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, 
               style={idx % 2 === 1 ? { backgroundColor: 'rgb(40,50,70)' } : undefined}
               title={periodTrust && trustTip ? trustTip : undefined}
             >
-              {periodLabel(pk, grain)}
+              <div className="flex flex-col items-center leading-tight">
+                <span>{renderPeriodLabel(pk)}</span>
+                {renderPeriodSecondary(pk) && (
+                  <span className="mt-0.5 text-[10px] font-medium normal-case tracking-normal text-slate-200">
+                    {renderPeriodSecondary(pk)}
+                  </span>
+                )}
+              </div>
               {badge && (
                 <span className={`ml-1.5 px-1 py-px rounded text-[8px] font-bold normal-case ${badgeCls}`}>
                   {periodStateLabel(state)}

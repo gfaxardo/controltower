@@ -7,7 +7,7 @@
  * en lugar de variación temporal (MoM/WoW/DoD).
  */
 
-import { MATRIX_KPIS, periodKey as basePeriodKey } from './omniviewMatrixUtils.js'
+import { MATRIX_KPIS, periodKey as basePeriodKey, periodLabel as basePeriodLabel } from './omniviewMatrixUtils.js'
 
 export const PROJECTION_KPIS = ['trips_completed', 'revenue_yego_net', 'active_drivers']
 
@@ -320,11 +320,24 @@ export function buildProjectionMatrix (rows, grain) {
   const cities = new Map()
   const periodSet = new Set()
   const totalsBucket = new Map()
+  const periodMeta = new Map()
 
   for (const raw of rows) {
     const pk = basePeriodKey(raw, grain)
     if (!pk) continue
     periodSet.add(pk)
+    if (!periodMeta.has(pk)) {
+      periodMeta.set(pk, {
+        month: raw.month || null,
+        week_start: raw.week_start ?? null,
+        week_end: raw.week_end ?? null,
+        iso_year: raw.iso_year ?? null,
+        iso_week: raw.iso_week ?? null,
+        week_label: raw.week_label ?? null,
+        week_range_label: raw.week_range_label ?? null,
+        week_full_label: raw.week_full_label ?? null,
+      })
+    }
 
     const cityKey = `${raw.country || '—'}::${raw.city || '—'}`
     if (!cities.has(cityKey)) {
@@ -389,7 +402,17 @@ export function buildProjectionMatrix (rows, grain) {
     })
 
     if (!totalsBucket.has(pk)) {
-      totalsBucket.set(pk, { _comparison_basis: null })
+      totalsBucket.set(pk, {
+        _comparison_basis: null,
+        _trips: 0,
+        _cancelled: 0,
+        _revenue: 0,
+        _drivers: 0,
+        _ticketSum: 0,
+        _ticketN: 0,
+        _commSum: 0,
+        _commN: 0,
+      })
       for (const kpi of PROJECTION_KPIS) {
         totalsBucket.get(pk)[kpi] = { actual: 0, projected_total: 0, projected_expected: 0 }
       }
@@ -403,6 +426,18 @@ export function buildProjectionMatrix (rows, grain) {
       tb[kpi].actual += Number(raw[kpi]) || 0
       tb[kpi].projected_total += Number(raw[`${kpi}_projected_total`]) || 0
       tb[kpi].projected_expected += Number(raw[`${kpi}_projected_expected`]) || 0
+    }
+    tb._trips += Number(raw.trips_completed) || 0
+    tb._cancelled += Number(raw.trips_cancelled) || 0
+    tb._revenue += Number(raw.revenue_yego_net) || 0
+    tb._drivers += Number(raw.active_drivers) || 0
+    if (raw.avg_ticket != null) {
+      tb._ticketSum += Number(raw.avg_ticket) || 0
+      tb._ticketN += 1
+    }
+    if (raw.commission_pct != null) {
+      tb._commSum += Number(raw.commission_pct) || 0
+      tb._commN += 1
     }
   }
 
@@ -437,6 +472,16 @@ export function buildProjectionMatrix (rows, grain) {
       entry[`${kpi}_signal`]             = signal
       entry[`${kpi}_comparison_basis`]   = tb._comparison_basis || null
     }
+    entry.trips_completed = tb._trips
+    entry.trips_cancelled = tb._cancelled
+    entry.revenue_yego_net = tb._revenue
+    entry.active_drivers = tb._drivers
+    entry.avg_ticket = tb._ticketN > 0 ? tb._ticketSum / tb._ticketN : null
+    entry.trips_per_driver = tb._drivers > 0 ? tb._trips / tb._drivers : null
+    entry.cancel_rate_pct = (tb._trips + tb._cancelled) > 0
+      ? (tb._cancelled / (tb._trips + tb._cancelled)) * 100
+      : null
+    entry.commission_pct = tb._commN > 0 ? tb._commSum / tb._commN : null
     totals.set(pk, entry)
   }
 
@@ -457,7 +502,25 @@ export function buildProjectionMatrix (rows, grain) {
     cityVolumeMap.set(cityKey, cityVol)
   }
 
-  return { cities, allPeriods, totals, cityVolumeMap, lineVolumeMap }
+  return { cities, allPeriods, totals, cityVolumeMap, lineVolumeMap, periodMeta }
+}
+
+export function projectionPeriodLabel (key, grain, periodMeta = null) {
+  if (grain !== 'weekly') return basePeriodLabel(key, grain)
+  const meta = periodMeta?.get?.(key)
+  return meta?.week_label || basePeriodLabel(key, grain)
+}
+
+export function projectionPeriodSecondaryLabel (key, grain, periodMeta = null) {
+  if (grain !== 'weekly') return null
+  const meta = periodMeta?.get?.(key)
+  return meta?.week_range_label || null
+}
+
+export function projectionPeriodTooltipLabel (key, grain, periodMeta = null) {
+  if (grain !== 'weekly') return basePeriodLabel(key, grain)
+  const meta = periodMeta?.get?.(key)
+  return meta?.week_full_label || meta?.week_label || basePeriodLabel(key, grain)
 }
 
 /**

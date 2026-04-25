@@ -13,6 +13,8 @@ import {
   SIGNAL_DOT,
   PROJECTION_KPIS,
   countryRank,
+  projectionPeriodLabel,
+  projectionPeriodTooltipLabel,
 } from './omniview/projectionMatrixUtils.js'
 
 export default function BusinessSliceOmniviewMatrixTable ({
@@ -31,7 +33,7 @@ export default function BusinessSliceOmniviewMatrixTable ({
   mode = 'evolution',
 }) {
   const isProjection = mode === 'projection'
-  const { cities, allPeriods, totals, comparisonTotals, comparisonMeta, cityVolumeMap, lineVolumeMap } = matrix
+  const { cities, allPeriods, totals, comparisonTotals, comparisonMeta, cityVolumeMap, lineVolumeMap, periodMeta } = matrix
   const [collapsed, setCollapsed] = useState(new Set())
   const headerH = compact ? HEADER_H_COMPACT : HEADER_H_COMFORTABLE
   const trustLine = useMemo(() => isProjection ? null : trustIssueSummaryForTooltip(matrixTrust), [matrixTrust, isProjection])
@@ -109,7 +111,7 @@ export default function BusinessSliceOmniviewMatrixTable ({
             ))}
           </colgroup>
 
-          <BusinessSliceOmniviewMatrixHeader allPeriods={allPeriods} grain={grain} compact={compact} periodStates={periodStates} matrixTrust={isProjection ? null : matrixTrust} focusedKpi={activeKpi} />
+          <BusinessSliceOmniviewMatrixHeader allPeriods={allPeriods} grain={grain} compact={compact} periodStates={periodStates} matrixTrust={isProjection ? null : matrixTrust} focusedKpi={activeKpi} periodMeta={isProjection ? periodMeta : null} isProjection={isProjection} />
 
           <tbody>
             {isProjection
@@ -155,6 +157,7 @@ export default function BusinessSliceOmniviewMatrixTable ({
                   matrixTrust={isProjection ? null : matrixTrust}
                   trustLine={isProjection ? null : trustLine}
                   focusedKpi={activeKpi}
+                  periodMeta={periodMeta}
                   mode={mode}
                 />
               )
@@ -316,7 +319,7 @@ const ProjectionTotalsRow = memo(function ProjectionTotalsRow ({ allPeriods, tot
   )
 })
 
-function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, onToggle, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode }) {
+function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, onToggle, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode, periodMeta = null }) {
   const totalCols = allPeriods.length
   const py = compact ? 'py-1' : 'py-1.5'
   const fontSize = compact ? 'text-[11px]' : 'text-xs'
@@ -338,13 +341,13 @@ function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, o
         <LineRow key={lineKey} cityKey={cityKey} cityName={cityData.city} lineKey={lineKey} lineData={lineData}
           allPeriods={allPeriods} onCellClick={onCellClick} selectedCell={selectedCell} grain={grain} compact={compact}
           insightCellMap={insightCellMap} insightMode={insightMode} periodStates={periodStates}
-          matrixTrust={matrixTrust} trustLine={trustLine} focusedKpi={focusedKpi} mode={mode} />
+          matrixTrust={matrixTrust} trustLine={trustLine} focusedKpi={focusedKpi} mode={mode} periodMeta={periodMeta} />
       ))}
     </>
   )
 }
 
-function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode }) {
+function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode, periodMeta = null }) {
   const isProjection = mode === 'projection'
   const deltas = useMemo(
     () => isProjection
@@ -371,7 +374,7 @@ function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClic
 
       {allPeriods.map((pk, periodIdx) => {
         const periodDeltas = deltas.get(pk)
-        const pLabel = periodLabelFn(pk, grain)
+        const pLabel = isProjection ? projectionPeriodTooltipLabel(pk, grain, periodMeta) : periodLabelFn(pk, grain)
         const pState = isProjection ? null : periodStates?.get(pk)
         const cellId = `${cityKey}::${lineKey}::${pk}::${focusedKpi.key}`
         const delta = periodDeltas ? periodDeltas[focusedKpi.key] : null

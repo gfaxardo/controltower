@@ -440,6 +440,7 @@ async def business_slice_omniview_projection(
     business_slice: Optional[str] = Query(None, description="Filtrar por tajada (business_slice_name)"),
     year: Optional[int] = Query(None),
     month: Optional[int] = Query(None),
+    debug_distribution: bool = Query(False, description="Devuelve auditoría del reparto mensual→semanal/diario"),
 ):
     """
     Omniview Projection Mode — Plan vs Real con curva estacional.
@@ -456,6 +457,7 @@ async def business_slice_omniview_projection(
             business_slice=business_slice,
             year=year,
             month=month,
+            debug_distribution=debug_distribution,
         )
         return sanitize_for_json(data)
     except Exception as e:
