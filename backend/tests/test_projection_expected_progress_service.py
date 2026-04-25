@@ -6,6 +6,7 @@ from app.services.projection_expected_progress_service import (
     _build_plan_distribution,
     _build_no_plan_row,
     _distribution_debug_entry,
+    _normalize_projection_scope,
     _projection_join_key,
     _semantic_ui_revenue,
 )
@@ -20,6 +21,18 @@ def test_semantic_ui_revenue_returns_positive_value():
     assert _semantic_ui_revenue(-55.2) == 55.2
     assert _semantic_ui_revenue(55.2) == 55.2
     assert _semantic_ui_revenue(None) is None
+
+
+def test_normalize_projection_scope_ignores_month_for_weekly():
+    year, month, ignored = _normalize_projection_scope("weekly", 2026, 4)
+    assert year == 2026
+    assert month is None
+    assert ignored is True
+
+    year, month, ignored = _normalize_projection_scope("daily", 2026, 4)
+    assert year == 2026
+    assert month == 4
+    assert ignored is False
 
 
 def test_build_no_plan_row_keeps_auxiliary_real_metrics():

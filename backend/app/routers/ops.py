@@ -439,14 +439,13 @@ async def business_slice_omniview_projection(
     city: Optional[str] = Query(None),
     business_slice: Optional[str] = Query(None, description="Filtrar por tajada (business_slice_name)"),
     year: Optional[int] = Query(None),
-    month: Optional[int] = Query(None),
+    month: Optional[int] = Query(None, description="Mes 1-12. En weekly se ignora: el scope semanal es ISO completo a nivel año."),
     debug_distribution: bool = Query(False, description="Devuelve auditoría del reparto mensual→semanal/diario"),
 ):
     """
-    Omniview Projection Mode — Plan vs Real con curva estacional.
-    Devuelve filas compatibles con la matriz Omniview, con métricas de
-    cumplimiento (attainment) basadas en expected_to_date no lineal.
-    Aditivo: no modifica contratos de /monthly, /weekly, /daily.
+    Omniview Projection Mode — Plan vs Real.
+    Weekly usa semanas ISO completas (lunes-domingo) y no se recorta por mes;
+    si llega `month`, el backend lo ignora y prioriza el scope anual.
     """
     try:
         data = get_omniview_projection(

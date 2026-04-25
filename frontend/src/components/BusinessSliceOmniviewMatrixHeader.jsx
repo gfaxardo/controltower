@@ -1,5 +1,5 @@
 import { Fragment } from 'react'
-import { periodLabel, periodStateLabel, PERIOD_STATES, resolvePeriodTrustVisual, trustIssueSummaryForTooltip } from './omniview/omniviewMatrixUtils.js'
+import { periodLabel, periodSecondaryLabel, periodStateLabel, PERIOD_STATES, resolvePeriodTrustVisual, trustIssueSummaryForTooltip } from './omniview/omniviewMatrixUtils.js'
 import { projectionPeriodLabel, projectionPeriodSecondaryLabel } from './omniview/projectionMatrixUtils.js'
 
 export const COL1_W = 90
@@ -22,7 +22,7 @@ export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, 
   const fontSize2 = compact ? 'text-[9px]' : 'text-[10px]'
   const trustTip = trustIssueSummaryForTooltip(matrixTrust)
   const renderPeriodLabel = (pk) => (isProjection ? projectionPeriodLabel(pk, grain, periodMeta) : periodLabel(pk, grain))
-  const renderPeriodSecondary = (pk) => (isProjection ? projectionPeriodSecondaryLabel(pk, grain, periodMeta) : null)
+  const renderPeriodSecondary = (pk) => (isProjection ? projectionPeriodSecondaryLabel(pk, grain, periodMeta) : periodSecondaryLabel(pk, grain))
 
   return (
     <thead className="sticky top-0 z-20">

@@ -25,6 +25,7 @@ import {
   periodStateLabel,
   periodElapsedDays,
   periodTotalDays,
+  ISO_WEEK_SCOPE_TOOLTIP,
   PERIOD_STATES,
   MATRIX_KPIS,
   fmtValue,
@@ -201,9 +202,10 @@ export default function BusinessSliceOmniviewMatrix () {
    */
   const [loadingTasks, setLoadingTasks] = useState({})
   const activeTasks = Object.values(loadingTasks).filter(Boolean)
+  const effectiveMonth = grain === 'weekly' ? '' : month
   const projectionRequestKey = useMemo(
-    () => JSON.stringify({ grain, country, city, businessSlice, year, month, planVersion }),
-    [grain, country, city, businessSlice, year, month, planVersion]
+    () => JSON.stringify({ grain, country, city, businessSlice, year, month: effectiveMonth, planVersion }),
+    [grain, country, city, businessSlice, year, effectiveMonth, planVersion]
   )
   const projectionPending =
     heavyQueriesEnabled &&
@@ -401,7 +403,7 @@ export default function BusinessSliceOmniviewMatrix () {
   const wasHeavyEnabledRef = useRef(heavyQueriesEnabled)
 
   const doLoadProjection = useCallback(async (signal) => {
-    const requestKey = JSON.stringify({ grain, country, city, businessSlice, year, month, planVersion })
+    const requestKey = JSON.stringify({ grain, country, city, businessSlice, year, month: effectiveMonth, planVersion })
     // Guardrail: semanal/diario requiere país para evitar scope ilimitado
     // (sin país → O(todas_tajadas × semanas × KPIs × SQL) → cuelgue)
     if (blockedByCountry) {
@@ -426,7 +428,7 @@ export default function BusinessSliceOmniviewMatrix () {
       if (city) params.city = city
       if (businessSlice) params.business_slice = businessSlice
       if (year != null && year !== '') params.year = Number(year)
-      if (month) params.month = Number(month)
+      if (effectiveMonth) params.month = Number(effectiveMonth)
       const res = await getOmniviewProjection(params, { signal })
       console.log('projection response', res?.data, res?.meta)
       let data = Array.isArray(res?.data) ? res.data : []
@@ -455,7 +457,7 @@ export default function BusinessSliceOmniviewMatrix () {
       setLoading(false)
       setLoadingTasks((t) => { const n = { ...t }; delete n.matrix; return n })
     }
-  }, [grain, country, city, businessSlice, year, month, planVersion, blockedByCountry])
+  }, [grain, country, city, businessSlice, year, effectiveMonth, planVersion, blockedByCountry])
 
   // doLoad: ejecuta la carga real de la matriz + lanza coverage-summary DESPUÉS (con retraso).
   const doLoad = useCallback(async (signal) => {
@@ -477,7 +479,7 @@ export default function BusinessSliceOmniviewMatrix () {
       if (city) params.city = city
       if (businessSlice) params.business_slice = businessSlice
       if (year != null && year !== '') params.year = Number(year)
-      if (month) params.month = Number(month)
+      if (effectiveMonth) params.month = Number(effectiveMonth)
       if (grain === 'monthly' && fleet) params.fleet = fleet
       let res
       if (grain === 'weekly') res = await getBusinessSliceWeekly(params, { signal })
@@ -495,7 +497,7 @@ export default function BusinessSliceOmniviewMatrix () {
       if (country) coverageParams.country = country
       if (city) coverageParams.city = city
       if (year != null && year !== '') coverageParams.year = Number(year)
-      if (month) coverageParams.month = Number(month)
+      if (effectiveMonth) coverageParams.month = Number(effectiveMonth)
       setLoadingTasks((t) => ({ ...t, coverage: 'Cobertura (en espera…)' }))
       await new Promise((resolve) => setTimeout(resolve, COVERAGE_FETCH_DELAY_MS))
       if (signal?.aborted) {
@@ -523,7 +525,7 @@ export default function BusinessSliceOmniviewMatrix () {
       setLoading(false)
       setLoadingTasks((t) => { const n = { ...t }; delete n.matrix; return n })
     }
-  }, [grain, country, city, businessSlice, fleet, showSubfleets, year, month, blockedByCountry, isProjectionMode, doLoadProjection])
+  }, [grain, country, city, businessSlice, fleet, showSubfleets, year, effectiveMonth, blockedByCountry, isProjectionMode, doLoadProjection])
 
   useEffect(() => {
     if (!heavyQueriesEnabled || !isProjectionMode) return
@@ -531,7 +533,7 @@ export default function BusinessSliceOmniviewMatrix () {
     // Evita mostrar "sin datos" durante el debounce al cambiar filtros o grano.
     setLoading(true)
     setErr(null)
-  }, [heavyQueriesEnabled, isProjectionMode, blockedByCountry, planVersion, grain, country, city, businessSlice, year, month])
+  }, [heavyQueriesEnabled, isProjectionMode, blockedByCountry, planVersion, grain, country, city, businessSlice, year, effectiveMonth])
 
   useEffect(() => {
     if (!heavyQueriesEnabled) {
@@ -900,6 +902,17 @@ export default function BusinessSliceOmniviewMatrix () {
 
             {(grain === 'monthly' || grain === 'daily') && (
               <MonthSelect value={month} onChange={setMonth} />
+            )}
+            {grain === 'weekly' && (
+              <div className="flex flex-col gap-1 self-end pb-1">
+                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Scope semanal</span>
+                <span
+                  className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-blue-700"
+                  title={ISO_WEEK_SCOPE_TOOLTIP}
+                >
+                  Semanas ISO (pueden cruzar meses)
+                </span>
+              </div>
             )}
 
             <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none self-end pb-1.5 uppercase tracking-wide">

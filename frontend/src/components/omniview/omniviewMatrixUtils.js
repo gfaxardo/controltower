@@ -113,6 +113,16 @@ export function periodKey (row, grain) {
 const MONTH_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
 const DAYS_ES = ['DOMINGO', 'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO']
 const DAYS_ES_SHORT = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB']
+export const ISO_WEEK_SCOPE_TOOLTIP = 'Las semanas son ISO completas (lunes-domingo). Pueden incluir días de meses distintos.'
+
+function weekRangeLabelFromStart (key) {
+  const d = new Date(key + 'T00:00:00')
+  if (isNaN(d)) return null
+  const weekStart = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  const weekEnd = new Date(weekStart)
+  weekEnd.setDate(weekStart.getDate() + 6)
+  return `${weekStart.getDate()} ${MONTH_SHORT[weekStart.getMonth()]} – ${weekEnd.getDate()} ${MONTH_SHORT[weekEnd.getMonth()]}`
+}
 
 export function periodLabel (key, grain) {
   if (!key) return '—'
@@ -146,6 +156,19 @@ export function periodLabelShort (key, grain) {
   const dd = new Date(key + 'T00:00:00')
   if (isNaN(dd)) return String(key).slice(5, 10)
   return `${DAYS_ES_SHORT[dd.getDay()]} S${getISOWeek(dd)}`
+}
+
+export function periodSecondaryLabel (key, grain) {
+  if (!key || grain !== 'weekly') return null
+  return weekRangeLabelFromStart(key)
+}
+
+export function periodTooltipLabel (key, grain) {
+  if (!key) return '—'
+  if (grain !== 'weekly') return periodLabel(key, grain)
+  const primary = periodLabel(key, grain)
+  const secondary = periodSecondaryLabel(key, grain)
+  return secondary ? `${primary} · ${secondary}` : primary
 }
 
 function getISOWeek (d) {

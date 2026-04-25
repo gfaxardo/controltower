@@ -854,6 +854,16 @@ def _load_plan_for_projection_scope(
     return rows
 
 
+def _normalize_projection_scope(
+    grain: str,
+    year: Optional[int],
+    month: Optional[int],
+) -> Tuple[Optional[int], Optional[int], bool]:
+    if grain == "weekly":
+        return year, None, month is not None
+    return year, month, False
+
+
 def get_omniview_projection(
     plan_version: str,
     grain: str = "monthly",
@@ -867,11 +877,19 @@ def get_omniview_projection(
     """Main entry point for the Omniview Projection mode."""
     _t0 = time.perf_counter()
     today = date.today()
+    requested_month = month
+    year, month, ignored_month_filter = _normalize_projection_scope(grain, year, month)
 
     logger.info(
         "get_omniview_projection START grain=%s plan=%s country=%s city=%s year=%s month=%s",
         grain, plan_version, country, city, year, month,
     )
+    if ignored_month_filter:
+        logger.warning(
+            "get_omniview_projection: grain=weekly ignora month=%s y usa scope ISO anual completo para year=%s",
+            requested_month,
+            year,
+        )
 
     _t1 = time.perf_counter()
     plan_rows = _load_plan_for_projection_scope(
@@ -895,6 +913,10 @@ def get_omniview_projection(
                     "weekly_daily_from_monthly": grain in ("weekly", "daily"),
                     "derivation_source": "ops.v_plan_projection_control_loop",
                     "distribution_model": "iso_week_from_daily_monthly_plan" if grain == "weekly" else ("daily_from_monthly_month_days" if grain == "daily" else "monthly_unchanged"),
+                    "weekly_scope": "iso_full_weeks_by_year" if grain == "weekly" else None,
+                    "requested_month_filter": requested_month,
+                    "effective_month_filter": month,
+                    "ignored_month_filter": ignored_month_filter,
                     "smoothing_applied": False,
                     "smoothing_alpha_week": None,
                     "smoothing_alpha_day": None,
@@ -1070,6 +1092,10 @@ def get_omniview_projection(
                 "weekly_daily_from_monthly": grain in ("weekly", "daily"),
                 "derivation_source": "ops.v_plan_projection_control_loop",
                 "distribution_model": "iso_week_from_daily_monthly_plan" if grain == "weekly" else ("daily_from_monthly_month_days" if grain == "daily" else "monthly_unchanged"),
+                "weekly_scope": "iso_full_weeks_by_year" if grain == "weekly" else None,
+                "requested_month_filter": requested_month,
+                "effective_month_filter": month,
+                "ignored_month_filter": ignored_month_filter,
                 "smoothing_applied": False,
                 "smoothing_alpha_week": None,
                 "smoothing_alpha_day": None,
