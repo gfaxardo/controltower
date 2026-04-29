@@ -1,54 +1,109 @@
 #!/usr/bin/env python3
 """
 Script ejecutable para refresh de materialized views.
-Ejecutar: python scripts/run_refresh_job.py
+HARDENED: Lock anti-concurrencia + retry automático + registro granular.
+
+Ejecutar: python scripts/run_refresh_job.py [--dataset DATASET_NAME]
 """
 import sys
 import os
+import argparse
 
 # Añadir backend al path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from app.services.refresh_service import run_refresh_job
+from app.services.refresh_service import run_refresh_job, check_refresh_lock_status
 
 
 def main():
     """Ejecuta el refresh job e imprime resultado."""
-    print("=" * 60)
-    print("REFRESH JOB - YEGO Control Tower")
-    print("=" * 60)
+    parser = argparse.ArgumentParser(description='Refresh materialized views')
+    parser.add_argument('--dataset', type=str, default=None, help='Nombre del dataset específico')
+    args = parser.parse_args()
+    
+    print("=" * 70)
+    print("REFRESH JOB - YEGO Control Tower (HARDENED)")
+    print("=" * 70)
+    
+    # Verificar lock antes de empezar
+    lock_status = check_refresh_lock_status()
+    if lock_status.get("is_running"):
+        print(f"\n⚠️  REFRESH SKIPPED")
+        print(f"Another refresh is running since: {lock_status.get('started_at')}")
+        print("Aborting to prevent concurrent execution.")
+        sys.exit(0)
+    
+    print(f"\nDataset filter: {args.dataset or 'ALL'}")
+    print(f"Max retries per dataset: 3")
+    print(f"Retry delay: 10 seconds")
+    print()
     
     # Ejecutar refresh
-    result = run_refresh_job()
+    result = run_refresh_job(dataset_filter=args.dataset)
     
     # Imprimir resultado
-    print(f"\nDataset: {result['dataset_name']}")
+    print(f"\n{'=' * 70}")
+    print("RESULTADO")
+    print(f"{'=' * 70}")
     print(f"Status: {result['status'].upper()}")
-    print(f"Duration: {result['duration_seconds']}s")
-    print(f"Functions executed: {result['functions_executed']}")
     print(f"Timestamp: {result['timestamp']}")
     
-    if result['error']:
-        print(f"\nERROR: {result['error']}")
-        print("\n❌ REFRESH FAILED")
-        sys.exit(1)
+    if result['status'] == 'skipped':
+        print(f"\n⚠️  {result.get('message', 'Refresh skipped')}")
+        sys.exit(0)
     
-    # Detalles por función
-    if result['results']:
-        print("\nDetails:")
+    if 'error' in result and result['error']:
+        print(f"Error: {result['error']}")
+    
+    if 'datasets_processed' in result:
+        print(f"\nDatasets processed: {result['datasets_processed']}")
+        print(f"  ✓ Successful: {result.get('datasets_successful', 0)}")
+        print(f"  ✗ Failed: {result.get('datasets_failed', 0)}")
+    
+    if 'duration_seconds' in result:
+        print(f"Total duration: {result['duration_seconds']}s")
+    
+    # Detalles por dataset
+    if 'results' in result and result['results']:
+        print(f"\n{'=' * 70}")
+        print("DETALLES POR DATASET")
+        print(f"{'=' * 70}")
         for r in result['results']:
-            status_icon = "✓" if r['status'] == 'success' else ("⚠" if r['status'] == 'skipped' else "✗")
-            print(f"  {status_icon} {r['function']}: {r['status']}")
-            if 'duration_seconds' in r:
-                print(f"    Duration: {r['duration_seconds']}s")
-            if 'error' in r and r['error']:
-                print(f"    Error: {r['error']}")
+            ds_name = r.get('dataset_name', 'unknown')
+            status = r.get('status', 'unknown')
+            
+            if status == 'success':
+                status_icon = '✅'
+            elif status == 'skipped':
+                status_icon = '⚠️ '
+            else:
+                status_icon = '❌'
+            
+            print(f"\n{status_icon} {ds_name}")
+            print(f"   Status: {status}")
+            print(f"   Duration: {r.get('duration_seconds', 0)}s")
+            
+            if r.get('error'):
+                print(f"   Error: {r['error']}")
+            
+            # Mostrar intentos
+            if 'attempts' in r:
+                for att in r['attempts']:
+                    att_icon = '✓' if att['status'] == 'success' else ('⚠' if att['status'] == 'skipped' else '✗')
+                    print(f"     Attempt {att['attempt']}: {att_icon} {att['status']} ({att.get('duration_seconds', 0)}s)")
+                    if att.get('error'):
+                        print(f"       → {att['error'][:80]}")
+    
+    print(f"\n{'=' * 70}")
     
     if result['status'] == 'success':
-        print("\n✅ REFRESH COMPLETED SUCCESSFULLY")
+        print("✅ REFRESH COMPLETED SUCCESSFULLY")
         sys.exit(0)
+    elif result['status'] == 'partial_failure':
+        print("⚠️  REFRESH PARTIALLY FAILED (some datasets failed)")
+        sys.exit(1)
     else:
-        print("\n❌ REFRESH FAILED")
+        print("❌ REFRESH FAILED")
         sys.exit(1)
 
 
