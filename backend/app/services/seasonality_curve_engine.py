@@ -23,6 +23,11 @@ from typing import Any, Dict, List, Optional, Tuple
 from psycopg2.extras import RealDictCursor
 
 from app.db.connection import get_db
+from app.services.business_slice_canonical_service import (
+    business_slice_filter_variants,
+    canonicalize_business_slice_name,
+    normalize_business_slice_key,
+)
 from app.services.business_slice_service import FACT_DAILY
 
 logger = logging.getLogger(__name__)
@@ -129,7 +134,7 @@ def _fetch_daily_distribution(
             kpi_column,
             (country or "").lower(),
             (city or "").lower(),
-            (business_slice_name or "").lower(),
+            canonicalize_business_slice_name(business_slice_name or "").lower(),
         )
         if dist_key in _dist_cache:
             return _dist_cache[dist_key]
@@ -150,8 +155,10 @@ def _fetch_daily_distribution(
         clauses.append("lower(trim(city)) = lower(trim(%s))")
         params.append(city)
     if business_slice_name:
-        clauses.append("lower(trim(business_slice_name)) = lower(trim(%s))")
-        params.append(business_slice_name)
+        variants = business_slice_filter_variants(business_slice_name)
+        placeholders = ", ".join(["%s"] * len(variants))
+        clauses.append(f"lower(trim(business_slice_name)) IN ({placeholders})")
+        params.extend(normalize_business_slice_key(v) for v in variants)
 
     clauses.append("(NOT is_subfleet OR is_subfleet IS NULL)")
 
@@ -229,7 +236,7 @@ def compute_expected_ratio(
     result_key = (
         (country or "").lower(),
         (city or "").lower(),
-        (business_slice_name or "").lower(),
+        canonicalize_business_slice_name(business_slice_name or "").lower(),
         kpi,
         target_month.strftime("%Y-%m-01"),
         cutoff_day,

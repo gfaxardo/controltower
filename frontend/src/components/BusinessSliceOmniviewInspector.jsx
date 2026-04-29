@@ -62,7 +62,7 @@ export default function BusinessSliceOmniviewInspector ({
   }
 
   const { lineData, periodDeltas, period, raw, kpiKey: selectedKpiKey } = selection
-  const label = periodLabel(period, grain)
+  const label = (grain === 'daily' && raw?.day_label) ? String(raw.day_label) : periodLabel(period, grain)
   const selectedKpi = MATRIX_KPIS.find((kpi) => kpi.key === selectedKpiKey) || MATRIX_KPIS[0]
   const ins = insightForSelection
   const pState = periodStates?.get(period)

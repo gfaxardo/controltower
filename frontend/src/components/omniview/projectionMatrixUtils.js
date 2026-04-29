@@ -336,6 +336,7 @@ export function buildProjectionMatrix (rows, grain) {
         week_label: raw.week_label ?? null,
         week_range_label: raw.week_range_label ?? null,
         week_full_label: raw.week_full_label ?? null,
+        day_label: raw.day_label ?? null,
       })
     }
 
@@ -506,20 +507,23 @@ export function buildProjectionMatrix (rows, grain) {
 }
 
 export function projectionPeriodLabel (key, grain, periodMeta = null) {
-  if (grain !== 'weekly') return basePeriodLabel(key, grain)
   const meta = periodMeta?.get?.(key)
+  if (grain === 'daily' && meta?.day_label) return String(meta.day_label)
+  if (grain !== 'weekly') return basePeriodLabel(key, grain)
   return meta?.week_label || basePeriodLabel(key, grain)
 }
 
 export function projectionPeriodSecondaryLabel (key, grain, periodMeta = null) {
   if (grain !== 'weekly') return null
   const meta = periodMeta?.get?.(key)
+  if (meta?.week_label && String(meta.week_label).includes(' · ')) return null
   return meta?.week_range_label || null
 }
 
 export function projectionPeriodTooltipLabel (key, grain, periodMeta = null) {
-  if (grain !== 'weekly') return basePeriodLabel(key, grain)
   const meta = periodMeta?.get?.(key)
+  if (grain === 'daily' && meta?.day_label) return String(meta.day_label)
+  if (grain !== 'weekly') return basePeriodLabel(key, grain)
   return meta?.week_full_label || meta?.week_label || basePeriodLabel(key, grain)
 }
 

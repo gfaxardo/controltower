@@ -15,13 +15,13 @@ const STATE_BADGE_STYLES = {
   [PERIOD_STATES.FUTURE]: 'bg-slate-500/60 text-slate-200',
 }
 
-export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, compact, periodStates, matrixTrust = null, focusedKpi, periodMeta = null, isProjection = false }) {
+export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, compact, periodStates, matrixTrust = null, focusedKpi, periodMeta = null, periodDayLabels = null, isProjection = false }) {
   const py1 = compact ? 'py-1' : 'py-1.5'
   const py2 = compact ? 'py-0.5' : 'py-1'
   const fontSize1 = compact ? 'text-[10px]' : 'text-xs'
   const fontSize2 = compact ? 'text-[9px]' : 'text-[10px]'
   const trustTip = trustIssueSummaryForTooltip(matrixTrust)
-  const renderPeriodLabel = (pk) => (isProjection ? projectionPeriodLabel(pk, grain, periodMeta) : periodLabel(pk, grain))
+  const renderPeriodLabel = (pk) => (isProjection ? projectionPeriodLabel(pk, grain, periodMeta) : periodLabel(pk, grain, periodDayLabels))
   const renderPeriodSecondary = (pk) => (isProjection ? projectionPeriodSecondaryLabel(pk, grain, periodMeta) : periodSecondaryLabel(pk, grain))
 
   return (

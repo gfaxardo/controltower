@@ -60,12 +60,52 @@ def test_where_clauses_january_includes_previous_december():
     assert date(2026, 1, 1) in p
 
 
+def test_business_slice_filter_expands_canonical_delivery_aliases(monkeypatch):
+    from app.services import business_slice_service as svc
+
+    monkeypatch.setattr(
+        svc,
+        "business_slice_filter_variants",
+        lambda value: ["Delivery", "Delivery moto"] if value == "Delivery" else [],
+    )
+
+    variants = svc._business_slice_filter_values("Delivery")
+    assert "Delivery" in variants
+    assert "Delivery moto" in variants
+
+    w, p = svc._where_clauses(None, None, "Delivery", None, None, 2026, None, "")
+    joined = " ".join(w)
+    assert "IN (" in joined
+    assert "delivery" in p
+    assert "delivery moto" in p
+
+
 def test_calendar_year_week_bounds_spans_late_december():
     from app.services.business_slice_service import _calendar_year_week_bounds
 
     lo, hi = _calendar_year_week_bounds(2026)
     assert lo == date(2025, 12, 18)
     assert hi == date(2027, 1, 6)
+
+
+def test_data_freshness_status_from_lag():
+    from app.services.business_slice_service import _data_freshness_status_from_lag
+
+    assert _data_freshness_status_from_lag(None) == "broken"
+    assert _data_freshness_status_from_lag(0) == "ok"
+    assert _data_freshness_status_from_lag(1) == "ok"
+    assert _data_freshness_status_from_lag(2) == "warning"
+    assert _data_freshness_status_from_lag(3) == "warning"
+    assert _data_freshness_status_from_lag(4) == "stale"
+
+
+def test_explicit_day_temporal_fields():
+    from app.services.business_slice_service import explicit_day_temporal_fields
+
+    o = explicit_day_temporal_fields("2026-04-27")
+    assert o["date"] == "2026-04-27"
+    assert o["weekday"] == "LUNES"
+    assert o["day_label"] == "LUNES 27 ABR 2026"
 
 
 def test_month_fact_load_uses_temp_table_not_resolved_view():

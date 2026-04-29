@@ -16,13 +16,25 @@ from calendar import monthrange
 from collections import defaultdict
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
+from enum import Enum
 
 from psycopg2.extras import RealDictCursor
 
 from app.config.control_loop_lob_mapping import resolve_excel_line_to_canonical
 from app.contracts.data_contract import remove_accents
 from app.db.connection import get_db
-from app.services.business_slice_service import FACT_DAILY, FACT_MONTHLY, FACT_WEEKLY
+from app.services.business_slice_canonical_service import (
+    business_slice_filter_variants,
+    canonicalize_business_slice_name,
+    normalize_business_slice_key,
+)
+from app.services.business_slice_service import (
+    FACT_DAILY,
+    FACT_MONTHLY,
+    FACT_WEEKLY,
+    compute_matrix_data_freshness,
+    explicit_day_temporal_fields,
+)
 from app.services.control_loop_business_slice_resolve import (
     load_map_fallback_rows,
     load_rules_index_for_geos,
@@ -80,6 +92,7 @@ def _month_bounds(month_start: date) -> Tuple[date, date, int]:
 
 
 _MONTH_SHORT_ES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+_MONTH_SHORT_ES_UPPER = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"]
 
 
 def _iter_month_dates(month_start: date) -> List[date]:
@@ -96,17 +109,19 @@ def _iso_week_context(trip_date: date) -> Dict[str, Any]:
     iso_year, iso_week, _ = trip_date.isocalendar()
     week_start = trip_date - timedelta(days=trip_date.weekday())
     week_end = week_start + timedelta(days=6)
-    week_label = f"S{iso_week}-{iso_year}"
+    ms = _MONTH_SHORT_ES_UPPER
     if week_start.year != week_end.year:
         week_range_label = (
-            f"{week_start.day} {_MONTH_SHORT_ES[week_start.month - 1]} {week_start.year} – "
-            f"{week_end.day} {_MONTH_SHORT_ES[week_end.month - 1]} {week_end.year}"
+            f"{week_start.day} {ms[week_start.month - 1]} {week_start.year} – "
+            f"{week_end.day} {ms[week_end.month - 1]} {week_end.year}"
         )
     else:
         week_range_label = (
-            f"{week_start.day} {_MONTH_SHORT_ES[week_start.month - 1]} – "
-            f"{week_end.day} {_MONTH_SHORT_ES[week_end.month - 1]}"
+            f"{week_start.day} {ms[week_start.month - 1]} – "
+            f"{week_end.day} {ms[week_end.month - 1]}"
         )
+    week_short = f"S{iso_week}-{iso_year}"
+    week_label = f"{week_short} · {week_range_label}"
     return {
         "iso_year": iso_year,
         "iso_week": iso_week,
@@ -114,7 +129,7 @@ def _iso_week_context(trip_date: date) -> Dict[str, Any]:
         "week_end": week_end.isoformat(),
         "week_label": week_label,
         "week_range_label": week_range_label,
-        "week_full_label": f"{week_label} · {week_range_label}",
+        "week_full_label": week_label,
     }
 
 
@@ -302,12 +317,13 @@ def _distribution_debug_entry(
 
 
 def _slice_month_plan_key(r: Dict[str, Any]) -> Optional[Tuple]:
+    """Agrupa filas projection por mismo criterio que _projection_join_key (canonical_value normalizado)."""
     mk = r.get("month")
     if not mk:
         return None
-    co = (r.get("country") or "").strip().lower()
-    ci = (r.get("city") or "").strip().lower()
-    bsn = (r.get("business_slice_name") or "").strip().lower()
+    co = _country_to_fact_name(str(r.get("country") or ""))
+    ci = _city_to_fact_name(str(r.get("city") or ""))
+    bsn = _canonical_slice_join_segment(r.get("business_slice_name"))
     return (mk, co, ci, bsn)
 
 
@@ -501,8 +517,8 @@ def _validate_weekly_output(
     for r in rows:
         slot = (
             r.get("week_start") or "",
-            (r.get("city") or "").strip().lower(),
-            (r.get("business_slice_name") or "").strip().lower(),
+            _city_to_fact_name(str(r.get("city") or "")),
+            _canonical_slice_join_segment(r.get("business_slice_name")),
         )
         if slot in seen_week_slots:
             duplicated_slots.append(
@@ -645,8 +661,8 @@ def _enrich_projection_row_trust(
                 weekly_vol_keys.add(
                     (
                         a.get("week_start"),
-                        (a.get("city") or "").strip().lower(),
-                        (a.get("business_slice_name") or "").strip().lower(),
+                        _city_to_fact_name(str(a.get("city") or "")),
+                        _canonical_slice_join_segment(a.get("business_slice_name")),
                     )
                 )
         if chk.get("name") == "volatility_daily_plan_vs_avg":
@@ -654,8 +670,8 @@ def _enrich_projection_row_trust(
                 daily_vol_keys.add(
                     (
                         a.get("trip_date"),
-                        (a.get("city") or "").strip().lower(),
-                        (a.get("business_slice_name") or "").strip().lower(),
+                        _city_to_fact_name(str(a.get("city") or "")),
+                        _canonical_slice_join_segment(a.get("business_slice_name")),
                     )
                 )
 
@@ -664,15 +680,15 @@ def _enrich_projection_row_trust(
         if grain == "weekly":
             key = (
                 r.get("week_start"),
-                (r.get("city") or "").strip().lower(),
-                (r.get("business_slice_name") or "").strip().lower(),
+                _city_to_fact_name(str(r.get("city") or "")),
+                _canonical_slice_join_segment(r.get("business_slice_name")),
             )
             r["projection_anomaly"] = key in weekly_vol_keys
         elif grain == "daily":
             key = (
                 r.get("trip_date"),
-                (r.get("city") or "").strip().lower(),
-                (r.get("business_slice_name") or "").strip().lower(),
+                _city_to_fact_name(str(r.get("city") or "")),
+                _canonical_slice_join_segment(r.get("business_slice_name")),
             )
             r["projection_anomaly"] = key in daily_vol_keys
         else:
@@ -760,9 +776,81 @@ def _city_to_fact_name(raw: str) -> str:
     return remove_accents((raw or "").strip()).lower()
 
 
-def _slice_to_fact_name(raw: str) -> str:
-    """Normaliza business_slice_name para joins Plan vs Real."""
-    return remove_accents((raw or "").strip()).lower()
+def _canonical_slice_join_segment(value: Any) -> str:
+    """
+    Segmento estable para join Plan vs Real: normalize(canonical_value) según dim_business_slice_mapping.
+    Equivalente conceptual a canonical_business_slice en la dimensión (no usar business_slice raw).
+    """
+    c = canonicalize_business_slice_name(value)
+    return normalize_business_slice_key(c)
+
+
+def _append_business_slice_sql_filter(clauses: List[str], params: List[Any], business_slice: Optional[str]) -> None:
+    if not business_slice:
+        return
+    variants = business_slice_filter_variants(business_slice)
+    placeholders = ", ".join(["%s"] * len(variants))
+    clauses.append(f"lower(trim(business_slice_name)) IN ({placeholders})")
+    params.extend(normalize_business_slice_key(v) for v in variants)
+
+
+def _log_projection_key_overlap(stage: str, plan_by_key: Dict[Tuple, Any], real_map: Dict[Tuple, Any]) -> None:
+    """Diagnóstico: muestra tamaño intersección de claves plan vs fact (canonical join)."""
+    rk = set(real_map.keys())
+    pk = set(plan_by_key.keys())
+    matched = pk & rk
+    intersection_rate = round((len(matched) / len(pk) * 100.0), 1) if pk else 0.0
+    logger.info(
+        "%s join keys: real=%d plan=%d intersection=%d plan_only=%d real_only=%d intersection_rate=%.1f%%",
+        stage,
+        len(rk),
+        len(pk),
+        len(matched),
+        len(pk - rk),
+        len(rk - pk),
+        intersection_rate,
+    )
+    if logger.isEnabledFor(logging.DEBUG) and (pk - rk):
+        logger.debug("%s PLAN_ONLY sample (first 12):", stage)
+        for x in sorted(pk - rk)[:12]:
+            logger.debug("  period=%s country=%s city=%s bsn=%s", x[0], x[1], x[2], x[3])
+    if logger.isEnabledFor(logging.DEBUG) and (rk - pk):
+        logger.debug("%s REAL_ONLY sample (first 12):", stage)
+        for x in sorted(rk - pk)[:12]:
+            logger.debug("  period=%s country=%s city=%s bsn=%s", x[0], x[1], x[2], x[3])
+
+
+def _merge_real_projection_rows(result: Dict[Tuple[str, str, str, str], Dict[str, Any]], key, row: Dict[str, Any]) -> None:
+    if key not in result:
+        result[key] = row
+        return
+    existing = result[key]
+    for field in (
+        "real_trips",
+        "real_revenue",
+        "real_revenue_raw",
+        "real_active_drivers",
+        "real_trips_cancelled",
+    ):
+        if existing.get(field) is None and row.get(field) is None:
+            continue
+        existing[field] = (existing.get(field) or 0) + (row.get(field) or 0)
+    if existing.get("real_trips") and existing["real_trips"] > 0:
+        weight_prev = float(existing.get("real_trips") or 0) - float(row.get("real_trips") or 0)
+        weight_new = float(row.get("real_trips") or 0)
+        total_weight = weight_prev + weight_new
+        for field in ("real_avg_ticket", "real_commission_pct"):
+            prev_val = existing.get(field)
+            new_val = row.get(field)
+            if total_weight > 0 and (prev_val is not None or new_val is not None):
+                prev_num = float(prev_val or 0)
+                new_num = float(new_val or 0)
+                existing[field] = ((prev_num * weight_prev) + (new_num * weight_new)) / total_weight
+    drivers = float(existing.get("real_active_drivers") or 0)
+    trips = float(existing.get("real_trips") or 0)
+    existing["real_trips_per_driver"] = (trips / drivers) if drivers > 0 else None
+    den = float(existing.get("real_trips") or 0) + float(existing.get("real_trips_cancelled") or 0)
+    existing["real_cancel_rate_pct"] = (100.0 * float(existing.get("real_trips_cancelled") or 0) / den) if den > 0 else None
 
 
 def _projection_join_key(period_key: str, country: Any, city: Any, business_slice: Any) -> Tuple[str, str, str, str]:
@@ -771,7 +859,7 @@ def _projection_join_key(period_key: str, country: Any, city: Any, business_slic
         period_key,
         _country_to_fact_name(str(country or "")),
         _city_to_fact_name(str(city or "")),
-        _slice_to_fact_name(str(business_slice or "")),
+        _canonical_slice_join_segment(str(business_slice or "")),
     )
 
 
@@ -898,10 +986,19 @@ def get_omniview_projection(
     logger.info("get_omniview_projection load_plan=%.2fs rows=%d", time.perf_counter() - _t1, len(plan_rows))
 
     if not plan_rows:
+        df_empty = compute_matrix_data_freshness(
+            grain,
+            country=country,
+            city=city,
+            business_slice=business_slice,
+            year=year,
+            month=month,
+        )
         return {
             "granularity": grain,
             "plan_version": plan_version,
             "data": [],
+            "data_freshness": df_empty,
             "meta": {
                 "plan_version": plan_version,
                 "plan_loaded_at": None,
@@ -932,6 +1029,7 @@ def get_omniview_projection(
                 ).kpi_contract_for_meta())(),
                 "distribution_debug": {"enabled": debug_distribution, "grain": grain, "rows": []},
                 "message": "No hay proyección cargada para esta versión / filtros.",
+                "data_freshness": df_empty,
             },
         }
 
@@ -1079,10 +1177,20 @@ def get_omniview_projection(
         logger.debug("kpi_contract_for_meta unavailable: %s", _e_contract)
         kpi_contract_meta = {}
 
+    df_fresh = compute_matrix_data_freshness(
+        grain,
+        country=country,
+        city=city,
+        business_slice=business_slice,
+        year=year,
+        month=month,
+    )
+
     return {
         "granularity": grain,
         "plan_version": plan_version,
         "data": display_rows,
+        "data_freshness": df_fresh,
         "meta": {
             "plan_version": plan_version,
             "plan_loaded_at": last_loaded,
@@ -1136,6 +1244,7 @@ def get_omniview_projection(
                 "total_real_rows":   len(result_rows),
                 "total_display_rows": len(display_rows),
             },
+            "data_freshness": df_fresh,
         },
     }
 
@@ -1279,6 +1388,7 @@ def _resolve_and_index_plan(
         is_resolved = bool(bsn) and source != "unresolved"
         if not bsn:
             bsn = lob_excel or lob_canon or "__unresolved__"
+        bsn = canonicalize_business_slice_name(bsn)
 
         mk = _month_key(p["period_date"])
         # Clave canónica: usa formato FACT_MONTHLY para matchear real_map correctamente
@@ -1329,6 +1439,7 @@ def _build_monthly(
       real_map_key_count: len(real_map) — filas/claves cargadas desde facts
     """
     real_map = _load_real_monthly(conn, country, city, business_slice, year, month)
+    _log_projection_key_overlap("_build_monthly", plan_by_key, real_map)
 
     # Caché compartido por request (evita SQL repetidas para el mes actual)
     _curve_cache: Dict = {}
@@ -1677,6 +1788,9 @@ def _build_daily_row_from_monthly_daily_plan(
         "distribution_model": "daily_from_monthly_month_days",
         "comparison_status": comparison_status,
     }
+    td0 = daily_plan_data["trip_date"]
+    td_s = td0.isoformat()[:10] if hasattr(td0, "isoformat") else str(td0)[:10]
+    row.update(explicit_day_temporal_fields(td_s))
 
     for kpi in PROJECTABLE_KPIS:
         daily_plan = _safe_float(daily_plan_data["daily_plan"].get(kpi))
@@ -1715,6 +1829,7 @@ def _build_weekly(
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], int, List[Dict[str, Any]]]:
     """REAL-FIRST weekly. Plan semanal ISO completo derivado desde daily_plan."""
     real_map = _load_real_weekly(conn, country, city, business_slice, year, month)
+    _log_projection_key_overlap("_build_weekly", plan_by_key, real_map)
     _, weekly_plan_map, _distribution_debug = _build_iso_plan_maps(plan_by_key)
     distribution_debug = [
         {
@@ -1779,6 +1894,7 @@ def _build_daily(
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], int, List[Dict[str, Any]]]:
     """REAL-FIRST daily. Plan diario derivado directamente del mensual."""
     real_map = _load_real_daily(conn, country, city, business_slice, year, month)
+    _log_projection_key_overlap("_build_daily", plan_by_key, real_map)
     daily_plan_map, _, distribution_debug = _build_iso_plan_maps(plan_by_key)
 
     main_result: List[Dict[str, Any]] = []
@@ -1823,9 +1939,7 @@ def _load_real_monthly(conn, country, city, business_slice, year, month):
     if city:
         clauses.append("lower(trim(city)) = lower(trim(%s))")
         params.append(city.strip().lower())
-    if business_slice:
-        clauses.append("lower(trim(business_slice_name)) = lower(trim(%s))")
-        params.append(business_slice.strip().lower())
+    _append_business_slice_sql_filter(clauses, params, business_slice)
     if year:
         clauses.append("EXTRACT(YEAR FROM month) = %s")
         params.append(year)
@@ -1862,7 +1976,9 @@ def _load_real_monthly(conn, country, city, business_slice, year, month):
             r.get("city"),
             r.get("business_slice_name"),
         )
-        result[key] = dict(r)
+        row = dict(r)
+        row["business_slice_name"] = canonicalize_business_slice_name(row.get("business_slice_name"))
+        _merge_real_projection_rows(result, key, row)
     return result
 
 
@@ -1874,9 +1990,7 @@ def _load_real_weekly(conn, country, city, business_slice, year, month):
     if city:
         clauses.append("lower(trim(city)) = lower(trim(%s))")
         params.append(city.strip().lower())
-    if business_slice:
-        clauses.append("lower(trim(business_slice_name)) = lower(trim(%s))")
-        params.append(business_slice.strip().lower())
+    _append_business_slice_sql_filter(clauses, params, business_slice)
     if year is not None and month is not None:
         first_day = date(year, month, 1)
         next_m = date(first_day.year + (first_day.month // 12), (first_day.month % 12) + 1, 1)
@@ -1927,7 +2041,9 @@ def _load_real_weekly(conn, country, city, business_slice, year, month):
             r.get("city"),
             r.get("business_slice_name"),
         )
-        result[key] = dict(r)
+        row = dict(r)
+        row["business_slice_name"] = canonicalize_business_slice_name(row.get("business_slice_name"))
+        _merge_real_projection_rows(result, key, row)
     return result
 
 
@@ -1939,9 +2055,7 @@ def _load_real_daily(conn, country, city, business_slice, year, month):
     if city:
         clauses.append("lower(trim(city)) = lower(trim(%s))")
         params.append(city.strip().lower())
-    if business_slice:
-        clauses.append("lower(trim(business_slice_name)) = lower(trim(%s))")
-        params.append(business_slice.strip().lower())
+    _append_business_slice_sql_filter(clauses, params, business_slice)
     if year:
         clauses.append("EXTRACT(YEAR FROM trip_date) = %s")
         params.append(year)
@@ -1978,7 +2092,9 @@ def _load_real_daily(conn, country, city, business_slice, year, month):
             r.get("city"),
             r.get("business_slice_name"),
         )
-        result[key] = dict(r)
+        row = dict(r)
+        row["business_slice_name"] = canonicalize_business_slice_name(row.get("business_slice_name"))
+        _merge_real_projection_rows(result, key, row)
     return result
 
 
@@ -2129,4 +2245,202 @@ def _compute_curve_summary(rows: List[Dict]) -> Dict[str, Any]:
         "total_combinations": len(rows) * len(PROJECTABLE_KPIS),
         "by_method": dict(methods),
         "avg_confidence": avg_label if conf_values else None,
+    }
+
+
+class JoinMismatchCause(str, Enum):
+    COUNTRY_MISMATCH = "COUNTRY_MISMATCH"
+    CITY_MISMATCH = "CITY_MISMATCH"
+    BUSINESS_SLICE_MISMATCH = "BUSINESS_SLICE_MISMATCH"
+    PERIOD_MISMATCH = "PERIOD_MISMATCH"
+    TRUE_NO_REAL = "TRUE_NO_REAL"
+    TRUE_NO_PLAN = "TRUE_NO_PLAN"
+
+
+def _analyze_join_mismatch(plan_key: Tuple[str, str, str, str], real_keys: Set[Tuple]) -> JoinMismatchCause:
+    """Clasifica causa de mismatch comparando clave plan vs real keys disponibles."""
+    period, country, city, bsn = plan_key
+    for real_key in real_keys:
+        r_period, r_country, r_city, r_bsn = real_key
+        mismatches = []
+        if r_period == period:
+            if r_country != country:
+                mismatches.append("COUNTRY_MISMATCH")
+            if r_city != city:
+                mismatches.append("CITY_MISMATCH")
+            if r_bsn != bsn:
+                mismatches.append("BUSINESS_SLICE_MISMATCH")
+        else:
+            mismatches.append("PERIOD_MISMATCH")
+        if mismatches:
+            return JoinMismatchCause(mismatches[0])
+    if real_keys:
+        return JoinMismatchCause.TRUE_NO_REAL
+    return JoinMismatchCause.TRUE_NO_PLAN
+
+
+def _compute_join_diagnostics(
+    grain: str,
+    plan_version: str,
+    country: Optional[str],
+    city: Optional[str],
+    business_slice: Optional[str],
+    year: Optional[int],
+    month: Optional[int],
+    today: date,
+) -> Dict[str, Any]:
+    """Computa estadísticas de join Plan vs Real para diagnóstico."""
+    year, month, _ = _normalize_projection_scope(grain, year, month)
+
+    plan_rows = _load_plan_for_projection_scope(
+        plan_version, grain, country, city, year, month, today
+    )
+
+    if not plan_rows:
+        return {
+            "grain": grain,
+            "plan_version": plan_version,
+            "filters": {
+                "country": country,
+                "city": city,
+                "business_slice": business_slice,
+                "year": year,
+                "month": month,
+            },
+            "status": "no_plan",
+            "plan_keys": 0,
+            "real_keys": 0,
+            "intersection": 0,
+            "plan_only": 0,
+            "real_only": 0,
+            "intersection_rate_pct": 0.0,
+            "by_cause": {},
+        }
+
+    geos: Set[Tuple[str, str]] = set()
+    for p in plan_rows:
+        co_rules = _country_to_rules_name(str(p["country"]))
+        ci_raw = str(p["city"])
+        geos.add((co_rules, ci_raw))
+
+    idx = load_rules_index_for_geos(geos)
+    map_rows = load_map_fallback_rows()
+    plan_by_key = _resolve_and_index_plan(plan_rows, idx, map_rows)
+
+    # FIX: Expandir claves del plan al grain apropiado para match con REAL
+    # Monthly: period_key = YYYY-MM-01 (sin cambio)
+    # Weekly: period_key = week_start ISO (YYYY-MM-DD del lunes)
+    # Daily: period_key = date (YYYY-MM-DD)
+    # Aplicar filtro business_slice PRIMERO
+    bsn_filter = business_slice.strip().lower() if business_slice else None
+
+    # Filtrar plan_by_key por business_slice ANTES de expandir
+    if bsn_filter:
+        plan_keys_filtered = {k: v for k, v in plan_by_key.items() if k[3] == bsn_filter}
+    else:
+        plan_keys_filtered = plan_by_key
+
+    # FIX: Para weekly/daily, filtrar SOLO el mes solicitado antes de expandir
+    # El plan_by_key puede contener múltiples meses (ej: enero-marzo)
+    # Pero debemos expandir SOLO el mes solicitado (month param)
+    if grain in ("weekly", "daily") and month is not None and year is not None:
+        target_month_key = f"{year:04d}-{month:02d}-01"
+        plan_keys_filtered = {k: v for k, v in plan_keys_filtered.items() if k[0] == target_month_key}
+        logger.warning(
+            "JOIN_MONTH_FILTER: grain=%s year=%s month=%s target=%s before=%d after=%d keys=%s",
+            grain, year, month, target_month_key, len(plan_by_key), len(plan_keys_filtered),
+            list(plan_keys_filtered.keys())[:3],
+        )
+
+    if grain == "weekly":
+        plan_keys_expanded: Set[Tuple[str, str, str, str]] = set()
+        for plan_key in plan_keys_filtered.keys():
+            mk, co_norm, ci_norm, bsn_lower = plan_key
+            # Generar todas las semanas ISO que intersectan este mes
+            month_date = date.fromisoformat(mk)
+            first, last, _ = _month_bounds(month_date)
+            monday = first - timedelta(days=first.weekday())
+            while monday <= last:
+                week_start = monday.isoformat()
+                plan_keys_expanded.add((week_start, co_norm, ci_norm, bsn_lower))
+                monday += timedelta(days=7)
+        pk = plan_keys_expanded
+    elif grain == "daily":
+        plan_keys_expanded = set()
+        for plan_key in plan_keys_filtered.keys():
+            mk, co_norm, ci_norm, bsn_lower = plan_key
+            # Generar todos los días del mes
+            month_date = date.fromisoformat(mk)
+            for trip_date in _iter_month_dates(month_date):
+                plan_keys_expanded.add((trip_date.isoformat(), co_norm, ci_norm, bsn_lower))
+        pk = plan_keys_expanded
+    else:
+        # Monthly: usar claves filtradas (ya están en formato YYYY-MM-01)
+        pk = set(plan_keys_filtered.keys())
+
+    with get_db() as conn:
+        if grain == "monthly":
+            real_map = _load_real_monthly(conn, country, city, business_slice, year, month)
+        elif grain == "weekly":
+            real_map = _load_real_weekly(conn, country, city, business_slice, year, month)
+        else:
+            real_map = _load_real_daily(conn, country, city, business_slice, year, month)
+
+    rk = set(real_map.keys())
+    matched = pk & rk
+    intersection_rate = round((len(matched) / len(pk) * 100.0), 1) if pk else 0.0
+
+    plan_only_keys = pk - rk
+    real_only_keys = rk - pk
+
+    plan_only_cause_counts: Dict[str, int] = defaultdict(int)
+    for pk_ in plan_only_keys:
+        cause = _analyze_join_mismatch(pk_, rk)
+        plan_only_cause_counts[cause.value] += 1
+
+    real_only_cause_counts: Dict[str, int] = defaultdict(int)
+    for rk_ in real_only_keys:
+        cause = _analyze_join_mismatch(rk_, pk)
+        real_only_cause_counts[cause.value] += 1
+
+    by_cause = {
+        "plan_only": dict(plan_only_cause_counts),
+        "real_only": dict(real_only_cause_counts),
+    }
+
+    threshold_85 = intersection_rate >= 85.0
+    threshold_92 = intersection_rate >= 92.0
+
+    # DEBUG: Loguear samples de claves para diagnóstico de PERIOD_MISMATCH
+    if grain in ("weekly", "daily"):
+        logger.warning(
+            "JOIN_DEBUG grain=%s bsn_filter=%s: plan_sample=%s real_sample=%s",
+            grain,
+            bsn_filter,
+            [list(k) for k in sorted(pk)[:3]],
+            [list(k) for k in sorted(rk)[:3]],
+        )
+
+    return {
+        "grain": grain,
+        "plan_version": plan_version,
+        "filters": {
+            "country": country,
+            "city": city,
+            "business_slice": business_slice,
+            "year": year,
+            "month": month,
+        },
+        "status": "computed",
+        "plan_keys": len(pk),
+        "real_keys": len(rk),
+        "intersection": len(matched),
+        "plan_only": len(plan_only_keys),
+        "real_only": len(real_only_keys),
+        "intersection_rate_pct": intersection_rate,
+        "go_threshold_85": threshold_85,
+        "go_threshold_92": threshold_92,
+        "by_cause": by_cause,
+        "plan_only_sample": [list(k) for k in sorted(plan_only_keys)[:12]],
+        "real_only_sample": [list(k) for k in sorted(real_only_keys)[:12]],
     }

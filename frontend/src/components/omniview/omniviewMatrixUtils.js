@@ -111,6 +111,7 @@ export function periodKey (row, grain) {
 }
 
 const MONTH_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
+const MONTH_SHORT_UPPER = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC']
 const DAYS_ES = ['DOMINGO', 'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO']
 const DAYS_ES_SHORT = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB']
 export const ISO_WEEK_SCOPE_TOOLTIP = 'Las semanas son ISO completas (lunes-domingo). Pueden incluir días de meses distintos.'
@@ -121,24 +122,33 @@ function weekRangeLabelFromStart (key) {
   const weekStart = new Date(d.getFullYear(), d.getMonth(), d.getDate())
   const weekEnd = new Date(weekStart)
   weekEnd.setDate(weekStart.getDate() + 6)
-  return `${weekStart.getDate()} ${MONTH_SHORT[weekStart.getMonth()]} – ${weekEnd.getDate()} ${MONTH_SHORT[weekEnd.getMonth()]}`
+  const MS = MONTH_SHORT_UPPER
+  if (weekStart.getFullYear() !== weekEnd.getFullYear()) {
+    return `${weekStart.getDate()} ${MS[weekStart.getMonth()]} ${weekStart.getFullYear()} – ${weekEnd.getDate()} ${MS[weekEnd.getMonth()]} ${weekEnd.getFullYear()}`
+  }
+  return `${weekStart.getDate()} ${MS[weekStart.getMonth()]} – ${weekEnd.getDate()} ${MS[weekEnd.getMonth()]}`
 }
 
-export function periodLabel (key, grain) {
+export function periodLabel (key, grain, periodDayLabelsMap = null) {
   if (!key) return '—'
+  if (grain === 'daily' && periodDayLabelsMap?.get?.(key)) {
+    return periodDayLabelsMap.get(key)
+  }
   if (grain === 'monthly') {
     const d = new Date(key + 'T00:00:00')
     if (isNaN(d)) return String(key).slice(0, 7)
-    return `${MONTH_SHORT[d.getMonth()]} ${d.getFullYear()}`
+    return `${MONTH_SHORT_UPPER[d.getMonth()]} ${d.getFullYear()}`
   }
   if (grain === 'weekly') {
     const d = new Date(key + 'T00:00:00')
     if (isNaN(d)) return String(key).slice(0, 10)
-    return `S${getISOWeek(d)}-${getISOWeekYear(d)}`
+    const range = weekRangeLabelFromStart(key)
+    return range ? `S${getISOWeek(d)}-${getISOWeekYear(d)} · ${range}` : `S${getISOWeek(d)}-${getISOWeekYear(d)}`
   }
   const dd = new Date(key + 'T00:00:00')
   if (isNaN(dd)) return String(key).slice(0, 10)
-  return `${DAYS_ES[dd.getDay()]} S${getISOWeek(dd)}-${getISOWeekYear(dd)}`
+  const mon = MONTH_SHORT_UPPER[dd.getMonth()]
+  return `${DAYS_ES[dd.getDay()]} ${dd.getDate()} ${mon} ${dd.getFullYear()}`
 }
 
 export function periodLabelShort (key, grain) {
@@ -155,18 +165,18 @@ export function periodLabelShort (key, grain) {
   }
   const dd = new Date(key + 'T00:00:00')
   if (isNaN(dd)) return String(key).slice(5, 10)
-  return `${DAYS_ES_SHORT[dd.getDay()]} S${getISOWeek(dd)}`
+  return `${dd.getDate()} ${MONTH_SHORT_UPPER[dd.getMonth()]}`
 }
 
 export function periodSecondaryLabel (key, grain) {
   if (!key || grain !== 'weekly') return null
-  return weekRangeLabelFromStart(key)
+  return null
 }
 
-export function periodTooltipLabel (key, grain) {
+export function periodTooltipLabel (key, grain, periodDayLabelsMap = null) {
   if (!key) return '—'
-  if (grain !== 'weekly') return periodLabel(key, grain)
-  const primary = periodLabel(key, grain)
+  if (grain !== 'weekly') return periodLabel(key, grain, periodDayLabelsMap)
+  const primary = periodLabel(key, grain, periodDayLabelsMap)
   const secondary = periodSecondaryLabel(key, grain)
   return secondary ? `${primary} · ${secondary}` : primary
 }
@@ -310,12 +320,16 @@ export function buildMatrix (rows, grain) {
   const totalsBucket = new Map()
   const comparisonTotalsBucket = new Map()
   const comparisonMeta = new Map()
+  const periodDayLabels = new Map()
 
   for (const raw of rows) {
     const r = enrichRow({ ...raw })
     const pk = periodKey(r, grain)
     if (!pk) continue
     periodSet.add(pk)
+    if (grain === 'daily' && r.day_label && !periodDayLabels.has(pk)) {
+      periodDayLabels.set(pk, String(r.day_label))
+    }
 
     const cityKey = `${r.country || '—'}::${r.city || '—'}`
     if (!cities.has(cityKey)) {
@@ -403,7 +417,7 @@ export function buildMatrix (rows, grain) {
     comparisonTotals.set(pk, buildTotalsFromBucket(tb))
   }
 
-  return { cities, allPeriods, totals, comparisonTotals, comparisonMeta }
+  return { cities, allPeriods, totals, comparisonTotals, comparisonMeta, periodDayLabels }
 }
 
 function _comparisonMetaForDelta (cmp, isPartialComparison, hasEquivalentBaseline = null) {
@@ -820,12 +834,12 @@ export function buildCellTooltip (kpi, delta, cityName, lineName, periodLbl, per
 
 // ─── CSV export ─────────────────────────────────────────────────────────────
 export function exportMatrixCsv (matrix, grain) {
-  const { cities, allPeriods, totals } = matrix
+  const { cities, allPeriods, totals, periodDayLabels } = matrix
   const rows = []
 
   const h1 = ['Ciudad', 'Línea']
   for (const pk of allPeriods) {
-    h1.push(periodLabel(pk, grain))
+    h1.push(periodLabel(pk, grain, periodDayLabels))
     for (let i = 1; i < MATRIX_KPIS.length; i++) h1.push('')
   }
   rows.push(h1)

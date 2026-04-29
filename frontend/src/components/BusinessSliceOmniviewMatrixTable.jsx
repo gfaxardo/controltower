@@ -33,7 +33,7 @@ export default function BusinessSliceOmniviewMatrixTable ({
   mode = 'evolution',
 }) {
   const isProjection = mode === 'projection'
-  const { cities, allPeriods, totals, comparisonTotals, comparisonMeta, cityVolumeMap, lineVolumeMap, periodMeta } = matrix
+  const { cities, allPeriods, totals, comparisonTotals, comparisonMeta, cityVolumeMap, lineVolumeMap, periodMeta, periodDayLabels } = matrix
   const [collapsed, setCollapsed] = useState(new Set())
   const headerH = compact ? HEADER_H_COMPACT : HEADER_H_COMFORTABLE
   const trustLine = useMemo(() => isProjection ? null : trustIssueSummaryForTooltip(matrixTrust), [matrixTrust, isProjection])
@@ -111,7 +111,7 @@ export default function BusinessSliceOmniviewMatrixTable ({
             ))}
           </colgroup>
 
-          <BusinessSliceOmniviewMatrixHeader allPeriods={allPeriods} grain={grain} compact={compact} periodStates={periodStates} matrixTrust={isProjection ? null : matrixTrust} focusedKpi={activeKpi} periodMeta={isProjection ? periodMeta : null} isProjection={isProjection} />
+          <BusinessSliceOmniviewMatrixHeader allPeriods={allPeriods} grain={grain} compact={compact} periodStates={periodStates} matrixTrust={isProjection ? null : matrixTrust} focusedKpi={activeKpi} periodMeta={isProjection ? periodMeta : null} periodDayLabels={isProjection ? null : periodDayLabels} isProjection={isProjection} />
 
           <tbody>
             {isProjection
@@ -158,6 +158,7 @@ export default function BusinessSliceOmniviewMatrixTable ({
                   trustLine={isProjection ? null : trustLine}
                   focusedKpi={activeKpi}
                   periodMeta={periodMeta}
+                  periodDayLabels={isProjection ? null : periodDayLabels}
                   mode={mode}
                 />
               )
@@ -319,7 +320,7 @@ const ProjectionTotalsRow = memo(function ProjectionTotalsRow ({ allPeriods, tot
   )
 })
 
-function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, onToggle, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode, periodMeta = null }) {
+function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, onToggle, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode, periodMeta = null, periodDayLabels = null }) {
   const totalCols = allPeriods.length
   const py = compact ? 'py-1' : 'py-1.5'
   const fontSize = compact ? 'text-[11px]' : 'text-xs'
@@ -347,7 +348,7 @@ function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, o
   )
 }
 
-function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode, periodMeta = null }) {
+function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode, periodMeta = null, periodDayLabels = null }) {
   const isProjection = mode === 'projection'
   const deltas = useMemo(
     () => isProjection
@@ -374,7 +375,7 @@ function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClic
 
       {allPeriods.map((pk, periodIdx) => {
         const periodDeltas = deltas.get(pk)
-        const pLabel = isProjection ? projectionPeriodTooltipLabel(pk, grain, periodMeta) : periodLabelFn(pk, grain)
+        const pLabel = isProjection ? projectionPeriodTooltipLabel(pk, grain, periodMeta) : periodLabelFn(pk, grain, periodDayLabels)
         const pState = isProjection ? null : periodStates?.get(pk)
         const cellId = `${cityKey}::${lineKey}::${pk}::${focusedKpi.key}`
         const delta = periodDeltas ? periodDeltas[focusedKpi.key] : null

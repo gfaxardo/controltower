@@ -444,7 +444,9 @@ export default function BusinessSliceOmniviewMatrix () {
         data = [...pwrRows]
       }
       setProjectionRows(data)
-      setProjectionMeta(res?.meta ?? null)
+      const pm = { ...(res?.meta ?? {}) }
+      if (res?.data_freshness) pm.data_freshness = res.data_freshness
+      setProjectionMeta(pm)
       setProjectionResolvedKey(requestKey)
     } catch (e) {
       if (e?.code === 'ERR_CANCELED' || e?.name === 'CanceledError' || e?.name === 'AbortError') return
@@ -486,7 +488,9 @@ export default function BusinessSliceOmniviewMatrix () {
       else if (grain === 'daily') res = await getBusinessSliceDaily(params, { signal })
       else res = await getBusinessSliceMonthly(params, { signal })
       let data = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : [])
-      setMatrixMeta(res?.meta ?? null)
+      const mm = { ...(res?.meta ?? {}) }
+      if (res?.data_freshness) mm.data_freshness = res.data_freshness
+      setMatrixMeta(mm)
       setSliceMaxTripDate(res?.meta?.slice_max_trip_date ?? null)
       if (!showSubfleets) data = data.filter((r) => !r.is_subfleet)
       setRows(data)
@@ -1099,7 +1103,7 @@ export default function BusinessSliceOmniviewMatrix () {
         {sliceRealFreshnessBanner}
 
         {/* ── Context bar (Evolución) ──────────────────────────── */}
-        {heavyQueriesEnabled && !blockedByCountry && !isProjectionMode && rows.length > 0 && (
+        {heavyQueriesEnabled && !blockedByCountry && !isProjectionMode && (
           <OperationalContextBar
             grain={grain} periodStates={periodStates} allPeriods={matrix.allPeriods}
             comparisonMeta={matrix.comparisonMeta}
@@ -1111,7 +1115,7 @@ export default function BusinessSliceOmniviewMatrix () {
         )}
 
         {/* ── Context bar (Vs Proyección) ─────────────────────── */}
-        {heavyQueriesEnabled && isProjectionMode && projectionRows.length > 0 && (
+        {heavyQueriesEnabled && isProjectionMode && (
           <ProjectionContextBar
             grain={grain} projMatrix={projMatrix} projectionMeta={projectionMeta}
             planVersion={planVersion} compact={compact}
@@ -1486,6 +1490,15 @@ export default function BusinessSliceOmniviewMatrix () {
 }
 
 function OperationalContextBar ({ grain, periodStates, allPeriods, comparisonMeta, freshnessInfo, sliceMaxTripDate, coverageSummary, compact, matrixMeta, execKpis }) {
+  const df = matrixMeta?.data_freshness
+  const lagStr = df?.lag_days != null && df?.status !== 'broken' ? String(df.lag_days) : '—'
+  const dataFreshnessLine = df?.max_data_date
+    ? `Data al ${df.max_data_date} (lag: ${lagStr} días)`
+    : `Data al — (lag: ${lagStr} días)`
+  const dataFreshnessCls = df?.status === 'ok' ? 'text-emerald-800 font-semibold'
+    : df?.status === 'warning' ? 'text-amber-800 font-semibold'
+    : df?.status === 'stale' ? 'text-red-800 font-semibold'
+    : 'text-slate-700 font-semibold'
   const hasPartial = [...(periodStates?.values() || [])].some(
     (s) => s === PERIOD_STATES.PARTIAL || s === PERIOD_STATES.CURRENT_DAY || s === PERIOD_STATES.OPEN
   )
@@ -1520,6 +1533,16 @@ function OperationalContextBar ({ grain, periodStates, allPeriods, comparisonMet
     <div className={`rounded-lg border border-slate-200 bg-slate-50 shadow-sm px-4 ${py} flex flex-wrap items-center gap-x-4 gap-y-1`}>
       <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Contexto</span>
 
+      <span
+        className={`text-[11px] ${dataFreshnessCls}`}
+        title={df?.last_update_at ? `Última carga en facts: ${df.last_update_at}` : undefined}
+      >
+        {dataFreshnessLine}
+        {df?.status && (
+          <span className="ml-1.5 text-[9px] font-bold uppercase text-slate-500">[{df.status}]</span>
+        )}
+      </span>
+
       <span className="text-[10px] text-slate-600">
         {compLabel}
       </span>
@@ -1551,15 +1574,11 @@ function OperationalContextBar ({ grain, periodStates, allPeriods, comparisonMet
         </span>
       )}
 
-      {freshnessInfo && (
+      {freshnessInfo && !df?.max_data_date && (
         <span
           className="text-[10px] text-slate-500"
           title={sliceMaxTripDate ? `Business slice day_fact: ${sliceMaxTripDate}. ${freshnessInfo.message || ''}` : freshnessInfo.message}>
-          Freshness: {sliceMaxTripDate || freshnessInfo.derived_max_date || '—'}
-          {sliceMaxTripDate && <span className="text-slate-400 ml-1">(slice)</span>}
-          {!sliceMaxTripDate && freshnessInfo.lag_days > 0 && (
-            <span className="text-amber-600 ml-1">(lag {freshnessInfo.lag_days}d)</span>
-          )}
+          Trust API: {sliceMaxTripDate || freshnessInfo.derived_max_date || '—'}
         </span>
       )}
 
@@ -1603,6 +1622,16 @@ function ProjectionContextBar ({ grain, projMatrix, projectionMeta, planVersion,
   const lastPk = allPeriods.length > 0 ? allPeriods[allPeriods.length - 1] : null
   const lastTotals = lastPk ? totals?.get(lastPk) : null
 
+  const df = projectionMeta?.data_freshness
+  const lagStrP = df?.lag_days != null && df?.status !== 'broken' ? String(df.lag_days) : '—'
+  const dataFreshnessLineP = df?.max_data_date
+    ? `Data al ${df.max_data_date} (lag: ${lagStrP} días)`
+    : `Data al — (lag: ${lagStrP} días)`
+  const dataFreshnessClsP = df?.status === 'ok' ? 'text-emerald-800 font-semibold'
+    : df?.status === 'warning' ? 'text-amber-800 font-semibold'
+    : df?.status === 'stale' ? 'text-red-800 font-semibold'
+    : 'text-slate-700 font-semibold'
+
   const curveSummary = projectionMeta?.curve_summary || {}
 
   const KPI_LABELS = { trips_completed: 'Trips', revenue_yego_net: 'Revenue', active_drivers: 'Drivers' }
@@ -1625,6 +1654,16 @@ function ProjectionContextBar ({ grain, projMatrix, projectionMeta, planVersion,
   return (
     <div className={`rounded-lg border border-slate-200 bg-slate-50 shadow-sm px-4 ${py} flex flex-wrap items-center gap-x-4 gap-y-1`}>
       <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Proyección</span>
+
+      <span
+        className={`text-[11px] ${dataFreshnessClsP}`}
+        title={df?.last_update_at ? `Última carga en facts: ${df.last_update_at}` : undefined}
+      >
+        {dataFreshnessLineP}
+        {df?.status && (
+          <span className="ml-1.5 text-[9px] font-bold uppercase text-slate-500">[{df.status}]</span>
+        )}
+      </span>
 
       <span className="text-[10px] text-slate-600">
         Plan: <strong>{planVersion || '—'}</strong>

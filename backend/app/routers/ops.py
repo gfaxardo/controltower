@@ -3154,7 +3154,8 @@ async def business_slice_monthly(
             return rows, meta
 
         data, meta = await _run_sync_request(request, _monthly_bundle)
-        return {"data": data, "total": len(data), "meta": meta}
+        df = (meta or {}).get("data_freshness")
+        return {"data": data, "total": len(data), "meta": meta, "data_freshness": df}
     except Exception as e:
         logger.error("business-slice/monthly: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -3290,7 +3291,8 @@ async def business_slice_weekly(
             return rows, meta
 
         data, meta = await _run_sync_request(request, _weekly_bundle)
-        return {"data": data, "total": len(data), "meta": meta}
+        df = (meta or {}).get("data_freshness")
+        return {"data": data, "total": len(data), "meta": meta, "data_freshness": df}
     except Exception as e:
         logger.error("business-slice/weekly: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -3344,7 +3346,8 @@ async def business_slice_daily(
             return rows, meta
 
         data, meta = await _run_sync_request(request, _daily_bundle)
-        return {"data": data, "total": len(data), "meta": meta}
+        df = (meta or {}).get("data_freshness")
+        return {"data": data, "total": len(data), "meta": meta, "data_freshness": df}
     except Exception as e:
         logger.error("business-slice/daily: %s", e)
         raise HTTPException(status_code=500, detail=str(e))

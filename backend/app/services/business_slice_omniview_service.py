@@ -31,12 +31,18 @@ from typing import Any, Literal, Optional
 from psycopg2.extras import RealDictCursor
 
 from app.db.connection import get_db, get_db_drill
+from app.services.business_slice_canonical_service import (
+    aggregate_business_slice_rows,
+    business_slice_filter_variants,
+    normalize_business_slice_key,
+)
 from app.services.business_slice_service import (
     FACT_DAILY,
     FACT_MONTHLY,
     FACT_WEEKLY,
     V_RESOLVED,
     _json_safe_scalar,
+    compute_matrix_data_freshness,
 )
 from app.services.serving_guardrails import (
     QueryMode as _QM,
@@ -503,10 +509,12 @@ def _filters_resolved(
         w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
         p.append(str(city).strip())
     if business_slice and str(business_slice).strip():
+        variants = business_slice_filter_variants(business_slice)
+        placeholders = ", ".join(["%s"] * len(variants))
         w.append(
-            "business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) = LOWER(TRIM(%s))"
+            f"business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) IN ({placeholders})"
         )
-        p.append(str(business_slice).strip())
+        p.extend(normalize_business_slice_key(v) for v in variants)
     if fleet and str(fleet).strip():
         w.append(
             "fleet_display_name IS NOT NULL AND LOWER(TRIM(fleet_display_name::text)) = LOWER(TRIM(%s))"
@@ -610,8 +618,12 @@ def _filters_fact(
         w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
         p.append(str(city).strip())
     if business_slice and str(business_slice).strip():
-        w.append("business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) = LOWER(TRIM(%s))")
-        p.append(str(business_slice).strip())
+        variants = business_slice_filter_variants(business_slice)
+        placeholders = ", ".join(["%s"] * len(variants))
+        w.append(
+            f"business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) IN ({placeholders})"
+        )
+        p.extend(normalize_business_slice_key(v) for v in variants)
     if fleet and str(fleet).strip():
         w.append("fleet_display_name IS NOT NULL AND LOWER(TRIM(fleet_display_name::text)) = LOWER(TRIM(%s))")
         p.append(str(fleet).strip())
@@ -723,10 +735,12 @@ def _fetch_monthly_fact_rows(
         w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
         p.append(str(city).strip())
     if business_slice and str(business_slice).strip():
+        variants = business_slice_filter_variants(business_slice)
+        placeholders = ", ".join(["%s"] * len(variants))
         w.append(
-            "business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) = LOWER(TRIM(%s))"
+            f"business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) IN ({placeholders})"
         )
-        p.append(str(business_slice).strip())
+        p.extend(normalize_business_slice_key(v) for v in variants)
     if fleet and str(fleet).strip():
         w.append(
             "fleet_display_name IS NOT NULL AND LOWER(TRIM(fleet_display_name::text)) = LOWER(TRIM(%s))"
@@ -823,6 +837,30 @@ def get_business_slice_omniview(
                     cur, FACT_MONTHLY, "month", win.previous_start,
                     country, city, business_slice, fleet, subfleet, include_subfleets,
                 )
+                cur_cur = aggregate_business_slice_rows(
+                    cur_cur,
+                    extra_key_fields=[
+                        "month",
+                        "country",
+                        "city",
+                        "fleet_display_name",
+                        "is_subfleet",
+                        "subfleet_name",
+                        "parent_fleet_name",
+                    ],
+                )
+                cur_prev = aggregate_business_slice_rows(
+                    cur_prev,
+                    extra_key_fields=[
+                        "month",
+                        "country",
+                        "city",
+                        "fleet_display_name",
+                        "is_subfleet",
+                        "subfleet_name",
+                        "parent_fleet_name",
+                    ],
+                )
             elif g == "weekly":
                 cur_cur = _fetch_fact_slice_rows(
                     cur, FACT_WEEKLY, "week_start", win.current_start,
@@ -840,6 +878,30 @@ def get_business_slice_omniview(
                     cur, FACT_WEEKLY, "week_start", win.previous_start,
                     country, city, business_slice, fleet, subfleet, include_subfleets,
                 )
+                cur_cur = aggregate_business_slice_rows(
+                    cur_cur,
+                    extra_key_fields=[
+                        "week_start",
+                        "country",
+                        "city",
+                        "fleet_display_name",
+                        "is_subfleet",
+                        "subfleet_name",
+                        "parent_fleet_name",
+                    ],
+                )
+                cur_prev = aggregate_business_slice_rows(
+                    cur_prev,
+                    extra_key_fields=[
+                        "week_start",
+                        "country",
+                        "city",
+                        "fleet_display_name",
+                        "is_subfleet",
+                        "subfleet_name",
+                        "parent_fleet_name",
+                    ],
+                )
             else:
                 cur_cur = _fetch_fact_slice_rows(
                     cur, FACT_DAILY, "trip_date", win.current_start,
@@ -856,6 +918,30 @@ def get_business_slice_omniview(
                 rp_rollup, rp_total = _fetch_fact_rollup_by_country(
                     cur, FACT_DAILY, "trip_date", win.previous_start,
                     country, city, business_slice, fleet, subfleet, include_subfleets,
+                )
+                cur_cur = aggregate_business_slice_rows(
+                    cur_cur,
+                    extra_key_fields=[
+                        "trip_date",
+                        "country",
+                        "city",
+                        "fleet_display_name",
+                        "is_subfleet",
+                        "subfleet_name",
+                        "parent_fleet_name",
+                    ],
+                )
+                cur_prev = aggregate_business_slice_rows(
+                    cur_prev,
+                    extra_key_fields=[
+                        "trip_date",
+                        "country",
+                        "city",
+                        "fleet_display_name",
+                        "is_subfleet",
+                        "subfleet_name",
+                        "parent_fleet_name",
+                    ],
                 )
         finally:
             cur.close()
@@ -971,6 +1057,24 @@ def get_business_slice_omniview(
         ),
     }
 
+    anchor = win.current_start
+    if g == "weekly":
+        freshness_year: Optional[int] = anchor.year
+        freshness_month: Optional[int] = None
+    else:
+        freshness_year, freshness_month = anchor.year, anchor.month
+    df_omni = compute_matrix_data_freshness(
+        g,
+        country=country,
+        city=city,
+        business_slice=business_slice,
+        fleet=fleet,
+        subfleet=subfleet,
+        year=freshness_year,
+        month=freshness_month,
+    )
+    inner_meta["data_freshness"] = df_omni
+
     return {
         "granularity": g,
         "comparison_rule": win.comparison_rule,
@@ -983,6 +1087,7 @@ def get_business_slice_omniview(
         "mixed_currency_warning": mixed_currency,
         "warnings": warnings,
         "meta": inner_meta,
+        "data_freshness": df_omni,
         "rows": rows_out,
         "subtotals": subtotals,
         "totals": {

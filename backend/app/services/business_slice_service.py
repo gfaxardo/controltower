@@ -20,6 +20,12 @@ from app.config.kpi_aggregation_rules import (
     get_omniview_kpi_rule,
 )
 from app.db.connection import get_db, get_db_drill, get_db_quick
+from app.services.business_slice_canonical_service import (
+    aggregate_business_slice_rows,
+    business_slice_filter_variants,
+    canonicalize_business_slice_name,
+    normalize_business_slice_key,
+)
 from app.services.period_state_engine import build_period_states_payload, extract_period_keys_from_rows
 
 logger = logging.getLogger(__name__)
@@ -51,6 +57,47 @@ UNMAPPED_BUCKET_CITY = "UNMAPPED"
 UNMAPPED_BUCKET_SLICE_NAME = "UNMAPPED"
 UNMAPPED_BUCKET_ENTITY_ID = "OPERATIVE_UNMAPPED_SLICE"
 UNMAPPED_BUCKET_KIND = "business_slice_resolution_gap"
+
+
+def _business_slice_filter_values(raw_value: Optional[str]) -> list[str]:
+    return business_slice_filter_variants(raw_value)
+
+
+def _append_business_slice_filter(
+    clauses: list[str],
+    params: list[Any],
+    raw_value: Optional[str],
+    prefix: str = "",
+) -> None:
+    if not raw_value or not str(raw_value).strip():
+        return
+    column = f"{prefix}business_slice_name"
+    variants = _business_slice_filter_values(raw_value)
+    if not variants:
+        return
+    if len(variants) == 1:
+        clauses.append(
+            f"{column} IS NOT NULL AND LOWER(TRIM({column}::text)) = LOWER(TRIM(%s))"
+        )
+        params.append(normalize_business_slice_key(variants[0]))
+        return
+    placeholders = ", ".join(["%s"] * len(variants))
+    clauses.append(
+        f"{column} IS NOT NULL AND LOWER(TRIM({column}::text)) IN ({placeholders})"
+    )
+    params.extend(normalize_business_slice_key(v) for v in variants)
+
+
+def _canonical_group_fields(time_field: str) -> list[str]:
+    return [
+        time_field,
+        "country",
+        "city",
+        "fleet_display_name",
+        "is_subfleet",
+        "subfleet_name",
+        "parent_fleet_name",
+    ]
 
 COMPARE_DIM_FIELDS = (
     "country",
@@ -111,11 +158,7 @@ def _where_clauses(
     if city and str(city).strip():
         w.append(f"{prefix}city IS NOT NULL AND LOWER(TRIM({prefix}city::text)) = LOWER(TRIM(%s))")
         p.append(str(city).strip())
-    if business_slice and str(business_slice).strip():
-        w.append(
-            f"{prefix}business_slice_name IS NOT NULL AND LOWER(TRIM({prefix}business_slice_name::text)) = LOWER(TRIM(%s))"
-        )
-        p.append(str(business_slice).strip())
+    _append_business_slice_filter(w, p, business_slice, prefix)
     if fleet and str(fleet).strip():
         w.append(
             f"{prefix}fleet_display_name IS NOT NULL AND LOWER(TRIM({prefix}fleet_display_name::text)) = LOWER(TRIM(%s))"
@@ -175,11 +218,7 @@ def _where_clauses_trip_date(
     if city and str(city).strip():
         w.append(f"{prefix}city IS NOT NULL AND LOWER(TRIM({prefix}city::text)) = LOWER(TRIM(%s))")
         p.append(str(city).strip())
-    if business_slice and str(business_slice).strip():
-        w.append(
-            f"{prefix}business_slice_name IS NOT NULL AND LOWER(TRIM({prefix}business_slice_name::text)) = LOWER(TRIM(%s))"
-        )
-        p.append(str(business_slice).strip())
+    _append_business_slice_filter(w, p, business_slice, prefix)
     if fleet and str(fleet).strip():
         w.append(
             f"{prefix}fleet_display_name IS NOT NULL AND LOWER(TRIM({prefix}fleet_display_name::text)) = LOWER(TRIM(%s))"
@@ -585,11 +624,7 @@ def _fetch_week_fact_period_totals(
     if city and str(city).strip():
         w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
         p.append(str(city).strip())
-    if business_slice and str(business_slice).strip():
-        w.append(
-            "business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) = LOWER(TRIM(%s))"
-        )
-        p.append(str(business_slice).strip())
+    _append_business_slice_filter(w, p, business_slice)
     if fleet and str(fleet).strip():
         w.append(
             "fleet_display_name IS NOT NULL AND LOWER(TRIM(fleet_display_name::text)) = LOWER(TRIM(%s))"
@@ -952,6 +987,184 @@ def _calendar_year_week_bounds(year: int) -> tuple[date, date]:
     return start, end
 
 
+_SPANISH_WEEKDAYS_UPPER = (
+    "LUNES",
+    "MARTES",
+    "MIÉRCOLES",
+    "JUEVES",
+    "VIERNES",
+    "SÁBADO",
+    "DOMINGO",
+)
+_MONTH_SHORT_ES_UPPER = (
+    "ENE",
+    "FEB",
+    "MAR",
+    "ABR",
+    "MAY",
+    "JUN",
+    "JUL",
+    "AGO",
+    "SEP",
+    "OCT",
+    "NOV",
+    "DIC",
+)
+
+
+def explicit_day_temporal_fields(trip_date_val: Any) -> dict[str, Any]:
+    """Etiquetas explícitas para filas diarias (API / UI)."""
+    if trip_date_val is None:
+        return {}
+    s = str(trip_date_val).strip()[:10]
+    try:
+        d = date.fromisoformat(s)
+    except (ValueError, TypeError):
+        return {}
+    wd = _SPANISH_WEEKDAYS_UPPER[d.weekday()]
+    mon = _MONTH_SHORT_ES_UPPER[d.month - 1]
+    return {
+        "date": d.isoformat(),
+        "weekday": wd,
+        "day_label": f"{wd} {d.day} {mon} {d.year}",
+    }
+
+
+def enrich_daily_matrix_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        item = dict(r)
+        item.update(explicit_day_temporal_fields(item.get("trip_date")))
+        out.append(item)
+    return out
+
+
+def _data_freshness_status_from_lag(lag_days: Optional[int]) -> str:
+    if lag_days is None:
+        return "broken"
+    if lag_days <= 1:
+        return "ok"
+    if lag_days <= 3:
+        return "warning"
+    return "stale"
+
+
+def _freshness_scope_clauses(
+    grain: str,
+    country: Optional[str],
+    city: Optional[str],
+    business_slice: Optional[str],
+    fleet: Optional[str],
+    subfleet: Optional[str],
+    year: Optional[int],
+    month: Optional[int],
+) -> tuple[list[str], list[Any]]:
+    """Ventana trip_date en day_fact alineada a los endpoints Matrix (mensual/semanal/diario)."""
+    g = (grain or "monthly").strip().lower()
+    if g == "weekly" and year is not None:
+        w, params = _where_clauses_trip_date(
+            country, city, business_slice, fleet, subfleet, None, None, ""
+        )
+        r0, r1 = _calendar_year_week_bounds(int(year))
+        w.append("trip_date >= %s AND trip_date <= %s")
+        params.extend([r0, r1])
+    else:
+        w, params = _where_clauses_trip_date(
+            country, city, business_slice, fleet, subfleet, year, month, ""
+        )
+        if year is None and month is None:
+            if g == "monthly":
+                w.append(
+                    "trip_date >= (date_trunc('month', CURRENT_DATE)::date - interval '12 months')"
+                )
+            elif g == "weekly":
+                w.append(
+                    "trip_date >= (date_trunc('week', CURRENT_DATE)::date - interval '35 days')"
+                )
+            else:
+                w.append("trip_date >= CURRENT_DATE - interval '13 days'")
+        elif g == "daily" and year is not None:
+            y = int(year)
+            if month is not None:
+                mo = int(month)
+                if mo == 1:
+                    lo = date(y, 1, 1) - timedelta(days=7)
+                    hi = date(y, mo, monthrange(y, mo)[1])
+                    w.append("trip_date >= %s AND trip_date <= %s")
+                    params.extend([lo, hi])
+            else:
+                lo = date(y, 1, 1) - timedelta(days=7)
+                hi = date(y, 12, 31)
+                w.append("trip_date >= %s AND trip_date <= %s")
+                params.extend([lo, hi])
+    if g in ("weekly", "daily"):
+        w.append("(NOT is_subfleet OR is_subfleet IS NULL)")
+    return w, params
+
+
+def compute_matrix_data_freshness(
+    grain: str,
+    *,
+    country: Optional[str] = None,
+    city: Optional[str] = None,
+    business_slice: Optional[str] = None,
+    fleet: Optional[str] = None,
+    subfleet: Optional[str] = None,
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+) -> dict[str, Any]:
+    """
+    Frescura operativa sobre ops.real_business_slice_day_fact (misma semántica de filtros que la Matrix).
+    """
+    w, params = _freshness_scope_clauses(
+        grain, country, city, business_slice, fleet, subfleet, year, month
+    )
+    where_sql = " AND ".join(w) if w else "TRUE"
+    today = date.today()
+    mx: Any = None
+    lu: Any = None
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            try:
+                cur.execute(
+                    f"""
+                    SELECT MAX(trip_date) AS mx,
+                           MAX(GREATEST(loaded_at, refreshed_at)) AS lu
+                    FROM {FACT_DAILY}
+                    WHERE {where_sql}
+                    """,
+                    params,
+                )
+                row = cur.fetchone()
+                if row:
+                    mx, lu = row[0], row[1]
+            finally:
+                cur.close()
+    except Exception:
+        logger.warning("compute_matrix_data_freshness: falló consulta", exc_info=True)
+
+    max_data_date: Optional[str] = None
+    if mx is not None:
+        max_data_date = mx.isoformat()[:10] if hasattr(mx, "isoformat") else str(mx)[:10]
+
+    last_update_at: Optional[str] = None
+    if lu is not None:
+        last_update_at = lu.isoformat() if hasattr(lu, "isoformat") else str(lu)
+
+    lag_days: Optional[int] = None
+    if max_data_date:
+        lag_days = (today - date.fromisoformat(max_data_date)).days
+
+    status = _data_freshness_status_from_lag(lag_days)
+    return {
+        "max_data_date": max_data_date,
+        "last_update_at": last_update_at,
+        "lag_days": lag_days,
+        "status": status,
+    }
+
+
 def get_business_slice_matrix_freshness_meta() -> dict[str, Any]:
     """MAX(trip_date) sobre day_fact — referencia global (contexto); el State Engine usa máximos por período."""
     try:
@@ -1138,6 +1351,16 @@ def enrich_business_slice_matrix_meta(
             month=month,
         )
     )
+    out["data_freshness"] = compute_matrix_data_freshness(
+        out["grain"],
+        country=country,
+        city=city,
+        business_slice=business_slice,
+        fleet=fleet,
+        subfleet=subfleet,
+        year=year,
+        month=month,
+    )
     return out
 
 
@@ -1157,11 +1380,7 @@ def _trip_fact_filter_clauses(
     if city and str(city).strip():
         w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
         p.append(str(city).strip())
-    if business_slice and str(business_slice).strip():
-        w.append(
-            "business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) = LOWER(TRIM(%s))"
-        )
-        p.append(str(business_slice).strip())
+    _append_business_slice_filter(w, p, business_slice)
     if fleet and str(fleet).strip():
         w.append(
             "fleet_display_name IS NOT NULL AND LOWER(TRIM(fleet_display_name::text)) = LOWER(TRIM(%s))"
@@ -1190,11 +1409,7 @@ def _resolved_filter_clauses(
     if city and str(city).strip():
         w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
         p.append(str(city).strip())
-    if business_slice and str(business_slice).strip():
-        w.append(
-            "business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) = LOWER(TRIM(%s))"
-        )
-        p.append(str(business_slice).strip())
+    _append_business_slice_filter(w, p, business_slice)
     if fleet and str(fleet).strip():
         w.append(
             "fleet_display_name IS NOT NULL AND LOWER(TRIM(fleet_display_name::text)) = LOWER(TRIM(%s))"
@@ -1226,9 +1441,7 @@ def _get_latest_available_trip_date(
     if city and str(city).strip():
         w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
         p.append(str(city).strip())
-    if business_slice and str(business_slice).strip():
-        w.append("business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) = LOWER(TRIM(%s))")
-        p.append(str(business_slice).strip())
+    _append_business_slice_filter(w, p, business_slice)
     if fleet and str(fleet).strip():
         w.append("fleet_display_name IS NOT NULL AND LOWER(TRIM(fleet_display_name::text)) = LOWER(TRIM(%s))")
         p.append(str(fleet).strip())
@@ -1309,6 +1522,10 @@ def _fetch_resolved_metrics_by_dims_for_range(
                 item.update(m)
                 rows.append(_serialize_row(item))
             cur.close()
+        rows = aggregate_business_slice_rows(
+            rows,
+            extra_key_fields=["country", "city", "fleet_display_name", "is_subfleet", "subfleet_name"],
+        )
         return {_dim_key(r): r for r in rows}
     except Exception as exc:
         logger.warning("_fetch_resolved_metrics_by_dims_for_range (day_fact): %s", exc)
@@ -1336,9 +1553,7 @@ def _fetch_resolved_daily_metrics_for_dates(
     if city and str(city).strip():
         w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
         p.append(str(city).strip())
-    if business_slice and str(business_slice).strip():
-        w.append("business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) = LOWER(TRIM(%s))")
-        p.append(str(business_slice).strip())
+    _append_business_slice_filter(w, p, business_slice)
     try:
         with get_db_quick(20000) as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -1362,7 +1577,10 @@ def _fetch_resolved_daily_metrics_for_dates(
                 """,
                 p,
             )
-            rows = [_serialize_row(dict(r)) for r in cur.fetchall()]
+            rows = aggregate_business_slice_rows(
+                [_serialize_row(dict(r)) for r in cur.fetchall()],
+                extra_key_fields=["trip_date", "country", "city", "fleet_display_name", "is_subfleet", "subfleet_name"],
+            )
             cur.close()
     except Exception as exc:
         logger.warning("_fetch_resolved_daily_metrics_for_dates timeout/error (fact_daily): %s", exc)
@@ -1541,7 +1759,11 @@ def get_business_slice_filters() -> dict[str, Any]:
     now = time.monotonic()
     with _filters_lock:
         if _filters_store and (now - _filters_store.get("ts", 0.0)) < FILTERS_CACHE_TTL_SEC:
-            return _filters_store["data"]
+            base = _filters_store["data"]
+            return {
+                **base,
+                "data_freshness": compute_matrix_data_freshness("monthly"),
+            }
     with get_db() as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(
@@ -1557,7 +1779,11 @@ def get_business_slice_filters() -> dict[str, Any]:
         cur.close()
     countries = sorted({r["country"] for r in rows if r.get("country")})
     cities = sorted({r["city"] for r in rows if r.get("city")})
-    slices = sorted({r["business_slice_name"] for r in rows if r.get("business_slice_name")})
+    slices = sorted({
+        canonicalize_business_slice_name(r["business_slice_name"])
+        for r in rows
+        if r.get("business_slice_name")
+    })
     fleets = sorted({r["fleet_display_name"] for r in rows if r.get("fleet_display_name")})
     subfleets = sorted({r["subfleet_name"] for r in rows if r.get("subfleet_name")})
     result = {
@@ -1583,7 +1809,7 @@ def get_business_slice_filters() -> dict[str, Any]:
     with _filters_lock:
         _filters_store["ts"] = time.monotonic()
         _filters_store["data"] = result
-    return result
+    return {**result, "data_freshness": compute_matrix_data_freshness("monthly")}
 
 
 def get_business_slice_monthly(
@@ -1619,7 +1845,10 @@ def get_business_slice_monthly(
     with get_db() as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(sql, params)
-        data = [_serialize_row(dict(r)) for r in cur.fetchall()]
+        data = aggregate_business_slice_rows(
+            [_serialize_row(dict(r)) for r in cur.fetchall()],
+            extra_key_fields=_canonical_group_fields("month"),
+        )
         cur.close()
     return _attach_monthly_partial_equivalent_context(
         data,
@@ -2240,9 +2469,7 @@ def _weekly_from_fact(
     if city and str(city).strip():
         w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
         params.append(str(city).strip())
-    if business_slice and str(business_slice).strip():
-        w.append("business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) = LOWER(TRIM(%s))")
-        params.append(str(business_slice).strip())
+    _append_business_slice_filter(w, params, business_slice)
     if year is not None:
         r0, r1 = _calendar_year_week_bounds(year)
         w.append("week_start >= %s AND week_start <= %s")
@@ -2265,7 +2492,10 @@ def _weekly_from_fact(
     params.append(min(max(limit, 1), 10000))
     cur = conn.cursor(cursor_factory=RealDictCursor)
     cur.execute(sql, params)
-    data = [_serialize_row(dict(r)) for r in cur.fetchall()]
+    data = aggregate_business_slice_rows(
+        [_serialize_row(dict(r)) for r in cur.fetchall()],
+        extra_key_fields=_canonical_group_fields("week_start"),
+    )
     cur.close()
     return data
 
@@ -2352,11 +2582,13 @@ def get_business_slice_daily(
                 "source": "day_fact",
             }
             return (
-                _attach_daily_same_weekday_context(
-                    data,
-                    country=country,
-                    city=city,
-                    business_slice=business_slice,
+                enrich_daily_matrix_rows(
+                    _attach_daily_same_weekday_context(
+                        data,
+                        country=country,
+                        city=city,
+                        business_slice=business_slice,
+                    )
                 ),
                 meta_ok,
             )
@@ -2390,9 +2622,7 @@ def _daily_from_fact(
     if city and str(city).strip():
         w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
         params.append(str(city).strip())
-    if business_slice and str(business_slice).strip():
-        w.append("business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) = LOWER(TRIM(%s))")
-        params.append(str(business_slice).strip())
+    _append_business_slice_filter(w, params, business_slice)
     if year is not None:
         y = int(year)
         if month is not None:
@@ -2431,6 +2661,9 @@ def _daily_from_fact(
     params.append(min(max(limit, 1), 10000))
     cur = conn.cursor(cursor_factory=RealDictCursor)
     cur.execute(sql, params)
-    data = [_serialize_row(dict(r)) for r in cur.fetchall()]
+    data = aggregate_business_slice_rows(
+        [_serialize_row(dict(r)) for r in cur.fetchall()],
+        extra_key_fields=_canonical_group_fields("trip_date"),
+    )
     cur.close()
     return data
