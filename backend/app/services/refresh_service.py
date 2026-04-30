@@ -15,8 +15,23 @@ KNOWN_REFRESH_DATASETS: List[Tuple[str, str]] = [
     ("mv_real_trips_monthly", "ops.refresh_real_trips_monthly"),
 ]
 
+# Mapeo de datasets a sus fuentes de truth (tabla/columna fecha)
+# Validado contra information_schema - si columna no existe, retorna error claro
+DATASET_SOURCE_MAP: Dict[str, Dict[str, str]] = {
+    "mv_real_trips_monthly": {
+        "table": "public.trips_2026",
+        "column": "fecha_finalizacion",
+    },
+}
+
 MAX_RETRIES = 3
 RETRY_DELAY_SECONDS = 10
+
+# Umbral para considerar datos stale (en minutos)
+DATA_FRESHNESS_THRESHOLD_MINUTES = 1440  # 24 horas
+
+# Umbral mínimo de filas para considerar datos con calidad aceptable
+MIN_DATA_QUALITY_ROWS = 100
 
 
 def _acquire_lock(lock_name: str = "global") -> bool:
@@ -342,10 +357,12 @@ def get_last_refresh_status(
     try:
         with get_db() as conn:
             cursor = conn.cursor()
-            
+
             # Obtener último registro
+            # Usar EXTRACT(EPOCH FROM (NOW() - last_refresh_at AT TIME ZONE 'UTC'))
+            # para asegurar comparación consistente entre timestamps
             cursor.execute("""
-                SELECT 
+                SELECT
                     dataset_name,
                     last_refresh_at,
                     status,
@@ -357,10 +374,10 @@ def get_last_refresh_status(
                 ORDER BY created_at DESC
                 LIMIT 1
             """, (dataset_name,))
-            
+
             row = cursor.fetchone()
             cursor.close()
-            
+
             if not row:
                 return {
                     "dataset": dataset_name or "mv_real_trips_monthly",
@@ -368,9 +385,13 @@ def get_last_refresh_status(
                     "message": "No refresh records found",
                     "threshold_minutes": threshold_minutes,
                 }
-            
+
             dataset, last_at, last_status, duration, error_msg, minutes_since = row
-            
+
+            # Asegurar que minutes_since nunca sea negativo
+            if minutes_since is not None and minutes_since < 0:
+                minutes_since = 0.0
+
             # Determinar status
             if last_status == "failed":
                 status = "failed"
@@ -378,7 +399,7 @@ def get_last_refresh_status(
                 status = "stale"
             else:
                 status = "fresh"
-            
+
             return {
                 "dataset": dataset,
                 "last_refresh_at": last_at.isoformat() if last_at else None,
@@ -389,7 +410,7 @@ def get_last_refresh_status(
                 "last_duration_seconds": float(duration) if duration else None,
                 "threshold_minutes": threshold_minutes,
             }
-            
+
     except Exception as e:
         logger.error("Error getting refresh status: %s", str(e))
         return {
@@ -478,7 +499,7 @@ def check_refresh_lock_status(lock_name: str = "global") -> Dict[str, Any]:
             """, (lock_name,))
             row = cursor.fetchone()
             cursor.close()
-            
+
             if row:
                 return {
                     "lock_name": row[0],
@@ -490,3 +511,349 @@ def check_refresh_lock_status(lock_name: str = "global") -> Dict[str, Any]:
     except Exception as e:
         logger.error("Error checking lock status: %s", str(e))
         return {"lock_name": lock_name, "status": "error", "error": str(e)}
+
+
+def _validate_column_exists(conn, table_name: str, column_name: str) -> bool:
+    """Valida que una columna exista en la tabla usando information_schema."""
+    try:
+        cursor = conn.cursor()
+        # Parsear schema.table
+        if '.' in table_name:
+            schema, table = table_name.split('.', 1)
+        else:
+            schema = 'public'
+            table = table_name
+        
+        cursor.execute("""
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = %s AND table_name = %s AND column_name = %s
+        """, (schema, table, column_name))
+        exists = cursor.fetchone() is not None
+        cursor.close()
+        return exists
+    except Exception:
+        return False
+
+
+def get_data_freshness(
+    dataset_name: str,
+    data_threshold_minutes: int = DATA_FRESHNESS_THRESHOLD_MINUTES,
+) -> Dict[str, Any]:
+    """
+    Obtiene el freshness de los datos REALES desde la fuente de truth.
+    Valida que la columna exista antes de consultar.
+    Incluye métricas de calidad de datos basadas en volumen relativo.
+
+    Args:
+        dataset_name: Nombre del dataset
+        data_threshold_minutes: Minutos para considerar datos stale (< 1440 = fresh)
+
+    Returns:
+        Dict con estado de freshness de los datos y métricas de calidad
+    """
+    source_config = DATASET_SOURCE_MAP.get(dataset_name)
+
+    if not source_config:
+        return {
+            "dataset": dataset_name,
+            "data_status": "unknown",
+            "data_last_available_at": None,
+            "minutes_since_last_data": None,
+            "message": f"No source of truth configured for dataset: {dataset_name}",
+            "data_threshold_minutes": data_threshold_minutes,
+            "row_count_today": None,
+            "avg_last_7_days": None,
+            "volume_ratio": None,
+            "data_quality_status": "UNKNOWN",
+        }
+
+    table = source_config["table"]
+    column = source_config["column"]
+
+    try:
+        with get_db() as conn:
+            # Validar que la columna exista
+            if not _validate_column_exists(conn, table, column):
+                return {
+                    "dataset": dataset_name,
+                    "data_status": "error",
+                    "data_last_available_at": None,
+                    "minutes_since_last_data": None,
+                    "source_table": table,
+                    "source_column": column,
+                    "message": f"Column '{column}' does not exist in table '{table}'",
+                    "data_threshold_minutes": data_threshold_minutes,
+                    "row_count_today": None,
+                    "avg_last_7_days": None,
+                    "volume_ratio": None,
+                    "data_quality_status": "ERROR",
+                }
+
+            cursor = conn.cursor()
+
+            # Query para obtener última fecha disponible + métricas de volumen
+            # MODO OPERATIVO: D-1_CLOSED
+            # La data se considera válida hasta el día vencido anterior (target_date = CURRENT_DATE - 1 day)
+            # La calidad se evalúa comparando días completos cerrados
+            # TODO: Parametrizar timezone de negocio (America/Lima) si aplica
+            cursor.execute(f"""
+                WITH params AS (
+                    SELECT
+                        CURRENT_DATE - INTERVAL '1 day' AS target_date
+                ),
+                target_count AS (
+                    -- Filas del día objetivo (D-1 cerrado)
+                    SELECT COUNT(*) AS target_rows
+                    FROM {table}
+                    WHERE DATE({column}) = (SELECT target_date FROM params)
+                ),
+                history AS (
+                    -- Promedio de los últimos 7 días cerrados completos antes del target
+                    SELECT DATE({column}) AS d, COUNT(*) AS cnt
+                    FROM {table}
+                    WHERE DATE({column}) >= (SELECT target_date FROM params) - INTERVAL '7 days'
+                    AND DATE({column}) < (SELECT target_date FROM params)
+                    GROUP BY DATE({column})
+                )
+                SELECT
+                    (SELECT MAX({column}) FROM {table}) as max_date,
+                    NOW() as now_val,
+                    (SELECT target_date FROM params) as target_date_val,
+                    target_count.target_rows as row_count_target_date,
+                    AVG(history.cnt) AS avg_last_7_closed_days,
+                    COUNT(history.cnt) AS history_days_count
+                FROM target_count
+                LEFT JOIN history ON TRUE
+                GROUP BY target_count.target_rows
+            """)
+
+            row = cursor.fetchone()
+            cursor.close()
+
+            if not row or row[0] is None:
+                return {
+                    "dataset": dataset_name,
+                    "data_status": "unknown",
+                    "data_last_available_at": None,
+                    "minutes_since_last_data": None,
+                    "source_table": table,
+                    "source_column": column,
+                    "message": "No data found in source table",
+                    "data_threshold_minutes": data_threshold_minutes,
+                    "row_count_today": row[2] if row else 0,
+                    "avg_last_7_days": row[3] if row else None,
+                    "volume_ratio": None,
+                    "data_quality_status": "CRITICAL" if (row and row[2] == 0) else "UNKNOWN",
+                }
+
+            last_data_at = row[0]
+            now = row[1]
+            target_date = row[2]
+            row_count_target_date = row[3] or 0
+            avg_last_7_closed_days = row[4]
+            history_days_count = row[5] or 0
+
+            # Calcular minutos desde último dato
+            minutes_since = None
+            if last_data_at and now:
+                try:
+                    minutes_since = (now - last_data_at).total_seconds() / 60
+                    if minutes_since < 0:
+                        minutes_since = 0.0
+                except (TypeError, ValueError):
+                    cursor2 = conn.cursor()
+                    cursor2.execute(f"""
+                        SELECT EXTRACT(EPOCH FROM (NOW() - MAX({column}))) / 60
+                        FROM {table}
+                    """)
+                    row2 = cursor2.fetchone()
+                    cursor2.close()
+                    minutes_since = float(row2[0]) if row2 and row2[0] else 0.0
+
+            # Determinar data_status basado en D-1 (target_date)
+            # last_data_at es datetime, target_date es date
+            data_status = "unknown"
+            if last_data_at and target_date:
+                from datetime import date
+                if isinstance(last_data_at, date):
+                    last_data_date = last_data_at.date() if hasattr(last_data_at, 'date') else last_data_at
+                else:
+                    last_data_date = last_data_at
+                
+                if isinstance(target_date, date):
+                    target_dt = target_date
+                else:
+                    target_dt = target_date.date() if hasattr(target_date, 'date') else target_date
+                
+                # Comparar fechas
+                try:
+                    last_date = last_data_date if isinstance(last_data_date, date) else last_data_date.date()
+                    target_d = target_dt if isinstance(target_dt, date) else target_dt.date() if hasattr(target_dt, 'date') else target_dt
+                    if last_date >= target_d:
+                        data_status = "fresh"
+                    else:
+                        data_status = "stale"
+                except (AttributeError, TypeError):
+                    # Fallback: comparar como strings
+                    if str(last_data_date) >= str(target_dt):
+                        data_status = "fresh"
+                    else:
+                        data_status = "stale"
+
+            # Calcular volume_ratio y data_quality_status usando D-1 cerrado
+            volume_ratio = None
+            data_quality_status = "UNKNOWN"
+
+            if row_count_target_date == 0:
+                data_quality_status = "CRITICAL"
+                volume_ratio = 0.0
+            elif avg_last_7_closed_days is None or avg_last_7_closed_days == 0:
+                data_quality_status = "UNKNOWN"
+                volume_ratio = None
+            else:
+                volume_ratio = row_count_target_date / avg_last_7_closed_days
+                if volume_ratio < 0.3:
+                    data_quality_status = "CRITICAL"
+                elif volume_ratio < 0.7:
+                    data_quality_status = "WARNING"
+                else:
+                    data_quality_status = "OK"
+
+            logger.info(
+                "Data quality metrics for %s [D-1_CLOSED]: target_date=%s, rows=%s, avg7=%s, ratio=%s, status=%s",
+                dataset_name, target_date, row_count_target_date, avg_last_7_closed_days, volume_ratio, data_quality_status
+            )
+
+            target_date_str = target_date.isoformat() if hasattr(target_date, 'isoformat') else str(target_date)
+
+            return {
+                "dataset": dataset_name,
+                "data_status": data_status,
+                "data_last_available_at": last_data_at.isoformat() if last_data_at else None,
+                "minutes_since_last_data": round(minutes_since, 2) if minutes_since is not None else None,
+                "source_table": table,
+                "source_column": column,
+                "data_threshold_minutes": data_threshold_minutes,
+                "target_date_mode": "D-1_CLOSED",
+                "target_date": target_date_str,
+                "row_count_target_date": row_count_target_date,
+                "avg_last_7_closed_days": round(avg_last_7_closed_days, 2) if avg_last_7_closed_days else None,
+                "volume_ratio": round(volume_ratio, 2) if volume_ratio is not None else None,
+                "data_quality_status": data_quality_status,
+                "row_count_today": row_count_target_date,
+                "avg_last_7_days": round(avg_last_7_closed_days, 2) if avg_last_7_closed_days else None,
+                "row_count_today_so_far": row_count_target_date,
+                "avg_last_7_days_so_far": round(avg_last_7_closed_days, 2) if avg_last_7_closed_days else None,
+            }
+
+    except Exception as e:
+        logger.error("Error getting data freshness for %s: %s", dataset_name, str(e))
+        return {
+            "dataset": dataset_name,
+            "data_status": "error",
+            "data_last_available_at": None,
+            "minutes_since_last_data": None,
+            "source_table": table,
+            "source_column": column,
+            "error": str(e),
+            "data_threshold_minutes": data_threshold_minutes,
+            "row_count_today": None,
+            "avg_last_7_days": None,
+            "volume_ratio": None,
+            "data_quality_status": "ERROR",
+        }
+
+
+def get_combined_refresh_status(
+    dataset_name: Optional[str] = None,
+    refresh_threshold_minutes: int = 120,
+    data_threshold_minutes: int = DATA_FRESHNESS_THRESHOLD_MINUTES,
+) -> Dict[str, Any]:
+    """
+    Obtiene el estado COMBINADO de refresh + freshness + calidad de datos.
+
+    Args:
+        dataset_name: Nombre del dataset
+        refresh_threshold_minutes: Minutos para considerar refresh stale
+        data_threshold_minutes: Minutos para considerar datos stale
+
+    Returns:
+        Dict con status compuesto incluyendo data_quality
+    """
+    # Obtener status de refresh
+    refresh_status = get_last_refresh_status(dataset_name, refresh_threshold_minutes)
+
+    # Dataset name real (puede ser None)
+    actual_dataset = dataset_name or refresh_status.get("dataset") or "mv_real_trips_monthly"
+
+    # Obtener freshness de datos (incluye data_quality)
+    data_freshness = get_data_freshness(actual_dataset, data_threshold_minutes)
+
+    # Extraer estados
+    refresh_st = refresh_status.get("status")
+    data_st = data_freshness.get("data_status")
+    data_quality_st = data_freshness.get("data_quality_status")
+
+    # Calcular overall_status con prioridad:
+    # 1. data_quality CRITICAL → CRITICAL
+    # 2. refresh failed → CRITICAL
+    # 3. data stale → WARNING
+    # 4. data_quality WARNING → WARNING
+    # 5. else → OK (si ambos fresh)
+    if data_quality_st == "CRITICAL":
+        overall_status = "CRITICAL"
+        overall_message = "Data quality critical - volume drop detected"
+    elif refresh_st == "failed":
+        overall_status = "CRITICAL"
+        overall_message = "Refresh failed - data may be outdated"
+    elif data_st == "stale":
+        overall_status = "WARNING"
+        overall_message = "Data source is stale - no new data available"
+    elif data_quality_st == "WARNING":
+        overall_status = "WARNING"
+        overall_message = "Data quality warning - lower than usual volume"
+    elif refresh_st == "stale":
+        overall_status = "WARNING"
+        overall_message = "Refresh is stale - last refresh too old"
+    elif refresh_st == "fresh" and data_st == "fresh" and data_quality_st == "OK":
+        overall_status = "OK"
+        overall_message = "Refresh, data freshness and quality are all OK"
+    elif refresh_st == "error" or data_st == "error" or data_quality_st == "ERROR":
+        overall_status = "ERROR"
+        overall_message = "Error checking status"
+    else:
+        overall_status = "UNKNOWN"
+        overall_message = "Status unknown"
+
+    return {
+        "dataset": actual_dataset,
+        "overall_status": overall_status,
+        "overall_message": overall_message,
+        "refresh": {
+            "status": refresh_st,
+            "last_refresh_at": refresh_status.get("last_refresh_at"),
+            "minutes_since_last_refresh": refresh_status.get("minutes_since_last_refresh"),
+            "last_status": refresh_status.get("last_status"),
+            "last_error": refresh_status.get("last_error"),
+            "threshold_minutes": refresh_threshold_minutes,
+        },
+        "data": {
+            "status": data_st,
+            "data_last_available_at": data_freshness.get("data_last_available_at"),
+            "minutes_since_last_data": data_freshness.get("minutes_since_last_data"),
+            "source_table": data_freshness.get("source_table"),
+            "source_column": data_freshness.get("source_column"),
+            "threshold_minutes": data_threshold_minutes,
+            # Modo operativo D-1_CLOSED
+            "target_date_mode": data_freshness.get("target_date_mode"),
+            "target_date": data_freshness.get("target_date"),
+            # Métricas de calidad basadas en día vencido completo
+            "row_count_target_date": data_freshness.get("row_count_target_date"),
+            "avg_last_7_closed_days": data_freshness.get("avg_last_7_closed_days"),
+            "volume_ratio": data_freshness.get("volume_ratio"),
+            "data_quality_status": data_freshness.get("data_quality_status"),
+            # Campos legacy para compatibilidad
+            "row_count_today": data_freshness.get("row_count_today"),
+            "avg_last_7_days": data_freshness.get("avg_last_7_days"),
+        },
+    }

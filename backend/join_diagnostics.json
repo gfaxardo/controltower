@@ -1,0 +1,117 @@
+[
+  {
+    "caso": "1. Peru/Lima/Delivery/monthly/2026",
+    "status": "computed",
+    "plan_keys": 4,
+    "real_keys": 1,
+    "intersection": 1,
+    "plan_only": 3,
+    "real_only": 0,
+    "intersection_rate_pct": 25.0,
+    "go_threshold_85": false,
+    "go_threshold_92": false,
+    "by_cause": {
+      "plan_only": {
+        "BUSINESS_SLICE_MISMATCH": 3
+      },
+      "real_only": {}
+    }
+  },
+  {
+    "caso": "2. Peru/Trujillo/Delivery/monthly/2026",
+    "status": "computed",
+    "plan_keys": 2,
+    "real_keys": 0,
+    "intersection": 0,
+    "plan_only": 2,
+    "real_only": 0,
+    "intersection_rate_pct": 0.0,
+    "go_threshold_85": false,
+    "go_threshold_92": false,
+    "by_cause": {
+      "plan_only": {
+        "TRUE_NO_PLAN": 2
+      },
+      "real_only": {}
+    }
+  },
+  {
+    "caso": "3. Peru/Lima/Delivery/weekly/2026",
+    "status": "computed",
+    "plan_keys": 48,
+    "real_keys": 17,
+    "intersection": 0,
+    "plan_only": 48,
+    "real_only": 17,
+    "intersection_rate_pct": 0.0,
+    "go_threshold_85": false,
+    "go_threshold_92": false,
+    "by_cause": {
+      "plan_only": {
+        "PERIOD_MISMATCH": 48
+      },
+      "real_only": {
+        "PERIOD_MISMATCH": 17
+      }
+    }
+  },
+  {
+    "caso": "4. Peru/Lima/Delivery/daily/2026",
+    "status": "computed",
+    "plan_keys": 4,
+    "real_keys": 31,
+    "intersection": 1,
+    "plan_only": 3,
+    "real_only": 30,
+    "intersection_rate_pct": 25.0,
+    "go_threshold_85": false,
+    "go_threshold_92": false,
+    "by_cause": {
+      "plan_only": {
+        "PERIOD_MISMATCH": 3
+      },
+      "real_only": {
+        "PERIOD_MISMATCH": 30
+      }
+    }
+  },
+  {
+    "caso": "5. Colombia/Delivery/monthly/2026",
+    "status": "computed",
+    "plan_keys": 17,
+    "real_keys": 2,
+    "intersection": 2,
+    "plan_only": 15,
+    "real_only": 0,
+    "intersection_rate_pct": 11.8,
+    "go_threshold_85": false,
+    "go_threshold_92": false,
+    "by_cause": {
+      "plan_only": {
+        "CITY_MISMATCH": 12,
+        "BUSINESS_SLICE_MISMATCH": 3
+      },
+      "real_only": {}
+    }
+  },
+  {
+    "caso": "6. Colombia/Delivery/weekly/2026",
+    "status": "computed",
+    "plan_keys": 204,
+    "real_keys": 30,
+    "intersection": 0,
+    "plan_only": 204,
+    "real_only": 30,
+    "intersection_rate_pct": 0.0,
+    "go_threshold_85": false,
+    "go_threshold_92": false,
+    "by_cause": {
+      "plan_only": {
+        "PERIOD_MISMATCH": 204
+      },
+      "real_only": {
+        "PERIOD_MISMATCH": 30
+      }
+    }
+  }
+]

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query, HTTPException
 
 from app.services.refresh_service import (
     get_last_refresh_status,
+    get_combined_refresh_status,
     list_refresh_history,
     run_refresh_job,
 )
@@ -79,6 +80,34 @@ async def trigger_refresh(
     """
     try:
         result = run_refresh_job(dataset_name=dataset)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/refresh-status-v2")
+async def get_refresh_status_v2(
+    dataset: Optional[str] = Query(None, description="Nombre del dataset (default: 'mv_real_trips_monthly')"),
+    refresh_threshold_minutes: int = Query(120, description="Minutos para considerar refresh stale"),
+    data_threshold_minutes: int = Query(1440, description="Minutos para considerar datos stale (< 1440 = fresh)"),
+):
+    """
+    Estado COMBINADO de refresh + data freshness.
+    
+    Returns:
+        {
+            "dataset": str,
+            "overall_status": "OK" | "WARNING" | "CRITICAL" | "ERROR" | "UNKNOWN",
+            "refresh": { ... },
+            "data": { ... }
+        }
+    """
+    try:
+        result = get_combined_refresh_status(
+            dataset_name=dataset,
+            refresh_threshold_minutes=refresh_threshold_minutes,
+            data_threshold_minutes=data_threshold_minutes,
+        )
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
