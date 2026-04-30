@@ -561,8 +561,6 @@ def get_data_freshness(
             "minutes_since_last_data": None,
             "message": f"No source of truth configured for dataset: {dataset_name}",
             "data_threshold_minutes": data_threshold_minutes,
-            "row_count_today": None,
-            "avg_last_7_days": None,
             "volume_ratio": None,
             "data_quality_status": "UNKNOWN",
         }
@@ -583,8 +581,6 @@ def get_data_freshness(
                     "source_column": column,
                     "message": f"Column '{column}' does not exist in table '{table}'",
                     "data_threshold_minutes": data_threshold_minutes,
-                    "row_count_today": None,
-                    "avg_last_7_days": None,
                     "volume_ratio": None,
                     "data_quality_status": "ERROR",
                 }
@@ -640,10 +636,8 @@ def get_data_freshness(
                     "source_column": column,
                     "message": "No data found in source table",
                     "data_threshold_minutes": data_threshold_minutes,
-                    "row_count_today": row[2] if row else 0,
-                    "avg_last_7_days": row[3] if row else None,
                     "volume_ratio": None,
-                    "data_quality_status": "CRITICAL" if (row and row[2] == 0) else "UNKNOWN",
+                    "data_quality_status": "CRITICAL" if (row and row[3] is not None and row[3] == 0) else "UNKNOWN",
                 }
 
             last_data_at = row[0]
@@ -670,35 +664,12 @@ def get_data_freshness(
                     cursor2.close()
                     minutes_since = float(row2[0]) if row2 and row2[0] else 0.0
 
-            # Determinar data_status basado en D-1 (target_date)
-            # last_data_at es datetime, target_date es date
+            # Determinar data_status: fresh si DATE(max_date) >= target_date
             data_status = "unknown"
-            if last_data_at and target_date:
-                from datetime import date
-                if isinstance(last_data_at, date):
-                    last_data_date = last_data_at.date() if hasattr(last_data_at, 'date') else last_data_at
-                else:
-                    last_data_date = last_data_at
-                
-                if isinstance(target_date, date):
-                    target_dt = target_date
-                else:
-                    target_dt = target_date.date() if hasattr(target_date, 'date') else target_date
-                
-                # Comparar fechas
-                try:
-                    last_date = last_data_date if isinstance(last_data_date, date) else last_data_date.date()
-                    target_d = target_dt if isinstance(target_dt, date) else target_dt.date() if hasattr(target_dt, 'date') else target_dt
-                    if last_date >= target_d:
-                        data_status = "fresh"
-                    else:
-                        data_status = "stale"
-                except (AttributeError, TypeError):
-                    # Fallback: comparar como strings
-                    if str(last_data_date) >= str(target_dt):
-                        data_status = "fresh"
-                    else:
-                        data_status = "stale"
+            if last_data_at is not None and target_date is not None:
+                last_data_date = last_data_at.date() if hasattr(last_data_at, 'date') else last_data_at
+                target_d = target_date.date() if hasattr(target_date, 'date') else target_date
+                data_status = "fresh" if last_data_date >= target_d else "stale"
 
             # Calcular volume_ratio y data_quality_status usando D-1 cerrado
             volume_ratio = None
@@ -740,10 +711,6 @@ def get_data_freshness(
                 "avg_last_7_closed_days": round(avg_last_7_closed_days, 2) if avg_last_7_closed_days else None,
                 "volume_ratio": round(volume_ratio, 2) if volume_ratio is not None else None,
                 "data_quality_status": data_quality_status,
-                "row_count_today": row_count_target_date,
-                "avg_last_7_days": round(avg_last_7_closed_days, 2) if avg_last_7_closed_days else None,
-                "row_count_today_so_far": row_count_target_date,
-                "avg_last_7_days_so_far": round(avg_last_7_closed_days, 2) if avg_last_7_closed_days else None,
             }
 
     except Exception as e:
@@ -757,8 +724,6 @@ def get_data_freshness(
             "source_column": column,
             "error": str(e),
             "data_threshold_minutes": data_threshold_minutes,
-            "row_count_today": None,
-            "avg_last_7_days": None,
             "volume_ratio": None,
             "data_quality_status": "ERROR",
         }
@@ -839,6 +804,7 @@ def get_combined_refresh_status(
         },
         "data": {
             "status": data_st,
+            "data_status": data_st,
             "data_last_available_at": data_freshness.get("data_last_available_at"),
             "minutes_since_last_data": data_freshness.get("minutes_since_last_data"),
             "source_table": data_freshness.get("source_table"),
@@ -852,8 +818,5 @@ def get_combined_refresh_status(
             "avg_last_7_closed_days": data_freshness.get("avg_last_7_closed_days"),
             "volume_ratio": data_freshness.get("volume_ratio"),
             "data_quality_status": data_freshness.get("data_quality_status"),
-            # Campos legacy para compatibilidad
-            "row_count_today": data_freshness.get("row_count_today"),
-            "avg_last_7_days": data_freshness.get("avg_last_7_days"),
         },
     }
