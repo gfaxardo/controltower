@@ -28,7 +28,7 @@ def main():
     # Verificar lock antes de empezar
     lock_status = check_refresh_lock_status()
     if lock_status.get("is_running"):
-        print(f"\n⚠️  REFRESH SKIPPED")
+        print(f"\n[!] REFRESH SKIPPED")
         print(f"Another refresh is running since: {lock_status.get('started_at')}")
         print("Aborting to prevent concurrent execution.")
         sys.exit(0)
@@ -49,7 +49,7 @@ def main():
     print(f"Timestamp: {result['timestamp']}")
     
     if result['status'] == 'skipped':
-        print(f"\n⚠️  {result.get('message', 'Refresh skipped')}")
+        print(f"\n[!] {result.get('message', 'Refresh skipped')}")
         sys.exit(0)
     
     if 'error' in result and result['error']:
@@ -57,8 +57,8 @@ def main():
     
     if 'datasets_processed' in result:
         print(f"\nDatasets processed: {result['datasets_processed']}")
-        print(f"  ✓ Successful: {result.get('datasets_successful', 0)}")
-        print(f"  ✗ Failed: {result.get('datasets_failed', 0)}")
+        print(f"  OK Successful: {result.get('datasets_successful', 0)}")
+        print(f"  X Failed: {result.get('datasets_failed', 0)}")
     
     if 'duration_seconds' in result:
         print(f"Total duration: {result['duration_seconds']}s")
@@ -73,11 +73,11 @@ def main():
             status = r.get('status', 'unknown')
             
             if status == 'success':
-                status_icon = '✅'
+                status_icon = '[ok]'
             elif status == 'skipped':
-                status_icon = '⚠️ '
+                status_icon = '[skip]'
             else:
-                status_icon = '❌'
+                status_icon = '[err]'
             
             print(f"\n{status_icon} {ds_name}")
             print(f"   Status: {status}")
@@ -89,7 +89,7 @@ def main():
             # Mostrar intentos
             if 'attempts' in r:
                 for att in r['attempts']:
-                    att_icon = '✓' if att['status'] == 'success' else ('⚠' if att['status'] == 'skipped' else '✗')
+                    att_icon = '+' if att['status'] == 'success' else ('!' if att['status'] == 'skipped' else 'x')
                     print(f"     Attempt {att['attempt']}: {att_icon} {att['status']} ({att.get('duration_seconds', 0)}s)")
                     if att.get('error'):
                         print(f"       → {att['error'][:80]}")
@@ -97,13 +97,13 @@ def main():
     print(f"\n{'=' * 70}")
     
     if result['status'] == 'success':
-        print("✅ REFRESH COMPLETED SUCCESSFULLY")
+        print("REFRESH COMPLETED SUCCESSFULLY")
         sys.exit(0)
     elif result['status'] == 'partial_failure':
-        print("⚠️  REFRESH PARTIALLY FAILED (some datasets failed)")
+        print("[!] REFRESH PARTIALLY FAILED (some datasets failed)")
         sys.exit(1)
     else:
-        print("❌ REFRESH FAILED")
+        print("REFRESH FAILED")
         sys.exit(1)
 
 

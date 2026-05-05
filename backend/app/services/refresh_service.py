@@ -10,17 +10,29 @@ from app.db.connection import get_db
 
 logger = logging.getLogger(__name__)
 
-# Lista de datasets/funcsiones de refresh conocidas con sus nombres de dataset
+# Marcador para refresh vía pipeline Python (sin SELECT ops.fn()).
+PYTHON_OMNIVIEW_FACTS_MARKER = "__python__:omniview_business_slice_facts"
+
+# Lista de datasets/fuentes de refresh: SQL `schema.func()` o marcador Python.
 KNOWN_REFRESH_DATASETS: List[Tuple[str, str]] = [
     ("mv_real_trips_monthly", "ops.refresh_real_trips_monthly"),
+    # Ops Matrix semanal/day/month: mismo job POST /business-slice/real-refresh-omniview
+    ("real_business_slice_week_fact", PYTHON_OMNIVIEW_FACTS_MARKER),
 ]
 
-# Mapeo de datasets a sus fuentes de truth (tabla/columna fecha)
-# Validado contra information_schema - si columna no existe, retorna error claro
+# Mapeo de datasets a fuentes de truth para freshness (tabla/columna y ancla opcional).
+# Validado contra information_schema - si columna no existe, retorna error claro.
 DATASET_SOURCE_MAP: Dict[str, Dict[str, str]] = {
     "mv_real_trips_monthly": {
         "table": "public.trips_2026",
         "column": "fecha_finalizacion",
+        "target_date_mode": "D-1_CLOSED",
+    },
+    "real_business_slice_week_fact": {
+        "table": "ops.real_business_slice_week_fact",
+        "column": "week_start",
+        "target_date_mode": "WEEK_CLOSED",
+        "period_anchor": "iso_week_monday_of_d_minus_1",
     },
 }
 
@@ -208,6 +220,96 @@ def _execute_single_refresh(
     }
 
 
+def _is_python_omniview_facts(marker: str) -> bool:
+    return marker == PYTHON_OMNIVIEW_FACTS_MARKER
+
+
+def _execute_omniview_facts_refresh(dataset_name: str) -> Dict[str, Any]:
+    """
+    Misma lógica que POST /ops/business-slice/real-refresh-omniview.
+    Siempre force=True para el job por lotes (sin cooldown artificial).
+    """
+    from app.services.business_slice_real_refresh_job import run_business_slice_real_refresh_job
+
+    start_time = time.perf_counter()
+    attempts: List[Dict[str, Any]] = []
+    final_status = "failed"
+    final_error: Optional[str] = None
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        attempt_start = time.perf_counter()
+        attempt_error: Optional[str] = None
+        attempt_status = "failed"
+        try:
+            out = run_business_slice_real_refresh_job(force=True)
+            elapsed = round(time.perf_counter() - attempt_start, 2)
+
+            if out.get("skipped"):
+                reason = str(out.get("reason") or "skipped")
+                attempt_status = "skipped"
+                final_status = "skipped"
+                final_error = reason
+                attempts.append({
+                    "attempt": attempt,
+                    "status": attempt_status,
+                    "error": reason,
+                    "duration_seconds": elapsed,
+                })
+                # skip sin reintentar (sin upstream, etc.)
+                break
+
+            errors_list = list(out.get("errors") or [])
+            if bool(out.get("ok")) and not errors_list:
+                attempt_status = "success"
+                final_status = "success"
+                final_error = None
+                attempts.append({
+                    "attempt": attempt,
+                    "status": attempt_status,
+                    "error": None,
+                    "duration_seconds": elapsed,
+                })
+                break
+
+            attempt_error = str(errors_list[:5]) if errors_list else "real_refresh_ok_false"
+            attempt_status = "failed"
+            final_error = attempt_error
+            attempts.append({
+                "attempt": attempt,
+                "status": attempt_status,
+                "error": attempt_error,
+                "duration_seconds": elapsed,
+            })
+
+        except Exception as e:
+            elapsed = round(time.perf_counter() - attempt_start, 2)
+            attempt_error = str(e)
+            final_error = attempt_error
+            attempts.append({
+                "attempt": attempt,
+                "status": "failed",
+                "error": attempt_error,
+                "duration_seconds": elapsed,
+            })
+
+        if attempt_status in ("success", "skipped"):
+            break
+        if attempt < MAX_RETRIES:
+            logger.info("Waiting %d seconds before omniview_facts retry %d...", RETRY_DELAY_SECONDS, attempt + 1)
+            time.sleep(RETRY_DELAY_SECONDS)
+
+    total_duration = time.perf_counter() - start_time
+    return {
+        "dataset_name": dataset_name,
+        "function": PYTHON_OMNIVIEW_FACTS_MARKER,
+        "status": final_status,
+        "error": final_error,
+        "duration_seconds": round(total_duration, 2),
+        "attempts": attempts,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
 def _write_audit_record(
     dataset_name: str,
     status: str,
@@ -299,7 +401,10 @@ def run_refresh_job(
         for ds_name, func_name in datasets_to_process:
             logger.info("Refreshing dataset: %s", ds_name)
             
-            result = _execute_single_refresh(ds_name, func_name)
+            if _is_python_omniview_facts(func_name):
+                result = _execute_omniview_facts_refresh(ds_name)
+            else:
+                result = _execute_single_refresh(ds_name, func_name)
             results.append(result)
             
             # Registrar en auditoría (granular por dataset)
@@ -540,33 +645,32 @@ def get_data_freshness(
     data_threshold_minutes: int = DATA_FRESHNESS_THRESHOLD_MINUTES,
 ) -> Dict[str, Any]:
     """
-    Obtiene el freshness de los datos REALES desde la fuente de truth.
-    Valida que la columna exista antes de consultar.
-    Incluye métricas de calidad de datos basadas en volumen relativo.
+    Frescura operativa cerrada (sin intradía).
 
-    Args:
-        dataset_name: Nombre del dataset
-        data_threshold_minutes: Minutos para considerar datos stale (< 1440 = fresh)
-
-    Returns:
-        Dict con estado de freshness de los datos y métricas de calidad
+    - D-1_CLOSED (trips): día calendario CURRENT_DATE - 1.
+    - WEEK_CLOSED (week_fact): lunes ISO de la semana que contiene D-1.
     """
     source_config = DATASET_SOURCE_MAP.get(dataset_name)
+    target_mode = (
+        (source_config.get("target_date_mode") if source_config else None) or "D-1_CLOSED"
+    )
 
     if not source_config:
         return {
             "dataset": dataset_name,
             "data_status": "unknown",
-            "data_last_available_at": None,
-            "minutes_since_last_data": None,
             "message": f"No source of truth configured for dataset: {dataset_name}",
-            "data_threshold_minutes": data_threshold_minutes,
+            "target_date_mode": target_mode,
+            "target_date": None,
+            "row_count_target_date": None,
+            "avg_last_7_closed_days": None,
             "volume_ratio": None,
             "data_quality_status": "UNKNOWN",
         }
 
     table = source_config["table"]
     column = source_config["column"]
+    period_anchor = source_config.get("period_anchor")
 
     try:
         with get_db() as conn:
@@ -575,110 +679,94 @@ def get_data_freshness(
                 return {
                     "dataset": dataset_name,
                     "data_status": "error",
-                    "data_last_available_at": None,
-                    "minutes_since_last_data": None,
                     "source_table": table,
                     "source_column": column,
                     "message": f"Column '{column}' does not exist in table '{table}'",
-                    "data_threshold_minutes": data_threshold_minutes,
+                    "target_date_mode": target_mode,
+                    "target_date": None,
+                    "row_count_target_date": None,
+                    "avg_last_7_closed_days": None,
                     "volume_ratio": None,
                     "data_quality_status": "ERROR",
                 }
 
             cursor = conn.cursor()
 
-            # Query para obtener última fecha disponible + métricas de volumen
-            # MODO OPERATIVO: D-1_CLOSED
-            # La data se considera válida hasta el día vencido anterior (target_date = CURRENT_DATE - 1 day)
-            # La calidad se evalúa comparando días completos cerrados
-            # TODO: Parametrizar timezone de negocio (America/Lima) si aplica
+            if period_anchor == "iso_week_monday_of_d_minus_1":
+                params_sel = (
+                    "(date_trunc('week', (CURRENT_DATE - INTERVAL '1 day')::timestamp))::date AS target_date"
+                )
+                hist_span = "7 weeks"
+                log_label = "WEEK_CLOSED"
+            else:
+                params_sel = "(CURRENT_DATE - INTERVAL '1 day')::date AS target_date"
+                hist_span = "7 days"
+                log_label = "D-1_CLOSED"
+
             cursor.execute(f"""
                 WITH params AS (
-                    SELECT
-                        CURRENT_DATE - INTERVAL '1 day' AS target_date
+                    SELECT {params_sel}
                 ),
-                target_count AS (
-                    -- Filas del día objetivo (D-1 cerrado)
+                target AS (
                     SELECT COUNT(*) AS target_rows
-                    FROM {table}
-                    WHERE DATE({column}) = (SELECT target_date FROM params)
+                    FROM {table}, params
+                    WHERE DATE({column}) = DATE(params.target_date)
                 ),
                 history AS (
-                    -- Promedio de los últimos 7 días cerrados completos antes del target
                     SELECT DATE({column}) AS d, COUNT(*) AS cnt
-                    FROM {table}
-                    WHERE DATE({column}) >= (SELECT target_date FROM params) - INTERVAL '7 days'
-                    AND DATE({column}) < (SELECT target_date FROM params)
+                    FROM {table}, params
+                    WHERE DATE({column}) >= DATE(params.target_date) - INTERVAL '{hist_span}'
+                      AND DATE({column}) < DATE(params.target_date)
                     GROUP BY DATE({column})
                 )
                 SELECT
-                    (SELECT MAX({column}) FROM {table}) as max_date,
-                    NOW() as now_val,
-                    (SELECT target_date FROM params) as target_date_val,
-                    target_count.target_rows as row_count_target_date,
+                    params.target_date,
+                    target.target_rows,
                     AVG(history.cnt) AS avg_last_7_closed_days,
-                    COUNT(history.cnt) AS history_days_count
-                FROM target_count
+                    (SELECT MAX({column}) FROM {table}) AS max_date
+                FROM params
+                LEFT JOIN target ON TRUE
                 LEFT JOIN history ON TRUE
-                GROUP BY target_count.target_rows
+                GROUP BY params.target_date, target.target_rows
             """)
 
             row = cursor.fetchone()
             cursor.close()
 
-            if not row or row[0] is None:
+            if not row:
                 return {
                     "dataset": dataset_name,
-                    "data_status": "unknown",
-                    "data_last_available_at": None,
-                    "minutes_since_last_data": None,
+                    "data_status": "stale",
                     "source_table": table,
                     "source_column": column,
-                    "message": "No data found in source table",
-                    "data_threshold_minutes": data_threshold_minutes,
+                    "message": "No data returned for freshness query",
+                    "target_date_mode": target_mode,
+                    "target_date": None,
+                    "row_count_target_date": None,
+                    "avg_last_7_closed_days": None,
                     "volume_ratio": None,
-                    "data_quality_status": "CRITICAL" if (row and row[3] is not None and row[3] == 0) else "UNKNOWN",
+                    "data_quality_status": "UNKNOWN",
                 }
 
-            last_data_at = row[0]
-            now = row[1]
-            target_date = row[2]
-            row_count_target_date = row[3] or 0
-            avg_last_7_closed_days = row[4]
-            history_days_count = row[5] or 0
+            target_date = row[0]
+            row_count_target_date = row[1] if row[1] is not None else 0
+            avg_last_7_closed_days = row[2]
+            last_data_at = row[3]
 
-            # Calcular minutos desde último dato
-            minutes_since = None
-            if last_data_at and now:
-                try:
-                    minutes_since = (now - last_data_at).total_seconds() / 60
-                    if minutes_since < 0:
-                        minutes_since = 0.0
-                except (TypeError, ValueError):
-                    cursor2 = conn.cursor()
-                    cursor2.execute(f"""
-                        SELECT EXTRACT(EPOCH FROM (NOW() - MAX({column}))) / 60
-                        FROM {table}
-                    """)
-                    row2 = cursor2.fetchone()
-                    cursor2.close()
-                    minutes_since = float(row2[0]) if row2 and row2[0] else 0.0
-
-            # Determinar data_status: fresh si DATE(max_date) >= target_date
-            data_status = "unknown"
+            # DATE(max_date) >= target_date → fresh (sin conversiones TZ en app)
+            data_status = "stale"
             if last_data_at is not None and target_date is not None:
-                last_data_date = last_data_at.date() if hasattr(last_data_at, 'date') else last_data_at
-                target_d = target_date.date() if hasattr(target_date, 'date') else target_date
+                last_data_date = last_data_at.date() if hasattr(last_data_at, "date") else last_data_at
+                target_d = target_date.date() if hasattr(target_date, "date") else target_date
                 data_status = "fresh" if last_data_date >= target_d else "stale"
 
-            # Calcular volume_ratio y data_quality_status usando D-1 cerrado
             volume_ratio = None
             data_quality_status = "UNKNOWN"
 
             if row_count_target_date == 0:
                 data_quality_status = "CRITICAL"
                 volume_ratio = 0.0
-            elif avg_last_7_closed_days is None or avg_last_7_closed_days == 0:
+            elif avg_last_7_closed_days is None or avg_last_7_closed_days <= 0:
                 data_quality_status = "UNKNOWN"
                 volume_ratio = None
             else:
@@ -691,25 +779,30 @@ def get_data_freshness(
                     data_quality_status = "OK"
 
             logger.info(
-                "Data quality metrics for %s [D-1_CLOSED]: target_date=%s, rows=%s, avg7=%s, ratio=%s, status=%s",
-                dataset_name, target_date, row_count_target_date, avg_last_7_closed_days, volume_ratio, data_quality_status
+                "Data quality metrics for %s [%s/%s]: target_date=%s, rows=%s, avg_hist=%s, ratio=%s, status=%s",
+                dataset_name, target_mode, log_label, target_date, row_count_target_date,
+                avg_last_7_closed_days, volume_ratio, data_quality_status,
             )
 
             target_date_str = target_date.isoformat() if hasattr(target_date, 'isoformat') else str(target_date)
 
+            avg7 = (
+                float(avg_last_7_closed_days)
+                if avg_last_7_closed_days is not None
+                else None
+            )
+            vol = round(float(volume_ratio), 2) if volume_ratio is not None else None
+
             return {
                 "dataset": dataset_name,
                 "data_status": data_status,
-                "data_last_available_at": last_data_at.isoformat() if last_data_at else None,
-                "minutes_since_last_data": round(minutes_since, 2) if minutes_since is not None else None,
                 "source_table": table,
                 "source_column": column,
-                "data_threshold_minutes": data_threshold_minutes,
-                "target_date_mode": "D-1_CLOSED",
+                "target_date_mode": target_mode,
                 "target_date": target_date_str,
                 "row_count_target_date": row_count_target_date,
-                "avg_last_7_closed_days": round(avg_last_7_closed_days, 2) if avg_last_7_closed_days else None,
-                "volume_ratio": round(volume_ratio, 2) if volume_ratio is not None else None,
+                "avg_last_7_closed_days": round(avg7, 2) if avg7 is not None else None,
+                "volume_ratio": vol,
                 "data_quality_status": data_quality_status,
             }
 
@@ -718,12 +811,13 @@ def get_data_freshness(
         return {
             "dataset": dataset_name,
             "data_status": "error",
-            "data_last_available_at": None,
-            "minutes_since_last_data": None,
             "source_table": table,
             "source_column": column,
             "error": str(e),
-            "data_threshold_minutes": data_threshold_minutes,
+            "target_date_mode": target_mode,
+            "target_date": None,
+            "row_count_target_date": None,
+            "avg_last_7_closed_days": None,
             "volume_ratio": None,
             "data_quality_status": "ERROR",
         }
@@ -735,15 +829,15 @@ def get_combined_refresh_status(
     data_threshold_minutes: int = DATA_FRESHNESS_THRESHOLD_MINUTES,
 ) -> Dict[str, Any]:
     """
-    Obtiene el estado COMBINADO de refresh + freshness + calidad de datos.
+    Estado combinado refresh MV + freshness D-1_CLOSED + calidad de volumen.
 
     Args:
         dataset_name: Nombre del dataset
         refresh_threshold_minutes: Minutos para considerar refresh stale
-        data_threshold_minutes: Minutos para considerar datos stale
+        data_threshold_minutes: Reservado por compatibilidad de API (freshness D-1 no usa umbral por minutos)
 
     Returns:
-        Dict con status compuesto incluyendo data_quality
+        Dict con overall_status y bloque ``data`` solo con campos D-1_CLOSED
     """
     # Obtener status de refresh
     refresh_status = get_last_refresh_status(dataset_name, refresh_threshold_minutes)
@@ -756,7 +850,8 @@ def get_combined_refresh_status(
 
     # Extraer estados
     refresh_st = refresh_status.get("status")
-    data_st = data_freshness.get("data_status")
+    # data_status siempre string (nunca None en payload)
+    data_st = data_freshness.get("data_status") or "unknown"
     data_quality_st = data_freshness.get("data_quality_status")
 
     # Calcular overall_status con prioridad:
@@ -780,9 +875,21 @@ def get_combined_refresh_status(
     elif refresh_st == "stale":
         overall_status = "WARNING"
         overall_message = "Refresh is stale - last refresh too old"
-    elif refresh_st == "fresh" and data_st == "fresh" and data_quality_st == "OK":
+    elif refresh_st == "fresh" and data_st == "fresh" and data_quality_st in ("OK", "UNKNOWN"):
         overall_status = "OK"
-        overall_message = "Refresh, data freshness and quality are all OK"
+        tmode = data_freshness.get("target_date_mode") or "D-1_CLOSED"
+        if tmode == "WEEK_CLOSED":
+            overall_message = (
+                "Refresh and closed-week fact data are acceptable"
+                if data_quality_st == "OK"
+                else "Refresh and closed-week fact data are acceptable (volume baseline unavailable)"
+            )
+        else:
+            overall_message = (
+                "Refresh and D-1 closed data are acceptable"
+                if data_quality_st == "OK"
+                else "Refresh and D-1 closed data are acceptable (volume baseline unavailable)"
+            )
     elif refresh_st == "error" or data_st == "error" or data_quality_st == "ERROR":
         overall_status = "ERROR"
         overall_message = "Error checking status"
@@ -803,20 +910,14 @@ def get_combined_refresh_status(
             "threshold_minutes": refresh_threshold_minutes,
         },
         "data": {
-            "status": data_st,
-            "data_status": data_st,
-            "data_last_available_at": data_freshness.get("data_last_available_at"),
-            "minutes_since_last_data": data_freshness.get("minutes_since_last_data"),
             "source_table": data_freshness.get("source_table"),
             "source_column": data_freshness.get("source_column"),
-            "threshold_minutes": data_threshold_minutes,
-            # Modo operativo D-1_CLOSED
-            "target_date_mode": data_freshness.get("target_date_mode"),
             "target_date": data_freshness.get("target_date"),
-            # Métricas de calidad basadas en día vencido completo
+            "target_date_mode": data_freshness.get("target_date_mode"),
             "row_count_target_date": data_freshness.get("row_count_target_date"),
             "avg_last_7_closed_days": data_freshness.get("avg_last_7_closed_days"),
             "volume_ratio": data_freshness.get("volume_ratio"),
             "data_quality_status": data_freshness.get("data_quality_status"),
+            "data_status": data_st,
         },
     }

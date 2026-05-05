@@ -13,6 +13,7 @@ import {
   getProjectionStatusColors,
   isKpiComparableAcrossGrains,
   getKpiComparabilityBadge,
+  fmtPeriodPop,
 } from './omniview/projectionMatrixUtils.js'
 
 export default memo(function BusinessSliceOmniviewMatrixCell ({
@@ -331,6 +332,16 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
       {/* Fila 4: Gap absoluto (solo si disponible y no es caso negativo) */}
       {gapStr && !showGapPctFallback && (
         <div className={`${szGap} leading-none mt-px text-gray-400`}>{gapStr}</div>
+      )}
+
+      {delta.periodPopComparable && delta.periodPopLabel && fmtPeriodPop(delta.periodPop) && (
+        <div
+          className={`${szGap} leading-none mt-px text-slate-500 tabular-nums`}
+          title={`${delta.periodPopLabel} vs período anterior — ${kpiKey}`}
+        >
+          <span className="opacity-80">{delta.periodPopLabel}</span>{' '}
+          <span className="font-semibold text-slate-600">{fmtPeriodPop(delta.periodPop)}</span>
+        </div>
       )}
 
       {/* Etiqueta de estado "Sin ejecución" (solo cuando no hay real) */}

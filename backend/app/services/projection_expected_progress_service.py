@@ -49,6 +49,14 @@ from app.services.seasonality_curve_engine import (
     PROJECTABLE_KPIS,
     compute_expected_ratio,
 )
+from app.models.projection_ytd_schema import serialize_ytd_summary_for_api
+from app.services.projection_integrity_service import safe_build_projection_integrity_status
+from app.services.projection_ytd_alerts_service import compute_ytd_alerts
+from app.services.projection_ytd_period_service import (
+    apply_period_over_period_inplace,
+    compute_ytd_summary,
+    meta_period_over_period_kind,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1030,6 +1038,24 @@ def get_omniview_projection(
                 "distribution_debug": {"enabled": debug_distribution, "grain": grain, "rows": []},
                 "message": "No hay proyección cargada para esta versión / filtros.",
                 "data_freshness": df_empty,
+                "ytd_summary": None,
+                "ytd_alerts": [],
+                "period_over_period": {
+                    "kind": meta_period_over_period_kind(grain),
+                    "per_row_key": "period_over_period",
+                },
+                "metric_variations": {
+                    "per_row_key": "period_over_period",
+                    "kpis": ["trips_completed", "revenue_yego_net", "active_drivers", "avg_ticket"],
+                },
+                "integrity_status": safe_build_projection_integrity_status(
+                    display_rows=[],
+                    ytd_summary=None,
+                    ytd_alerts=[],
+                    had_resolved_plan=False,
+                    matched_count=0,
+                    plan_without_real_count=0,
+                ),
             },
         }
 
@@ -1137,10 +1163,59 @@ def get_omniview_projection(
         )
         display_rows = list(plan_without_real)
 
+    ytd_summary: Optional[Dict[str, Any]] = None
+    ytd_alerts: List[Dict[str, Any]] = []
+    try:
+        apply_period_over_period_inplace(display_rows, grain)
+        with get_db() as _conn_ytd:
+            ytd_summary = compute_ytd_summary(
+                _conn_ytd,
+                grain=grain,
+                rows=display_rows,
+                plan_version=plan_version,
+                idx=idx,
+                map_rows=map_rows,
+                country=country,
+                city=city,
+                business_slice=business_slice,
+                year=year,
+                month=month,
+                today=today,
+            )
+            ytd_alerts = compute_ytd_alerts(
+                _conn_ytd,
+                grain=grain,
+                display_rows=display_rows,
+                plan_version=plan_version,
+                idx=idx,
+                map_rows=map_rows,
+                country=country,
+                city=city,
+                business_slice=business_slice,
+                year=year,
+                month=month,
+                today=today,
+            )
+    except Exception as _ytd_exc:
+        logger.warning("get_omniview_projection ytd/pop: %s", _ytd_exc, exc_info=True)
+        ytd_summary = {"error": str(_ytd_exc), "grain": grain}
+        ytd_alerts = []
+
+    ytd_summary = serialize_ytd_summary_for_api(ytd_summary, grain=grain)
+
     _build_elapsed = time.perf_counter() - _t4
 
     matched_count   = sum(1 for r in result_rows if r.get("comparison_status") == "matched")
     missing_plan_ct = sum(1 for r in result_rows if r.get("comparison_status") == "missing_plan")
+
+    integrity_status = safe_build_projection_integrity_status(
+        display_rows=display_rows,
+        ytd_summary=ytd_summary,
+        ytd_alerts=ytd_alerts,
+        had_resolved_plan=len(resolved_plan_by_key) > 0,
+        matched_count=matched_count,
+        plan_without_real_count=len(plan_without_real),
+    )
 
     logger.info(
         "get_omniview_projection derive grain=%s monthly_plan_rows_loaded=%d resolved_plan_keys=%d "
@@ -1244,7 +1319,18 @@ def get_omniview_projection(
                 "total_real_rows":   len(result_rows),
                 "total_display_rows": len(display_rows),
             },
+            "ytd_summary": ytd_summary,
+            "ytd_alerts": ytd_alerts,
+            "period_over_period": {
+                "kind": meta_period_over_period_kind(grain),
+                "per_row_key": "period_over_period",
+            },
+            "metric_variations": {
+                "per_row_key": "period_over_period",
+                "kpis": ["trips_completed", "revenue_yego_net", "active_drivers", "avg_ticket"],
+            },
             "data_freshness": df_fresh,
+            "integrity_status": integrity_status,
         },
     }
 
@@ -1714,10 +1800,64 @@ def _build_iso_plan_maps(
     return daily_plan_map, weekly_plan_map, distribution_debug
 
 
+def _intraweek_kpi_expected_to_date(
+    *,
+    week_start: date,
+    week_plan_total: Optional[float],
+    daily_plan_map: Dict[Tuple, Dict[str, Any]],
+    co_norm: str,
+    ci_norm: str,
+    bsn_lower: str,
+    kpi: str,
+    today: date,
+) -> Tuple[Optional[float], str]:
+    """
+    Plan esperado acumulado dentro de la semana ISO hasta `min(today, domingo)`.
+    Usa suma de daily_plan del mapa; días sin dato usan reparto lineal (plan_semana/7).
+    """
+    week_end = week_start + timedelta(days=6)
+    wpt = _safe_float(week_plan_total)
+    if wpt is None:
+        return None, "no_plan"
+    if today > week_end:
+        return round(wpt, 2), "full_week_closed"
+    cutoff = min(today, week_end)
+    if cutoff < week_start:
+        return None, "before_week_start"
+
+    n_inclusive = (cutoff - week_start).days + 1
+    linear_per_day = float(wpt) / 7.0
+    daily_sum = 0.0
+    n_missing = 0
+    for i in range(n_inclusive):
+        d = week_start + timedelta(days=i)
+        dk = d.isoformat()
+        slot = (dk, co_norm, ci_norm, bsn_lower)
+        ent = daily_plan_map.get(slot)
+        if not ent:
+            n_missing += 1
+            continue
+        v = _safe_float((ent.get("daily_plan") or {}).get(kpi))
+        if v is None:
+            n_missing += 1
+        else:
+            daily_sum += float(v)
+
+    if n_missing == n_inclusive:
+        return round(float(wpt) * (n_inclusive / 7.0), 2), "linear_day_fraction"
+    if n_missing > 0:
+        return round(daily_sum + n_missing * linear_per_day, 2), "daily_plus_linear_fill"
+    return round(daily_sum, 2), "daily_distribution"
+
+
 def _build_weekly_row_from_iso_plan(
     weekly_plan_data: Dict[str, Any],
     real_data: Optional[Dict[str, Any]],
     comparison_status: str,
+    *,
+    daily_plan_map: Optional[Dict[Tuple, Dict[str, Any]]] = None,
+    today: Optional[date] = None,
+    slot_co_ci_bsn: Optional[Tuple[str, str, str]] = None,
 ) -> Dict[str, Any]:
     row: Dict[str, Any] = {
         "country": weekly_plan_data["country"],
@@ -1739,25 +1879,61 @@ def _build_weekly_row_from_iso_plan(
         "comparison_status": comparison_status,
     }
 
+    ws_raw = weekly_plan_data["week_start"]
+    week_start_d = ws_raw if isinstance(ws_raw, date) else date.fromisoformat(str(ws_raw)[:10])
+    week_end_d = week_start_d + timedelta(days=6)
+    if slot_co_ci_bsn:
+        co_norm, ci_norm, bsn_lower = slot_co_ci_bsn
+    else:
+        co_norm = _country_to_fact_name(str(weekly_plan_data.get("country") or ""))
+        ci_norm = _city_to_fact_name(str(weekly_plan_data.get("city") or ""))
+        bsn_lower = _canonical_slice_join_segment(str(weekly_plan_data.get("business_slice_name") or ""))
+
     for kpi in PROJECTABLE_KPIS:
         week_plan_total = _safe_float(weekly_plan_data["weekly_plan"].get(kpi))
         actual = _safe_float(real_data.get(_real_column(kpi))) if real_data else None
-        canon = compute_canonical_metrics(actual, week_plan_total, week_plan_total, "full_week")
+
+        intraweek_method = "full_week_legacy"
+        expected_to_date_week: Optional[float] = week_plan_total
+        if daily_plan_map is not None and today is not None:
+            expected_to_date_week, intraweek_method = _intraweek_kpi_expected_to_date(
+                week_start=week_start_d,
+                week_plan_total=week_plan_total,
+                daily_plan_map=daily_plan_map,
+                co_norm=co_norm,
+                ci_norm=ci_norm,
+                bsn_lower=bsn_lower,
+                kpi=kpi,
+                today=today,
+            )
+            is_full_week = today > week_end_d
+            comparison_basis = resolve_comparison_basis(is_full_week, "weekly")
+            expected_base = expected_to_date_week if expected_to_date_week is not None else week_plan_total
+        else:
+            comparison_basis = "full_week"
+            expected_base = week_plan_total
+
+        canon = compute_canonical_metrics(actual, expected_base, week_plan_total, comparison_basis)
 
         row[kpi] = actual
         row[f"{kpi}_projected_total"] = week_plan_total
-        row[f"{kpi}_projected_expected"] = week_plan_total
+        row[f"{kpi}_projected_expected"] = expected_base
+        row[f"{kpi}_projected_expected_to_date_week"] = expected_to_date_week
+        row[f"{kpi}_intraweek_expected_method"] = intraweek_method
         row[f"{kpi}_attainment_pct"] = canon["avance_pct"]
         row[f"{kpi}_gap_to_expected"] = canon["gap_abs"]
         row[f"{kpi}_gap_pct"] = canon["gap_pct"]
         row[f"{kpi}_gap_to_full"] = round(actual - week_plan_total, 2) if actual is not None and week_plan_total is not None else None
         row[f"{kpi}_completion_pct"] = round((actual / week_plan_total) * 100.0, 2) if actual is not None and week_plan_total and week_plan_total > 0 else None
         row[f"{kpi}_signal"] = resolve_signal(canon["avance_pct"], actual)
-        row[f"{kpi}_curve_method"] = "iso_week_from_daily_monthly_plan"
+        row[f"{kpi}_curve_method"] = f"iso_week_intraweek:{intraweek_method}" if daily_plan_map is not None and today is not None else "iso_week_from_daily_monthly_plan"
         row[f"{kpi}_curve_confidence"] = "exact"
         row[f"{kpi}_fallback_level"] = 0
-        row[f"{kpi}_expected_ratio"] = None
-        row[f"{kpi}_comparison_basis"] = "full_week"
+        if week_plan_total and week_plan_total > 0 and expected_to_date_week is not None:
+            row[f"{kpi}_expected_ratio"] = round(expected_to_date_week / week_plan_total, 6)
+        else:
+            row[f"{kpi}_expected_ratio"] = None
+        row[f"{kpi}_comparison_basis"] = comparison_basis
 
     _copy_aux_real_metrics(row, real_data)
     return row
@@ -1830,7 +2006,8 @@ def _build_weekly(
     """REAL-FIRST weekly. Plan semanal ISO completo derivado desde daily_plan."""
     real_map = _load_real_weekly(conn, country, city, business_slice, year, month)
     _log_projection_key_overlap("_build_weekly", plan_by_key, real_map)
-    _, weekly_plan_map, _distribution_debug = _build_iso_plan_maps(plan_by_key)
+
+    daily_plan_map, weekly_plan_map, _distribution_dbg = _build_iso_plan_maps(plan_by_key)
     distribution_debug = [
         {
             "country": data["country"],
@@ -1863,14 +2040,29 @@ def _build_weekly(
 
         real_data = real_map.get(slot)
         weekly_plan_data = weekly_plan_map.get(slot)
+        co_norm, ci_norm, bsn_slot = slot[1], slot[2], slot[3]
 
         if weekly_plan_data and real_data:
             main_result.append(
-                _build_weekly_row_from_iso_plan(weekly_plan_data, real_data, "matched")
+                _build_weekly_row_from_iso_plan(
+                    weekly_plan_data,
+                    real_data,
+                    "matched",
+                    daily_plan_map=daily_plan_map,
+                    today=today,
+                    slot_co_ci_bsn=(co_norm, ci_norm, bsn_slot),
+                )
             )
         elif weekly_plan_data:
             plan_without_real.append(
-                _build_weekly_row_from_iso_plan(weekly_plan_data, None, "plan_without_real")
+                _build_weekly_row_from_iso_plan(
+                    weekly_plan_data,
+                    None,
+                    "plan_without_real",
+                    daily_plan_map=daily_plan_map,
+                    today=today,
+                    slot_co_ci_bsn=(co_norm, ci_norm, bsn_slot),
+                )
             )
         elif real_data:
             row = _build_no_plan_row(real_data, ws, "weekly")

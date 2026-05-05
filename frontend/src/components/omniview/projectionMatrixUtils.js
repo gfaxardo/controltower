@@ -377,6 +377,8 @@ export function buildProjectionMatrix (rows, grain) {
         actual:             raw[kpi] ?? null,
         projected_total:    raw[`${kpi}_projected_total`] ?? null,
         projected_expected: raw[`${kpi}_projected_expected`] ?? null,
+        projected_expected_to_date_week: raw[`${kpi}_projected_expected_to_date_week`] ?? null,
+        intraweek_expected_method: raw[`${kpi}_intraweek_expected_method`] ?? null,
         attainment_pct:     raw[`${kpi}_attainment_pct`] ?? null,   // canónico: NUNCA negativo
         gap_to_expected:    raw[`${kpi}_gap_to_expected`] ?? null,   // gap_abs
         gap_pct:            raw[`${kpi}_gap_pct`] ?? null,           // NUEVO canónico: puede ser negativo
@@ -424,6 +426,7 @@ export function buildProjectionMatrix (rows, grain) {
       tb._comparison_basis = raw[`${PROJECTION_KPIS[0]}_comparison_basis`]
     }
     for (const kpi of PROJECTION_KPIS) {
+      if (kpi === 'active_drivers') continue
       tb[kpi].actual += Number(raw[kpi]) || 0
       tb[kpi].projected_total += Number(raw[`${kpi}_projected_total`]) || 0
       tb[kpi].projected_expected += Number(raw[`${kpi}_projected_expected`]) || 0
@@ -431,7 +434,6 @@ export function buildProjectionMatrix (rows, grain) {
     tb._trips += Number(raw.trips_completed) || 0
     tb._cancelled += Number(raw.trips_cancelled) || 0
     tb._revenue += Number(raw.revenue_yego_net) || 0
-    tb._drivers += Number(raw.active_drivers) || 0
     if (raw.avg_ticket != null) {
       tb._ticketSum += Number(raw.avg_ticket) || 0
       tb._ticketN += 1
@@ -448,6 +450,17 @@ export function buildProjectionMatrix (rows, grain) {
   for (const [pk, tb] of totalsBucket) {
     const entry = {}
     for (const kpi of PROJECTION_KPIS) {
+      if (kpi === 'active_drivers') {
+        entry[kpi] = null
+        entry[`${kpi}_projected_total`] = null
+        entry[`${kpi}_projected_expected`] = null
+        entry[`${kpi}_attainment_pct`] = null
+        entry[`${kpi}_gap_to_expected`] = null
+        entry[`${kpi}_gap_pct`] = null
+        entry[`${kpi}_signal`] = 'no_data'
+        entry[`${kpi}_comparison_basis`] = tb._comparison_basis || null
+        continue
+      }
       const { actual, projected_total, projected_expected } = tb[kpi]
 
       // Canónico: avance_pct NUNCA negativo (actual < 0 → null)
@@ -476,9 +489,9 @@ export function buildProjectionMatrix (rows, grain) {
     entry.trips_completed = tb._trips
     entry.trips_cancelled = tb._cancelled
     entry.revenue_yego_net = tb._revenue
-    entry.active_drivers = tb._drivers
-    entry.avg_ticket = tb._ticketN > 0 ? tb._ticketSum / tb._ticketN : null
-    entry.trips_per_driver = tb._drivers > 0 ? tb._trips / tb._drivers : null
+    entry.active_drivers = null
+    entry.avg_ticket = tb._trips > 0 && tb._revenue != null ? tb._revenue / tb._trips : null
+    entry.trips_per_driver = null
     entry.cancel_rate_pct = (tb._trips + tb._cancelled) > 0
       ? (tb._cancelled / (tb._trips + tb._cancelled)) * 100
       : null
@@ -528,6 +541,22 @@ export function projectionPeriodTooltipLabel (key, grain, periodMeta = null) {
 }
 
 /**
+ * Formato breve para variación DoD/WoW/MoM (usa abs o % si aplica).
+ */
+export function fmtPeriodPop (pop) {
+  if (!pop) return ''
+  if (pop.pct != null && Number.isFinite(pop.pct)) {
+    const p = pop.pct
+    return `${p > 0 ? '+' : ''}${p.toFixed(1)}%`
+  }
+  if (pop.abs != null && Number.isFinite(pop.abs)) {
+    const a = pop.abs
+    return `${a > 0 ? '+' : ''}${a.toFixed(0)}`
+  }
+  return ''
+}
+
+/**
  * Compute projection deltas for a single line across periods.
  * Unlike computeDeltas (which compares period-over-period),
  * this returns projection metrics per period.
@@ -541,6 +570,9 @@ export function computeProjectionDeltas (linePeriods, allPeriods) {
       result.set(pk, null)
       continue
     }
+
+    const popRoot = cell.raw?.period_over_period
+    const popm = popRoot?.metrics || {}
 
     const deltas = {}
     for (const { key } of MATRIX_KPIS) {
@@ -569,6 +601,10 @@ export function computeProjectionDeltas (linePeriods, allPeriods) {
           projection_anomaly: cell.projection_anomaly ?? false,
           isProjection: true,
           comparison_status: cell.comparison_status,
+          periodPop: popm[key] ?? null,
+          periodPopKind: popRoot?.kind ?? null,
+          periodPopLabel: popRoot?.label ?? null,
+          periodPopComparable: popRoot?.comparable ?? null,
         }
       } else {
         deltas[key] = {
@@ -576,6 +612,10 @@ export function computeProjectionDeltas (linePeriods, allPeriods) {
           signal: 'no_data',
           isProjection: false,
           comparison_status: cell.comparison_status,
+          periodPop: key === 'avg_ticket' ? (popm.avg_ticket ?? null) : null,
+          periodPopKind: popRoot?.kind ?? null,
+          periodPopLabel: popRoot?.label ?? null,
+          periodPopComparable: popRoot?.comparable ?? null,
         }
       }
     }

@@ -10,7 +10,7 @@ MANTENIMIENTO:
   - Cada alias es raw_name_lower → canonical_key.
   - Si el raw_name incluye subcategoría (ej. "delivery bicicleta"), mapear a la LOB base.
   - Las tildes se eliminan antes de la comparación (via remove_accents).
-  - Versión: 2 — 2026-04-16 (agregados aliases de subtipos y typos conocidos)
+  - Versión: 3 — 2026-05-04 (CT-GOV-1: candidatos delivery incl. Delivery bicicleta)
 """
 from __future__ import annotations
 
@@ -33,7 +33,9 @@ CANONICAL_LINE_KEYS = (
 PLAN_LINE_TO_SLICE_CANDIDATES: Dict[str, Tuple[str, ...]] = {
     "auto_taxi": ("Auto regular", "Auto Regular", "AUTO REGULAR", "Autos regular"),
     "tuk_tuk": ("Tuk Tuk", "TUK TUK", "Tuk tuk", "tuk tuk"),
-    "delivery": ("Delivery", "DELIVERY"),
+    # CT-GOV-1: en ciudades con tajada explícita "Delivery bicicleta" en reglas,
+    # resolver antes el subtipo tras el umbrella "Delivery".
+    "delivery": ("Delivery", "Delivery bicicleta", "DELIVERY", "delivery bicicleta"),
     "carga": ("Carga", "Cargo", "CARGA"),
     "taxi_moto": ("Moto", "Taxi moto", "Taxi Moto", "TAXI MOTO"),
     "pro": ("PRO", "Pro"),

@@ -8,6 +8,9 @@ Formato soportado:
   Hoja DRIVERS:  country, city, linea_negocio, YYYY-MM...
 
 Salida: lista de dicts compatible con ops.plan_trips_monthly.
+
+CT-MATCH-3: lob_base persiste el texto de linea_negocio del Excel (solo limpieza
+de espacios); no se aplica taxonomía legacy en la ingesta de esta plantilla.
 """
 
 import io
@@ -29,7 +32,9 @@ REQUIRED_SHEETS = {"TRIPS", "REVENUE", "DRIVERS"}
 DIM_COLS = ["country", "city", "linea_negocio"]
 MONTH_COL_RE = re.compile(r"^\d{4}-\d{2}$")
 
-# Mapeo linea_negocio → lob_base canónico (extiende data_contract sin duplicar)
+# LEGACY — mapeo semántico conservado por si otro flujo lo reutiliza.
+# La plantilla Control Tower (parse_control_tower_template) ya NO usa estos mapas
+# para lob_base; ver _normalize_lob_display_only (CT-MATCH-3).
 # Claves en minúsculas sin tildes.
 _PLAN_LOB_MAP: Dict[str, str] = {
     "auto regular":    "Auto Taxi",
@@ -58,11 +63,13 @@ def _remove_accents(text: str) -> str:
 
 
 def _normalize_lob(linea: str) -> str:
-    """Mapea linea_negocio → lob_base canónico. Retorna el original si no hay mapeo."""
+    """
+    LEGACY: mapeo semántico (data_contract + _PLAN_LOB_MAP).
+    No usado en la ingesta de plantilla Control Tower desde CT-MATCH-3.
+    """
     if not linea:
         return linea
     key = _remove_accents(linea.strip().lower())
-    # Intentar con el contrato existente primero
     try:
         from app.contracts.data_contract import normalize_line_of_business
         mapped = normalize_line_of_business(linea)
@@ -70,8 +77,28 @@ def _normalize_lob(linea: str) -> str:
             return mapped
     except Exception:
         pass
-    # Plan-specific fallback
     return _PLAN_LOB_MAP.get(key, linea.strip())
+
+
+def _normalize_lob_display_only(linea: object) -> Optional[str]:
+    """
+    Solo limpieza de formato para lob_base al ingerir plantilla Control Tower.
+
+    - trim, NBSP → espacio, colapso de espacios Unicode.
+    - Se preserva la capitalización y el significado del Excel (CT-MATCH-3).
+    """
+    if linea is None:
+        return None
+    try:
+        if pd.isna(linea):
+            return None
+    except TypeError:
+        pass
+    s = str(linea).replace("\u00a0", " ").strip()
+    if not s or s.lower() == "nan":
+        return None
+    s = re.sub(r"\s+", " ", s)
+    return s or None
 
 
 # ---------------------------------------------------------------------------
@@ -207,8 +234,8 @@ def parse_control_tower_template(
         df.loc[mask, "revenue_plan"] / df.loc[mask, "trips_plan"]
     )
 
-    # lob_base normalizado
-    df["lob_base"] = df["linea_negocio"].apply(_normalize_lob)
+    # lob_base = literal Excel (solo limpieza de espacios; CT-MATCH-3)
+    df["lob_base"] = df["linea_negocio"].apply(_normalize_lob_display_only)
 
     # Filtrar filas sin trips (nulos o cero)
     df = df[df["trips_plan"].notna() & (df["trips_plan"] > 0)].copy()

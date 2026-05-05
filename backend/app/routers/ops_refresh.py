@@ -89,17 +89,26 @@ async def trigger_refresh(
 async def get_refresh_status_v2(
     dataset: Optional[str] = Query(None, description="Nombre del dataset (default: 'mv_real_trips_monthly')"),
     refresh_threshold_minutes: int = Query(120, description="Minutos para considerar refresh stale"),
-    data_threshold_minutes: int = Query(1440, description="Minutos para considerar datos stale (< 1440 = fresh)"),
+    data_threshold_minutes: int = Query(1440, description="Sin uso en modo D-1_CLOSED; reservado por compatibilidad"),
 ):
     """
-    Estado COMBINADO de refresh + data freshness.
-    
+    Estado COMBINADO: refresh de MVs + freshness y calidad en modo D-1_CLOSED (solo día cerrado).
+
     Returns:
         {
             "dataset": str,
             "overall_status": "OK" | "WARNING" | "CRITICAL" | "ERROR" | "UNKNOWN",
+            "overall_message": str,
             "refresh": { ... },
-            "data": { ... }
+            "data": {
+                "target_date": str | null,
+                "target_date_mode": "D-1_CLOSED",
+                "row_count_target_date": int | null,
+                "avg_last_7_closed_days": float | null,
+                "volume_ratio": float | null,
+                "data_quality_status": str,
+                "data_status": "fresh" | "stale" | ...
+            }
         }
     """
     try:

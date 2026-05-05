@@ -44,6 +44,7 @@ import { detectInsights, buildInsightCellMap } from './omniview/insightEngine.js
 import { loadInsightUserPatch, mergeInsightRuntimeConfig } from './omniview/insightUserSettings.js'
 import BusinessSliceOmniviewMatrixTable from './BusinessSliceOmniviewMatrixTable.jsx'
 import { buildProjectionMatrix, PROJECTION_KPIS, fmtAttainment, projectionSignalColor, SIGNAL_DOT } from './omniview/projectionMatrixUtils.js'
+import { validateProjectionOmniviewContract, logProjectionYtdPopDebug } from './omniview/projectionContractValidation.js'
 import BusinessSliceOmniviewInspector from './BusinessSliceOmniviewInspector.jsx'
 import OmniviewPriorityPanel from './OmniviewPriorityPanel.jsx'
 import OmniviewProjectionDrill from './OmniviewProjectionDrill.jsx'
@@ -146,6 +147,8 @@ export default function BusinessSliceOmniviewMatrix () {
   const [projectionRows, setProjectionRows] = useState([])
   const [projectionMeta, setProjectionMeta] = useState(null)
   const [projectionResolvedKey, setProjectionResolvedKey] = useState(null)
+  /** Contrato meta.ytd_summary + filas.period_over_period (anti-regresión). */
+  const [projectionContractReport, setProjectionContractReport] = useState(() => ({ ok: true, issues: [] }))
 
   const [uploadModalOpen, setUploadModalOpen] = useState(false)
   const [uploadFile, setUploadFile] = useState(null)
@@ -214,6 +217,7 @@ export default function BusinessSliceOmniviewMatrix () {
     !!planVersion &&
     projectionResolvedKey !== projectionRequestKey
   const projectionReady = !loading && !projectionPending
+  const projectionIntegrityBroken = projectionMeta?.integrity_status?.status === 'broken'
 
   const trustAbortRef = useRef(null)
   const freshnessAbortRef = useRef(null)
@@ -409,6 +413,7 @@ export default function BusinessSliceOmniviewMatrix () {
     if (blockedByCountry) {
       setProjectionRows([])
       setProjectionMeta(null)
+      setProjectionContractReport({ ok: true, issues: [] })
       setErr(null)
       setLoading(false)
       return
@@ -416,6 +421,7 @@ export default function BusinessSliceOmniviewMatrix () {
     if (!planVersion) {
       setProjectionRows([])
       setProjectionMeta(null)
+      setProjectionContractReport({ ok: true, issues: [] })
       setErr(null)
       setLoading(false)
       return
@@ -430,7 +436,6 @@ export default function BusinessSliceOmniviewMatrix () {
       if (year != null && year !== '') params.year = Number(year)
       if (effectiveMonth) params.month = Number(effectiveMonth)
       const res = await getOmniviewProjection(params, { signal })
-      console.log('projection response', res?.data, res?.meta)
       let data = Array.isArray(res?.data) ? res.data : []
       const pwrRows = res?.meta?.plan_without_real?.rows
       if (
@@ -448,12 +453,27 @@ export default function BusinessSliceOmniviewMatrix () {
       if (res?.data_freshness) pm.data_freshness = res.data_freshness
       setProjectionMeta(pm)
       setProjectionResolvedKey(requestKey)
+      const contract = validateProjectionOmniviewContract(pm, data)
+      setProjectionContractReport(contract)
+      if (!contract.ok) {
+        console.error('[omniview projection] contrato incompleto', contract.issues, {
+          filtros: { country, city, businessSlice, grain, year, month: effectiveMonth, planVersion },
+        })
+      }
+      logProjectionYtdPopDebug(pm, data)
+      if (pm.integrity_status) {
+        console.log('[projection integrity]', pm.integrity_status)
+        if (Array.isArray(pm.integrity_status.issues) && pm.integrity_status.issues.length > 0) {
+          console.log('[projection integrity] issues:', pm.integrity_status.issues)
+        }
+      }
     } catch (e) {
       if (e?.code === 'ERR_CANCELED' || e?.name === 'CanceledError' || e?.name === 'AbortError') return
       const detail = e?.response?.data?.detail
       setErr((typeof detail === 'string' ? detail : detail?.message) || e.message || 'Error cargando proyección')
       setProjectionRows([])
       setProjectionMeta(null)
+      setProjectionContractReport({ ok: true, issues: [] })
       setProjectionResolvedKey(requestKey)
     } finally {
       setLoading(false)
@@ -1114,6 +1134,28 @@ export default function BusinessSliceOmniviewMatrix () {
           />
         )}
 
+        {/* ── Capa de integridad (Vs Proyección) — FASE 3.7 ───── */}
+        {heavyQueriesEnabled && isProjectionMode && projectionReady && projectionMeta?.integrity_status && (
+          <ProjectionIntegrityBanner integrity={projectionMeta.integrity_status} compact={compact} />
+        )}
+
+        {/* ── YTD resumido (Vs Proyección) — FASE 3.5 ─────────── */}
+        {heavyQueriesEnabled && isProjectionMode && projectionReady && !projectionContractReport.ok && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs text-amber-950 shadow-sm">
+            <span className="font-semibold">Datos de proyección incompletos. </span>
+            <span>{projectionContractReport.issues.map((it) => it.message).join(' · ')}</span>
+            <span className="text-amber-800/90"> Revisa la consola para detalle.</span>
+          </div>
+        )}
+
+        {heavyQueriesEnabled && isProjectionMode && projectionMeta?.ytd_summary && !projectionMeta.ytd_summary.error && (
+          <ProjectionYtdSummaryBar ytd={projectionMeta.ytd_summary} grain={grain} compact={compact} />
+        )}
+
+        {heavyQueriesEnabled && isProjectionMode && Array.isArray(projectionMeta?.ytd_alerts) && projectionMeta.ytd_alerts.length > 0 && !projectionIntegrityBroken && (
+          <ProjectionYtdAlertsBlock alerts={projectionMeta.ytd_alerts} compact={compact} />
+        )}
+
         {/* ── Context bar (Vs Proyección) ─────────────────────── */}
         {heavyQueriesEnabled && isProjectionMode && (
           <ProjectionContextBar
@@ -1213,7 +1255,7 @@ export default function BusinessSliceOmniviewMatrix () {
         )}
 
         {/* ── Prioridades del periodo (Vs Proyección) — FASE 3.3 ───── */}
-        {heavyQueriesEnabled && projectionReady && isProjectionMode && projMatrix && projectionRows.length > 0 && (
+        {heavyQueriesEnabled && projectionReady && isProjectionMode && projMatrix && projectionRows.length > 0 && !projectionIntegrityBroken && (
           <OmniviewPriorityPanel
             projMatrix={projMatrix}
             focusedKpi={focusedKpi}
@@ -1227,6 +1269,11 @@ export default function BusinessSliceOmniviewMatrix () {
         {heavyQueriesEnabled && projectionReady && isProjectionMode && projMatrix && projectionRows.length > 0 && (
           <div className="flex gap-3 items-start">
             <div className="flex-1 min-w-0">
+              {projectionIntegrityBroken && (
+                <div className="mb-2 rounded-md border border-red-200 bg-red-50/80 px-3 py-2 text-[11px] text-red-900" role="note">
+                  <strong>Integridad rota:</strong> puedes revisar la tabla como referencia, pero no tomes decisiones con alertas o prioridades automáticas hasta que el estado vuelva a confiable.
+                </div>
+              )}
               <BusinessSliceOmniviewMatrixTable
                 matrix={projMatrix} grain={grain} compact={compact} sortKey={sortKey}
                 onCellClick={handleCellClick} selectedCell={selectedCell}
@@ -1610,6 +1657,232 @@ function OperationalContextBar ({ grain, periodStates, allPeriods, comparisonMet
         <span className="text-[10px] text-slate-500 hidden lg:inline" title="State Engine: max por período en day_fact (no solo global)">
           Estados: backend · máx global {matrixMeta.slice_max_trip_date || '—'} · por período ✓
         </span>
+      )}
+    </div>
+  )
+}
+
+function ProjectionIntegrityBanner ({ integrity, compact }) {
+  if (!integrity) return null
+  const py = compact ? 'py-1.5' : 'py-2.5'
+  const base = `rounded-lg border shadow-sm px-4 ${py}`
+  const st = integrity.status
+  if (st === 'ok') {
+    return (
+      <div className={`${base} border-emerald-200 bg-emerald-50/95 text-emerald-950`} role="status">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+          <span aria-hidden>🟢</span>
+          <span className="font-bold">Sistema confiable</span>
+          {integrity.checked_at && (
+            <span className="text-emerald-900/75 tabular-nums text-[10px]">
+              · verificado {integrity.checked_at}
+            </span>
+          )}
+        </div>
+      </div>
+    )
+  }
+  if (st === 'warning') {
+    return (
+      <div className={`${base} border-amber-300 bg-amber-50 text-amber-950`} role="alert">
+        <div className="flex flex-wrap items-start gap-2 text-[11px]">
+          <span aria-hidden className="mt-0.5 flex-shrink-0">🟡</span>
+          <div className="min-w-0 flex-1">
+            <span className="font-bold">Datos parciales</span>
+            {Array.isArray(integrity.issues) && integrity.issues.length > 0 && (
+              <ul className="mt-1.5 list-disc list-inside text-[10px] text-amber-950 space-y-0.5">
+                {integrity.issues.slice(0, 6).map((t, i) => (
+                  <li key={i}>{t}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className={`${base} border-red-400 bg-red-50 text-red-950`} role="alert">
+      <div className="flex flex-wrap items-start gap-2 text-[11px]">
+        <span aria-hidden className="mt-0.5 flex-shrink-0">🔴</span>
+        <div className="min-w-0 flex-1">
+          <span className="font-bold">Datos incompletos — no tomar decisiones</span>
+          {Array.isArray(integrity.issues) && integrity.issues.length > 0 && (
+            <ul className="mt-1.5 list-disc list-inside text-[10px] text-red-900 space-y-0.5">
+              {integrity.issues.slice(0, 8).map((t, i) => (
+                <li key={i}>{t}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const DRIVER_LABEL_ES = {
+  volume: 'Volumen',
+  productivity: 'Productividad',
+  ticket: 'Ticket',
+}
+
+function ProjectionYtdAlertsBlock ({ alerts, compact }) {
+  const py = compact ? 'py-1.5' : 'py-2'
+  if (!alerts?.length) return null
+  const firstOpp = alerts.findIndex((a) => a.level === 'opportunity')
+  const problemRows = firstOpp === -1 ? alerts : alerts.slice(0, firstOpp)
+  const oppRows = firstOpp === -1 ? [] : alerts.slice(firstOpp)
+  const topProblems = problemRows.slice(0, 3)
+  const topOpps = oppRows.slice(0, 3)
+  if (topProblems.length === 0 && topOpps.length === 0) return null
+
+  return (
+    <div className={`rounded-lg border border-slate-200 bg-white shadow-sm px-4 ${py}`}>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-2">Top problemas del negocio</p>
+      <div className={`grid gap-3 ${compact ? 'grid-cols-1' : 'md:grid-cols-2'}`}>
+        <div>
+          <p className="text-[9px] font-semibold text-rose-800 mb-1.5">Top 3 críticos / alerta</p>
+          {topProblems.length === 0
+            ? <p className="text-[11px] text-slate-400">Sin alertas en esta vista.</p>
+            : (
+              <ol className="space-y-1.5 list-decimal list-inside text-[11px] text-slate-800">
+                {topProblems.map((a, i) => (
+                  <li key={`p-${i}-${a.entity}`} className="leading-snug">
+                    <span className="font-semibold">{a.entity}</span>
+                    <span className={`ml-1 px-1 rounded text-[9px] font-bold ${a.level === 'critical' ? 'bg-rose-100 text-rose-900' : 'bg-amber-100 text-amber-900'}`}>
+                      {a.level === 'critical' ? 'CRÍTICO' : 'ALERTA'}
+                    </span>
+                    <span className="text-slate-600 tabular-nums">{` · gap ${a.gap_trips != null ? `${Number(a.gap_trips) >= 0 ? '+' : ''}${Number(a.gap_trips).toLocaleString()} trips` : '—'}`}</span>
+                    {a.gap_pct != null && (
+                      <span className="text-slate-500 tabular-nums">{` (${Number(a.gap_pct) >= 0 ? '+' : ''}${Number(a.gap_pct).toFixed(1)}%)`}</span>
+                    )}
+                    <span className="text-slate-500">{` · driver: ${DRIVER_LABEL_ES[a.principal_driver] || a.principal_driver || '—'}`}</span>
+                  </li>
+                ))}
+              </ol>
+              )}
+        </div>
+        <div>
+          <p className="text-[9px] font-semibold text-emerald-800 mb-1.5">Top 3 oportunidades</p>
+          {topOpps.length === 0
+            ? <p className="text-[11px] text-slate-400">Sin oportunidades destacadas.</p>
+            : (
+              <ol className="space-y-1.5 list-decimal list-inside text-[11px] text-slate-800">
+                {topOpps.map((a, i) => (
+                  <li key={`o-${i}-${a.entity}`} className="leading-snug">
+                    <span className="font-semibold">{a.entity}</span>
+                    <span className="ml-1 px-1 rounded text-[9px] font-bold bg-emerald-100 text-emerald-900">OPORTUNIDAD</span>
+                    <span className="text-slate-600 tabular-nums">{` · gap ${a.gap_trips != null ? `${Number(a.gap_trips) >= 0 ? '+' : ''}${Number(a.gap_trips).toLocaleString()} trips` : '—'}`}</span>
+                    {a.gap_pct != null && (
+                      <span className="text-slate-500 tabular-nums">{` (${Number(a.gap_pct) >= 0 ? '+' : ''}${Number(a.gap_pct).toFixed(1)}%)`}</span>
+                    )}
+                    <span className="text-slate-500">{` · driver: ${DRIVER_LABEL_ES[a.principal_driver] || a.principal_driver || '—'}`}</span>
+                  </li>
+                ))}
+              </ol>
+              )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ProjectionYtdSummaryBar ({ ytd, grain, compact }) {
+  const py = compact ? 'py-1.5' : 'py-2'
+  if (!ytd) return null
+  const att = ytd.ytd_attainment_pct
+  const signal = att == null ? 'no_data' : att >= 100 ? 'green' : att >= 90 ? 'warning' : 'danger'
+  const dot = SIGNAL_DOT[signal] || SIGNAL_DOT.no_data
+  const attColor = projectionSignalColor(signal)
+  const gapT = ytd.ytd_gap_trips
+
+  const pacing = ytd.pacing_vs_expected
+  const pacingCls = pacing === 'ahead'
+    ? 'bg-emerald-100 text-emerald-900 border-emerald-200'
+    : pacing === 'behind'
+      ? 'bg-red-100 text-red-900 border-red-200'
+      : pacing === 'on_track'
+        ? 'bg-slate-100 text-slate-800 border-slate-200'
+        : 'bg-slate-50 text-slate-500 border-slate-200'
+  const pacingLabel = pacing === 'ahead' ? 'Adelantado'
+    : pacing === 'behind' ? 'Atrasado'
+      : pacing === 'on_track' ? 'En ritmo'
+      : '—'
+
+  const trend = ytd.ytd_trend
+  const trendArrow = trend === 'improving' ? '↑' : trend === 'deteriorating' ? '↓' : '→'
+  const trendLabel = trend === 'improving' ? 'Mejora'
+    : trend === 'deteriorating' ? 'Deterioro'
+      : trend === 'flat' ? 'Plano'
+      : '—'
+
+  const ddr = ytd.ytd_avg_active_drivers_real
+  const prod = ytd.driver_productivity_ytd_real
+
+  return (
+    <div className={`rounded-lg border border-indigo-100 bg-indigo-50/80 shadow-sm px-4 ${py}`}>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">YTD {ytd.year}</span>
+        <span
+          className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-px rounded border border-emerald-500/60 bg-emerald-100 text-emerald-900"
+          title="Resumen YTD presente en meta y renderizado en UI"
+        >
+          YTD activo
+        </span>
+        <span className="text-[10px] text-indigo-600/90">hasta <strong>{ytd.through_period}</strong> · grano <strong className="uppercase">{grain}</strong></span>
+        {pacing && (
+          <span className={`text-[9px] font-bold px-1.5 py-px rounded border ${pacingCls}`} title="Pacing vs plan esperado YTD (trips): &gt;103% adelantado, 97–103% en ritmo, &lt;97% atrasado">
+            Pacing: {pacingLabel}
+          </span>
+        )}
+        {trend && (
+          <span className="text-[9px] font-semibold text-slate-700" title="Tendencia reciente (hasta 3 períodos, cumplimiento agregado)">
+            Tendencia: <span className="tabular-nums text-[11px]">{trendArrow}</span> {trendLabel}
+          </span>
+        )}
+      </div>
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-800">
+        <span>
+          <span className="text-slate-500">Real trips</span>{' '}
+          <strong>{ytd.ytd_real_trips != null ? Number(ytd.ytd_real_trips).toLocaleString() : '—'}</strong>
+        </span>
+        <span>
+          <span className="text-slate-500">Plan esp.</span>{' '}
+          <strong>{ytd.ytd_plan_expected_trips != null ? Number(ytd.ytd_plan_expected_trips).toLocaleString() : '—'}</strong>
+        </span>
+        <span>
+          <span className="text-slate-500">Gap</span>{' '}
+          <strong>{gapT != null ? `${gapT >= 0 ? '+' : ''}${Number(gapT).toLocaleString()}` : '—'}</strong>
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="text-slate-500">Cump.</span>
+          <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
+          <strong style={{ color: attColor }}>{att != null ? fmtAttainment(att) : '—'}</strong>
+        </span>
+        {ddr != null && (
+          <span title="Promedio ponderado por trips del período (no suma de drivers únicos)">
+            <span className="text-slate-500">Drv.ø</span>{' '}
+            <strong className="tabular-nums">{Number(ddr).toFixed(1)}</strong>
+          </span>
+        )}
+        {prod != null && (
+          <span title="Productividad YTD: trips / drivers ponderados">
+            <span className="text-slate-500">TPD</span>{' '}
+            <strong className="tabular-nums">{Number(prod).toFixed(2)}</strong>
+          </span>
+        )}
+        {ytd.ytd_real_revenue != null && (
+          <span className="text-slate-600">
+            <span className="text-slate-500">Rev.R</span>{' '}
+            <strong>{Number(ytd.ytd_real_revenue).toLocaleString()}</strong>
+            {ytd.ytd_plan_expected_revenue != null && (
+              <span className="text-slate-400 font-normal">{` / esp. ${Number(ytd.ytd_plan_expected_revenue).toLocaleString()}`}</span>
+            )}
+          </span>
+        )}
+      </div>
+      {ytd.active_drivers_note && (
+        <p className="mt-1 text-[9px] text-slate-500 leading-snug max-w-4xl">{ytd.active_drivers_note}</p>
       )}
     </div>
   )
