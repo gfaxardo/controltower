@@ -707,6 +707,65 @@ export function basisSuffix (basis) {
   return ''
 }
 
+/** FASE 3.8 — pacing coherente con backend / YTD global */
+export function pacingFromYtdAttainment (attainmentPct) {
+  if (attainmentPct == null || !Number.isFinite(Number(attainmentPct))) return null
+  const a = Number(attainmentPct)
+  if (a > 103) return 'ahead'
+  if (a < 97) return 'behind'
+  return 'on_track'
+}
+
+export function ytdSliceBadgeVisual (ytdSlice) {
+  if (!ytdSlice) return { badgeClass: 'bg-gray-100 text-gray-500', emoji: '', label: 'YTD —' }
+  const att = ytdSlice.ytd_attainment_pct
+  const pacing = ytdSlice.pacing_vs_expected || pacingFromYtdAttainment(att)
+  if (att == null || !Number.isFinite(Number(att))) {
+    return { badgeClass: 'bg-gray-100 text-gray-500', emoji: '', label: 'YTD —' }
+  }
+  const pctStr = `YTD ${att >= 1000 ? '>999' : Number(att).toFixed(0)}%`
+  if (pacing === 'ahead' || (!pacing && Number(att) > 103)) {
+    return { badgeClass: 'bg-emerald-50 text-emerald-800 border border-emerald-200', emoji: '🟢', label: pctStr }
+  }
+  if (pacing === 'behind' || (!pacing && Number(att) < 97)) {
+    return { badgeClass: 'bg-red-50 text-red-800 border border-red-200', emoji: '🔴', label: pctStr }
+  }
+  return { badgeClass: 'bg-amber-50 text-amber-900 border border-amber-200', emoji: '🟡', label: pctStr }
+}
+
+export function formatNumShort (v) {
+  if (v == null || !Number.isFinite(Number(v))) return '—'
+  const n = Number(v)
+  if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(2)}M`
+  if (Math.abs(n) >= 1e3) return `${(n / 1e3).toFixed(1)}K`
+  return n.toFixed(n % 1 === 0 ? 0 : 2)
+}
+
+export function buildYtdSliceTooltip (ytdSlice) {
+  if (!ytdSlice) return 'YTD: sin datos'
+  const lines = [
+    `Clave: ${ytdSlice.slice_key || '—'} · ${ytdSlice.slice_level || '—'}`,
+    '',
+    `Real YTD viajes:     ${formatNumShort(ytdSlice.ytd_real_trips)}`,
+    `Plan esperado YTD:   ${formatNumShort(ytdSlice.ytd_plan_expected_trips)}`,
+    `Gap viajes:          ${formatNumShort(ytdSlice.ytd_gap_trips)}`,
+    `Cumplimiento %:      ${ytdSlice.ytd_attainment_pct != null ? `${Number(ytdSlice.ytd_attainment_pct).toFixed(1)}%` : '—'}`,
+    `Tendencia:           ${ytdSlice.ytd_trend || '—'}`,
+    '',
+    `Real YTD revenue:    ${formatNumShort(ytdSlice.ytd_real_revenue)}`,
+    `Plan esperado rev.:  ${formatNumShort(ytdSlice.ytd_plan_expected_revenue)}`,
+    `Gap revenue:         ${formatNumShort(ytdSlice.ytd_gap_revenue)}`,
+    '',
+    `Drivers real (prom. ponderado YTD): ${formatNumShort(ytdSlice.ytd_avg_active_drivers_real)}`,
+    `Drivers esperado (ponderado):        ${formatNumShort(ytdSlice.ytd_avg_active_drivers_expected)}`,
+    `Trips / driver (real):               ${formatNumShort(ytdSlice.driver_productivity_ytd_real)}`,
+    `Trips / driver (esperado):           ${formatNumShort(ytdSlice.driver_productivity_ytd_expected)}`,
+  ]
+  const trace = ytdSlice.metric_trace?.insufficient_data
+  if (trace) lines.push('', `Nota: ${trace}`)
+  return lines.join('\n')
+}
+
 export function buildProjectionCellTooltip (kpi, delta, cityName, lineName, periodLbl, kpiContract) {
   const parts = [`${cityName} · ${lineName}`, `Periodo: ${periodLbl}`, `KPI: ${kpi?.label || '—'}`]
 

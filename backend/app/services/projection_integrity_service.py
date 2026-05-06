@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,34 @@ def _row_has_pop(r: Dict[str, Any]) -> bool:
     return isinstance(pop, dict)
 
 
+def _row_has_ytd_slice(r: Dict[str, Any]) -> bool:
+    y = r.get("ytd_slice")
+    return isinstance(y, dict) and "slice_key" in y
+
+
+def _authoritative_total_ok(auth: Any) -> bool:
+    if not isinstance(auth, dict):
+        return False
+    t = auth.get("total")
+    if not isinstance(t, dict) or t.get("row_type") != "total":
+        return False
+    ys = t.get("ytd_slice")
+    if not isinstance(ys, dict) or "slice_key" not in ys:
+        return False
+    if ys.get("metric_trace", {}).get("insufficient_data"):
+        return False
+    return True
+
+
+def _city_keys_from_rows(display_rows: List[Dict[str, Any]]) -> Set[str]:
+    out: Set[str] = set()
+    for r in display_rows:
+        co = str(r.get("country") or "")
+        ci = str(r.get("city") or "")
+        out.add(f"{co}::{ci}")
+    return out
+
+
 def build_projection_integrity_status(
     *,
     display_rows: List[Dict[str, Any]],
@@ -27,12 +55,14 @@ def build_projection_integrity_status(
     had_resolved_plan: bool,
     matched_count: int,
     plan_without_real_count: int,
+    authoritative_ytd: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Deriva meta.integrity_status sin tocar filas ni contratos existentes.
     """
     issues: List[str] = []
     n = len(display_rows)
+    chk_ytd_slice = "n/a"
 
     # --- ytd_summary ---
     if ytd_summary is None:
@@ -77,11 +107,60 @@ def build_projection_integrity_status(
         if had_resolved_plan:
             issues.append("Sin filas en data pese a plan resuelto para el alcance")
 
+    # --- ytd_slice (FASE 3.8) ---
+    if n > 0:
+        ok_ys = sum(1 for r in display_rows if _row_has_ytd_slice(r))
+        if ok_ys == 0:
+            chk_ytd_slice = "missing"
+            issues.append("ytd_slice ausente en todas las filas")
+        elif ok_ys < n:
+            chk_ytd_slice = "partial"
+            issues.append(f"ytd_slice ausente en {n - ok_ys} de {n} filas")
+        else:
+            chk_ytd_slice = "ok"
+
+    # --- authoritative_aggregation (FASE 3.8B) ---
+    chk_authoritative_aggregation = "n/a"
+    if n > 0:
+        if not _authoritative_total_ok(authoritative_ytd):
+            chk_authoritative_aggregation = "missing"
+            issues.append(
+                "meta.authoritative_ytd ausente o incompleto: el cliente no debe recomponer YTD agregado",
+            )
+        else:
+            ok_rt = sum(
+                1
+                for r in display_rows
+                if r.get("row_type") in ("lob", "subfleet")
+            )
+            if ok_rt < n:
+                chk_authoritative_aggregation = "partial"
+                issues.append(
+                    f"row_type incompleto en {n - ok_rt} de {n} filas (se esperaba lob|subfleet)",
+                )
+            else:
+                by_city = authoritative_ytd.get("by_city") if isinstance(authoritative_ytd, dict) else None
+                if isinstance(by_city, dict):
+                    needed = _city_keys_from_rows(display_rows)
+                    missing_city = [k for k in needed if k not in ("", "::") and k not in by_city]
+                    if missing_city:
+                        chk_authoritative_aggregation = "partial"
+                        issues.append(
+                            "authoritative_ytd.by_city sin entrada para algunas ciudades del data",
+                        )
+                    else:
+                        chk_authoritative_aggregation = "ok"
+                else:
+                    chk_authoritative_aggregation = "partial"
+                    issues.append("authoritative_ytd.by_city no es un objeto válido")
+
     checks = {
         "ytd_summary": chk_ytd,
         "period_over_period": chk_pop,
         "ytd_alerts": chk_alerts,
         "data_rows": chk_data,
+        "ytd_slice": chk_ytd_slice,
+        "authoritative_aggregation": chk_authoritative_aggregation,
     }
 
     broken = False
@@ -93,10 +172,18 @@ def build_projection_integrity_status(
         broken = True
     if n > 0 and chk_pop == "missing":
         broken = True
+    if n > 0 and chk_ytd_slice == "missing":
+        broken = True
+    if n > 0 and chk_authoritative_aggregation == "missing":
+        broken = True
 
     warning = False
     if not broken:
         if chk_pop == "partial":
+            warning = True
+        if chk_ytd_slice == "partial":
+            warning = True
+        if chk_authoritative_aggregation == "partial":
             warning = True
         if matched_count == 0 and plan_without_real_count > 0 and n > 0:
             warning = True
@@ -137,6 +224,7 @@ def safe_build_projection_integrity_status(
     had_resolved_plan: bool,
     matched_count: int,
     plan_without_real_count: int,
+    authoritative_ytd: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     try:
         return build_projection_integrity_status(
@@ -146,6 +234,7 @@ def safe_build_projection_integrity_status(
             had_resolved_plan=had_resolved_plan,
             matched_count=matched_count,
             plan_without_real_count=plan_without_real_count,
+            authoritative_ytd=authoritative_ytd,
         )
     except Exception as exc:  # pragma: no cover - defensivo
         logger.warning("safe_build_projection_integrity_status: %s", exc, exc_info=True)
@@ -159,5 +248,7 @@ def safe_build_projection_integrity_status(
                 "period_over_period": "error",
                 "ytd_alerts": "error",
                 "data_rows": "error",
+                "ytd_slice": "error",
+                "authoritative_aggregation": "error",
             },
         }

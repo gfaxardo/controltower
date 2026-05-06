@@ -1280,6 +1280,8 @@ export default function BusinessSliceOmniviewMatrix () {
                 periodStates={periodStates}
                 focusedKpi={focusedKpi}
                 mode="projection"
+                projectionAuthoritativeYtd={projectionMeta?.authoritative_ytd}
+                projectionIntegrityBroken={projectionIntegrityBroken}
               />
             </div>
             <OmniviewProjectionDrill

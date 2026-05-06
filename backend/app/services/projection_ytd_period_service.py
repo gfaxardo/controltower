@@ -482,3 +482,565 @@ def attach_projection_ytd_and_pop(
 
 def meta_period_over_period_kind(grain: str) -> str:
     return {"monthly": "mom", "weekly": "wow", "daily": "dod"}.get(grain, "mom")
+
+
+def _slice_key_from_line_key(lk: Tuple) -> str:
+    co, ci, bsn, is_sf, sub = lk
+    return f"{co}::{ci}::{bsn}::{1 if is_sf else 0}::{sub}"
+
+
+def _slice_level_from_line_key(lk: Tuple) -> str:
+    return "subfleet" if lk[3] else "lob"
+
+
+def _empty_ytd_slice_payload(grain: str, lk: Tuple, *, trace_note: str) -> Dict[str, Any]:
+    """Fila/slice sin acumulación suficiente; objeto siempre presente (FASE 3.8)."""
+    return {
+        "grain": grain,
+        "slice_key": _slice_key_from_line_key(lk),
+        "slice_level": _slice_level_from_line_key(lk),
+        "ytd_real_trips": None,
+        "ytd_plan_expected_trips": None,
+        "ytd_gap_trips": None,
+        "ytd_attainment_pct": None,
+        "pacing_vs_expected": None,
+        "ytd_trend": None,
+        "ytd_real_revenue": None,
+        "ytd_plan_expected_revenue": None,
+        "ytd_gap_revenue": None,
+        "ytd_avg_active_drivers_real": None,
+        "ytd_avg_active_drivers_expected": None,
+        "driver_productivity_ytd_real": None,
+        "driver_productivity_ytd_expected": None,
+        "metric_trace": {
+            "insufficient_data": trace_note,
+            "expected_plan_basis": "same_as_global_ytd_summary",
+            "slice_key_rule": "country::city::business_slice_name::is_subfleet_flag::subfleet_name",
+        },
+    }
+
+
+def _finalize_ytd_slice_only(
+    *,
+    grain: str,
+    lk: Tuple,
+    year_eff: int,
+    through_label: str,
+    sums_real: Dict[str, float],
+    sums_exp: Dict[str, float],
+    drv_acc: Dict[str, float],
+    period_snapshots: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Misma lógica numérica que meta.ytd_summary pero anexada por slice (sin gap_decomposition)."""
+    full = _finalize_ytd_payload(
+        grain=grain,
+        year_eff=year_eff,
+        through_label=through_label,
+        sums_real=dict(sums_real),
+        sums_exp=dict(sums_exp),
+        drv_acc=drv_acc,
+        period_snapshots=period_snapshots,
+    )
+    mt: Dict[str, Any] = dict(full.get("metric_trace") or {})
+    mt["slice_key_rule"] = "country::city::business_slice_name::is_subfleet_flag::subfleet_name"
+    mt["slice_coordinate"] = {
+        "country": lk[0],
+        "city": lk[1],
+        "business_slice_name": lk[2],
+        "is_subfleet": lk[3],
+        "subfleet_name": lk[4],
+    }
+    mt.pop("gap_decomposition", None)
+    return {
+        "grain": grain,
+        "slice_key": _slice_key_from_line_key(lk),
+        "slice_level": _slice_level_from_line_key(lk),
+        "ytd_real_trips": full.get("ytd_real_trips"),
+        "ytd_plan_expected_trips": full.get("ytd_plan_expected_trips"),
+        "ytd_gap_trips": full.get("ytd_gap_trips"),
+        "ytd_attainment_pct": full.get("ytd_attainment_pct"),
+        "pacing_vs_expected": full.get("pacing_vs_expected"),
+        "ytd_trend": full.get("ytd_trend"),
+        "ytd_real_revenue": full.get("ytd_real_revenue"),
+        "ytd_plan_expected_revenue": full.get("ytd_plan_expected_revenue"),
+        "ytd_gap_revenue": full.get("ytd_gap_revenue"),
+        "ytd_avg_active_drivers_real": full.get("ytd_avg_active_drivers_real"),
+        "ytd_avg_active_drivers_expected": full.get("ytd_avg_active_drivers_expected"),
+        "driver_productivity_ytd_real": full.get("driver_productivity_ytd_real"),
+        "driver_productivity_ytd_expected": full.get("driver_productivity_ytd_expected"),
+        "metric_trace": mt,
+    }
+
+
+def compute_ytd_slice_by_line_key(
+    conn: Any,
+    *,
+    grain: str,
+    display_rows: List[Dict[str, Any]],
+    plan_version: str,
+    idx: Any,
+    map_rows: List[dict],
+    country: Optional[str],
+    city: Optional[str],
+    business_slice: Optional[str],
+    year: Optional[int],
+    month: Optional[int],
+    today: date,
+) -> Dict[Tuple, Dict[str, Any]]:
+    """
+    YTD por slice operativo (misma lógica de expected que compute_ytd_summary / granularidad).
+    Clave alineada con period_over_period y matriz (country, city, bsn, subfleet).
+    """
+    pe = _peps()
+    year_eff = year if year is not None else today.year
+    cutoff = _ytd_calendar_cutoff(year_eff, month, today)
+    through_label = cutoff.isoformat()
+    keys_from_display = {_line_key(r) for r in display_rows}
+
+    def _acc_box() -> Dict[str, Any]:
+        return {
+            "sums_real": defaultdict(float),
+            "sums_exp": defaultdict(float),
+            "drv_acc": {"real_num": 0.0, "real_den": 0.0, "exp_num": 0.0, "exp_den": 0.0},
+        }
+
+    result: Dict[Tuple, Dict[str, Any]] = {}
+
+    if grain == "weekly":
+        ref_monday = today - timedelta(days=today.weekday())
+        acc: Dict[Tuple, Dict[str, Any]] = defaultdict(_acc_box)
+        by_w: Dict[Tuple, Dict[str, Dict[str, float]]] = defaultdict(
+            lambda: defaultdict(lambda: {"r": 0.0, "e": 0.0})
+        )
+
+        for r in display_rows:
+            ws = r.get("week_start")
+            if not ws:
+                continue
+            wsd = date.fromisoformat(str(ws)[:10])
+            if wsd > ref_monday:
+                continue
+            if int(r.get("iso_year") or 0) != int(year_eff):
+                continue
+            lk = _line_key(r)
+            box = acc[lk]
+            _acc_stack_ytd_row(r, box["sums_real"], box["sums_exp"], box["drv_acc"])
+            wks = str(ws)[:10]
+            by_w[lk][wks]["r"] += float(_safe_float(r.get("trips_completed")) or 0.0)
+            by_w[lk][wks]["e"] += float(_safe_float(r.get("trips_completed_projected_expected")) or 0.0)
+
+        for lk, box in acc.items():
+            period_snapshots: List[Dict[str, Any]] = []
+            sorted_weeks = sorted(by_w[lk].keys())
+            for wk in sorted_weeks[-3:]:
+                t = by_w[lk][wk]
+                att_p = round((t["r"] / t["e"]) * 100.0, 2) if t["e"] > 0 else None
+                period_snapshots.append(
+                    {"period": wk, "attainment_pct": att_p, "real_trips": t["r"], "exp_trips": t["e"]}
+                )
+            result[lk] = _finalize_ytd_slice_only(
+                grain=grain,
+                lk=lk,
+                year_eff=year_eff,
+                through_label=through_label,
+                sums_real=box["sums_real"],
+                sums_exp=box["sums_exp"],
+                drv_acc=box["drv_acc"],
+                period_snapshots=period_snapshots,
+            )
+
+    elif grain == "daily":
+        plan_year_rows = pe._load_plan(plan_version, country, city, year_eff, None)
+        plan_by_year = pe._resolve_and_index_plan(plan_year_rows, idx, map_rows)
+        end_m = month if month else (today.month if year_eff == today.year else 12)
+
+        acc = defaultdict(_acc_box)
+        daily_agg: Dict[Tuple, Dict[str, Dict[str, float]]] = defaultdict(
+            lambda: defaultdict(lambda: {"r": 0.0, "e": 0.0})
+        )
+
+        for m in range(1, end_m + 1):
+            mk = pe._month_key(date(year_eff, m, 1))
+            sub_plan = {k: v for k, v in plan_by_year.items() if k[0] == mk}
+            dr, dp, _, _ = pe._build_daily(
+                conn, sub_plan, today, country, city, business_slice, year_eff, m
+            )
+            for row in dr + dp:
+                td = row.get("trip_date")
+                td_s = td.isoformat()[:10] if hasattr(td, "isoformat") else str(td or "")[:10]
+                if td_s > cutoff.isoformat():
+                    continue
+                lk = _line_key(row)
+                box = acc[lk]
+                _acc_stack_ytd_row(row, box["sums_real"], box["sums_exp"], box["drv_acc"])
+                daily_agg[lk][td_s]["r"] += float(_safe_float(row.get("trips_completed")) or 0.0)
+                daily_agg[lk][td_s]["e"] += float(
+                    _safe_float(row.get("trips_completed_projected_expected")) or 0.0
+                )
+
+        for lk, box in acc.items():
+            sorted_days = sorted(d for d in daily_agg[lk].keys() if d <= cutoff.isoformat())
+            period_snapshots = []
+            for dk in sorted_days[-3:]:
+                t = daily_agg[lk][dk]
+                att_p = round((t["r"] / t["e"]) * 100.0, 2) if t["e"] > 0 else None
+                period_snapshots.append(
+                    {"period": dk, "attainment_pct": att_p, "real_trips": t["r"], "exp_trips": t["e"]}
+                )
+            result[lk] = _finalize_ytd_slice_only(
+                grain=grain,
+                lk=lk,
+                year_eff=year_eff,
+                through_label=through_label,
+                sums_real=box["sums_real"],
+                sums_exp=box["sums_exp"],
+                drv_acc=box["drv_acc"],
+                period_snapshots=period_snapshots,
+            )
+
+    else:  # monthly
+        plan_year_rows = pe._load_plan(plan_version, country, city, year_eff, None)
+        plan_by_year = pe._resolve_and_index_plan(plan_year_rows, idx, map_rows)
+        end_m = month if month else (today.month if year_eff == today.year else 12)
+
+        acc = defaultdict(_acc_box)
+        month_snap: Dict[Tuple, List[Dict[str, Any]]] = defaultdict(list)
+
+        for m in range(1, end_m + 1):
+            mk = pe._month_key(date(year_eff, m, 1))
+            sub_plan = {k: v for k, v in plan_by_year.items() if k[0] == mk}
+            main, pwr, _ = pe._build_monthly(
+                conn, sub_plan, today, country, city, business_slice, year_eff, m
+            )
+            comb = main + pwr
+            by_m: Dict[Tuple, Dict[str, float]] = defaultdict(lambda: {"tr": 0.0, "te": 0.0})
+
+            for row in comb:
+                lk = _line_key(row)
+                by_m[lk]["tr"] += float(_safe_float(row.get("trips_completed")) or 0.0)
+                by_m[lk]["te"] += float(
+                    _safe_float(row.get("trips_completed_projected_expected")) or 0.0
+                )
+                box = acc[lk]
+                _acc_stack_ytd_row(row, box["sums_real"], box["sums_exp"], box["drv_acc"])
+
+            for lk, t in by_m.items():
+                att_p = round((t["tr"] / t["te"]) * 100.0, 2) if t["te"] > 0 else None
+                month_snap[lk].append(
+                    {
+                        "period": f"{year_eff}-{m:02d}",
+                        "attainment_pct": att_p,
+                        "real_trips": t["tr"],
+                        "exp_trips": t["te"],
+                    }
+                )
+
+        for lk, box in acc.items():
+            snaps = month_snap[lk][-3:]
+            result[lk] = _finalize_ytd_slice_only(
+                grain=grain,
+                lk=lk,
+                year_eff=year_eff,
+                through_label=through_label,
+                sums_real=box["sums_real"],
+                sums_exp=box["sums_exp"],
+                drv_acc=box["drv_acc"],
+                period_snapshots=snaps,
+            )
+
+    for lk in keys_from_display:
+        if lk not in result:
+            result[lk] = _empty_ytd_slice_payload(
+                grain,
+                lk,
+                trace_note="sin períodos acumulados para esta clave en el alcance devuelto",
+            )
+
+    return result
+
+
+def ytd_summary_api_to_authoritative_total_slice(
+    ytd_summary_api: Optional[Dict[str, Any]],
+    *,
+    grain: str,
+) -> Dict[str, Any]:
+    """
+    TOTAL YTD slice: copia campo a campo de meta.ytd_summary ya serializada para API.
+    Garantiza misma semántica numérica que el JSON de ytd_summary.
+    """
+    if not ytd_summary_api or not isinstance(ytd_summary_api, dict) or ytd_summary_api.get("error"):
+        trace = (
+            f"ytd_summary en error o ausente: {ytd_summary_api.get('error')}"
+            if isinstance(ytd_summary_api, dict) and ytd_summary_api.get("error")
+            else "ytd_summary no disponible"
+        )
+        return {
+            "grain": grain,
+            "slice_key": "__PORTFOLIO__",
+            "slice_level": "total",
+            "ytd_real_trips": None,
+            "ytd_plan_expected_trips": None,
+            "ytd_gap_trips": None,
+            "ytd_attainment_pct": None,
+            "pacing_vs_expected": None,
+            "ytd_trend": None,
+            "ytd_real_revenue": None,
+            "ytd_plan_expected_revenue": None,
+            "ytd_gap_revenue": None,
+            "ytd_avg_active_drivers_real": None,
+            "ytd_avg_active_drivers_expected": None,
+            "driver_productivity_ytd_real": None,
+            "driver_productivity_ytd_expected": None,
+            "metric_trace": {"insufficient_data": trace, "basis": "meta.ytd_summary"},
+        }
+
+    return {
+        "grain": ytd_summary_api.get("grain", grain),
+        "slice_key": "__PORTFOLIO__",
+        "slice_level": "total",
+        "ytd_real_trips": ytd_summary_api.get("ytd_real_trips"),
+        "ytd_plan_expected_trips": ytd_summary_api.get("ytd_plan_expected_trips"),
+        "ytd_gap_trips": ytd_summary_api.get("ytd_gap_trips"),
+        "ytd_attainment_pct": ytd_summary_api.get("ytd_attainment_pct"),
+        "pacing_vs_expected": ytd_summary_api.get("pacing_vs_expected"),
+        "ytd_trend": ytd_summary_api.get("ytd_trend"),
+        "ytd_real_revenue": ytd_summary_api.get("ytd_real_revenue"),
+        "ytd_plan_expected_revenue": ytd_summary_api.get("ytd_plan_expected_revenue"),
+        "ytd_gap_revenue": ytd_summary_api.get("ytd_gap_revenue"),
+        "ytd_avg_active_drivers_real": ytd_summary_api.get("ytd_avg_active_drivers_real"),
+        "ytd_avg_active_drivers_expected": ytd_summary_api.get("ytd_avg_active_drivers_expected"),
+        "driver_productivity_ytd_real": ytd_summary_api.get("driver_productivity_ytd_real"),
+        "driver_productivity_ytd_expected": ytd_summary_api.get("driver_productivity_ytd_expected"),
+        "metric_trace": {
+            "basis": "identical_fields_to_meta_ytd_summary_api",
+            "source": "meta.ytd_summary",
+        },
+    }
+
+
+def _aggregate_ytd_slice_payloads_for_scope(
+    slices: List[Dict[str, Any]],
+    *,
+    grain: str,
+    slice_key: str,
+    slice_level: str,
+) -> Dict[str, Any]:
+    """Rollup aditivo autoritativo (FASE 3.8B): suma viajes/revenue; drivers ponderados."""
+    clean = [s for s in slices if isinstance(s, dict)]
+    if not clean:
+        return {
+            "grain": grain,
+            "slice_key": slice_key,
+            "slice_level": slice_level,
+            "ytd_real_trips": None,
+            "ytd_plan_expected_trips": None,
+            "ytd_gap_trips": None,
+            "ytd_attainment_pct": None,
+            "pacing_vs_expected": None,
+            "ytd_trend": None,
+            "ytd_real_revenue": None,
+            "ytd_plan_expected_revenue": None,
+            "ytd_gap_revenue": None,
+            "ytd_avg_active_drivers_real": None,
+            "ytd_avg_active_drivers_expected": None,
+            "driver_productivity_ytd_real": None,
+            "driver_productivity_ytd_expected": None,
+            "metric_trace": {
+                "insufficient_data": "sin slices hijas para agregar",
+                "basis": "authoritative_backend_additive_rollup",
+                "slice_level": slice_level,
+            },
+        }
+
+    sum_tr = sum_te = sum_rr = sum_re = 0.0
+    has_tr = has_te = has_rr = has_re = False
+    drv_num_r = drv_den_r = drv_num_e = drv_den_e = 0.0
+    child_keys: List[str] = []
+
+    for y in clean:
+        sk = y.get("slice_key")
+        if sk is not None:
+            child_keys.append(str(sk))
+        t = _safe_float(y.get("ytd_real_trips"))
+        if t is not None:
+            sum_tr += float(t)
+            has_tr = True
+        e = _safe_float(y.get("ytd_plan_expected_trips"))
+        if e is not None:
+            sum_te += float(e)
+            has_te = True
+        rr = _safe_float(y.get("ytd_real_revenue"))
+        if rr is not None:
+            sum_rr += float(rr)
+            has_rr = True
+        re = _safe_float(y.get("ytd_plan_expected_revenue"))
+        if re is not None:
+            sum_re += float(re)
+            has_re = True
+
+        trw = _safe_float(y.get("ytd_real_trips"))
+        dr = _safe_float(y.get("ytd_avg_active_drivers_real"))
+        if trw is not None and dr is not None and trw > 0:
+            drv_num_r += float(dr) * float(trw)
+            drv_den_r += float(trw)
+        tew = _safe_float(y.get("ytd_plan_expected_trips"))
+        de = _safe_float(y.get("ytd_avg_active_drivers_expected"))
+        if tew is not None and de is not None and tew > 0:
+            drv_num_e += float(de) * float(tew)
+            drv_den_e += float(tew)
+
+    ytd_att = round((sum_tr / sum_te) * 100.0, 2) if sum_te > 0 else None
+    pacing = _pacing_vs_expected(ytd_att)
+    gap_t = round(sum_tr - sum_te, 2) if (has_te or has_tr) else None
+    gap_r = round(sum_rr - sum_re, 2) if (has_rr or has_re) else None
+    avg_dr = round(drv_num_r / drv_den_r, 4) if drv_den_r > 0 else None
+    avg_de = round(drv_num_e / drv_den_e, 4) if drv_den_e > 0 else None
+    prod_r = round(sum_tr / avg_dr, 4) if avg_dr and avg_dr > 0 and has_tr else None
+    prod_e = round(sum_te / avg_de, 4) if avg_de and avg_de > 0 and has_te else None
+
+    return {
+        "grain": grain,
+        "slice_key": slice_key,
+        "slice_level": slice_level,
+        "ytd_real_trips": round(sum_tr, 2) if has_tr else None,
+        "ytd_plan_expected_trips": round(sum_te, 2) if has_te else None,
+        "ytd_gap_trips": gap_t,
+        "ytd_attainment_pct": ytd_att,
+        "pacing_vs_expected": pacing,
+        "ytd_trend": None,
+        "ytd_real_revenue": round(sum_rr, 2) if has_rr else None,
+        "ytd_plan_expected_revenue": round(sum_re, 2) if has_re else None,
+        "ytd_gap_revenue": gap_r,
+        "ytd_avg_active_drivers_real": avg_dr,
+        "ytd_avg_active_drivers_expected": avg_de,
+        "driver_productivity_ytd_real": prod_r,
+        "driver_productivity_ytd_expected": prod_e,
+        "metric_trace": {
+            "basis": "authoritative_backend_additive_rollup",
+            "slice_level": slice_level,
+            "child_slice_keys_sample": child_keys[:25],
+            "child_count": len(child_keys),
+        },
+    }
+
+
+def build_authoritative_ytd_block(
+    *,
+    grain: str,
+    by_line: Dict[Tuple, Dict[str, Any]],
+    ytd_summary_api: Optional[Dict[str, Any]],
+    display_rows: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """
+    Bloque meta.authoritative_ytd: total = ytd_summary; país/ciudad = rollup desde by_line.
+    """
+    total_row = {
+        "row_type": "total",
+        "row_scope_key": "__PORTFOLIO__",
+        "ytd_slice": ytd_summary_api_to_authoritative_total_slice(ytd_summary_api, grain=grain),
+    }
+
+    countries: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    cities: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+
+    for lk, ytd in by_line.items():
+        co, ci, _, _, _ = lk
+        countries[str(co)].append(ytd)
+        cities[f"{co}::{ci}"].append(ytd)
+
+    by_country: Dict[str, Dict[str, Any]] = {}
+    for ckey, sl in countries.items():
+        by_country[ckey] = {
+            "row_type": "country",
+            "row_scope_key": ckey,
+            "ytd_slice": _aggregate_ytd_slice_payloads_for_scope(
+                sl, grain=grain, slice_key=ckey, slice_level="country",
+            ),
+        }
+
+    by_city: Dict[str, Dict[str, Any]] = {}
+    for ck, sl in cities.items():
+        by_city[ck] = {
+            "row_type": "city",
+            "row_scope_key": ck,
+            "ytd_slice": _aggregate_ytd_slice_payloads_for_scope(
+                sl, grain=grain, slice_key=ck, slice_level="city",
+            ),
+        }
+
+    rows_out: List[Dict[str, Any]] = [total_row]
+    rows_out.extend(by_country.values())
+    rows_out.extend(by_city.values())
+
+    _ = display_rows  # reservado: validaciones futuras / trazas
+    return {
+        "total": total_row,
+        "by_country": by_country,
+        "by_city": by_city,
+        "rows": rows_out,
+    }
+
+
+def apply_authoritative_projection_ytd(
+    conn: Any,
+    display_rows: List[Dict[str, Any]],
+    *,
+    grain: str,
+    ytd_summary_api: Optional[Dict[str, Any]],
+    plan_version: str,
+    idx: Any,
+    map_rows: List[dict],
+    country: Optional[str],
+    city: Optional[str],
+    business_slice: Optional[str],
+    year: Optional[int],
+    month: Optional[int],
+    today: date,
+) -> Dict[str, Any]:
+    """
+    FASE 3.8B — Única vía: ytd_slice + row_type + row_scope_key por fila;
+    meta.authoritative_ytd con total/país/ciudad desde backend.
+    """
+    if not display_rows:
+        return build_authoritative_ytd_block(
+            grain=grain,
+            by_line={},
+            ytd_summary_api=ytd_summary_api,
+            display_rows=display_rows,
+        )
+
+    by_key = compute_ytd_slice_by_line_key(
+        conn,
+        grain=grain,
+        display_rows=display_rows,
+        plan_version=plan_version,
+        idx=idx,
+        map_rows=map_rows,
+        country=country,
+        city=city,
+        business_slice=business_slice,
+        year=year,
+        month=month,
+        today=today,
+    )
+    for r in display_rows:
+        lk = _line_key(r)
+        r["ytd_slice"] = by_key[lk]
+        r["row_type"] = "subfleet" if r.get("is_subfleet") else "lob"
+        r["row_scope_key"] = _slice_key_from_line_key(lk)
+
+    return build_authoritative_ytd_block(
+        grain=grain,
+        by_line=by_key,
+        ytd_summary_api=ytd_summary_api,
+        display_rows=display_rows,
+    )
+
+
+def attach_ytd_slices_on_error(display_rows: List[Dict[str, Any]], grain: str, err: str) -> None:
+    """Si compute_ytd_summary falla, mantiene contrato FASE 3.8 (objeto presente con traza)."""
+    for r in display_rows:
+        lk = _line_key(r)
+        r["ytd_slice"] = _empty_ytd_slice_payload(grain, lk, trace_note=f"YTD slice no calculado: {err}")
+        r["row_type"] = "subfleet" if r.get("is_subfleet") else "lob"
+        r["row_scope_key"] = _slice_key_from_line_key(lk)

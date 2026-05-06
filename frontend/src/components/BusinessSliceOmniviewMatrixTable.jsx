@@ -1,4 +1,4 @@
-import { useMemo, useState, memo } from 'react'
+import { useMemo, useState, useEffect, memo } from 'react'
 import BusinessSliceOmniviewMatrixHeader, { COL1_W, COL2_W, HEADER_H_COMFORTABLE, HEADER_H_COMPACT } from './BusinessSliceOmniviewMatrixHeader.jsx'
 import BusinessSliceOmniviewMatrixCell from './BusinessSliceOmniviewMatrixCell.jsx'
 import { MATRIX_KPIS, computeDeltas, computeTotalsDeltas, fmtValue, fmtDelta, signalColorForKpi, signalArrow, sortLineEntries, periodTooltipLabel as periodLabelFn, trustIssueSummaryForTooltip, trustPeriodCellOverlayClass, resolveCellTrustVisual, resolveTotalsTrustVisual } from './omniview/omniviewMatrixUtils.js'
@@ -15,6 +15,8 @@ import {
   countryRank,
   projectionPeriodLabel,
   projectionPeriodTooltipLabel,
+  ytdSliceBadgeVisual,
+  buildYtdSliceTooltip,
 } from './omniview/projectionMatrixUtils.js'
 
 export default function BusinessSliceOmniviewMatrixTable ({
@@ -31,6 +33,8 @@ export default function BusinessSliceOmniviewMatrixTable ({
   matrixTrust = null,
   focusedKpi = 'trips_completed',
   mode = 'evolution',
+  projectionAuthoritativeYtd = null,
+  projectionIntegrityBroken = false,
 }) {
   const isProjection = mode === 'projection'
   const { cities, allPeriods, totals, comparisonTotals, comparisonMeta, cityVolumeMap, lineVolumeMap, periodMeta, periodDayLabels } = matrix
@@ -115,7 +119,10 @@ export default function BusinessSliceOmniviewMatrixTable ({
 
           <tbody>
             {isProjection
-              ? <ProjectionTotalsRow allPeriods={allPeriods} totalsDeltas={totalsDeltas} compact={compact} headerH={headerH} focusedKpi={activeKpi} />
+              ? <ProjectionTotalsRow allPeriods={allPeriods} totalsDeltas={totalsDeltas} compact={compact} headerH={headerH} focusedKpi={activeKpi}
+                projectionIntegrityBroken={projectionIntegrityBroken}
+                totalYtdSlice={projectionAuthoritativeYtd?.total?.ytd_slice ?? null}
+              />
               : <TotalsRow allPeriods={allPeriods} totalsDeltas={totalsDeltas} compact={compact} headerH={headerH} grain={grain} matrixTrust={matrixTrust} trustLine={trustLine} focusedKpi={activeKpi} />
             }
 
@@ -160,6 +167,8 @@ export default function BusinessSliceOmniviewMatrixTable ({
                   periodMeta={periodMeta}
                   periodDayLabels={isProjection ? null : periodDayLabels}
                   mode={mode}
+                  projectionIntegrityBroken={projectionIntegrityBroken}
+                  projectionAuthoritativeYtd={projectionAuthoritativeYtd}
                 />
               )
             })}
@@ -214,11 +223,12 @@ const TotalsRow = memo(function TotalsRow ({ allPeriods, totalsDeltas, compact, 
   )
 })
 
-const ProjectionTotalsRow = memo(function ProjectionTotalsRow ({ allPeriods, totalsDeltas, compact, headerH, focusedKpi }) {
+const ProjectionTotalsRow = memo(function ProjectionTotalsRow ({ allPeriods, totalsDeltas, compact, headerH, focusedKpi, projectionIntegrityBroken = false, totalYtdSlice = null }) {
   const py = compact ? 'py-0.5' : 'py-1'
   const valSize = compact ? 'text-[9px]' : 'text-[9px]'
   const lblSize = compact ? 'text-[7px]' : 'text-[8px]'
   const isProjectable = PROJECTION_KPIS.includes(focusedKpi.key)
+  const ytdVis = (!projectionIntegrityBroken && totalYtdSlice) ? ytdSliceBadgeVisual(totalYtdSlice) : null
 
   return (
     <tr
@@ -228,7 +238,16 @@ const ProjectionTotalsRow = memo(function ProjectionTotalsRow ({ allPeriods, tot
       <td className={`sticky left-0 z-10 px-2 ${py} ${valSize} font-bold text-slate-600 uppercase tracking-wide border-r border-slate-200`}
         style={{ backgroundColor: 'rgb(243,244,248)', minWidth: COL1_W }}>Total</td>
       <td className={`sticky z-10 px-2 ${py} border-r border-slate-200`}
-        style={{ left: COL1_W, backgroundColor: 'rgb(243,244,248)', minWidth: COL2_W }} />
+        style={{ left: COL1_W, backgroundColor: 'rgb(243,244,248)', minWidth: COL2_W }}
+        title={totalYtdSlice ? buildYtdSliceTooltip(totalYtdSlice) : undefined}
+      >
+        {ytdVis && ytdVis.label !== 'YTD —' && (
+          <span className={`inline-flex items-center gap-0.5 rounded px-1 py-px text-[9px] font-semibold leading-none ${ytdVis.badgeClass}`}>
+            <span aria-hidden="true">{ytdVis.emoji}</span>
+            {ytdVis.label}
+          </span>
+        )}
+      </td>
       {allPeriods.map((pk, periodIdx) => {
         const pDeltas = totalsDeltas.get(pk)
         const zebra = periodIdx % 2 === 1
@@ -320,21 +339,35 @@ const ProjectionTotalsRow = memo(function ProjectionTotalsRow ({ allPeriods, tot
   )
 })
 
-function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, onToggle, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode, periodMeta = null, periodDayLabels = null }) {
+function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, onToggle, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode, periodMeta = null, periodDayLabels = null, projectionIntegrityBroken = false, projectionAuthoritativeYtd = null }) {
   const totalCols = allPeriods.length
   const py = compact ? 'py-1' : 'py-1.5'
   const fontSize = compact ? 'text-[11px]' : 'text-xs'
+  const isProjection = mode === 'projection'
+
+  const cityYtdSlice = (!isProjection || projectionIntegrityBroken)
+    ? null
+    : (projectionAuthoritativeYtd?.by_city?.[cityKey]?.ytd_slice ?? null)
+
+  const cityYtdVis = cityYtdSlice ? ytdSliceBadgeVisual(cityYtdSlice) : null
 
   return (
     <>
       <tr className="bg-slate-100 hover:bg-slate-200/80 cursor-pointer transition-colors border-t-2 border-slate-300" onClick={onToggle}>
         <td colSpan={2} className={`sticky left-0 z-10 bg-slate-100 px-2 ${py} ${fontSize} font-bold text-slate-700 uppercase tracking-wide select-none`}
-          style={{ minWidth: COL1_W + COL2_W }}>
+          style={{ minWidth: COL1_W + COL2_W }}
+          title={cityYtdSlice ? buildYtdSliceTooltip(cityYtdSlice) : undefined}>
           <span className="inline-block w-3.5 text-center mr-1 text-slate-400 text-[10px]">{isCollapsed ? '▶' : '▼'}</span>
           {cityData.city}
           <span className="ml-1.5 font-normal text-slate-400 normal-case text-[10px]">
             {cityData.country} · {lineEntries.length} línea{lineEntries.length !== 1 ? 's' : ''}
           </span>
+          {isProjection && !projectionIntegrityBroken && cityYtdVis && cityYtdVis.label !== 'YTD —' && (
+            <span className={`ml-2 inline-flex items-center gap-0.5 align-middle rounded px-1 py-px text-[9px] font-semibold normal-case tracking-normal leading-none ${cityYtdVis.badgeClass}`}>
+              <span aria-hidden="true">{cityYtdVis.emoji}</span>
+              {cityYtdVis.label}
+            </span>
+          )}
         </td>
         <td colSpan={totalCols} className="bg-slate-100" />
       </tr>
@@ -342,13 +375,14 @@ function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, o
         <LineRow key={lineKey} cityKey={cityKey} cityName={cityData.city} lineKey={lineKey} lineData={lineData}
           allPeriods={allPeriods} onCellClick={onCellClick} selectedCell={selectedCell} grain={grain} compact={compact}
           insightCellMap={insightCellMap} insightMode={insightMode} periodStates={periodStates}
-          matrixTrust={matrixTrust} trustLine={trustLine} focusedKpi={focusedKpi} mode={mode} periodMeta={periodMeta} />
+          matrixTrust={matrixTrust} trustLine={trustLine} focusedKpi={focusedKpi} mode={mode} periodMeta={periodMeta} periodDayLabels={periodDayLabels}
+          projectionIntegrityBroken={projectionIntegrityBroken} />
       ))}
     </>
   )
 }
 
-function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode, periodMeta = null, periodDayLabels = null }) {
+function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode, periodMeta = null, periodDayLabels = null, projectionIntegrityBroken = false }) {
   const isProjection = mode === 'projection'
   const deltas = useMemo(
     () => isProjection
@@ -360,17 +394,52 @@ function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClic
   const py = compact ? 'py-px' : 'py-1'
   const fontSize = compact ? 'text-[11px]' : 'text-xs'
 
+  const lineYtdSlice = useMemo(() => {
+    if (!isProjection || projectionIntegrityBroken) return null
+    for (const [, cell] of lineData.periods) {
+      const y = cell.raw?.ytd_slice
+      if (y && typeof y === 'object') return y
+    }
+    return null
+  }, [isProjection, projectionIntegrityBroken, lineData.periods])
+
+  const lineYtdVis = lineYtdSlice ? ytdSliceBadgeVisual(lineYtdSlice) : null
+
+  useEffect(() => {
+    if (!isProjection || projectionIntegrityBroken) return
+    const cell = [...lineData.periods.values()][0]
+    const raw = cell?.raw
+    if (!raw) return
+    const rt = raw.row_type
+    if (rt && rt !== 'lob' && rt !== 'subfleet') {
+      console.warn('[omniview projection] row_type inválido', rt, raw.row_scope_key)
+    }
+    if (!raw.ytd_slice || typeof raw.ytd_slice !== 'object') {
+      console.warn('[omniview projection] fila sin ytd_slice', raw.row_scope_key)
+    }
+  }, [isProjection, projectionIntegrityBroken, lineData.periods, lineKey])
+
   return (
     <tr className={`border-b border-gray-100/80 ${isSubfleet ? 'bg-gray-50/40' : 'bg-white'} hover:bg-blue-50/40 transition-colors`}>
       <td className={`sticky left-0 z-10 bg-inherit border-r border-gray-100 ${py}`} style={{ width: COL1_W, minWidth: COL1_W }} />
       <td className={`sticky z-10 bg-inherit px-2 ${py} ${fontSize} text-gray-700 font-medium border-r border-gray-200 whitespace-nowrap overflow-hidden text-ellipsis`}
         style={{ left: COL1_W, width: COL2_W, minWidth: COL2_W }}
-        title={`${lineData.business_slice_name}${lineData.fleet_display_name && lineData.fleet_display_name !== '—' && lineData.fleet_display_name !== lineData.business_slice_name ? ` · ${lineData.fleet_display_name}` : ''}${isSubfleet ? ` (sub: ${lineData.subfleet_name})` : ''}`}>
-        {isSubfleet && <span className="text-gray-400 mr-0.5 text-[10px]">└</span>}
-        <span className={isSubfleet ? 'text-gray-500' : 'text-gray-800'}>{lineData.business_slice_name}</span>
-        {lineData.fleet_display_name && lineData.fleet_display_name !== '—' && lineData.fleet_display_name !== lineData.business_slice_name && (
-          <span className="text-[9px] text-gray-400 ml-1">{lineData.fleet_display_name}</span>
-        )}
+        title={[lineYtdSlice ? buildYtdSliceTooltip(lineYtdSlice) : null, `${lineData.business_slice_name}${lineData.fleet_display_name && lineData.fleet_display_name !== '—' && lineData.fleet_display_name !== lineData.business_slice_name ? ` · ${lineData.fleet_display_name}` : ''}${isSubfleet ? ` (sub: ${lineData.subfleet_name})` : ''}`].filter(Boolean).join('\n\n')}>
+        <div className="flex items-center gap-1 flex-wrap min-w-0">
+          <span className="min-w-0 truncate">
+            {isSubfleet && <span className="text-gray-400 mr-0.5 text-[10px]">└</span>}
+            <span className={isSubfleet ? 'text-gray-500' : 'text-gray-800'}>{lineData.business_slice_name}</span>
+            {lineData.fleet_display_name && lineData.fleet_display_name !== '—' && lineData.fleet_display_name !== lineData.business_slice_name && (
+              <span className="text-[9px] text-gray-400 ml-1">{lineData.fleet_display_name}</span>
+            )}
+          </span>
+          {isProjection && !projectionIntegrityBroken && lineYtdVis && lineYtdVis.label !== 'YTD —' && (
+            <span className={`flex-shrink-0 inline-flex items-center gap-0.5 rounded px-1 py-px text-[8px] font-semibold leading-none ${lineYtdVis.badgeClass}`}>
+              <span aria-hidden="true">{lineYtdVis.emoji}</span>
+              {lineYtdVis.label}
+            </span>
+          )}
+        </div>
       </td>
 
       {allPeriods.map((pk, periodIdx) => {

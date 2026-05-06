@@ -53,7 +53,9 @@ from app.models.projection_ytd_schema import serialize_ytd_summary_for_api
 from app.services.projection_integrity_service import safe_build_projection_integrity_status
 from app.services.projection_ytd_alerts_service import compute_ytd_alerts
 from app.services.projection_ytd_period_service import (
+    apply_authoritative_projection_ytd,
     apply_period_over_period_inplace,
+    attach_ytd_slices_on_error,
     compute_ytd_summary,
     meta_period_over_period_kind,
 )
@@ -1040,6 +1042,7 @@ def get_omniview_projection(
                 "data_freshness": df_empty,
                 "ytd_summary": None,
                 "ytd_alerts": [],
+                "authoritative_ytd": None,
                 "period_over_period": {
                     "kind": meta_period_over_period_kind(grain),
                     "per_row_key": "period_over_period",
@@ -1055,6 +1058,7 @@ def get_omniview_projection(
                     had_resolved_plan=False,
                     matched_count=0,
                     plan_without_real_count=0,
+                    authoritative_ytd=None,
                 ),
             },
         }
@@ -1163,12 +1167,14 @@ def get_omniview_projection(
         )
         display_rows = list(plan_without_real)
 
+    ytd_summary_raw: Optional[Dict[str, Any]] = None
     ytd_summary: Optional[Dict[str, Any]] = None
     ytd_alerts: List[Dict[str, Any]] = []
+    authoritative_ytd: Optional[Dict[str, Any]] = None
     try:
         apply_period_over_period_inplace(display_rows, grain)
         with get_db() as _conn_ytd:
-            ytd_summary = compute_ytd_summary(
+            ytd_summary_raw = compute_ytd_summary(
                 _conn_ytd,
                 grain=grain,
                 rows=display_rows,
@@ -1182,6 +1188,27 @@ def get_omniview_projection(
                 month=month,
                 today=today,
             )
+            ytd_summary = serialize_ytd_summary_for_api(ytd_summary_raw, grain=grain)
+            try:
+                authoritative_ytd = apply_authoritative_projection_ytd(
+                    _conn_ytd,
+                    display_rows,
+                    grain=grain,
+                    ytd_summary_api=ytd_summary,
+                    plan_version=plan_version,
+                    idx=idx,
+                    map_rows=map_rows,
+                    country=country,
+                    city=city,
+                    business_slice=business_slice,
+                    year=year,
+                    month=month,
+                    today=today,
+                )
+            except Exception as _slice_exc:
+                logger.warning("get_omniview_projection ytd_slice attach: %s", _slice_exc, exc_info=True)
+                attach_ytd_slices_on_error(display_rows, grain, str(_slice_exc))
+                authoritative_ytd = None
             ytd_alerts = compute_ytd_alerts(
                 _conn_ytd,
                 grain=grain,
@@ -1198,10 +1225,11 @@ def get_omniview_projection(
             )
     except Exception as _ytd_exc:
         logger.warning("get_omniview_projection ytd/pop: %s", _ytd_exc, exc_info=True)
-        ytd_summary = {"error": str(_ytd_exc), "grain": grain}
+        ytd_summary_raw = {"error": str(_ytd_exc), "grain": grain}
+        ytd_summary = serialize_ytd_summary_for_api(ytd_summary_raw, grain=grain)
         ytd_alerts = []
-
-    ytd_summary = serialize_ytd_summary_for_api(ytd_summary, grain=grain)
+        authoritative_ytd = None
+        attach_ytd_slices_on_error(display_rows, grain, str(_ytd_exc))
 
     _build_elapsed = time.perf_counter() - _t4
 
@@ -1215,6 +1243,7 @@ def get_omniview_projection(
         had_resolved_plan=len(resolved_plan_by_key) > 0,
         matched_count=matched_count,
         plan_without_real_count=len(plan_without_real),
+        authoritative_ytd=authoritative_ytd,
     )
 
     logger.info(
@@ -1321,6 +1350,7 @@ def get_omniview_projection(
             },
             "ytd_summary": ytd_summary,
             "ytd_alerts": ytd_alerts,
+            "authoritative_ytd": authoritative_ytd,
             "period_over_period": {
                 "kind": meta_period_over_period_kind(grain),
                 "per_row_key": "period_over_period",

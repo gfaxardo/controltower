@@ -28,6 +28,51 @@ export function validateProjectionOmniviewContract (meta, rows) {
         total: list.length,
       })
     }
+    const missingYtdSlice = list.filter(
+      (r) => r == null || typeof r.ytd_slice !== 'object' || r.ytd_slice?.slice_key == null,
+    )
+    if (missingYtdSlice.length > 0) {
+      issues.push({
+        code: 'missing_ytd_slice',
+        message: `${missingYtdSlice.length} de ${list.length} filas sin ytd_slice válido`,
+        missingCount: missingYtdSlice.length,
+        total: list.length,
+      })
+    }
+    const badRowType = list.filter(
+      (r) =>
+        r &&
+        r.row_type != null &&
+        r.row_type !== 'lob' &&
+        r.row_type !== 'subfleet',
+    )
+    if (badRowType.length > 0) {
+      issues.push({
+        code: 'invalid_row_type',
+        message: `${badRowType.length} filas con row_type distinto de lob|subfleet`,
+        missingCount: badRowType.length,
+        total: list.length,
+      })
+    }
+    if (
+      meta &&
+      meta.ytd_summary &&
+      typeof meta.ytd_summary === 'object' &&
+      !meta.ytd_summary.error
+    ) {
+      const auth = meta.authoritative_ytd
+      if (
+        !auth ||
+        typeof auth !== 'object' ||
+        typeof auth.total !== 'object' ||
+        typeof auth.total.ytd_slice !== 'object'
+      ) {
+        issues.push({
+          code: 'missing_authoritative_ytd',
+          message: 'meta.authoritative_ytd ausente o total sin ytd_slice (FASE 3.8B)',
+        })
+      }
+    }
   }
   return { ok: issues.length === 0, issues }
 }
