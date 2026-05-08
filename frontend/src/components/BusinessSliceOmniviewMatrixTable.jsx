@@ -19,6 +19,73 @@ import {
   buildYtdSliceTooltip,
 } from './omniview/projectionMatrixUtils.js'
 
+/** Badge YTD compacto + tooltip audit (hover) o panel (touch / sin hover). FASE 3.8C */
+const YtdAttainmentBadge = memo(function YtdAttainmentBadge ({ ytdSlice }) {
+  const vis = useMemo(() => ytdSliceBadgeVisual(ytdSlice), [ytdSlice])
+  const tip = useMemo(() => buildYtdSliceTooltip(ytdSlice), [ytdSlice])
+  const [open, setOpen] = useState(false)
+  const [useClickPanel, setUseClickPanel] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const coarse =
+      window.matchMedia('(hover: none)').matches || window.matchMedia('(pointer: coarse)').matches
+    setUseClickPanel(coarse)
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
+
+  if (!vis || vis.label === 'YTD —') return null
+
+  return (
+    <span className="relative inline-flex items-center align-middle" onClick={(e) => e.stopPropagation()}>
+      <span
+        role="button"
+        tabIndex={0}
+        title={tip}
+        aria-expanded={useClickPanel ? open : undefined}
+        onKeyDown={(e) => {
+          if (!useClickPanel) return
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setOpen((o) => !o)
+          }
+        }}
+        onClick={(e) => {
+          e.stopPropagation()
+          if (useClickPanel) setOpen((o) => !o)
+        }}
+        className={`inline-flex cursor-help items-center gap-0.5 rounded px-1 py-px text-[9px] font-semibold leading-none ${vis.badgeClass}`}
+      >
+        <span aria-hidden="true">{vis.emoji}</span>
+        {vis.label}
+      </span>
+      {open && useClickPanel && (
+        <div
+          className="absolute left-0 top-full z-[80] mt-1 max-h-[70vh] max-w-xs overflow-y-auto rounded border border-slate-200 bg-white p-2 text-left text-[10px] leading-snug text-slate-700 shadow-lg"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <pre className="font-sans whitespace-pre-wrap">{tip}</pre>
+          <button
+            type="button"
+            className="mt-2 block w-full rounded bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-600"
+            onClick={() => setOpen(false)}
+          >
+            Cerrar
+          </button>
+        </div>
+      )}
+    </span>
+  )
+})
+
 export default function BusinessSliceOmniviewMatrixTable ({
   matrix,
   grain,
@@ -242,10 +309,7 @@ const ProjectionTotalsRow = memo(function ProjectionTotalsRow ({ allPeriods, tot
         title={totalYtdSlice ? buildYtdSliceTooltip(totalYtdSlice) : undefined}
       >
         {ytdVis && ytdVis.label !== 'YTD —' && (
-          <span className={`inline-flex items-center gap-0.5 rounded px-1 py-px text-[9px] font-semibold leading-none ${ytdVis.badgeClass}`}>
-            <span aria-hidden="true">{ytdVis.emoji}</span>
-            {ytdVis.label}
-          </span>
+          <YtdAttainmentBadge ytdSlice={totalYtdSlice} />
         )}
       </td>
       {allPeriods.map((pk, periodIdx) => {
@@ -363,9 +427,8 @@ function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, o
             {cityData.country} · {lineEntries.length} línea{lineEntries.length !== 1 ? 's' : ''}
           </span>
           {isProjection && !projectionIntegrityBroken && cityYtdVis && cityYtdVis.label !== 'YTD —' && (
-            <span className={`ml-2 inline-flex items-center gap-0.5 align-middle rounded px-1 py-px text-[9px] font-semibold normal-case tracking-normal leading-none ${cityYtdVis.badgeClass}`}>
-              <span aria-hidden="true">{cityYtdVis.emoji}</span>
-              {cityYtdVis.label}
+            <span className="ml-2 align-middle">
+              <YtdAttainmentBadge ytdSlice={cityYtdSlice} />
             </span>
           )}
         </td>
@@ -434,9 +497,8 @@ function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClic
             )}
           </span>
           {isProjection && !projectionIntegrityBroken && lineYtdVis && lineYtdVis.label !== 'YTD —' && (
-            <span className={`flex-shrink-0 inline-flex items-center gap-0.5 rounded px-1 py-px text-[8px] font-semibold leading-none ${lineYtdVis.badgeClass}`}>
-              <span aria-hidden="true">{lineYtdVis.emoji}</span>
-              {lineYtdVis.label}
+            <span className="flex-shrink-0">
+              <YtdAttainmentBadge ytdSlice={lineYtdSlice} />
             </span>
           )}
         </div>

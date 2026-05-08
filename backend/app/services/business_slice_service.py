@@ -441,6 +441,7 @@ def _fetch_resolved_metrics_for_range(
     business_slice: Optional[str] = None,
     fleet: Optional[str] = None,
     subfleet: Optional[str] = None,
+    conn: Any = None,
 ) -> dict[str, Any]:
     w, p = _trip_fact_filter_clauses(
         country=country,
@@ -452,10 +453,12 @@ def _fetch_resolved_metrics_for_range(
     w.extend(["trip_date >= %s", "trip_date <= %s"])
     p.extend([start_date, end_date])
     try:
-        with get_db_quick(60000) as conn:
-            cur = conn.cursor(cursor_factory=RealDictCursor)
-            cur.execute(
-                f"""
+
+        def _execute_on(c):
+            cur = c.cursor(cursor_factory=RealDictCursor)
+            try:
+                cur.execute(
+                    f"""
                 SELECT
                     COALESCE(SUM(trips_completed), 0)::bigint AS trips_completed,
                     COALESCE(SUM(trips_cancelled), 0)::bigint AS trips_cancelled,
@@ -469,10 +472,17 @@ def _fetch_resolved_metrics_for_range(
                 FROM {FACT_DAILY}
                 WHERE {' AND '.join(w)}
                 """,
-                p,
-            )
-            row = cur.fetchone()
-            cur.close()
+                    p,
+                )
+                return cur.fetchone()
+            finally:
+                cur.close()
+
+        if conn is not None:
+            row = _execute_on(conn)
+        else:
+            with get_db_quick(60000) as c:
+                row = _execute_on(c)
         r = dict(row or {})
         return _metrics_dict_from_fact_aggregates(
             int(r.get("trips_completed") or 0),
@@ -560,6 +570,7 @@ def _fetch_month_fact_period_totals(
     subfleet: Optional[str] = None,
     year: Optional[int] = None,
     month: Optional[int] = None,
+    conn=None,
 ) -> dict[str, dict[str, Any]]:
     """Totales por mes desde month_fact (índices). Evita escanear V_RESOLVED en /business-slice/monthly."""
     w, params = _where_clauses(country, city, business_slice, fleet, subfleet, year, month, "")
@@ -582,11 +593,18 @@ def _fetch_month_fact_period_totals(
         ORDER BY month ASC
     """
     try:
-        with get_db_quick(60000) as conn:
-            cur = conn.cursor(cursor_factory=RealDictCursor)
+        def _run(c):
+            cur = c.cursor(cursor_factory=RealDictCursor)
             cur.execute(sql, params)
             raw = [dict(r) for r in cur.fetchall()]
             cur.close()
+            return raw
+
+        if conn is not None:
+            raw = _run(conn)
+        else:
+            with get_db_quick(60000) as c:
+                raw = _run(c)
     except Exception as exc:
         logger.warning("_fetch_month_fact_period_totals: %s", exc)
         return {}
@@ -614,6 +632,7 @@ def _fetch_week_fact_period_totals(
     subfleet: Optional[str] = None,
     year: Optional[int] = None,
     month: Optional[int] = None,
+    conn=None,
 ) -> dict[str, dict[str, Any]]:
     """Totales por semana (lunes) desde week_fact; evita V_RESOLVED en meta Matrix semanal."""
     w: list[str] = []
@@ -660,11 +679,18 @@ def _fetch_week_fact_period_totals(
         ORDER BY week_start ASC
     """
     try:
-        with get_db_quick(60000) as conn:
-            cur = conn.cursor(cursor_factory=RealDictCursor)
+        def _run(c):
+            cur = c.cursor(cursor_factory=RealDictCursor)
             cur.execute(sql, p)
             raw = [dict(r) for r in cur.fetchall()]
             cur.close()
+            return raw
+
+        if conn is not None:
+            raw = _run(conn)
+        else:
+            with get_db_quick(60000) as c:
+                raw = _run(c)
     except Exception as exc:
         logger.warning("_fetch_week_fact_period_totals: %s", exc)
         return {}
@@ -692,6 +718,7 @@ def _fetch_day_fact_period_totals(
     subfleet: Optional[str] = None,
     year: Optional[int] = None,
     month: Optional[int] = None,
+    conn=None,
 ) -> dict[str, dict[str, Any]]:
     """Totales por día desde day_fact; evita V_RESOLVED en meta Matrix diaria."""
     w, p = _where_clauses_trip_date(
@@ -718,11 +745,18 @@ def _fetch_day_fact_period_totals(
         ORDER BY trip_date ASC
     """
     try:
-        with get_db_quick(60000) as conn:
-            cur = conn.cursor(cursor_factory=RealDictCursor)
+        def _run(c):
+            cur = c.cursor(cursor_factory=RealDictCursor)
             cur.execute(sql, p)
             raw = [dict(r) for r in cur.fetchall()]
             cur.close()
+            return raw
+
+        if conn is not None:
+            raw = _run(conn)
+        else:
+            with get_db_quick(60000) as c:
+                raw = _run(c)
     except Exception as exc:
         logger.warning("_fetch_day_fact_period_totals: %s", exc)
         return {}
@@ -751,6 +785,7 @@ def _fetch_resolved_period_totals(
     subfleet: Optional[str] = None,
     year: Optional[int] = None,
     month: Optional[int] = None,
+    conn=None,
 ) -> dict[str, dict[str, Any]]:
     g = (grain or "monthly").strip().lower()
     if g == "monthly":
@@ -762,6 +797,7 @@ def _fetch_resolved_period_totals(
             subfleet=subfleet,
             year=year,
             month=month,
+            conn=conn,
         )
     if g == "weekly":
         return _fetch_week_fact_period_totals(
@@ -772,6 +808,7 @@ def _fetch_resolved_period_totals(
             subfleet=subfleet,
             year=year,
             month=month,
+            conn=conn,
         )
     if g == "daily":
         return _fetch_day_fact_period_totals(
@@ -782,6 +819,7 @@ def _fetch_resolved_period_totals(
             subfleet=subfleet,
             year=year,
             month=month,
+            conn=conn,
         )
     from app.services.serving_guardrails import (
         ServingPolicy, QueryMode, SourceType,
@@ -863,21 +901,84 @@ def _safe_fetch_matrix_totals_meta(
     subfleet: Optional[str] = None,
     year: Optional[int] = None,
     month: Optional[int] = None,
+    unmapped_period_totals_precomputed: Optional[dict[str, dict[str, Any]]] = None,
+    profile: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     try:
-        period_totals = _fetch_resolved_period_totals(
-            grain,
-            country=country,
-            city=city,
-            business_slice=business_slice,
-            fleet=fleet,
-            subfleet=subfleet,
-            year=year,
-            month=month,
+        t_matrix_totals = time.perf_counter()
+        g0 = (grain or "").strip().lower()
+        need_unmapped = (
+            not business_slice
+            and not fleet
+            and not subfleet
+            and g0 in ("monthly", "weekly", "daily")
         )
+        period_totals: dict[str, dict[str, Any]]
+        unmapped_period_totals: dict[str, dict[str, Any]] = {}
+        unmapped_totals_query_ms = 0.0
+        if need_unmapped:
+            with get_db_quick(60000) as conn:
+                t_pt = time.perf_counter()
+                period_totals = _fetch_resolved_period_totals(
+                    grain,
+                    country=country,
+                    city=city,
+                    business_slice=business_slice,
+                    fleet=fleet,
+                    subfleet=subfleet,
+                    year=year,
+                    month=month,
+                    conn=conn,
+                )
+                period_totals_query_ms = (time.perf_counter() - t_pt) * 1000
+                if unmapped_period_totals_precomputed is not None:
+                    unmapped_period_totals = {
+                        str(k)[:10]: dict(v) for k, v in unmapped_period_totals_precomputed.items()
+                    }
+                    unmapped_totals_query_ms = 0.0
+                    if profile is not None:
+                        profile["unmapped_totals_reused_from_append"] = True
+                else:
+                    t_um = time.perf_counter()
+                    unmapped_period_totals = _fetch_resolved_period_totals(
+                        grain,
+                        country=country,
+                        city=city,
+                        business_slice="UNMAPPED",
+                        fleet=fleet,
+                        subfleet=subfleet,
+                        year=year,
+                        month=month,
+                        conn=conn,
+                    )
+                    unmapped_totals_query_ms = (time.perf_counter() - t_um) * 1000
+        else:
+            t_pt = time.perf_counter()
+            period_totals = _fetch_resolved_period_totals(
+                grain,
+                country=country,
+                city=city,
+                business_slice=business_slice,
+                fleet=fleet,
+                subfleet=subfleet,
+                year=year,
+                month=month,
+            )
+            period_totals_query_ms = (time.perf_counter() - t_pt) * 1000
+        if profile is not None:
+            profile["period_totals_query_ms"] = period_totals_query_ms
+            profile["unmapped_totals_query_ms"] = unmapped_totals_query_ms
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "_safe_fetch_matrix_totals_meta: period_totals_fetch_ms=%.1f need_unmapped=%s grains=%s",
+                (time.perf_counter() - t_matrix_totals) * 1000,
+                need_unmapped,
+                g0,
+            )
         comparison_totals: dict[str, dict[str, Any]] = {}
         ranges = _extract_period_comparison_ranges(rows, grain)
         g = (grain or "").strip().lower()
+        t_comparison = time.perf_counter()
         if g == "daily" and ranges:
             single_items: list[tuple[str, date, date]] = []
             multi_items: list[tuple[str, date, date]] = []
@@ -886,9 +987,9 @@ def _safe_fetch_matrix_totals_meta(
                     single_items.append((period_key, sd, ed))
                 else:
                     multi_items.append((period_key, sd, ed))
+            by_d: dict[str, dict[str, Any]] | None = None
             if single_items:
                 uniq_dates = sorted({sd for _, sd, _ in single_items})
-                by_d: dict[str, dict[str, Any]] | None = None
                 try:
                     by_d = _fetch_resolved_metrics_by_single_dates_batch(
                         uniq_dates,
@@ -904,8 +1005,22 @@ def _safe_fetch_matrix_totals_meta(
                 if by_d is not None:
                     for period_key, sd, _ in single_items:
                         comparison_totals[period_key] = by_d.get(sd.isoformat(), empty_cmp)
-                else:
-                    for period_key, sd, ed in single_items:
+            needs_cmp_conn = (bool(single_items) and by_d is None) or bool(multi_items)
+            if needs_cmp_conn:
+                with get_db_quick(60000) as cmp_conn:
+                    if single_items and by_d is None:
+                        for period_key, sd, ed in single_items:
+                            comparison_totals[period_key] = _fetch_resolved_metrics_for_range(
+                                sd,
+                                ed,
+                                country=country,
+                                city=city,
+                                business_slice=business_slice,
+                                fleet=fleet,
+                                subfleet=subfleet,
+                                conn=cmp_conn,
+                            )
+                    for period_key, sd, ed in multi_items:
                         comparison_totals[period_key] = _fetch_resolved_metrics_for_range(
                             sd,
                             ed,
@@ -914,37 +1029,34 @@ def _safe_fetch_matrix_totals_meta(
                             business_slice=business_slice,
                             fleet=fleet,
                             subfleet=subfleet,
+                            conn=cmp_conn,
                         )
-            for period_key, sd, ed in multi_items:
-                comparison_totals[period_key] = _fetch_resolved_metrics_for_range(
-                    sd,
-                    ed,
-                    country=country,
-                    city=city,
-                    business_slice=business_slice,
-                    fleet=fleet,
-                    subfleet=subfleet,
-                )
-        else:
-            for period_key, (start_date, end_date) in ranges.items():
-                comparison_totals[period_key] = _fetch_resolved_metrics_for_range(
-                    start_date,
-                    end_date,
-                    country=country,
-                    city=city,
-                    business_slice=business_slice,
-                    fleet=fleet,
-                    subfleet=subfleet,
-                )
-        unmapped_period_totals: dict[str, dict[str, Any]] = {}
-        if not business_slice and not fleet and not subfleet:
-            unmapped_period_totals = _fetch_resolved_period_totals(
-                grain,
-                country=country,
-                city=city,
-                business_slice="UNMAPPED",
-                year=year,
-                month=month,
+        elif ranges:
+            with get_db_quick(60000) as cmp_conn:
+                for period_key, (start_date, end_date) in ranges.items():
+                    comparison_totals[period_key] = _fetch_resolved_metrics_for_range(
+                        start_date,
+                        end_date,
+                        country=country,
+                        city=city,
+                        business_slice=business_slice,
+                        fleet=fleet,
+                        subfleet=subfleet,
+                        conn=cmp_conn,
+                    )
+        cmp_ms = (time.perf_counter() - t_comparison) * 1000
+        if profile is not None:
+            profile["comparison_block_ms"] = cmp_ms
+            profile["comparison_period_keys"] = len(comparison_totals)
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "_safe_fetch_matrix_totals_meta: comparison_block_ms=%.1f comparison_period_keys=%d",
+                cmp_ms,
+                len(comparison_totals),
+            )
+            logger.debug(
+                "_safe_fetch_matrix_totals_meta: totals_meta_total_ms=%.1f",
+                (time.perf_counter() - t_matrix_totals) * 1000,
             )
         return {
             "period_totals": period_totals,
@@ -1112,6 +1224,7 @@ def compute_matrix_data_freshness(
     subfleet: Optional[str] = None,
     year: Optional[int] = None,
     month: Optional[int] = None,
+    conn: Any = None,
 ) -> dict[str, Any]:
     """
     Frescura operativa sobre ops.real_business_slice_day_fact (misma semántica de filtros que la Matrix).
@@ -1124,8 +1237,8 @@ def compute_matrix_data_freshness(
     mx: Any = None
     lu: Any = None
     try:
-        with get_db() as conn:
-            cur = conn.cursor()
+        def _run(c):
+            cur = c.cursor()
             try:
                 cur.execute(
                     f"""
@@ -1136,11 +1249,17 @@ def compute_matrix_data_freshness(
                     """,
                     params,
                 )
-                row = cur.fetchone()
-                if row:
-                    mx, lu = row[0], row[1]
+                return cur.fetchone()
             finally:
                 cur.close()
+
+        if conn is not None:
+            row = _run(conn)
+        else:
+            with get_db() as c:
+                row = _run(c)
+        if row:
+            mx, lu = row[0], row[1]
     except Exception:
         logger.warning("compute_matrix_data_freshness: falló consulta", exc_info=True)
 
@@ -1196,6 +1315,7 @@ def fetch_slice_max_trip_date_by_period_keys(
     subfleet: Optional[str] = None,
     year: Optional[int] = None,
     month: Optional[int] = None,
+    conn: Any = None,
 ) -> dict[str, str | None]:
     """
     MAX(trip_date) en day_fact por clave de periodo (mes / semana ISO / día), alineado a filtros Matrix.
@@ -1240,8 +1360,9 @@ def fetch_slice_max_trip_date_by_period_keys(
                 continue
         if not parsed_dates:
             return {}
-        with get_db() as conn:
-            cur = conn.cursor()
+
+        def _execute_max_query(c):
+            cur = c.cursor()
             try:
                 if g == "monthly":
                     cur.execute(
@@ -1276,9 +1397,15 @@ def fetch_slice_max_trip_date_by_period_keys(
                         """,
                         params + [parsed_dates],
                     )
-                rows = cur.fetchall()
+                return cur.fetchall()
             finally:
                 cur.close()
+
+        if conn is not None:
+            rows = _execute_max_query(conn)
+        else:
+            with get_db() as c:
+                rows = _execute_max_query(c)
     except Exception:
         logger.warning(
             "fetch_slice_max_trip_date_by_period_keys: falló agregación day_fact",
@@ -1315,29 +1442,65 @@ def enrich_business_slice_matrix_meta(
     year: Optional[int] = None,
     month: Optional[int] = None,
     fact_layer: Optional[dict[str, Any]] = None,
+    unmapped_period_totals_precomputed: Optional[dict[str, dict[str, Any]]] = None,
+    profile: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Añade period_states (State Engine) al meta de Matrix."""
+    t_enrich_start = time.perf_counter()
     out = dict(meta or {})
     out["grain"] = (grain or "monthly").strip().lower()
     out["period_max_date_source"] = "ops.real_business_slice_day_fact"
     pkeys = extract_period_keys_from_rows(out["grain"], rows)
-    per_period = fetch_slice_max_trip_date_by_period_keys(
-        out["grain"],
-        pkeys,
-        country=country,
-        city=city,
-        business_slice=business_slice,
-        fleet=fleet,
-        subfleet=subfleet,
-        year=year,
-        month=month,
-    )
+    t_slice_fresh = time.perf_counter()
+    with get_db() as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute("SET LOCAL statement_timeout = '120000'")
+        finally:
+            cur.close()
+        per_period = fetch_slice_max_trip_date_by_period_keys(
+            out["grain"],
+            pkeys,
+            country=country,
+            city=city,
+            business_slice=business_slice,
+            fleet=fleet,
+            subfleet=subfleet,
+            year=year,
+            month=month,
+            conn=conn,
+        )
+        data_fresh = compute_matrix_data_freshness(
+            out["grain"],
+            country=country,
+            city=city,
+            business_slice=business_slice,
+            fleet=fleet,
+            subfleet=subfleet,
+            year=year,
+            month=month,
+            conn=conn,
+        )
+    t_after_slice = time.perf_counter()
+    slice_ms = (t_after_slice - t_slice_fresh) * 1000
+    if profile is not None:
+        profile["slice_max_freshness_ms"] = slice_ms
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "enrich_business_slice_matrix_meta: slice_max+freshness_single_tx_ms=%.1f periods=%d",
+            slice_ms,
+            len(pkeys),
+        )
     out["per_period_max_trip_date"] = per_period
+    t_ps = time.perf_counter()
     out["period_states"] = build_period_states_payload(
         out["grain"], rows, out.get("slice_max_trip_date"), per_period_max_dates=per_period
     )
+    if profile is not None:
+        profile["period_states_ms"] = (time.perf_counter() - t_ps) * 1000
     if fact_layer:
         out["fact_layer"] = fact_layer
+    t_totals = time.perf_counter()
     out.update(
         _safe_fetch_matrix_totals_meta(
             out["grain"],
@@ -1349,18 +1512,30 @@ def enrich_business_slice_matrix_meta(
             subfleet=subfleet,
             year=year,
             month=month,
+            unmapped_period_totals_precomputed=unmapped_period_totals_precomputed,
+            profile=profile,
         )
     )
-    out["data_freshness"] = compute_matrix_data_freshness(
-        out["grain"],
-        country=country,
-        city=city,
-        business_slice=business_slice,
-        fleet=fleet,
-        subfleet=subfleet,
-        year=year,
-        month=month,
-    )
+    matrix_totals_ms = (time.perf_counter() - t_totals) * 1000
+    if profile is not None:
+        profile["matrix_totals_block_ms"] = matrix_totals_ms
+        profile["mom_block_ms"] = float(profile.get("comparison_block_ms") or 0.0)
+        profile["ytd_block_ms"] = 0.0
+        profile["ytd_note"] = "no_computed_in_business_slice_monthly_endpoint"
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "enrich_business_slice_matrix_meta: matrix_totals_block_ms=%.1f",
+            matrix_totals_ms,
+        )
+    out["data_freshness"] = data_fresh
+    enrich_total = (time.perf_counter() - t_enrich_start) * 1000
+    if profile is not None:
+        profile["enrich_meta_total_ms"] = enrich_total
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "enrich_business_slice_matrix_meta: total_meta_ms=%.1f",
+            enrich_total,
+        )
     return out
 
 
@@ -1431,6 +1606,7 @@ def _get_latest_available_trip_date(
     subfleet: Optional[str] = None,
     period_start: Optional[date] = None,
     period_end: Optional[date] = None,
+    conn: Any = None,
 ) -> Optional[date]:
     # Lee desde FACT_DAILY (indexada) en lugar de V_RESOLVED (sin índice, sin timeout).
     w: list[str] = ["trip_date IS NOT NULL"]
@@ -1451,15 +1627,25 @@ def _get_latest_available_trip_date(
     if period_end is not None:
         w.append("trip_date <= %s")
         p.append(period_end)
-    try:
-        with get_db_quick(20000) as conn:
-            cur = conn.cursor()
+
+    def _execute_on(c):
+        cur = c.cursor()
+        try:
             cur.execute(
                 f"SELECT MAX(trip_date) FROM {FACT_DAILY} WHERE {' AND '.join(w)}",
                 p,
             )
             row = cur.fetchone()
+            return row
+        finally:
             cur.close()
+
+    try:
+        if conn is not None:
+            row = _execute_on(conn)
+        else:
+            with get_db_quick(20000) as c:
+                row = _execute_on(c)
         return row[0] if row and row[0] is not None else None
     except Exception as exc:
         logger.warning("_get_latest_available_trip_date timeout/error (fact_daily): %s", exc)
@@ -1474,6 +1660,7 @@ def _fetch_resolved_metrics_by_dims_for_range(
     business_slice: Optional[str] = None,
     fleet: Optional[str] = None,
     subfleet: Optional[str] = None,
+    conn: Any = None,
 ) -> dict[tuple[Any, ...], dict[str, Any]]:
     w, p = _trip_fact_filter_clauses(
         country=country,
@@ -1485,10 +1672,12 @@ def _fetch_resolved_metrics_by_dims_for_range(
     w.extend(["trip_date >= %s", "trip_date <= %s"])
     p.extend([start_date, end_date])
     try:
-        with get_db_quick(60000) as conn:
-            cur = conn.cursor(cursor_factory=RealDictCursor)
-            cur.execute(
-                f"""
+
+        def _execute_on(c):
+            cur = c.cursor(cursor_factory=RealDictCursor)
+            try:
+                cur.execute(
+                    f"""
                 SELECT
                     country, city, business_slice_name, fleet_display_name,
                     is_subfleet, subfleet_name,
@@ -1505,23 +1694,31 @@ def _fetch_resolved_metrics_by_dims_for_range(
                 WHERE {' AND '.join(w)}
                 GROUP BY country, city, business_slice_name, fleet_display_name, is_subfleet, subfleet_name
                 """,
-                p,
-            )
-            rows = []
-            for raw in cur.fetchall():
-                item = dict(raw)
-                m = _metrics_dict_from_fact_aggregates(
-                    int(item.get("trips_completed") or 0),
-                    int(item.get("trips_cancelled") or 0),
-                    int(item.get("active_drivers") or 0),
-                    item.get("revenue_yego_net"),
-                    item.get("avg_ticket"),
-                    item.get("commission_pct"),
-                    item.get("trips_per_driver"),
+                    p,
                 )
-                item.update(m)
-                rows.append(_serialize_row(item))
-            cur.close()
+                rows = []
+                for raw in cur.fetchall():
+                    item = dict(raw)
+                    m = _metrics_dict_from_fact_aggregates(
+                        int(item.get("trips_completed") or 0),
+                        int(item.get("trips_cancelled") or 0),
+                        int(item.get("active_drivers") or 0),
+                        item.get("revenue_yego_net"),
+                        item.get("avg_ticket"),
+                        item.get("commission_pct"),
+                        item.get("trips_per_driver"),
+                    )
+                    item.update(m)
+                    rows.append(_serialize_row(item))
+            finally:
+                cur.close()
+            return rows
+
+        if conn is not None:
+            rows = _execute_on(conn)
+        else:
+            with get_db_quick(60000) as c:
+                rows = _execute_on(c)
         rows = aggregate_business_slice_rows(
             rows,
             extra_key_fields=["country", "city", "fleet_display_name", "is_subfleet", "subfleet_name"],
@@ -1656,33 +1853,44 @@ def _attach_monthly_partial_equivalent_context(
     current_month_key = current_month_start.isoformat()
     if not any(str(r.get("month")) == current_month_key for r in rows):
         return rows
-    current_cutoff = _get_latest_available_trip_date(
-        country=country,
-        city=city,
-        business_slice=business_slice,
-        fleet=fleet,
-        subfleet=subfleet,
-        period_start=current_month_start,
-        period_end=_month_end(today),
-    )
+    current_cutoff = None
+    baseline_by_dim: dict[tuple[Any, ...], dict[str, Any]] = {}
+    with get_db_quick(60000) as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute("SET LOCAL statement_timeout = '60000'")
+        finally:
+            cur.close()
+        current_cutoff = _get_latest_available_trip_date(
+            country=country,
+            city=city,
+            business_slice=business_slice,
+            fleet=fleet,
+            subfleet=subfleet,
+            period_start=current_month_start,
+            period_end=_month_end(today),
+            conn=conn,
+        )
+        if current_cutoff is not None and current_cutoff >= current_month_start:
+            previous_month_start = _previous_month_start(current_month_start)
+            previous_month_end = _month_end(previous_month_start)
+            previous_cutoff = date(
+                previous_month_start.year,
+                previous_month_start.month,
+                min(current_cutoff.day, previous_month_end.day),
+            )
+            baseline_by_dim = _fetch_resolved_metrics_by_dims_for_range(
+                previous_month_start,
+                previous_cutoff,
+                country=country,
+                city=city,
+                business_slice=business_slice,
+                fleet=fleet,
+                subfleet=subfleet,
+                conn=conn,
+            )
     if current_cutoff is None or current_cutoff < current_month_start:
         return rows
-    previous_month_start = _previous_month_start(current_month_start)
-    previous_month_end = _month_end(previous_month_start)
-    previous_cutoff = date(
-        previous_month_start.year,
-        previous_month_start.month,
-        min(current_cutoff.day, previous_month_end.day),
-    )
-    baseline_by_dim = _fetch_resolved_metrics_by_dims_for_range(
-        previous_month_start,
-        previous_cutoff,
-        country=country,
-        city=city,
-        business_slice=business_slice,
-        fleet=fleet,
-        subfleet=subfleet,
-    )
     enriched: list[dict[str, Any]] = []
     for row in rows:
         if str(row.get("month")) != current_month_key:
@@ -1821,6 +2029,7 @@ def get_business_slice_monthly(
     year: Optional[int] = None,
     month: Optional[int] = None,
     limit: int = 2000,
+    profile: Optional[dict[str, Any]] = None,
 ) -> list[dict[str, Any]]:
     w, params = _where_clauses(country, city, business_slice, fleet, subfleet, year, month, "")
     if year is None and month is None:
@@ -1842,6 +2051,7 @@ def get_business_slice_monthly(
         LIMIT %s
     """
     params.append(eff_limit)
+    t_mv = time.perf_counter()
     with get_db() as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(sql, params)
@@ -1850,7 +2060,10 @@ def get_business_slice_monthly(
             extra_key_fields=_canonical_group_fields("month"),
         )
         cur.close()
-    return _attach_monthly_partial_equivalent_context(
+    if profile is not None:
+        profile["base_fact_mv_query_ms"] = (time.perf_counter() - t_mv) * 1000
+    t_att = time.perf_counter()
+    out = _attach_monthly_partial_equivalent_context(
         data,
         country=country,
         city=city,
@@ -1858,6 +2071,10 @@ def get_business_slice_monthly(
         fleet=fleet,
         subfleet=subfleet,
     )
+    if profile is not None:
+        profile["attach_monthly_partial_equivalent_ms"] = (time.perf_counter() - t_att) * 1000
+        profile["base_rows_count"] = len(out)
+    return out
 
 
 def get_business_slice_coverage(
@@ -2163,15 +2380,23 @@ def _unmapped_bucket_monthly_rows(
     year: Optional[int],
     month: Optional[int],
 ) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    for period_key, metrics in _fetch_resolved_period_totals(
+    totals = _fetch_resolved_period_totals(
         "monthly",
         country=country,
         city=city,
         business_slice="UNMAPPED",
         year=year,
         month=month,
-    ).items():
+    )
+    return unmapped_monthly_rows_from_period_totals(totals)
+
+
+def unmapped_monthly_rows_from_period_totals(
+    totals: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Construye filas Matrix UNMAPPED mensuales desde totales por period_key (misma semántica que antes)."""
+    out: list[dict[str, Any]] = []
+    for period_key, metrics in totals.items():
         row = {
             **metrics,
             "month": period_key,
@@ -2187,6 +2412,48 @@ def _unmapped_bucket_monthly_rows(
         }
         out.append(row)
     return out
+
+
+def merge_unmapped_bucket_rows_monthly(
+    rows: list[dict[str, Any]],
+    *,
+    country: Optional[str] = None,
+    city: Optional[str] = None,
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    business_slice: Optional[str] = None,
+    fleet: Optional[str] = None,
+    subfleet: Optional[str] = None,
+    profile: Optional[dict[str, Any]] = None,
+) -> tuple[list[dict[str, Any]], Optional[dict[str, dict[str, Any]]]]:
+    """
+    Equivale a append_unmapped_bucket_rows(..., monthly) pero devuelve también los totales UNMAPPED
+    para reutilizarlos en enrich / matrix meta (evita segunda query idéntica a BD).
+    """
+    if business_slice and str(business_slice).strip():
+        return rows, None
+    if fleet and str(fleet).strip():
+        return rows, None
+    if subfleet and str(subfleet).strip():
+        return rows, None
+    n_before = len(rows)
+    t0 = time.perf_counter()
+    totals = _fetch_resolved_period_totals(
+        "monthly",
+        country=country,
+        city=city,
+        business_slice="UNMAPPED",
+        year=year,
+        month=month,
+    )
+    extra = unmapped_monthly_rows_from_period_totals(totals)
+    if profile is not None:
+        profile["append_unmapped_ms"] = (time.perf_counter() - t0) * 1000
+        profile["unmapped_rows_count"] = len(extra)
+        profile["rows_before_unmapped"] = n_before
+    if not extra:
+        return rows, totals
+    return list(rows) + extra, totals
 
 
 def _unmapped_bucket_weekly_rows(

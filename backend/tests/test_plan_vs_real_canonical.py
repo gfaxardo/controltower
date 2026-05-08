@@ -41,6 +41,35 @@ def _sample_row():
     }
 
 
+def test_period_bounds_yyyy_mm():
+    from datetime import date
+    from app.services.plan_vs_real_service import _period_bounds_yyyy_mm
+    assert _period_bounds_yyyy_mm("2026-04") == (date(2026, 4, 1), date(2026, 5, 1))
+    assert _period_bounds_yyyy_mm("2026-12") == (date(2026, 12, 1), date(2027, 1, 1))
+    assert _period_bounds_yyyy_mm("bad") is None
+
+
+def test_plan_vs_real_monthly_sargable_month_no_to_char(mock_db):
+    """Mes YYYY-MM debe filtrar con period_date >=/< (sargable), no TO_CHAR sobre la columna."""
+    from app.services.plan_vs_real_service import get_plan_vs_real_monthly
+    conn_cm = MagicMock()
+    mock_db.return_value.__enter__.return_value = conn_cm
+    mock_db.return_value.__exit__.return_value = False
+    cursor = MagicMock()
+    conn_cm.cursor.return_value = cursor
+    cursor.fetchall.return_value = []
+    # Forzar solo vista (sin MV) para SQL estable en unit test
+    with patch(
+        "app.services.plan_vs_real_service._plan_vs_real_relations_for_read",
+        lambda uc: iter(["ops.v_plan_vs_real_realkey_final"]),
+    ):
+        get_plan_vs_real_monthly(country="co", month="2026-04", use_canonical=False)
+    args = cursor.execute.call_args
+    sql = args[0][0]
+    assert "period_date >=" in sql and "period_date <" in sql
+    assert "TO_CHAR(period_date" not in sql
+
+
 def test_plan_vs_real_row_schema():
     """Ambas fuentes (legacy/canonical) deben devolver filas con el mismo schema."""
     row = _sample_row()

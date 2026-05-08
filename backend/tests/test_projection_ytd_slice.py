@@ -85,6 +85,8 @@ def test_ytd_slice_weekly_two_slices_adds_up():
     assert truj["ytd_attainment_pct"] == 125.0
     assert truj["slice_level"] == "lob"
     assert "lima" in truj["slice_key"] or "trujillo" in truj["slice_key"]
+    assert lima.get("calculation_basis", {}).get("grain") == "weekly"
+    assert lima["calculation_basis"]["expected_method"] == "weekly_intraweek"
 
 
 def test_ytd_slice_subfleet_level():

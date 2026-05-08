@@ -61,6 +61,11 @@ from app.config.kpi_aggregation_rules import (  # noqa: E402
     get_omniview_kpi_rule,
 )
 from app.db.connection import get_db  # noqa: E402
+from app.utils.kpi_filter_normalize import (  # noqa: E402
+    normalize_business_slice_token,
+    normalize_city_token,
+    normalize_country_token,
+)
 
 
 # ────────────────────────────────────────────────────────────────────────
@@ -137,15 +142,29 @@ def _iso_weeks_for_month(year: int, month: int) -> List[Tuple[date, date, float]
 # Carga de datos
 # ────────────────────────────────────────────────────────────────────────
 
-def _build_filter(country: Optional[str], city: Optional[str]) -> Tuple[str, List[Any]]:
+def _build_filter(
+    country: Optional[str],
+    city: Optional[str],
+    business_slice: Optional[str] = None,
+) -> Tuple[str, List[Any]]:
+    """
+    Filtros alineados con valores reales en facts (p. ej. 'peru', 'lima', minúsculas).
+    Acepta alias: pe→peru, co→colombia; comparación case-insensitive en SQL.
+    """
     where = []
     params: List[Any] = []
-    if country:
-        where.append("country IS NOT DISTINCT FROM %s")
-        params.append(country)
-    if city:
-        where.append("city IS NOT DISTINCT FROM %s")
-        params.append(city)
+    nc = normalize_country_token(country)
+    if nc is not None:
+        where.append("lower(trim(country::text)) = %s")
+        params.append(nc)
+    ncity = normalize_city_token(city)
+    if ncity is not None:
+        where.append("lower(trim(city::text)) = %s")
+        params.append(ncity.lower())
+    nbs = normalize_business_slice_token(business_slice)
+    if nbs is not None:
+        where.append("lower(trim(business_slice_name::text)) = lower(trim(%s))")
+        params.append(nbs)
     sql = (" AND " + " AND ".join(where)) if where else ""
     return sql, params
 
@@ -156,9 +175,13 @@ def _month_bounds(year: int, month: int) -> Tuple[date, date]:
 
 
 def _load_month_facts(
-    year: int, month: int, country: Optional[str], city: Optional[str]
+    year: int,
+    month: int,
+    country: Optional[str],
+    city: Optional[str],
+    business_slice: Optional[str] = None,
 ) -> Dict[Tuple, Dict[str, Any]]:
-    extra_where, extra_params = _build_filter(country, city)
+    extra_where, extra_params = _build_filter(country, city, business_slice)
     sql = f"""
         SELECT country, city, business_slice_name,
                trips_completed, trips_cancelled, active_drivers,
@@ -185,14 +208,18 @@ def _load_month_facts(
 
 
 def _load_week_facts_full_iso(
-    year: int, month: int, country: Optional[str], city: Optional[str]
+    year: int,
+    month: int,
+    country: Optional[str],
+    city: Optional[str],
+    business_slice: Optional[str] = None,
 ) -> Dict[Tuple, Dict[str, Any]]:
     """
     Suma semanal FULL ISO (informativa, NO base de fail).
     Incluye días de meses adyacentes cuando la semana cruza el límite mensual.
     Se almacena en el CSV como 'weekly_sum_full_iso' para trazabilidad.
     """
-    extra_where, extra_params = _build_filter(country, city)
+    extra_where, extra_params = _build_filter(country, city, business_slice)
     start, end = _month_bounds(year, month)
     sql = f"""
         SELECT country, city, business_slice_name,
@@ -228,7 +255,11 @@ def _load_week_facts_full_iso(
 
 
 def _load_week_facts_intersection(
-    year: int, month: int, country: Optional[str], city: Optional[str]
+    year: int,
+    month: int,
+    country: Optional[str],
+    city: Optional[str],
+    business_slice: Optional[str] = None,
 ) -> Dict[Tuple, Dict[str, Any]]:
     """
     Suma semanal ponderada por fracción de días que caen dentro del mes calendario.
@@ -240,7 +271,7 @@ def _load_week_facts_intersection(
     Si la semana está completamente dentro del mes, fraction = 1.0.
     Si cruza el límite, fraction < 1.0.
     """
-    extra_where, extra_params = _build_filter(country, city)
+    extra_where, extra_params = _build_filter(country, city, business_slice)
     weeks = _iso_weeks_for_month(year, month)
 
     if not weeks:
@@ -296,10 +327,14 @@ def _load_week_facts_intersection(
 
 
 def _load_day_facts(
-    year: int, month: int, country: Optional[str], city: Optional[str]
+    year: int,
+    month: int,
+    country: Optional[str],
+    city: Optional[str],
+    business_slice: Optional[str] = None,
 ) -> Dict[Tuple, Dict[str, Any]]:
     """Suma de day_fact dentro del mes calendario exacto. BASE CANÓNICA."""
-    extra_where, extra_params = _build_filter(country, city)
+    extra_where, extra_params = _build_filter(country, city, business_slice)
     start, end = _month_bounds(year, month)
     sql = f"""
         SELECT country, city, business_slice_name,
@@ -556,10 +591,12 @@ def run_consistency_audit(
     month: int,
     country: Optional[str] = None,
     city: Optional[str] = None,
+    business_slice: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     print(
         f"[kpi-consistency-v2] year={year} month={month} "
-        f"country={country or '*'} city={city or '*'}",
+        f"country={country or '*'} city={city or '*'} "
+        f"business_slice={business_slice or '*'}",
         flush=True,
     )
     print(
@@ -568,12 +605,17 @@ def run_consistency_audit(
         flush=True,
     )
 
-    monthly = _load_month_facts(year, month, country, city)
-    weekly_full = _load_week_facts_full_iso(year, month, country, city)
-    weekly_intersect = _load_week_facts_intersection(year, month, country, city)
-    daily = _load_day_facts(year, month, country, city)
+    monthly = _load_month_facts(year, month, country, city, business_slice)
+    weekly_full = _load_week_facts_full_iso(year, month, country, city, business_slice)
+    weekly_intersect = _load_week_facts_intersection(
+        year, month, country, city, business_slice
+    )
+    daily = _load_day_facts(year, month, country, city, business_slice)
 
     keys = set(monthly.keys()) | set(weekly_full.keys()) | set(daily.keys())
+    nbs = normalize_business_slice_token(business_slice)
+    if nbs is not None:
+        keys = {k for k in keys if (k[2] or "").strip().lower() == nbs.lower()}
     print(
         f"[kpi-consistency-v2] cells: monthly={len(monthly)} "
         f"weekly_full={len(weekly_full)} weekly_intersect={len(weekly_intersect)} "
@@ -625,10 +667,13 @@ def main() -> int:
     p.add_argument("--month", type=int, required=True)
     p.add_argument("--country", type=str, default=None)
     p.add_argument("--city", type=str, default=None)
+    p.add_argument("--business-slice", type=str, default=None, dest="business_slice")
     p.add_argument("--out", type=str, default=None)
     args = p.parse_args()
 
-    rows = run_consistency_audit(args.year, args.month, args.country, args.city)
+    rows = run_consistency_audit(
+        args.year, args.month, args.country, args.city, args.business_slice
+    )
     counts = summarize(rows)
 
     print("[kpi-consistency-v2] resumen status:")

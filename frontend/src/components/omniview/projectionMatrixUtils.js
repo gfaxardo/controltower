@@ -733,6 +733,86 @@ export function ytdSliceBadgeVisual (ytdSlice) {
   return { badgeClass: 'bg-amber-50 text-amber-900 border border-amber-200', emoji: '🟡', label: pctStr }
 }
 
+/** Etiquetas legibles para calculation_basis.expected_method (backend). */
+export const YTD_EXPECTED_METHOD_LABELS = {
+  monthly_expected: 'Mensual esperado (mes completo o corte en mes cerrado)',
+  weekly_intraweek: 'Semanal con semana abierta (expected intrasemana al corte)',
+  daily_expected: 'Diario (distribución por día)',
+  mixed: 'Mixto / rollup (varios enfoques o agregación)',
+}
+
+export function pacingLabelEs (pacing) {
+  if (pacing === 'ahead') return 'adelantado (ahead)'
+  if (pacing === 'behind') return 'atrasado (behind)'
+  if (pacing === 'on_track') return 'en ritmo (on_track)'
+  return pacing || '—'
+}
+
+export function ytdTrendLabelEs (trend) {
+  if (trend === 'improving') return 'mejorando'
+  if (trend === 'deteriorating') return 'deterioro'
+  if (trend === 'flat') return 'estable'
+  return trend || '—'
+}
+
+/**
+ * Tooltip / panel auditable FASE 3.8C (solo datos del backend).
+ */
+export function buildYtdSliceAuditTooltip (ytdSlice) {
+  if (!ytdSlice) return 'YTD: sin datos'
+  const cb = ytdSlice.calculation_basis
+  const lines = []
+
+  if (!cb || !cb.date_range_start) {
+    lines.push('Base YTD no disponible')
+    lines.push('')
+  } else {
+    lines.push(`Rango de fechas: ${cb.date_range_start} → ${cb.date_range_end}`)
+    lines.push(`Corte datos reales: ${cb.real_data_cutoff ?? '—'}`)
+    lines.push(`Corte plan esperado: ${cb.plan_expected_cutoff ?? '—'}`)
+    lines.push(`Grano: ${cb.grain ?? '—'}`)
+    lines.push('')
+    lines.push(`Real acumulado (viajes): ${formatNumShort(cb.real_accumulated_trips)}`)
+    lines.push(`Plan esperado acumulado (viajes): ${formatNumShort(cb.plan_expected_accumulated_trips)}`)
+    lines.push(`Gap acumulado (viajes): ${formatNumShort(cb.gap_accumulated_trips)}`)
+    lines.push(`Fórmula cumplimiento: ${cb.attainment_formula || '—'}`)
+    lines.push(
+      `Método expected: ${YTD_EXPECTED_METHOD_LABELS[cb.expected_method] || cb.expected_method || '—'}`,
+    )
+    if (cb.real_accumulated_revenue != null || cb.plan_expected_accumulated_revenue != null) {
+      lines.push('')
+      lines.push(`Real acumulado (revenue): ${formatNumShort(cb.real_accumulated_revenue)}`)
+      lines.push(`Plan esperado acumulado (revenue): ${formatNumShort(cb.plan_expected_accumulated_revenue)}`)
+    }
+    if (
+      cb.avg_active_drivers_real_ytd != null ||
+      cb.avg_active_drivers_expected_ytd != null
+    ) {
+      lines.push('')
+      lines.push(`Drivers activos prom. (real YTD): ${formatNumShort(cb.avg_active_drivers_real_ytd)}`)
+      lines.push(`Drivers activos prom. (esperado YTD): ${formatNumShort(cb.avg_active_drivers_expected_ytd)}`)
+      lines.push(`Productividad trips/driver real YTD: ${formatNumShort(cb.driver_productivity_real_ytd)}`)
+      lines.push(`Productividad trips/driver esperado YTD: ${formatNumShort(cb.driver_productivity_expected_ytd)}`)
+    }
+    if (cb.insufficient_data_reason) {
+      lines.push('')
+      lines.push(`Dato insuficiente: ${cb.insufficient_data_reason}`)
+    }
+    lines.push('')
+  }
+
+  lines.push(`Tendencia: ${ytdTrendLabelEs(ytdSlice.ytd_trend)}`)
+  lines.push(`Pacing: ${pacingLabelEs(ytdSlice.pacing_vs_expected)}`)
+  lines.push('')
+  lines.push(`Clave: ${ytdSlice.slice_key || '—'} · ${ytdSlice.slice_level || '—'}`)
+  const trace = ytdSlice.metric_trace?.insufficient_data
+  if (trace) {
+    lines.push('')
+    lines.push(`Nota traza: ${trace}`)
+  }
+  return lines.join('\n')
+}
+
 export function formatNumShort (v) {
   if (v == null || !Number.isFinite(Number(v))) return '—'
   const n = Number(v)
@@ -742,28 +822,7 @@ export function formatNumShort (v) {
 }
 
 export function buildYtdSliceTooltip (ytdSlice) {
-  if (!ytdSlice) return 'YTD: sin datos'
-  const lines = [
-    `Clave: ${ytdSlice.slice_key || '—'} · ${ytdSlice.slice_level || '—'}`,
-    '',
-    `Real YTD viajes:     ${formatNumShort(ytdSlice.ytd_real_trips)}`,
-    `Plan esperado YTD:   ${formatNumShort(ytdSlice.ytd_plan_expected_trips)}`,
-    `Gap viajes:          ${formatNumShort(ytdSlice.ytd_gap_trips)}`,
-    `Cumplimiento %:      ${ytdSlice.ytd_attainment_pct != null ? `${Number(ytdSlice.ytd_attainment_pct).toFixed(1)}%` : '—'}`,
-    `Tendencia:           ${ytdSlice.ytd_trend || '—'}`,
-    '',
-    `Real YTD revenue:    ${formatNumShort(ytdSlice.ytd_real_revenue)}`,
-    `Plan esperado rev.:  ${formatNumShort(ytdSlice.ytd_plan_expected_revenue)}`,
-    `Gap revenue:         ${formatNumShort(ytdSlice.ytd_gap_revenue)}`,
-    '',
-    `Drivers real (prom. ponderado YTD): ${formatNumShort(ytdSlice.ytd_avg_active_drivers_real)}`,
-    `Drivers esperado (ponderado):        ${formatNumShort(ytdSlice.ytd_avg_active_drivers_expected)}`,
-    `Trips / driver (real):               ${formatNumShort(ytdSlice.driver_productivity_ytd_real)}`,
-    `Trips / driver (esperado):           ${formatNumShort(ytdSlice.driver_productivity_ytd_expected)}`,
-  ]
-  const trace = ytdSlice.metric_trace?.insufficient_data
-  if (trace) lines.push('', `Nota: ${trace}`)
-  return lines.join('\n')
+  return buildYtdSliceAuditTooltip(ytdSlice)
 }
 
 export function buildProjectionCellTooltip (kpi, delta, cityName, lineName, periodLbl, kpiContract) {

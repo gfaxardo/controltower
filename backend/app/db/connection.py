@@ -223,13 +223,23 @@ def get_db_drill():
 @contextmanager
 def get_db_quick(timeout_ms: int = 12000):
     """
-    Conexión dedicada con statement_timeout corto para queries de dashboard/UI.
+    Transacción con statement_timeout corto para queries de dashboard/UI.
+    Reutiliza el pool de conexiones y aplica ``SET LOCAL statement_timeout`` por transacción,
+    evitando abrir un handshake TCP nuevo en cada llamada (comportamiento anterior).
+
     Falla rápido en lugar de bloquear minutos cuando la vista es pesada.
     """
+    if connection_pool is None:
+        init_db_pool()
     conn = None
     try:
-        conn = _get_connection_with_timeout(timeout_ms)
+        conn = connection_pool.getconn()
         register_active_pg_connection(conn)
+        cur = conn.cursor()
+        try:
+            cur.execute("SET LOCAL statement_timeout = %s", (str(int(timeout_ms)),))
+        finally:
+            cur.close()
         yield conn
         conn.commit()
     except Exception as e:
@@ -239,12 +249,12 @@ def get_db_quick(timeout_ms: int = 12000):
         if "does not exist" in msg.lower():
             logger.debug("Transacción (quick): relación/vista no existe: %s", msg[:200])
         else:
-            logger.warning("Query excedió timeout (%dms): %s", timeout_ms, str(e)[:200])
+            logger.warning("Query excedió timeout (%dms): %s", int(timeout_ms), str(e)[:200])
         raise
     finally:
         if conn:
             unregister_active_pg_connection(conn)
-            conn.close()
+            connection_pool.putconn(conn)
 
 
 def create_plan_schema():

@@ -92,6 +92,12 @@ class Settings(BaseSettings):
     # Si False, siempre legacy salvo ?source=canonical. Si True, usar canónica cuando parity lo permita.
     USE_CANONICAL_PLAN_VS_REAL_DEFAULT: bool = Field(default=False, description="Usar real canónica en Plan vs Real cuando parity sea OK")
 
+    # Plan vs Real: lectura desde MV materializada (ops.mv_plan_vs_real_monthly_fact[_canonical]); si False, solo vistas.
+    USE_PLAN_VS_REAL_MONTHLY_MV: bool = Field(
+        default=True,
+        description="Preferir MV mensual Plan vs Real; desactivar para fallback de emergencia a vistas",
+    )
+
     # Real LOB modo incremental: ventana reciente (días) para migración/refresh inicial.
     # Backfill histórico: python -m scripts.backfill_real_lob_mvs --from YYYY-MM-01 --to YYYY-MM-01
     REAL_LOB_RECENT_DAYS: int = 90

@@ -176,6 +176,7 @@ from app.services.business_slice_service import (
     get_business_slice_weekly,
     get_business_slice_daily,
     get_business_slice_matrix_freshness_meta,
+    merge_unmapped_bucket_rows_monthly,
 )
 from app.services.business_slice_omniview_service import get_business_slice_omniview
 from app.services.omniview_matrix_integrity_service import (
@@ -2310,12 +2311,12 @@ async def post_data_freshness_run():
 
 @router.post("/pipeline-refresh")
 async def post_pipeline_refresh(
-    skip_backfill: bool = Query(False, description="Omitir backfill Real LOB"),
+    skip_backfill: bool = Query(False, description="No-op (compat.): el pipeline ya no ejecuta backfill Real LOB legacy"),
     skip_driver: bool = Query(False, description="Omitir refresh driver lifecycle"),
     skip_supply: bool = Query(False, description="Omitir refresh supply"),
     skip_audit: bool = Query(False, description="Omitir auditoría final"),
 ):
-    """Ejecuta pipeline unificado: backfill Real LOB (mes actual+anterior), refresh driver lifecycle, refresh supply, auditoría. Uso: cron o admin. Puede tardar varios minutos."""
+    """Ejecuta pipeline unificado: cadena hourly-first, populate drill, refresh driver lifecycle, supply, auditorías. Uso: cron o admin. Puede tardar varios minutos. skip_backfill es no-op (compatibilidad)."""
     try:
         backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         cmd = [sys.executable, "-m", "scripts.run_pipeline_refresh_and_audit"]
@@ -3111,7 +3112,10 @@ async def business_slice_monthly(
     limit: int = Query(2000, ge=1, le=10000),
 ):
     try:
+        _prof_log = logger.isEnabledFor(logging.DEBUG)
+
         def _monthly_bundle():
+            prof: Optional[dict] = {} if _prof_log else None
             rows = get_business_slice_monthly(
                 country=country,
                 city=city,
@@ -3121,10 +3125,10 @@ async def business_slice_monthly(
                 year=year,
                 month=month,
                 limit=limit,
+                profile=prof,
             )
-            rows = append_unmapped_bucket_rows(
+            rows, unmapped_tot = merge_unmapped_bucket_rows_monthly(
                 rows,
-                "monthly",
                 country=country,
                 city=city,
                 year=year,
@@ -3132,6 +3136,7 @@ async def business_slice_monthly(
                 business_slice=business_slice,
                 fleet=fleet,
                 subfleet=subfleet,
+                profile=prof,
             )
             meta = enrich_business_slice_matrix_meta(
                 get_business_slice_matrix_freshness_meta(),
@@ -3150,11 +3155,37 @@ async def business_slice_monthly(
                     "source": "month_fact",
                     "source_table": "ops.real_business_slice_month_fact",
                 },
+                unmapped_period_totals_precomputed=unmapped_tot,
+                profile=prof,
             )
-            return rows, meta
+            return rows, meta, prof
 
-        data, meta = await _run_sync_request(request, _monthly_bundle)
+        t_http = time.perf_counter()
+        data, meta, prof = await _run_sync_request(request, _monthly_bundle)
         df = (meta or {}).get("data_freshness")
+        if prof is not None:
+            prof["total_http_ms"] = (time.perf_counter() - t_http) * 1000
+            prof["row_count"] = len(data)
+            t_ser = time.perf_counter()
+            payload = {"data": data, "total": len(data), "meta": meta, "data_freshness": df}
+            body = json.dumps(payload, default=str, ensure_ascii=False)
+            prof["serialization_ms"] = (time.perf_counter() - t_ser) * 1000
+            prof["payload_bytes"] = len(body.encode("utf-8"))
+            # Alias legibles informe P3C (mismo valor que claves internas)
+            if prof.get("base_fact_mv_query_ms") is not None:
+                prof["base_fact_query_ms"] = float(prof["base_fact_mv_query_ms"])
+            if prof.get("period_totals_query_ms") is not None:
+                prof["period_totals_fetch_ms"] = float(prof["period_totals_query_ms"])
+            numeric_items = [
+                (k, float(v))
+                for k, v in prof.items()
+                if isinstance(v, (int, float)) and not k.startswith("_")
+            ]
+            numeric_items.sort(key=lambda kv: -kv[1])
+            logger.debug(
+                "omniview_monthly_profile_sorted_ms %s",
+                " | ".join(f"{k}={v:.1f}" for k, v in numeric_items),
+            )
         return {"data": data, "total": len(data), "meta": meta, "data_freshness": df}
     except Exception as e:
         logger.error("business-slice/monthly: %s", e)

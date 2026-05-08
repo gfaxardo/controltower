@@ -1156,6 +1156,22 @@ export default function BusinessSliceOmniviewMatrix () {
           <ProjectionYtdAlertsBlock alerts={projectionMeta.ytd_alerts} compact={compact} />
         )}
 
+        {heavyQueriesEnabled && isProjectionMode && projectionReady && projectionMeta && (
+          <ProjectionOperationalSuggestionsBlock projectionMeta={projectionMeta} compact={compact} />
+        )}
+
+        {heavyQueriesEnabled && isProjectionMode && projectionReady && projectionMeta && (
+          <ProjectionContextualOperationalSuggestionsBlock projectionMeta={projectionMeta} compact={compact} />
+        )}
+
+        {heavyQueriesEnabled && isProjectionMode && projectionReady && projectionMeta && (
+          <ProjectionDecisionRecommendationsBlock projectionMeta={projectionMeta} compact={compact} />
+        )}
+
+        {heavyQueriesEnabled && isProjectionMode && projectionReady && projectionMeta && (
+          <ProjectionGlobalStrategicQueueBlock projectionMeta={projectionMeta} compact={compact} />
+        )}
+
         {/* ── Context bar (Vs Proyección) ─────────────────────── */}
         {heavyQueriesEnabled && isProjectionMode && (
           <ProjectionContextBar
@@ -1726,6 +1742,885 @@ const DRIVER_LABEL_ES = {
   volume: 'Volumen',
   productivity: 'Productividad',
   ticket: 'Ticket',
+}
+
+const SEGMENT_LABEL_ES = {
+  low_activity_0_5_7d: '0–5 viajes / sem ISO',
+  dormant_14d: 'Sin viaje 14d+',
+  dormant_30d: 'Sin viaje 30d+',
+  elite_degraded: 'Elite / alto valor en deterioro',
+  onboarding_pending_first_trip: 'Onboarding pend. 1.er viaje',
+  casual_low_engagement: 'Casual / PT bajo engagement',
+  // compat legado FASE 4.2 previa
+  '0_5_trips_last_7d': '0–5 viajes / sem ISO',
+  pending_first_trip: 'Pendientes 1.er viaje'
+}
+
+function ProjectionContextualOperationalSuggestionsBlock ({ projectionMeta, compact }) {
+  const py = compact ? 'py-1.5' : 'py-2'
+  const items = Array.isArray(projectionMeta?.contextual_suggestions)
+    ? projectionMeta.contextual_suggestions
+    : []
+  const integrityBroken = projectionMeta?.integrity_status?.status === 'broken'
+  const chk = projectionMeta?.integrity_status?.checks || {}
+  const ctxChk = chk.contextual_suggestions
+  const auditSeg = chk.segment_registry
+  const auditRec = chk.recovery_auditability
+  const auditPool = chk.operational_pool_quality
+  const top = items.slice(0, 3)
+
+  const confidenceLabel = (v) => {
+    const m = { high: 'Alta', medium: 'Media', low: 'Baja' }
+    return m[v] || v || '—'
+  }
+
+  const fmtCtxLine = (c) => {
+    if (!c || typeof c !== 'object') return null
+    if (c.opportunity?.headline) {
+      const comp = Array.isArray(c.opportunity.comparable_slice_labels) ? c.opportunity.comparable_slice_labels : []
+      const compHint = comp.length ? ` · vs ${comp.slice(0, 2).join(', ')}` : ''
+      return `${c.opportunity.headline}${compHint}`
+    }
+    const parts = []
+    if (c.current_driver_productivity != null && c.expected_driver_productivity != null) {
+      parts.push(`TPD ${Number(c.current_driver_productivity).toFixed(1)} vs esp. ${Number(c.expected_driver_productivity).toFixed(1)}`)
+    }
+    if (c.pending_first_trip_registrations != null) {
+      parts.push(`Pend. 1.er viaje: ${Number(c.pending_first_trip_registrations).toLocaleString()}`)
+    }
+    if (c.estimated_supply_gap_drivers != null) {
+      parts.push(`Gap supply (drv): ${Number(c.estimated_supply_gap_drivers).toFixed(0)}`)
+    }
+    if (c.avg_ticket_real_ytd != null && c.avg_ticket_expected_ytd != null) {
+      parts.push(`Ticket ø R ${Number(c.avg_ticket_real_ytd).toFixed(2)} / E ${Number(c.avg_ticket_expected_ytd).toFixed(2)}`)
+    }
+    return parts.length ? parts.join(' · ') : null
+  }
+
+  if (integrityBroken) {
+    return (
+      <div className={`rounded-lg border border-slate-200 bg-white shadow-sm px-4 ${py}`}>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+          Sugerencias operativas contextualizadas
+        </p>
+        <p className="text-[11px] text-rose-800" role="status">
+          Contextualización desactivada por integridad rota
+        </p>
+      </div>
+    )
+  }
+
+  if (!items.length) return null
+
+  return (
+    <div className={`rounded-lg border border-violet-100 bg-violet-50/40 shadow-sm px-4 ${py}`}>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-violet-800 mb-2">
+        Sugerencias operativas contextualizadas
+      </p>
+      {(ctxChk === 'partial' || auditSeg === 'partial' || auditRec === 'partial' || auditPool === 'partial') && (
+        <div className="mb-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[9px] text-amber-950" role="status">
+          Contexto auditado parcialmente (segmentos / recovery / pool). Revisa expansiones por tarjeta.
+        </div>
+      )}
+      <ul className="space-y-2">
+        {top.map((s) => {
+          const pool = s.operational_pool || {}
+          const segs = Array.isArray(pool.segments) ? pool.segments : []
+          const rec = s.estimated_recovery || {}
+          const ctx = s.operational_context || {}
+          const ctxLine = fmtCtxLine(ctx)
+          const reasoning = s.contextual_reasoning || {}
+          const tc = Number(pool.total_candidates)
+          const rc = pool.reachable_candidates != null ? Number(pool.reachable_candidates) : null
+          const reachPct = rc != null && tc > 0 ? (100 * rc / tc).toFixed(1) : null
+          const levBd = s.operational_leverage_breakdown || {}
+          return (
+            <li
+              key={s.suggestion_id}
+              className="rounded-md border border-violet-100 bg-white/90 p-2.5 text-[11px] text-slate-800 shadow-sm"
+            >
+              <div className="flex flex-wrap items-baseline justify-between gap-1 mb-1">
+                <span className="font-semibold text-slate-900">{s.entity}</span>
+                <span className="text-[9px] text-violet-800 font-semibold tabular-nums">
+                  Apalancamiento {s.operational_leverage_score ?? '—'}/100
+                </span>
+              </div>
+              <p className="font-semibold text-violet-900 text-[11px] leading-snug mb-1">
+                {s.recommended_action_name || s.action_type}
+              </p>
+              <div className="text-[10px] text-slate-600 mb-1">
+                <span className="text-slate-400">Pool</span>{' '}
+                <strong className="tabular-nums">{pool.total_candidates != null ? Number(pool.total_candidates).toLocaleString() : '—'}</strong>
+                {reachPct != null && (
+                  <span className="text-slate-500 ml-1 tabular-nums">
+                    · alcanzable ~{reachPct}%
+                  </span>
+                )}
+                {pool.pool_method && (
+                  <span className="text-slate-400 ml-1">({pool.pool_method})</span>
+                )}
+              </div>
+              {segs.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-1.5">
+                  {segs.slice(0, 3).map((seg, i) => (
+                    <span
+                      key={`${s.suggestion_id}-seg-${i}`}
+                      className="rounded bg-slate-100 px-1.5 py-px text-[9px] text-slate-700"
+                    >
+                      {SEGMENT_LABEL_ES[seg.segment_id] || SEGMENT_LABEL_ES[seg.segment] || seg.segment_id || seg.segment}:{' '}
+                      <span className="font-bold tabular-nums">{seg.drivers != null ? seg.drivers : '—'}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <p className="text-[10px] text-slate-700 mb-1">
+                <span className="text-slate-400">Recup. est.</span>{' '}
+                {rec.potential_trips_recovered_weekly != null
+                  ? (
+                    <span>
+                      ~<strong className="tabular-nums">{Number(rec.potential_trips_recovered_weekly).toLocaleString()}</strong> trips/sem
+                    </span>
+                    )
+                  : '—'}
+                {rec.potential_gap_recovery_pct != null && (
+                  <span className="text-slate-500 tabular-nums">{` · ~${Number(rec.potential_gap_recovery_pct).toFixed(1)}% gap (orden magnitud)`}</span>
+                )}
+              </p>
+              {rec.recovery_method && (
+                <p className="text-[9px] text-violet-900/90 mb-1 font-medium">
+                  Método: <span className="font-mono">{rec.recovery_method}</span>
+                </p>
+              )}
+              {reasoning.main_problem_detected && (
+                <p className="text-[9px] text-slate-600 leading-snug mb-1.5 line-clamp-3" title={reasoning.main_problem_detected}>
+                  <span className="text-slate-400">Razonamiento</span> {reasoning.main_problem_detected}
+                </p>
+              )}
+              {ctxLine && (
+                <p className="text-[9px] text-slate-600 leading-snug mb-1.5 line-clamp-2" title={ctxLine}>
+                  <span className="text-slate-400">Contexto</span> {ctxLine}
+                </p>
+              )}
+              {Array.isArray(s.suggested_operational_focus) && s.suggested_operational_focus.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-1.5">
+                  {s.suggested_operational_focus.slice(0, 4).map((f, fi) => (
+                    <span
+                      key={`${s.suggestion_id}-f-${fi}`}
+                      className="rounded border border-slate-200/80 bg-slate-50/90 px-1.5 py-px text-[8px] text-slate-600"
+                    >
+                      {f}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[9px] text-slate-600 mb-1.5">
+                <span><span className="text-slate-400">Prioridad</span> {s.priority_score ?? '—'}</span>
+                <span><span className="text-slate-400">Confianza</span> {confidenceLabel(s.confidence)}</span>
+              </div>
+              <details className="group mt-1 border-t border-slate-100 pt-1.5 text-[9px] text-slate-600">
+                <summary className="cursor-pointer list-none text-violet-800 font-semibold marker:content-none flex items-center gap-1">
+                  <span aria-hidden>▸</span>
+                  <span className="group-open:hidden">Cómo se estimó</span>
+                  <span className="hidden group-open:inline">▼ Cómo se estimó</span>
+                </summary>
+                <div className="mt-1 space-y-1 pl-3 border-l border-violet-100">
+                  {rec.confidence_reason && (
+                    <p><span className="text-slate-400">Confianza (por qué):</span> {rec.confidence_reason}</p>
+                  )}
+                  {rec.sample_size != null && (
+                    <p className="tabular-nums"><span className="text-slate-400">sample_size:</span> {rec.sample_size}</p>
+                  )}
+                  {rec.historical_reference_window && (
+                    <p><span className="text-slate-400">Ventana referencia:</span> {rec.historical_reference_window}</p>
+                  )}
+                  {Array.isArray(rec.assumptions_used) && rec.assumptions_used.length > 0 && (
+                    <div>
+                      <span className="text-slate-400">Supuestos</span>
+                      <ul className="list-disc list-inside text-[8px] space-y-0.5 mt-0.5">
+                        {rec.assumptions_used.slice(0, 8).map((a, i) => (
+                          <li key={i}>{typeof a === 'string' ? a : JSON.stringify(a)}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {Object.keys(levBd).length > 0 && (
+                    <p className="text-[8px] text-slate-500 leading-relaxed font-mono break-all">
+                      leverage_breakdown: {JSON.stringify(levBd)}
+                    </p>
+                  )}
+                  {reasoning.why_this_action && (
+                    <p><span className="text-slate-400">Por qué esta acción:</span> {reasoning.why_this_action}</p>
+                  )}
+                </div>
+              </details>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  disabled
+                  className="cursor-not-allowed rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-medium text-slate-400"
+                >
+                  Ver detalle
+                </button>
+                <button
+                  type="button"
+                  disabled
+                  className="cursor-not-allowed rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-medium text-slate-400"
+                >
+                  {s.next_step_preview?.entity_type === 'drivers'
+                    ? 'Ver conductores afectados'
+                    : s.next_step_preview?.entity_type === 'analysis'
+                      ? 'Ver análisis de ticket'
+                      : 'Ver slices comparables'}
+                </button>
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+function ProjectionDecisionRecommendationsBlock ({ projectionMeta, compact }) {
+  const py = compact ? 'py-1.5' : 'py-2'
+  const items = Array.isArray(projectionMeta?.decision_recommendations)
+    ? projectionMeta.decision_recommendations
+    : []
+  const integrityBroken = projectionMeta?.integrity_status?.status === 'broken'
+  const chk = projectionMeta?.integrity_status?.checks || {}
+  const decisionChk = chk.decision_policy_engine
+  const ctxCount = Array.isArray(projectionMeta?.contextual_suggestions)
+    ? projectionMeta.contextual_suggestions.length
+    : 0
+
+  const statusBadge = (st) => {
+    if (st === 'recommended') {
+      return (
+        <span className="rounded bg-emerald-100 px-1.5 py-px text-[9px] font-bold uppercase text-emerald-950">
+          Recomendada
+        </span>
+      )
+    }
+    if (st === 'alternative') {
+      return (
+        <span className="rounded bg-amber-100 px-1.5 py-px text-[9px] font-bold uppercase text-amber-950">
+          Alternativa
+        </span>
+      )
+    }
+    return (
+      <span className="rounded bg-slate-100 px-1.5 py-px text-[9px] font-bold uppercase text-slate-700">
+        No recomendada
+      </span>
+    )
+  }
+
+  const confidenceLabel = (v) => {
+    const m = { high: 'Alta', medium: 'Media', low: 'Baja' }
+    return m[v] || v || '—'
+  }
+
+  if (integrityBroken) {
+    return (
+      <div className={`rounded-lg border border-slate-200 bg-white shadow-sm px-4 ${py}`}>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+          Recomendaciones priorizadas
+        </p>
+        <p className="text-[11px] text-rose-800" role="status">
+          Motor de decisión inactivo por integridad rota
+        </p>
+      </div>
+    )
+  }
+
+  if (!items.length) {
+    if (ctxCount > 0 && decisionChk === 'missing') {
+      return (
+        <div className={`rounded-lg border border-amber-200 bg-amber-50/60 shadow-sm px-4 ${py}`}>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-amber-900 mb-1">
+            Recomendaciones priorizadas
+          </p>
+          <p className="text-[11px] text-amber-950" role="status">
+            Sin priorización disponible para este contexto (revisa integridad contextual o política decision_policy_engine).
+          </p>
+        </div>
+      )
+    }
+    return null
+  }
+
+  const top = items.slice(0, 6)
+
+  return (
+    <div className={`rounded-lg border border-teal-100 bg-teal-50/35 shadow-sm px-4 ${py}`}>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-teal-900 mb-2">
+        Recomendaciones priorizadas
+      </p>
+      {(decisionChk === 'partial' || projectionMeta?.integrity_status?.status === 'warning') && (
+        <div className="mb-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[9px] text-amber-950" role="status">
+          Priorización con señales parciales (confianza baja u otro chequeo incompleto). Usa como orden sugerido, no como automatismo.
+        </div>
+      )}
+      <p className="text-[9px] text-teal-950/85 mb-2 leading-snug" role="note">
+        Decision Engine informativo — ejecución no habilitada. No hay campañas, tareas ni APIs externas; la UI sólo muestra el orden sugerido del backend.
+      </p>
+      <ul className="space-y-2">
+        {top.map((r) => {
+          const act = r.recommended_action || {}
+          const reasoning = r.decision_reasoning || {}
+          const factors = r.decision_factors || {}
+          const cons = r.decision_constraints || {}
+          const alts = Array.isArray(r.alternatives) ? r.alternatives : []
+          return (
+            <li
+              key={r.recommendation_id || `${r.entity}-${act.action_type}`}
+              className="rounded-md border border-teal-100 bg-white/90 p-2.5 text-[11px] text-slate-800 shadow-sm"
+            >
+              <div className="flex flex-wrap items-baseline justify-between gap-1 mb-1">
+                <span className="font-semibold text-slate-900">{r.entity}</span>
+                {statusBadge(r.decision_status)}
+              </div>
+              <p className="font-semibold text-teal-950 text-[11px] leading-snug mb-1">
+                {act.action_name || act.action_type}
+              </p>
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-slate-600 mb-1">
+                <span>
+                  <span className="text-slate-400">Score decisión</span>{' '}
+                  <strong className="tabular-nums">{r.decision_score != null ? Number(r.decision_score).toFixed(1) : '—'}</strong>/100
+                </span>
+                <span>
+                  <span className="text-slate-400">Confianza datos</span> {confidenceLabel(cons.data_confidence)}
+                </span>
+                {cons.execution_enabled === false && (
+                  <span className="text-slate-500">Ejecución: desactivada</span>
+                )}
+              </div>
+              {reasoning.why_selected && (
+                <p className="text-[10px] text-slate-700 leading-snug mb-1 line-clamp-3" title={reasoning.why_selected}>
+                  <span className="text-slate-400">Razón principal</span> {reasoning.why_selected}
+                </p>
+              )}
+              {reasoning.expected_operational_benefit && (
+                <p className="text-[9px] text-slate-600 leading-snug mb-1 line-clamp-2">
+                  <span className="text-slate-400">Beneficio esperado</span> {reasoning.expected_operational_benefit}
+                </p>
+              )}
+              {Array.isArray(reasoning.main_tradeoffs) && reasoning.main_tradeoffs.length > 0 && (
+                <div className="text-[9px] text-slate-600 mb-1">
+                  <span className="text-slate-400">Tradeoffs</span>{' '}
+                  <span className="leading-snug">{reasoning.main_tradeoffs.slice(0, 3).join(' · ')}</span>
+                </div>
+              )}
+              {alts.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-1.5 text-[9px]">
+                  <span className="text-slate-400 w-full">Alternativas</span>
+                  {alts.slice(0, 4).map((a, ai) => (
+                    <span
+                      key={`${r.recommendation_id}-alt-${ai}`}
+                      className={`rounded px-1.5 py-px font-medium tabular-nums ${
+                        a.decision_status === 'alternative'
+                          ? 'border border-amber-200 bg-amber-50 text-amber-950'
+                          : 'border border-slate-200 bg-slate-50 text-slate-600'
+                      }`}
+                      title={a.action_name ? `${a.action_name} (${a.decision_status})` : a.decision_status}
+                    >
+                      {a.action_name || a.action_type}
+                      {' '}
+                      <span className="opacity-90">({a.decision_score != null ? Number(a.decision_score).toFixed(1) : '—'})</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <details className="group mt-1 border-t border-slate-100 pt-1.5 text-[9px] text-slate-600">
+                <summary className="cursor-pointer list-none text-teal-900 font-semibold marker:content-none flex items-center gap-1">
+                  <span aria-hidden>▸</span>
+                  <span className="group-open:hidden">Trazabilidad y desglose</span>
+                  <span className="hidden group-open:inline">▼ Trazabilidad</span>
+                </summary>
+                <div className="mt-1 space-y-1 pl-3 border-l border-teal-100">
+                  {r.policy_trace && (
+                    <>
+                      <p className="font-mono text-[8px] break-all">
+                        policy: {r.policy_trace.policy_version} · {r.policy_trace.policy_type}
+                      </p>
+                      {Array.isArray(r.policy_trace.inputs_used) && r.policy_trace.inputs_used.length > 0 && (
+                        <ul className="list-disc list-inside text-[8px] space-y-0.5">
+                          {r.policy_trace.inputs_used.slice(0, 12).map((u, i) => (
+                            <li key={i}>{typeof u === 'string' ? u : JSON.stringify(u)}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {r.policy_trace.decision_score_breakdown && (
+                        <p className="tabular-nums text-[8px]">
+                          breakdown:{' '}
+                          {JSON.stringify(r.policy_trace.decision_score_breakdown)}
+                        </p>
+                      )}
+                    </>
+                  )}
+                  {Object.keys(factors).length > 0 && (
+                    <p className="text-[8px] font-mono break-all leading-relaxed">
+                      factores ponderados (impacto / vel. / simpl. compl. / conf. / efic. costo):{' '}
+                      {JSON.stringify(factors)}
+                    </p>
+                  )}
+                  {Array.isArray(reasoning.why_not_other_actions) && reasoning.why_not_other_actions.length > 0 && (
+                    <div>
+                      <span className="text-slate-400">Por qué no otras acciones</span>
+                      <ul className="list-disc list-inside text-[8px] space-y-0.5 mt-0.5">
+                        {reasoning.why_not_other_actions.slice(0, 6).map((w, wi) => (
+                          <li key={wi}>{w}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {alts.length > 0 && (
+                    <div className="mt-1.5">
+                      <span className="text-slate-400">Lista completa de alternativas</span>
+                      <ul className="mt-0.5 max-h-28 overflow-y-auto list-disc list-inside text-[8px] text-slate-600 space-y-0.5 pr-1">
+                        {alts.map((a, ai) => (
+                          <li key={`${r.recommendation_id}-alta-${ai}`} className="tabular-nums">
+                            <span className="font-medium text-slate-800">{a.action_name || a.action_type}</span>
+                            {' '}
+                            · score {a.decision_score != null ? Number(a.decision_score).toFixed(1) : '—'}
+                            {' '}
+                            · {a.decision_status === 'alternative' ? 'alternativa' : 'no recomendada'}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </details>
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                <button
+                  type="button"
+                  disabled
+                  className="cursor-not-allowed rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-medium text-slate-400"
+                >
+                  Aceptar orden sugerido
+                </button>
+                <button
+                  type="button"
+                  disabled
+                  className="cursor-not-allowed rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-medium text-slate-400"
+                >
+                  Enviar a operaciones
+                </button>
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+const PORTFOLIO_ROLE_LABEL_ES = {
+  quick_win: 'Quick win',
+  growth: 'Growth',
+  structural: 'Estructural',
+  defensive: 'Defensiva',
+}
+
+const PORTFOLIO_ROLE_BADGE = {
+  quick_win: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+  growth: 'border-sky-200 bg-sky-50 text-sky-900',
+  structural: 'border-violet-200 bg-violet-50 text-violet-900',
+  defensive: 'border-amber-200 bg-amber-50 text-amber-900',
+}
+
+const OPERATIONAL_LOAD_LABEL_ES = {
+  low: 'Carga baja',
+  medium: 'Carga media',
+  high: 'Carga alta',
+}
+
+function ProjectionGlobalStrategicQueueBlock ({ projectionMeta, compact }) {
+  const py = compact ? 'py-1.5' : 'py-2'
+  const queue = Array.isArray(projectionMeta?.global_decision_queue)
+    ? projectionMeta.global_decision_queue
+    : []
+  const integrityBroken = projectionMeta?.integrity_status?.status === 'broken'
+  const chk = projectionMeta?.integrity_status?.checks || {}
+  const globalChk = chk.global_decision_engine
+  const recoCount = Array.isArray(projectionMeta?.decision_recommendations)
+    ? projectionMeta.decision_recommendations.length
+    : 0
+
+  const confidenceLabel = (v) => {
+    const m = { high: 'Alta', medium: 'Media', low: 'Baja' }
+    return m[v] || v || '—'
+  }
+
+  const entityLabel = (e) => {
+    if (!e) return '—'
+    if (e.label) return e.label
+    const parts = [e.country, e.city, e.lob].filter(Boolean)
+    if (e.segment) parts.push(`· ${e.segment}`)
+    return parts.join(' · ') || '—'
+  }
+
+  if (integrityBroken) {
+    return (
+      <div className={`rounded-lg border border-slate-200 bg-white shadow-sm px-4 ${py}`}>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+          Prioridades estratégicas globales
+        </p>
+        <p className="text-[11px] text-rose-800" role="status">
+          Layer global desactivado por integridad rota
+        </p>
+      </div>
+    )
+  }
+
+  if (!queue.length) {
+    if (recoCount > 0 && globalChk === 'missing') {
+      return (
+        <div className={`rounded-lg border border-amber-200 bg-amber-50/60 shadow-sm px-4 ${py}`}>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-amber-900 mb-1">
+            Prioridades estratégicas globales
+          </p>
+          <p className="text-[11px] text-amber-950" role="status">
+            Sin priorización global disponible (revisa integridad o el chequeo global_decision_engine).
+          </p>
+        </div>
+      )
+    }
+    return null
+  }
+
+  const top = queue.slice(0, 8)
+  const saturationSummary = top[0]?.global_policy_trace?.saturation_summary
+  const hasSaturation =
+    saturationSummary &&
+    ((Array.isArray(saturationSummary.saturated_actions) && saturationSummary.saturated_actions.length > 0) ||
+      (Array.isArray(saturationSummary.saturated_teams) && saturationSummary.saturated_teams.length > 0))
+
+  return (
+    <div className={`rounded-lg border border-indigo-100 bg-indigo-50/40 shadow-sm px-4 ${py}`}>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-900 mb-2">
+        Prioridades estratégicas globales
+      </p>
+      {(globalChk === 'partial' || projectionMeta?.integrity_status?.status === 'warning') && (
+        <div className="mb-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[9px] text-amber-950" role="status">
+          Priorización global con señales parciales (confianza baja, saturación o inputs incompletos). Usar como orden sugerido, no como ejecución.
+        </div>
+      )}
+      {hasSaturation && (
+        <div className="mb-2 rounded border border-orange-200 bg-orange-50 px-2 py-1 text-[9px] text-orange-950" role="alert">
+          Saturación detectada en cola:{' '}
+          {Array.isArray(saturationSummary.saturated_actions) && saturationSummary.saturated_actions.length > 0 && (
+            <span>
+              acciones [{saturationSummary.saturated_actions.join(', ')}]
+            </span>
+          )}
+          {Array.isArray(saturationSummary.saturated_teams) && saturationSummary.saturated_teams.length > 0 && (
+            <span>
+              {' '}equipos [{saturationSummary.saturated_teams.join(', ')}]
+            </span>
+          )}
+          . Validar capacidad antes de cualquier ejecución manual.
+        </div>
+      )}
+      <p className="text-[9px] text-indigo-950/85 mb-2 leading-snug" role="note">
+        Global Decision Layer informativa — ejecución no habilitada. No hay automatización, campañas ni APIs externas; la UI sólo muestra el orden sugerido por el backend.
+      </p>
+      <ul className="space-y-2">
+        {top.map((g) => {
+          const ent = g.entity || {}
+          const sel = g.selected_decision || {}
+          const reasoning = g.global_decision_reasoning || {}
+          const dims = g.priority_dimensions || {}
+          const risks = g.decision_risks || {}
+          const rp = g.resource_profile || {}
+          const role = g.portfolio_role || {}
+          const cons = g.decision_constraints || {}
+          const trace = g.global_policy_trace || {}
+          const breakdown = trace.score_breakdown || {}
+          const teams = Array.isArray(rp.required_team_type) ? rp.required_team_type : []
+          const roleClass = PORTFOLIO_ROLE_BADGE[role.role_type] || 'border-slate-200 bg-slate-50 text-slate-700'
+          return (
+            <li
+              key={g.global_recommendation_id || `${g.global_priority_rank}-${ent.label}`}
+              className="rounded-md border border-indigo-100 bg-white/95 p-2.5 text-[11px] text-slate-800 shadow-sm"
+            >
+              <div className="flex flex-wrap items-baseline justify-between gap-1 mb-1">
+                <div className="flex items-baseline gap-2 min-w-0">
+                  <span className="rounded bg-indigo-100 px-1.5 py-px text-[9px] font-bold text-indigo-950 tabular-nums">
+                    #{g.global_priority_rank}
+                  </span>
+                  <span className="font-semibold text-slate-900 truncate">
+                    {entityLabel(ent)}
+                  </span>
+                </div>
+                <span className={`rounded border px-1.5 py-px text-[9px] font-bold uppercase tracking-wide ${roleClass}`}>
+                  {PORTFOLIO_ROLE_LABEL_ES[role.role_type] || role.role_type || '—'}
+                </span>
+              </div>
+              <p className="font-semibold text-indigo-950 text-[11px] leading-snug mb-1">
+                {sel.action_name || sel.action_type}
+              </p>
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-slate-600 mb-1">
+                <span>
+                  <span className="text-slate-400">Score global</span>{' '}
+                  <strong className="tabular-nums">{g.global_decision_score != null ? Number(g.global_decision_score).toFixed(1) : '—'}</strong>/100
+                </span>
+                <span>
+                  <span className="text-slate-400">Confianza datos</span>{' '}
+                  {confidenceLabel(cons.data_confidence)}
+                </span>
+                <span>
+                  <span className="text-slate-400">Carga</span>{' '}
+                  {OPERATIONAL_LOAD_LABEL_ES[rp.estimated_operational_load] || rp.estimated_operational_load || '—'}
+                </span>
+                {cons.execution_enabled === false && (
+                  <span className="text-slate-500">Ejecución: desactivada</span>
+                )}
+              </div>
+              {reasoning.why_prioritized_globally && (
+                <p className="text-[10px] text-slate-700 leading-snug mb-1 line-clamp-3" title={reasoning.why_prioritized_globally}>
+                  <span className="text-slate-400">Por qué priorizado</span> {reasoning.why_prioritized_globally}
+                </p>
+              )}
+              {reasoning.expected_business_impact && (
+                <p className="text-[9px] text-slate-600 leading-snug mb-1 line-clamp-2">
+                  <span className="text-slate-400">Impacto esperado</span> {reasoning.expected_business_impact}
+                </p>
+              )}
+              {reasoning.strategic_relevance && (
+                <p className="text-[9px] text-slate-600 leading-snug mb-1 line-clamp-2">
+                  <span className="text-slate-400">Relevancia estratégica</span> {reasoning.strategic_relevance}
+                </p>
+              )}
+              {(teams.length > 0 || risks.operational_saturation_risk) && (
+                <div className="flex flex-wrap items-center gap-1 mb-1.5">
+                  {teams.slice(0, 4).map((t, ti) => (
+                    <span
+                      key={`${g.global_recommendation_id}-team-${ti}`}
+                      className="rounded border border-slate-200 bg-slate-50/90 px-1.5 py-px text-[8px] text-slate-700"
+                    >
+                      {t}
+                    </span>
+                  ))}
+                  {risks.operational_saturation_risk && /Saturaci\u00f3n V1/i.test(String(risks.operational_saturation_risk)) && (
+                    <span className="rounded border border-orange-200 bg-orange-50 px-1.5 py-px text-[8px] text-orange-900">
+                      saturación
+                    </span>
+                  )}
+                </div>
+              )}
+              <details className="group mt-1 border-t border-slate-100 pt-1.5 text-[9px] text-slate-600">
+                <summary className="cursor-pointer list-none text-indigo-900 font-semibold marker:content-none flex items-center gap-1">
+                  <span aria-hidden>▸</span>
+                  <span className="group-open:hidden">Detalles, riesgos y trazabilidad</span>
+                  <span className="hidden group-open:inline">▼ Detalles</span>
+                </summary>
+                <div className="mt-1 space-y-1 pl-3 border-l border-indigo-100">
+                  {(reasoning.urgency_reasoning || reasoning.execution_feasibility) && (
+                    <>
+                      {reasoning.urgency_reasoning && (
+                        <p><span className="text-slate-400">Urgencia</span> {reasoning.urgency_reasoning}</p>
+                      )}
+                      {reasoning.execution_feasibility && (
+                        <p><span className="text-slate-400">Viabilidad ejecución</span> {reasoning.execution_feasibility}</p>
+                      )}
+                    </>
+                  )}
+                  {Object.keys(dims).length > 0 && (
+                    <p className="text-[8px] font-mono break-all leading-relaxed">
+                      dimensiones (local / impacto / urgencia / alcance / viabilidad / estratégico):{' '}
+                      {JSON.stringify(dims)}
+                    </p>
+                  )}
+                  {Object.keys(breakdown).length > 0 && (
+                    <p className="text-[8px] font-mono break-all leading-relaxed">
+                      breakdown: {JSON.stringify(breakdown)}
+                    </p>
+                  )}
+                  {(risks.operational_saturation_risk || risks.execution_complexity_risk || risks.confidence_risk) && (
+                    <div>
+                      <span className="text-slate-400">Riesgos</span>
+                      <ul className="list-disc list-inside text-[8px] space-y-0.5 mt-0.5">
+                        {risks.operational_saturation_risk && (
+                          <li>{risks.operational_saturation_risk}</li>
+                        )}
+                        {risks.execution_complexity_risk && (
+                          <li>{risks.execution_complexity_risk}</li>
+                        )}
+                        {risks.confidence_risk && (
+                          <li>{risks.confidence_risk}</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                  {Array.isArray(rp.required_team_type) && rp.required_team_type.length > 0 && (
+                    <p className="text-[8px]">
+                      <span className="text-slate-400">Equipos sugeridos:</span> {rp.required_team_type.join(', ')}
+                    </p>
+                  )}
+                  {role.role_type && (
+                    <p className="text-[8px]">
+                      <span className="text-slate-400">Rol portfolio:</span> {PORTFOLIO_ROLE_LABEL_ES[role.role_type] || role.role_type}
+                      {role.portfolio_balance_weight != null && (
+                        <span className="ml-1 tabular-nums">
+                          · balance {Number(role.portfolio_balance_weight).toFixed(0)}/100
+                        </span>
+                      )}
+                    </p>
+                  )}
+                  {trace.policy_version && (
+                    <p className="font-mono text-[8px] break-all">
+                      policy: {trace.policy_version} · {trace.policy_type}
+                    </p>
+                  )}
+                  {Array.isArray(trace.inputs_used) && trace.inputs_used.length > 0 && (
+                    <ul className="list-disc list-inside text-[8px] space-y-0.5">
+                      {trace.inputs_used.slice(0, 14).map((u, i) => (
+                        <li key={i}>{typeof u === 'string' ? u : JSON.stringify(u)}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </details>
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                <button
+                  type="button"
+                  disabled
+                  className="cursor-not-allowed rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-medium text-slate-400"
+                >
+                  Aceptar prioridad global
+                </button>
+                <button
+                  type="button"
+                  disabled
+                  className="cursor-not-allowed rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-medium text-slate-400"
+                >
+                  Enviar a planeación
+                </button>
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+function ProjectionOperationalSuggestionsBlock ({ projectionMeta, compact }) {
+  const py = compact ? 'py-1.5' : 'py-2'
+  const suggestions = Array.isArray(projectionMeta?.suggestions) ? projectionMeta.suggestions : []
+  const st = projectionMeta?.suggestions_status
+  const integrityBroken = projectionMeta?.integrity_status?.status === 'broken'
+  const disabled = integrityBroken || st?.status === 'disabled'
+
+  const impactLabel = (v) => {
+    const m = {
+      medium_high: 'Medio-alto',
+      high: 'Alto',
+      medium: 'Medio',
+      low: 'Bajo',
+      preventive: 'Preventivo'
+    }
+    return m[v] || v || '—'
+  }
+  const confidenceLabel = (v) => {
+    const m = { high: 'Alta', medium: 'Media', low: 'Baja' }
+    return m[v] || v || '—'
+  }
+
+  const top = suggestions.slice(0, 5)
+
+  return (
+    <div className={`rounded-lg border border-slate-200 bg-white shadow-sm px-4 ${py}`}>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-2">
+        Sugerencias operativas
+      </p>
+
+      {disabled && (
+        <p className="text-[11px] text-rose-800 font-medium mb-2" role="status">
+          Sugerencias desactivadas por integridad rota
+        </p>
+      )}
+
+      {!disabled && st?.status === 'partial' && st?.reason === 'integrity_warning' && (
+        <div
+          className="mb-2 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-[10px] text-amber-950"
+          role="status"
+        >
+          Sugerencias generadas con confianza parcial
+        </div>
+      )}
+
+      {!disabled && st?.status === 'empty' && (
+        <p className="text-[11px] text-slate-500" role="status">
+          {st.reason === 'no_ytd_alerts' && 'Sin sugerencias en esta vista (no hay alertas YTD).'}
+          {st.reason === 'no_suggestions' && 'Sin sugerencias en esta vista (no se derivaron acciones desde las alertas).'}
+          {st.reason === 'suggestion_engine_error' && 'Sin sugerencias en esta vista (error al generar sugerencias).'}
+          {(!st.reason || !['no_ytd_alerts', 'no_suggestions', 'suggestion_engine_error'].includes(st.reason)) && (
+            'Sin sugerencias en esta vista.'
+          )}
+        </p>
+      )}
+
+      {!disabled && top.length > 0 && (
+        <ul className="grid gap-2 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+          {top.map((s) => (
+            <li
+              key={s.suggestion_id}
+              className="rounded-md border border-slate-100 bg-slate-50/80 p-2.5 text-[11px] text-slate-800 shadow-sm"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-1 mb-1">
+                <span className="font-semibold text-slate-900 leading-snug min-w-0">{s.entity}</span>
+                <span
+                  className={`flex-shrink-0 text-[9px] font-bold uppercase px-1 rounded ${
+                    s.level === 'critical'
+                      ? 'bg-rose-100 text-rose-900'
+                      : s.level === 'warning'
+                        ? 'bg-amber-100 text-amber-900'
+                        : 'bg-emerald-100 text-emerald-900'
+                  }`}
+                >
+                  {s.level === 'critical' ? 'crítico' : s.level === 'warning' ? 'alerta' : 'oportunidad'}
+                </span>
+              </div>
+              <p className="font-semibold text-indigo-900 text-[11px] leading-snug mb-1">
+                {s.recommended_action_name}
+              </p>
+              <p className="text-[10px] text-slate-600 leading-snug mb-1.5 line-clamp-3" title={s.why}>
+                {s.why}
+              </p>
+              <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[9px] text-slate-600 mb-2">
+                <span>
+                  <span className="text-slate-400">Owner</span> {s.owner_suggested}
+                </span>
+                <span>
+                  <span className="text-slate-400">Canal</span> {s.channel_suggested}
+                </span>
+                <span>
+                  <span className="text-slate-400">Impacto</span> {impactLabel(s.expected_impact)}
+                </span>
+                <span className="tabular-nums">
+                  <span className="text-slate-400">Prioridad</span> {s.priority_score ?? '—'}
+                </span>
+                <span>
+                  <span className="text-slate-400">Confianza</span> {confidenceLabel(s.confidence)}
+                </span>
+              </div>
+              <button
+                type="button"
+                disabled
+                className="w-full cursor-not-allowed rounded border border-slate-200 bg-slate-100 px-2 py-1 text-[9px] font-semibold text-slate-500"
+                title="La ejecución de acciones no está habilitada en esta fase"
+              >
+                Ejecución no habilitada
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
 }
 
 function ProjectionYtdAlertsBlock ({ alerts, compact }) {

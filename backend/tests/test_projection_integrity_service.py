@@ -7,34 +7,46 @@ from app.services.projection_integrity_service import (
 
 
 def _auth_peru_lima():
+    cb = {"date_range_start": "2026-01-01", "date_range_end": "2026-05-06"}
     return {
         "total": {
             "row_type": "total",
             "row_scope_key": "__PORTFOLIO__",
             "ytd_slice": {
-            "slice_key": "__PORTFOLIO__",
-            "slice_level": "total",
-            "metric_trace": {"basis": "test_fixture"},
-        },
+                "slice_key": "__PORTFOLIO__",
+                "slice_level": "total",
+                "metric_trace": {"basis": "test_fixture"},
+                "calculation_basis": cb,
+            },
         },
         "by_country": {},
         "by_city": {
             "peru::lima": {
                 "row_type": "city",
                 "row_scope_key": "peru::lima",
-                "ytd_slice": {"slice_key": "peru::lima", "slice_level": "city"},
+                "ytd_slice": {
+                    "slice_key": "peru::lima",
+                    "slice_level": "city",
+                    "calculation_basis": cb,
+                },
             },
         },
         "rows": [],
     }
 
 
-def _row(with_pop: bool, with_ytd_slice: bool = True):
+def _row(with_pop: bool, with_ytd_slice: bool = True, with_calc_basis: bool = True):
     r = {"country": "peru", "city": "lima", "business_slice_name": "x", "trips_completed": 1}
     if with_pop:
         r["period_over_period"] = {"comparable": False, "kind": "mom"}
     if with_ytd_slice:
-        r["ytd_slice"] = {"slice_key": "peru::lima::x::0::", "slice_level": "lob"}
+        y = {"slice_key": "peru::lima::x::0::", "slice_level": "lob"}
+        if with_calc_basis:
+            y["calculation_basis"] = {
+                "date_range_start": "2026-01-01",
+                "date_range_end": "2026-05-06",
+            }
+        r["ytd_slice"] = y
         r["row_type"] = "lob"
         r["row_scope_key"] = "peru::lima::x::0::"
     return r
@@ -57,6 +69,7 @@ def test_integrity_ok_full():
     assert out["checks"]["period_over_period"] == "ok"
     assert out["checks"]["ytd_summary"] == "ok"
     assert out["checks"]["authoritative_aggregation"] == "ok"
+    assert out["checks"]["ytd_calculation_basis"] == "ok"
 
 
 def test_integrity_broken_no_ytd():
@@ -145,6 +158,36 @@ def test_safe_wrap_never_raises():
     )
     assert out["status"] == "warning"
     assert "No se pudo calcular integridad" in out["issues"][0]
+
+
+def test_integrity_warning_partial_ytd_calculation_basis():
+    rows = [_row(True, True, with_calc_basis=True), _row(True, True, with_calc_basis=False)]
+    out = build_projection_integrity_status(
+        display_rows=rows,
+        ytd_summary={"ytd_trend": "flat"},
+        ytd_alerts=[],
+        had_resolved_plan=True,
+        matched_count=2,
+        plan_without_real_count=0,
+        authoritative_ytd=_auth_peru_lima(),
+    )
+    assert out["status"] == "warning"
+    assert out["checks"]["ytd_calculation_basis"] == "partial"
+
+
+def test_integrity_broken_all_ytd_calculation_basis_missing():
+    rows = [_row(True, True, with_calc_basis=False)]
+    out = build_projection_integrity_status(
+        display_rows=rows,
+        ytd_summary={"ytd_trend": "flat"},
+        ytd_alerts=[],
+        had_resolved_plan=True,
+        matched_count=1,
+        plan_without_real_count=0,
+        authoritative_ytd=_auth_peru_lima(),
+    )
+    assert out["status"] == "broken"
+    assert out["checks"]["ytd_calculation_basis"] == "missing"
 
 
 def test_integrity_warning_partial_ytd_slice():

@@ -37,6 +37,24 @@ def _minimal_ok_payload():
         "ytd_active_drivers_real": None,
         "ytd_plan_expected_active_drivers": None,
         "ytd_gap_active_drivers": None,
+        "calculation_basis": {
+            "date_range_start": "2026-01-01",
+            "date_range_end": "2026-04-30",
+            "real_data_cutoff": "2026-04-30",
+            "plan_expected_cutoff": "2026-04-30",
+            "real_accumulated_trips": 100.0,
+            "plan_expected_accumulated_trips": 120.0,
+            "gap_accumulated_trips": -20.0,
+            "attainment_formula": "real_accumulated_trips / plan_expected_accumulated_trips * 100",
+            "expected_method": "monthly_expected",
+            "grain": "monthly",
+            "real_accumulated_revenue": None,
+            "plan_expected_accumulated_revenue": None,
+            "avg_active_drivers_real_ytd": 10.0,
+            "avg_active_drivers_expected_ytd": 10.0,
+            "driver_productivity_real_ytd": 10.0,
+            "driver_productivity_expected_ytd": 12.0,
+        },
     }
 
 

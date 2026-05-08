@@ -12,6 +12,92 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.services.seasonality_curve_engine import PROJECTABLE_KPIS
 
+YTD_ATTAINMENT_FORMULA = "real_accumulated_trips / plan_expected_accumulated_trips * 100"
+
+
+def _classify_ytd_expected_method(
+    grain: str,
+    year_eff: int,
+    today: date,
+    cutoff: date,
+) -> str:
+    """Etiqueta de método de expected coherente con el grano y el corte YTD (FASE 3.8C)."""
+    if grain == "daily":
+        return "daily_expected"
+    if grain == "weekly":
+        if year_eff < today.year:
+            return "mixed"
+        ref_monday = today - timedelta(days=today.weekday())
+        week_sunday = ref_monday + timedelta(days=6)
+        if cutoff >= ref_monday and today < week_sunday:
+            return "weekly_intraweek"
+        return "mixed"
+    # monthly
+    if year_eff < today.year:
+        return "monthly_expected"
+    last_dom = date(cutoff.year, cutoff.month, monthrange(cutoff.year, cutoff.month)[1])
+    if cutoff < last_dom:
+        return "mixed"
+    return "monthly_expected"
+
+
+def _build_ytd_calculation_basis(
+    *,
+    grain: str,
+    year_eff: int,
+    month: Optional[int],
+    today: date,
+    cutoff: date,
+    ytd_real_trips: Optional[float],
+    ytd_plan_expected_trips: Optional[float],
+    ytd_gap_trips: Optional[float],
+    ytd_real_revenue: Optional[float],
+    ytd_plan_expected_revenue: Optional[float],
+    ytd_avg_active_drivers_real: Optional[float],
+    ytd_avg_active_drivers_expected: Optional[float],
+    driver_productivity_ytd_real: Optional[float],
+    driver_productivity_ytd_expected: Optional[float],
+    insufficient_data_reason: Optional[str] = None,
+    expected_method_override: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Base auditable del YTD: mismos acumulados que ytd_*; no recalcula la fórmula de cumplimiento.
+    """
+    dr_start = f"{year_eff}-01-01"
+    dr_end = cutoff.isoformat()
+
+    def _or_num(v: Any) -> Any:
+        if v is None:
+            return None
+        return _safe_float(v)
+
+    basis: Dict[str, Any] = {
+        "date_range_start": dr_start,
+        "date_range_end": dr_end,
+        "real_data_cutoff": dr_end,
+        "plan_expected_cutoff": dr_end,
+        "real_accumulated_trips": _or_num(ytd_real_trips),
+        "plan_expected_accumulated_trips": _or_num(ytd_plan_expected_trips),
+        "gap_accumulated_trips": _or_num(ytd_gap_trips),
+        "attainment_formula": YTD_ATTAINMENT_FORMULA,
+        "expected_method": (
+            expected_method_override
+            if expected_method_override
+            else _classify_ytd_expected_method(grain, year_eff, today, cutoff)
+        ),
+        "grain": grain,
+        "real_accumulated_revenue": _or_num(ytd_real_revenue),
+        "plan_expected_accumulated_revenue": _or_num(ytd_plan_expected_revenue),
+        "avg_active_drivers_real_ytd": _or_num(ytd_avg_active_drivers_real),
+        "avg_active_drivers_expected_ytd": _or_num(ytd_avg_active_drivers_expected),
+        "driver_productivity_real_ytd": _or_num(driver_productivity_ytd_real),
+        "driver_productivity_expected_ytd": _or_num(driver_productivity_ytd_expected),
+    }
+    if insufficient_data_reason:
+        basis["insufficient_data_reason"] = insufficient_data_reason
+    _ = month
+    return basis
+
 
 def _peps() -> Any:
     """Evita import circular con projection_expected_progress_service."""
@@ -241,12 +327,15 @@ def _finalize_ytd_payload(
     *,
     grain: str,
     year_eff: int,
+    month: Optional[int],
+    today: date,
     through_label: str,
     sums_real: Dict[str, float],
     sums_exp: Dict[str, float],
     drv_acc: Dict[str, float],
     period_snapshots: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
+    cutoff = date.fromisoformat(through_label[:10])
     y_r = float(sums_real.get("trips_completed", 0.0))
     y_e = float(sums_exp.get("trips_completed", 0.0))
     rev_r = float(sums_real.get("revenue_yego_net", 0.0))
@@ -284,6 +373,11 @@ def _finalize_ytd_payload(
         "Útil como indicador operativo; no sustituye conteo distinct anual."
     )
 
+    ytd_rt = round(y_r, 2)
+    ytd_pe = round(y_e, 2)
+    ytd_rr = round(rev_r, 2) if rev_r or rev_r == 0 else None
+    ytd_pre = round(rev_e, 2) if rev_e or rev_e == 0 else None
+
     return {
         "grain": grain,
         "year": year_eff,
@@ -314,12 +408,12 @@ def _finalize_ytd_payload(
             "ytd_trend": {"basis": "last_up_to_3 portfolio attainment slopes"},
             "gap_decomposition": gap_dec.get("basis"),
         },
-        "ytd_real_trips": round(y_r, 2),
-        "ytd_plan_expected_trips": round(y_e, 2),
+        "ytd_real_trips": ytd_rt,
+        "ytd_plan_expected_trips": ytd_pe,
         "ytd_gap_trips": gap_t,
         "ytd_attainment_pct": att,
-        "ytd_real_revenue": round(rev_r, 2) if rev_r or rev_r == 0 else None,
-        "ytd_plan_expected_revenue": round(rev_e, 2) if rev_e or rev_e == 0 else None,
+        "ytd_real_revenue": ytd_rr,
+        "ytd_plan_expected_revenue": ytd_pre,
         "ytd_gap_revenue": gap_r,
         "ytd_avg_active_drivers_real": ytd_avg_d_r,
         "ytd_avg_active_drivers_expected": ytd_avg_d_e,
@@ -336,6 +430,22 @@ def _finalize_ytd_payload(
         "ytd_active_drivers_real": None,
         "ytd_plan_expected_active_drivers": None,
         "ytd_gap_active_drivers": None,
+        "calculation_basis": _build_ytd_calculation_basis(
+            grain=grain,
+            year_eff=year_eff,
+            month=month,
+            today=today,
+            cutoff=cutoff,
+            ytd_real_trips=ytd_rt,
+            ytd_plan_expected_trips=ytd_pe,
+            ytd_gap_trips=gap_t,
+            ytd_real_revenue=ytd_rr,
+            ytd_plan_expected_revenue=ytd_pre,
+            ytd_avg_active_drivers_real=ytd_avg_d_r,
+            ytd_avg_active_drivers_expected=ytd_avg_d_e,
+            driver_productivity_ytd_real=prod_r,
+            driver_productivity_ytd_expected=prod_e,
+        ),
     }
 
 
@@ -440,6 +550,8 @@ def compute_ytd_summary(
     return _finalize_ytd_payload(
         grain=grain,
         year_eff=year_eff,
+        month=month,
+        today=today,
         through_label=through_label,
         sums_real=dict(sums_real),
         sums_exp=dict(sums_exp),
@@ -493,8 +605,36 @@ def _slice_level_from_line_key(lk: Tuple) -> str:
     return "subfleet" if lk[3] else "lob"
 
 
-def _empty_ytd_slice_payload(grain: str, lk: Tuple, *, trace_note: str) -> Dict[str, Any]:
+def _empty_ytd_slice_payload(
+    grain: str,
+    lk: Tuple,
+    *,
+    trace_note: str,
+    year_eff: Optional[int] = None,
+    month: Optional[int] = None,
+    today: Optional[date] = None,
+) -> Dict[str, Any]:
     """Fila/slice sin acumulación suficiente; objeto siempre presente (FASE 3.8)."""
+    td = today or date.today()
+    ye = int(year_eff if year_eff is not None else td.year)
+    cutoff = _ytd_calendar_cutoff(ye, month, td)
+    cb = _build_ytd_calculation_basis(
+        grain=grain,
+        year_eff=ye,
+        month=month,
+        today=td,
+        cutoff=cutoff,
+        ytd_real_trips=None,
+        ytd_plan_expected_trips=None,
+        ytd_gap_trips=None,
+        ytd_real_revenue=None,
+        ytd_plan_expected_revenue=None,
+        ytd_avg_active_drivers_real=None,
+        ytd_avg_active_drivers_expected=None,
+        driver_productivity_ytd_real=None,
+        driver_productivity_ytd_expected=None,
+        insufficient_data_reason=trace_note,
+    )
     return {
         "grain": grain,
         "slice_key": _slice_key_from_line_key(lk),
@@ -517,6 +657,7 @@ def _empty_ytd_slice_payload(grain: str, lk: Tuple, *, trace_note: str) -> Dict[
             "expected_plan_basis": "same_as_global_ytd_summary",
             "slice_key_rule": "country::city::business_slice_name::is_subfleet_flag::subfleet_name",
         },
+        "calculation_basis": cb,
     }
 
 
@@ -525,6 +666,8 @@ def _finalize_ytd_slice_only(
     grain: str,
     lk: Tuple,
     year_eff: int,
+    month: Optional[int],
+    today: date,
     through_label: str,
     sums_real: Dict[str, float],
     sums_exp: Dict[str, float],
@@ -535,6 +678,8 @@ def _finalize_ytd_slice_only(
     full = _finalize_ytd_payload(
         grain=grain,
         year_eff=year_eff,
+        month=month,
+        today=today,
         through_label=through_label,
         sums_real=dict(sums_real),
         sums_exp=dict(sums_exp),
@@ -569,6 +714,7 @@ def _finalize_ytd_slice_only(
         "driver_productivity_ytd_real": full.get("driver_productivity_ytd_real"),
         "driver_productivity_ytd_expected": full.get("driver_productivity_ytd_expected"),
         "metric_trace": mt,
+        "calculation_basis": full.get("calculation_basis"),
     }
 
 
@@ -642,6 +788,8 @@ def compute_ytd_slice_by_line_key(
                 grain=grain,
                 lk=lk,
                 year_eff=year_eff,
+                month=month,
+                today=today,
                 through_label=through_label,
                 sums_real=box["sums_real"],
                 sums_exp=box["sums_exp"],
@@ -691,6 +839,8 @@ def compute_ytd_slice_by_line_key(
                 grain=grain,
                 lk=lk,
                 year_eff=year_eff,
+                month=month,
+                today=today,
                 through_label=through_label,
                 sums_real=box["sums_real"],
                 sums_exp=box["sums_exp"],
@@ -741,6 +891,8 @@ def compute_ytd_slice_by_line_key(
                 grain=grain,
                 lk=lk,
                 year_eff=year_eff,
+                month=month,
+                today=today,
                 through_label=through_label,
                 sums_real=box["sums_real"],
                 sums_exp=box["sums_exp"],
@@ -754,6 +906,9 @@ def compute_ytd_slice_by_line_key(
                 grain,
                 lk,
                 trace_note="sin períodos acumulados para esta clave en el alcance devuelto",
+                year_eff=year_eff,
+                month=month,
+                today=today,
             )
 
     return result
@@ -763,16 +918,35 @@ def ytd_summary_api_to_authoritative_total_slice(
     ytd_summary_api: Optional[Dict[str, Any]],
     *,
     grain: str,
+    today: Optional[date] = None,
 ) -> Dict[str, Any]:
     """
     TOTAL YTD slice: copia campo a campo de meta.ytd_summary ya serializada para API.
     Garantiza misma semántica numérica que el JSON de ytd_summary.
     """
+    td = today or date.today()
     if not ytd_summary_api or not isinstance(ytd_summary_api, dict) or ytd_summary_api.get("error"):
         trace = (
             f"ytd_summary en error o ausente: {ytd_summary_api.get('error')}"
             if isinstance(ytd_summary_api, dict) and ytd_summary_api.get("error")
             else "ytd_summary no disponible"
+        )
+        cb_err = _build_ytd_calculation_basis(
+            grain=grain,
+            year_eff=td.year,
+            month=None,
+            today=td,
+            cutoff=_ytd_calendar_cutoff(td.year, None, td),
+            ytd_real_trips=None,
+            ytd_plan_expected_trips=None,
+            ytd_gap_trips=None,
+            ytd_real_revenue=None,
+            ytd_plan_expected_revenue=None,
+            ytd_avg_active_drivers_real=None,
+            ytd_avg_active_drivers_expected=None,
+            driver_productivity_ytd_real=None,
+            driver_productivity_ytd_expected=None,
+            insufficient_data_reason=trace,
         )
         return {
             "grain": grain,
@@ -792,7 +966,38 @@ def ytd_summary_api_to_authoritative_total_slice(
             "driver_productivity_ytd_real": None,
             "driver_productivity_ytd_expected": None,
             "metric_trace": {"insufficient_data": trace, "basis": "meta.ytd_summary"},
+            "calculation_basis": cb_err,
         }
+
+    cb_api = ytd_summary_api.get("calculation_basis")
+    if isinstance(cb_api, dict) and cb_api.get("date_range_start"):
+        cb_out: Dict[str, Any] = dict(cb_api)
+    else:
+        tp = str(ytd_summary_api.get("through_period") or "")
+        ye = int(ytd_summary_api.get("year") or (tp[:4] if len(tp) >= 4 else td.year))
+        cutoff = date.fromisoformat(tp[:10]) if len(tp) >= 10 else _ytd_calendar_cutoff(ye, None, td)
+        cb_out = _build_ytd_calculation_basis(
+            grain=str(ytd_summary_api.get("grain") or grain),
+            year_eff=ye,
+            month=None,
+            today=td,
+            cutoff=cutoff,
+            ytd_real_trips=_safe_float(ytd_summary_api.get("ytd_real_trips")),
+            ytd_plan_expected_trips=_safe_float(ytd_summary_api.get("ytd_plan_expected_trips")),
+            ytd_gap_trips=_safe_float(ytd_summary_api.get("ytd_gap_trips")),
+            ytd_real_revenue=_safe_float(ytd_summary_api.get("ytd_real_revenue")),
+            ytd_plan_expected_revenue=_safe_float(ytd_summary_api.get("ytd_plan_expected_revenue")),
+            ytd_avg_active_drivers_real=_safe_float(ytd_summary_api.get("ytd_avg_active_drivers_real")),
+            ytd_avg_active_drivers_expected=_safe_float(
+                ytd_summary_api.get("ytd_avg_active_drivers_expected")
+            ),
+            driver_productivity_ytd_real=_safe_float(
+                ytd_summary_api.get("driver_productivity_ytd_real")
+            ),
+            driver_productivity_ytd_expected=_safe_float(
+                ytd_summary_api.get("driver_productivity_ytd_expected")
+            ),
+        )
 
     return {
         "grain": ytd_summary_api.get("grain", grain),
@@ -815,6 +1020,7 @@ def ytd_summary_api_to_authoritative_total_slice(
             "basis": "identical_fields_to_meta_ytd_summary_api",
             "source": "meta.ytd_summary",
         },
+        "calculation_basis": cb_out,
     }
 
 
@@ -828,6 +1034,25 @@ def _aggregate_ytd_slice_payloads_for_scope(
     """Rollup aditivo autoritativo (FASE 3.8B): suma viajes/revenue; drivers ponderados."""
     clean = [s for s in slices if isinstance(s, dict)]
     if not clean:
+        td0 = date.today()
+        cb0 = _build_ytd_calculation_basis(
+            grain=grain,
+            year_eff=td0.year,
+            month=None,
+            today=td0,
+            cutoff=_ytd_calendar_cutoff(td0.year, None, td0),
+            ytd_real_trips=None,
+            ytd_plan_expected_trips=None,
+            ytd_gap_trips=None,
+            ytd_real_revenue=None,
+            ytd_plan_expected_revenue=None,
+            ytd_avg_active_drivers_real=None,
+            ytd_avg_active_drivers_expected=None,
+            driver_productivity_ytd_real=None,
+            driver_productivity_ytd_expected=None,
+            insufficient_data_reason="sin slices hijas para agregar",
+            expected_method_override="mixed",
+        )
         return {
             "grain": grain,
             "slice_key": slice_key,
@@ -850,6 +1075,7 @@ def _aggregate_ytd_slice_payloads_for_scope(
                 "basis": "authoritative_backend_additive_rollup",
                 "slice_level": slice_level,
             },
+            "calculation_basis": cb0,
         }
 
     sum_tr = sum_te = sum_rr = sum_re = 0.0
@@ -898,12 +1124,52 @@ def _aggregate_ytd_slice_payloads_for_scope(
     prod_r = round(sum_tr / avg_dr, 4) if avg_dr and avg_dr > 0 and has_tr else None
     prod_e = round(sum_te / avg_de, 4) if avg_de and avg_de > 0 and has_te else None
 
+    ref_cb: Optional[Dict[str, Any]] = None
+    for y in clean:
+        cbi = y.get("calculation_basis")
+        if isinstance(cbi, dict) and cbi.get("date_range_start"):
+            ref_cb = cbi
+            break
+    td = date.today()
+    if ref_cb:
+        drs = str(ref_cb["date_range_start"])
+        dre = str(ref_cb["date_range_end"])
+        ye_r = int(drs[:4])
+        cutoff_r = date.fromisoformat(dre[:10])
+    else:
+        ye_r = td.year
+        cutoff_r = _ytd_calendar_cutoff(ye_r, None, td)
+
+    ytd_tr_out = round(sum_tr, 2) if has_tr else None
+    ytd_te_out = round(sum_te, 2) if has_te else None
+
+    rollup_cb = _build_ytd_calculation_basis(
+        grain=grain,
+        year_eff=ye_r,
+        month=None,
+        today=td,
+        cutoff=cutoff_r,
+        ytd_real_trips=ytd_tr_out,
+        ytd_plan_expected_trips=ytd_te_out,
+        ytd_gap_trips=gap_t,
+        ytd_real_revenue=round(sum_rr, 2) if has_rr else None,
+        ytd_plan_expected_revenue=round(sum_re, 2) if has_re else None,
+        ytd_avg_active_drivers_real=avg_dr,
+        ytd_avg_active_drivers_expected=avg_de,
+        driver_productivity_ytd_real=prod_r,
+        driver_productivity_ytd_expected=prod_e,
+        expected_method_override="mixed",
+        insufficient_data_reason=(
+            "rollup sin calculation_basis en hijas" if ref_cb is None else None
+        ),
+    )
+
     return {
         "grain": grain,
         "slice_key": slice_key,
         "slice_level": slice_level,
-        "ytd_real_trips": round(sum_tr, 2) if has_tr else None,
-        "ytd_plan_expected_trips": round(sum_te, 2) if has_te else None,
+        "ytd_real_trips": ytd_tr_out,
+        "ytd_plan_expected_trips": ytd_te_out,
         "ytd_gap_trips": gap_t,
         "ytd_attainment_pct": ytd_att,
         "pacing_vs_expected": pacing,
@@ -921,6 +1187,7 @@ def _aggregate_ytd_slice_payloads_for_scope(
             "child_slice_keys_sample": child_keys[:25],
             "child_count": len(child_keys),
         },
+        "calculation_basis": rollup_cb,
     }
 
 
@@ -930,14 +1197,18 @@ def build_authoritative_ytd_block(
     by_line: Dict[Tuple, Dict[str, Any]],
     ytd_summary_api: Optional[Dict[str, Any]],
     display_rows: List[Dict[str, Any]],
+    today: Optional[date] = None,
 ) -> Dict[str, Any]:
     """
     Bloque meta.authoritative_ytd: total = ytd_summary; país/ciudad = rollup desde by_line.
     """
+    td = today or date.today()
     total_row = {
         "row_type": "total",
         "row_scope_key": "__PORTFOLIO__",
-        "ytd_slice": ytd_summary_api_to_authoritative_total_slice(ytd_summary_api, grain=grain),
+        "ytd_slice": ytd_summary_api_to_authoritative_total_slice(
+            ytd_summary_api, grain=grain, today=td
+        ),
     }
 
     countries: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
@@ -1007,6 +1278,7 @@ def apply_authoritative_projection_ytd(
             by_line={},
             ytd_summary_api=ytd_summary_api,
             display_rows=display_rows,
+            today=today,
         )
 
     by_key = compute_ytd_slice_by_line_key(
@@ -1034,13 +1306,29 @@ def apply_authoritative_projection_ytd(
         by_line=by_key,
         ytd_summary_api=ytd_summary_api,
         display_rows=display_rows,
+        today=today,
     )
 
 
-def attach_ytd_slices_on_error(display_rows: List[Dict[str, Any]], grain: str, err: str) -> None:
+def attach_ytd_slices_on_error(
+    display_rows: List[Dict[str, Any]],
+    grain: str,
+    err: str,
+    *,
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    today: Optional[date] = None,
+) -> None:
     """Si compute_ytd_summary falla, mantiene contrato FASE 3.8 (objeto presente con traza)."""
     for r in display_rows:
         lk = _line_key(r)
-        r["ytd_slice"] = _empty_ytd_slice_payload(grain, lk, trace_note=f"YTD slice no calculado: {err}")
+        r["ytd_slice"] = _empty_ytd_slice_payload(
+            grain,
+            lk,
+            trace_note=f"YTD slice no calculado: {err}",
+            year_eff=year,
+            month=month,
+            today=today,
+        )
         r["row_type"] = "subfleet" if r.get("is_subfleet") else "lob"
         r["row_scope_key"] = _slice_key_from_line_key(lk)

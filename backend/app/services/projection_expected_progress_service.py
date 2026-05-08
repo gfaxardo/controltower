@@ -50,7 +50,20 @@ from app.services.seasonality_curve_engine import (
     compute_expected_ratio,
 )
 from app.models.projection_ytd_schema import serialize_ytd_summary_for_api
+from app.services.projection_contextual_suggestion_service import (
+    merge_integrity_with_contextual_check,
+    safe_build_projection_contextual_suggestions,
+)
+from app.services.projection_decision_policy_engine import (
+    merge_integrity_with_decision_policy_check,
+    safe_build_projection_decision_recommendations,
+)
+from app.services.global_decision_intelligence_service import (
+    merge_integrity_with_global_decision_check,
+    safe_build_global_decision_queue,
+)
 from app.services.projection_integrity_service import safe_build_projection_integrity_status
+from app.services.projection_suggestion_engine_service import safe_build_projection_suggestions
 from app.services.projection_ytd_alerts_service import compute_ytd_alerts
 from app.services.projection_ytd_period_service import (
     apply_authoritative_projection_ytd,
@@ -1004,6 +1017,73 @@ def get_omniview_projection(
             year=year,
             month=month,
         )
+        _empty_integrity = safe_build_projection_integrity_status(
+            display_rows=[],
+            ytd_summary=None,
+            ytd_alerts=[],
+            had_resolved_plan=False,
+            matched_count=0,
+            plan_without_real_count=0,
+            authoritative_ytd=None,
+        )
+        _empty_suggestions, _empty_suggestions_status = safe_build_projection_suggestions(
+            integrity_status=_empty_integrity,
+            ytd_alerts=[],
+            display_rows=[],
+            grain=grain,
+            filters={
+                "country": country,
+                "city": city,
+                "business_slice": business_slice,
+                "year": year,
+                "month": month,
+            },
+        )
+        _empty_ctx, _empty_ctx_chk, _empty_ctx_detail = safe_build_projection_contextual_suggestions(
+            integrity_status=_empty_integrity,
+            base_suggestions=_empty_suggestions,
+            ytd_alerts=[],
+            display_rows=[],
+            ytd_summary=None,
+            grain=grain,
+            filters={
+                "country": country,
+                "city": city,
+                "business_slice": business_slice,
+                "year": year,
+                "month": month,
+            },
+        )
+        _empty_integrity = merge_integrity_with_contextual_check(
+            _empty_integrity, _empty_ctx_chk, _empty_ctx_detail
+        )
+        _empty_decision_recs, _empty_dec_chk = safe_build_projection_decision_recommendations(
+            contextual_suggestions=_empty_ctx,
+            integrity_status=_empty_integrity,
+            ytd_alerts=[],
+            grain=grain,
+        )
+        _empty_integrity = merge_integrity_with_decision_policy_check(
+            _empty_integrity, _empty_dec_chk
+        )
+        _empty_global_queue, _empty_global_chk = safe_build_global_decision_queue(
+            decision_recommendations=_empty_decision_recs,
+            contextual_suggestions=_empty_ctx,
+            ytd_summary=None,
+            ytd_alerts=[],
+            integrity_status=_empty_integrity,
+            grain=grain,
+            filters={
+                "country": country,
+                "city": city,
+                "business_slice": business_slice,
+                "year": year,
+                "month": month,
+            },
+        )
+        _empty_integrity = merge_integrity_with_global_decision_check(
+            _empty_integrity, _empty_global_chk
+        )
         return {
             "granularity": grain,
             "plan_version": plan_version,
@@ -1051,15 +1131,12 @@ def get_omniview_projection(
                     "per_row_key": "period_over_period",
                     "kpis": ["trips_completed", "revenue_yego_net", "active_drivers", "avg_ticket"],
                 },
-                "integrity_status": safe_build_projection_integrity_status(
-                    display_rows=[],
-                    ytd_summary=None,
-                    ytd_alerts=[],
-                    had_resolved_plan=False,
-                    matched_count=0,
-                    plan_without_real_count=0,
-                    authoritative_ytd=None,
-                ),
+                "integrity_status": _empty_integrity,
+                "suggestions": _empty_suggestions,
+                "suggestions_status": _empty_suggestions_status,
+                "contextual_suggestions": _empty_ctx,
+                "decision_recommendations": _empty_decision_recs,
+                "global_decision_queue": _empty_global_queue,
             },
         }
 
@@ -1207,7 +1284,14 @@ def get_omniview_projection(
                 )
             except Exception as _slice_exc:
                 logger.warning("get_omniview_projection ytd_slice attach: %s", _slice_exc, exc_info=True)
-                attach_ytd_slices_on_error(display_rows, grain, str(_slice_exc))
+                attach_ytd_slices_on_error(
+                    display_rows,
+                    grain,
+                    str(_slice_exc),
+                    year=year,
+                    month=month,
+                    today=today,
+                )
                 authoritative_ytd = None
             ytd_alerts = compute_ytd_alerts(
                 _conn_ytd,
@@ -1229,7 +1313,14 @@ def get_omniview_projection(
         ytd_summary = serialize_ytd_summary_for_api(ytd_summary_raw, grain=grain)
         ytd_alerts = []
         authoritative_ytd = None
-        attach_ytd_slices_on_error(display_rows, grain, str(_ytd_exc))
+        attach_ytd_slices_on_error(
+            display_rows,
+            grain,
+            str(_ytd_exc),
+            year=year,
+            month=month,
+            today=today,
+        )
 
     _build_elapsed = time.perf_counter() - _t4
 
@@ -1244,6 +1335,68 @@ def get_omniview_projection(
         matched_count=matched_count,
         plan_without_real_count=len(plan_without_real),
         authoritative_ytd=authoritative_ytd,
+    )
+
+    projection_suggestions, suggestions_status = safe_build_projection_suggestions(
+        integrity_status=integrity_status,
+        ytd_alerts=ytd_alerts,
+        display_rows=display_rows,
+        grain=grain,
+        filters={
+            "country": country,
+            "city": city,
+            "business_slice": business_slice,
+            "year": year,
+            "month": month,
+        },
+    )
+
+    contextual_suggestions, contextual_check, contextual_detail = safe_build_projection_contextual_suggestions(
+        integrity_status=integrity_status,
+        base_suggestions=projection_suggestions,
+        ytd_alerts=ytd_alerts,
+        display_rows=display_rows,
+        ytd_summary=ytd_summary,
+        grain=grain,
+        filters={
+            "country": country,
+            "city": city,
+            "business_slice": business_slice,
+            "year": year,
+            "month": month,
+        },
+    )
+    integrity_status = merge_integrity_with_contextual_check(
+        integrity_status, contextual_check, contextual_detail
+    )
+
+    decision_recommendations, decision_policy_check = safe_build_projection_decision_recommendations(
+        contextual_suggestions=contextual_suggestions,
+        integrity_status=integrity_status,
+        ytd_alerts=ytd_alerts,
+        grain=grain,
+    )
+    integrity_status = merge_integrity_with_decision_policy_check(
+        integrity_status, decision_policy_check
+    )
+
+    global_decision_queue, global_decision_check = safe_build_global_decision_queue(
+        decision_recommendations=decision_recommendations,
+        contextual_suggestions=contextual_suggestions,
+        ytd_summary=ytd_summary,
+        ytd_alerts=ytd_alerts,
+        integrity_status=integrity_status,
+        grain=grain,
+        filters={
+            "country": country,
+            "city": city,
+            "business_slice": business_slice,
+            "year": year,
+            "month": month,
+        },
+    )
+    integrity_status = merge_integrity_with_global_decision_check(
+        integrity_status, global_decision_check
     )
 
     logger.info(
@@ -1361,6 +1514,11 @@ def get_omniview_projection(
             },
             "data_freshness": df_fresh,
             "integrity_status": integrity_status,
+            "suggestions": projection_suggestions,
+            "suggestions_status": suggestions_status,
+            "contextual_suggestions": contextual_suggestions,
+            "decision_recommendations": decision_recommendations,
+            "global_decision_queue": global_decision_queue,
         },
     }
 

@@ -2,7 +2,9 @@
 Pipeline unificado: refresca derivados en orden y ejecuta auditoría de freshness.
 Orden: 1) Refresh cadena hourly-first (hour → day → week → month),
        2) Poblar real_drill_dim_fact desde day_v2/week_v3 (rollup = vista desde day_v2),
-       3) Refresh Driver Lifecycle MVs, 4) Refresh Supply MVs, 5) Run data freshness audit.
+       3) Refresh Driver Lifecycle MVs, 4) Refresh Supply MVs,
+       5) Refresh Plan vs Real MVs (snapshot mensual realkey),
+       6) Run data freshness audit.
 
 El backfill legacy (backfill_real_lob_mvs) ya no forma parte del camino principal REAL;
 real_rollup_day_fact es vista sobre day_v2; real_drill_dim_fact se puebla desde day_v2/week_v3.
@@ -14,7 +16,9 @@ Opciones:
   --skip-drill-populate Omitir población de real_drill_dim_fact desde day_v2/week_v3.
   --skip-driver         Omitir refresh driver lifecycle.
   --skip-supply         Omitir refresh supply.
+  --skip-plan-vs-real-mv Omitir ops.mv_plan_vs_real_monthly_fact (+ canónica).
   --skip-audit          Omitir ejecución del audit (solo refrescos).
+  --skip-backfill       No-op (compatibilidad con POST /ops/pipeline-refresh y docs legacy).
   --drill-days N        Ventana días para drill day (default: 120).
   --drill-weeks N       Ventana semanas para drill week (default: 18).
 
@@ -112,6 +116,19 @@ def run_refresh_supply() -> bool:
         return False
 
 
+def run_refresh_plan_vs_real_monthly_mvs() -> bool:
+    """Refresca ops.mv_plan_vs_real_monthly_fact y ops.mv_plan_vs_real_monthly_fact_canonical (FASE 1.5B)."""
+    try:
+        from app.services.plan_vs_real_service import refresh_plan_vs_real_monthly_materialized_views
+
+        refresh_plan_vs_real_monthly_materialized_views(concurrent=True)
+        logger.info("Refresh Plan vs Real monthly MVs OK")
+        return True
+    except Exception as e:
+        logger.exception("Refresh Plan vs Real monthly MVs falló: %s", e)
+        return False
+
+
 def run_hourly_first_chain() -> bool:
     """Ejecuta refresh de la cadena hourly-first: hour_v2 → day_v2 → week_v3 → month_v3."""
     logger.info("Refresh cadena hourly-first (hour → day → week → month)...")
@@ -195,12 +212,25 @@ def main() -> None:
     parser.add_argument("--skip-drill-populate", action="store_true", help="No poblar real_drill_dim_fact desde day_v2/week_v3")
     parser.add_argument("--skip-driver", action="store_true", help="No ejecutar refresh driver lifecycle")
     parser.add_argument("--skip-supply", action="store_true", help="No ejecutar refresh supply")
+    parser.add_argument(
+        "--skip-plan-vs-real-mv",
+        action="store_true",
+        help="No ejecutar refresh MVs mensuales Plan vs Real (ops.mv_plan_vs_real_monthly_fact)",
+    )
     parser.add_argument("--skip-audit", action="store_true", help="No ejecutar audit")
+    parser.add_argument(
+        "--skip-backfill",
+        action="store_true",
+        help="No-op: el backfill legacy ya no forma parte del pipeline; se acepta para compatibilidad con cron/API.",
+    )
     parser.add_argument("--skip-coverage-audit", action="store_true", help="No ejecutar auditoría cobertura trips_2026")
     parser.add_argument("--drill-days", type=int, default=120, help="Ventana días para drill (default 120)")
     parser.add_argument("--drill-weeks", type=int, default=18, help="Ventana semanas para drill (default 18)")
     parser.add_argument("--drill-months", type=int, default=6, help="Ventana meses para drill (default 6)")
     args = parser.parse_args()
+
+    if getattr(args, "skip_backfill", False):
+        logger.info("skip-backfill: no-op (pipeline ya no ejecuta backfill_real_lob_mvs).")
 
     ok = True
     if not getattr(args, "skip_hourly_first", False):
@@ -221,6 +251,11 @@ def main() -> None:
         ok = run_refresh_supply() and ok
     else:
         logger.info("Skip supply (--skip-supply)")
+
+    if not getattr(args, "skip_plan_vs_real_mv", False):
+        ok = run_refresh_plan_vs_real_monthly_mvs() and ok
+    else:
+        logger.info("Skip Plan vs Real MV refresh (--skip-plan-vs-real-mv)")
 
     if not args.skip_audit:
         ok = run_audit() and ok

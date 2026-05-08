@@ -52,6 +52,7 @@ class ProjectionYtdSummary(BaseModel):
     ytd_active_drivers_real: Optional[float] = None
     ytd_plan_expected_active_drivers: Optional[float] = None
     ytd_gap_active_drivers: Optional[float] = None
+    calculation_basis: Optional[Dict[str, Any]] = None
 
 
 def serialize_ytd_summary_for_api(raw: Optional[Dict[str, Any]], *, grain: str) -> Optional[Dict[str, Any]]:

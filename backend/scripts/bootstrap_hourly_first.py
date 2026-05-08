@@ -197,7 +197,11 @@ def bootstrap_hour(dry_run: bool) -> Tuple[bool, str, int]:
 
             _set_timeout(cur, timeout_ms)
 
-            # Swap: rename staging → MV via intermediate table
+            # Swap: MV materializada como copia del staging.
+            # IMPORTANTE: si la MV queda definida como SELECT ... FROM staging_*, cualquier
+            # REFRESH posterior seguirá leyendo solo esa tabla (datos congelados). Tras bootstrap
+            # aplicar migración 135_fix_hourly_first_mv_source_live_fact (o recrear la MV con
+            # FROM ops.v_real_trip_fact_v2 como en 099) antes de confiar en REFRESH diario.
             cur.execute("DROP MATERIALIZED VIEW IF EXISTS " + MV_HOUR + " CASCADE")
 
             # Create MV as a standalone copy (not linked to staging)

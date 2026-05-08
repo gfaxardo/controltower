@@ -24,6 +24,14 @@ def _row_has_ytd_slice(r: Dict[str, Any]) -> bool:
     return isinstance(y, dict) and "slice_key" in y
 
 
+def _row_has_ytd_calculation_basis(r: Dict[str, Any]) -> bool:
+    y = r.get("ytd_slice")
+    if not isinstance(y, dict):
+        return False
+    cb = y.get("calculation_basis")
+    return isinstance(cb, dict) and bool(cb.get("date_range_start"))
+
+
 def _authoritative_total_ok(auth: Any) -> bool:
     if not isinstance(auth, dict):
         return False
@@ -63,6 +71,7 @@ def build_projection_integrity_status(
     issues: List[str] = []
     n = len(display_rows)
     chk_ytd_slice = "n/a"
+    chk_ytd_calculation_basis = "n/a"
 
     # --- ytd_summary ---
     if ytd_summary is None:
@@ -119,6 +128,40 @@ def build_projection_integrity_status(
         else:
             chk_ytd_slice = "ok"
 
+        # --- ytd_calculation_basis (FASE 3.8C): solo filas que ya tienen ytd_slice ---
+        rows_with_slice = [r for r in display_rows if _row_has_ytd_slice(r)]
+        n_slice_rows = len(rows_with_slice)
+        if n_slice_rows == 0:
+            chk_ytd_calculation_basis = "n/a"
+        else:
+            ok_cb = sum(1 for r in rows_with_slice if _row_has_ytd_calculation_basis(r))
+            if ok_cb == 0:
+                chk_ytd_calculation_basis = "missing"
+                issues.append("calculation_basis ausente en todas las filas con ytd_slice")
+            elif ok_cb < n_slice_rows:
+                chk_ytd_calculation_basis = "partial"
+                issues.append(
+                    f"calculation_basis ausente en {n_slice_rows - ok_cb} de {n_slice_rows} filas con ytd_slice",
+                )
+            else:
+                chk_ytd_calculation_basis = "ok"
+
+        if chk_ytd_calculation_basis == "ok" and isinstance(authoritative_ytd, dict):
+            tot_ys = authoritative_ytd.get("total")
+            if isinstance(tot_ys, dict):
+                yss = tot_ys.get("ytd_slice")
+                cba = (
+                    yss.get("calculation_basis") if isinstance(yss, dict) else None
+                )
+                if (
+                    not isinstance(cba, dict)
+                    or not cba.get("date_range_start")
+                ):
+                    chk_ytd_calculation_basis = "partial"
+                    issues.append(
+                        "meta.authoritative_ytd.total.ytd_slice sin calculation_basis auditable",
+                    )
+
     # --- authoritative_aggregation (FASE 3.8B) ---
     chk_authoritative_aggregation = "n/a"
     if n > 0:
@@ -160,6 +203,7 @@ def build_projection_integrity_status(
         "ytd_alerts": chk_alerts,
         "data_rows": chk_data,
         "ytd_slice": chk_ytd_slice,
+        "ytd_calculation_basis": chk_ytd_calculation_basis,
         "authoritative_aggregation": chk_authoritative_aggregation,
     }
 
@@ -174,6 +218,8 @@ def build_projection_integrity_status(
         broken = True
     if n > 0 and chk_ytd_slice == "missing":
         broken = True
+    if n > 0 and chk_ytd_calculation_basis == "missing":
+        broken = True
     if n > 0 and chk_authoritative_aggregation == "missing":
         broken = True
 
@@ -182,6 +228,8 @@ def build_projection_integrity_status(
         if chk_pop == "partial":
             warning = True
         if chk_ytd_slice == "partial":
+            warning = True
+        if chk_ytd_calculation_basis == "partial":
             warning = True
         if chk_authoritative_aggregation == "partial":
             warning = True
@@ -249,6 +297,7 @@ def safe_build_projection_integrity_status(
                 "ytd_alerts": "error",
                 "data_rows": "error",
                 "ytd_slice": "error",
+                "ytd_calculation_basis": "error",
                 "authoritative_aggregation": "error",
             },
         }

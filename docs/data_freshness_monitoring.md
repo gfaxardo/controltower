@@ -87,7 +87,7 @@ cd backend && python -m scripts.run_data_freshness_audit
 
 - **GET /ops/data-pipeline-health** — Centro de observabilidad: por dataset source_max_date, derived_max_date, lag_days, expected_latest_date, status, alert_reason, last_checked_at. Parámetro: `latest_only` (default true).
 
-- **POST /ops/pipeline-refresh** — Ejecuta pipeline unificado (backfill Real LOB, refresh driver lifecycle, refresh supply, auditoría). Parámetros opcionales: skip_backfill, skip_driver, skip_supply, skip_audit. Uso: cron o admin. Timeout largo (ej. 1h).
+- **POST /ops/pipeline-refresh** — Ejecuta el mismo script que `run_pipeline_refresh_and_audit`: cadena hourly-first, populate drill, driver lifecycle, supply, auditorías. Parámetros: `skip_backfill` (no-op, compatibilidad), `skip_driver`, `skip_supply`, `skip_audit`. Uso: cron o admin. Timeout largo (ej. 1h).
 
 Integración: banner global de frescura en vistas principales (fuente, vista, lag, estado); "Ver salud del pipeline" expande tabla por dataset; detalle con GET /ops/data-freshness/alerts.
 
@@ -146,7 +146,7 @@ Si una tabla no existe (ej. `trips_2026`), el script de auditoría escribirá er
 ## 11. Qué hacer si aparece lag
 
 1. Confirmar con `GET /ops/data-freshness`: ver source_max_date vs derived_max_date.
-2. Si derivado atrasado: ejecutar `python -m scripts.backfill_real_lob_mvs` (Real LOB) o refresh de MVs Driver Lifecycle/Supply.
+2. Si derivado atrasado: ejecutar `python -m scripts.run_pipeline_refresh_and_audit` o `python -m scripts.refresh_hourly_first_chain`; `backfill_real_lob_mvs` es legacy y no forma parte del camino principal.
 3. Si fuente atrasada: revisar ETL que alimenta trips_all/trips_2026; priorizar trips_2026 para datos recientes.
 
 ---
@@ -156,7 +156,7 @@ Si una tabla no existe (ej. `trips_2026`), el script de auditoría escribirá er
 ## 12. Automatización del audit y del pipeline
 
 - **Solo audit:** `python -m scripts.run_data_freshness_audit` (o `POST /ops/data-freshness/run`). Escribe en `ops.data_freshness_audit`. No refresca derivados.
-- **Pipeline completo (recomendado para reparar atrasos):** `python -m scripts.run_pipeline_refresh_and_audit`. Orden: 1) Backfill Real LOB (mes actual + anterior), 2) `ops.refresh_driver_lifecycle_mvs()`, 3) `ops.refresh_supply_alerting_mvs()`, 4) run_data_freshness_audit. Opciones: `--skip-backfill`, `--skip-driver`, `--skip-supply`, `--skip-audit`, `--backfill-months N`.
+- **Pipeline completo (recomendado para reparar atrasos):** `python -m scripts.run_pipeline_refresh_and_audit`. Orden: 1) cadena hourly-first (`refresh_hourly_first_chain`), 2) `populate_real_drill_from_hourly_chain`, 3) `ops.refresh_driver_lifecycle_mvs()`, 4) `refresh_supply_alerting_mvs`, 5) `run_data_freshness_audit` (+ cobertura comercial y margen). Opciones: `--skip-backfill` (no-op), `--skip-hourly-first`, `--skip-drill-populate`, `--skip-driver`, `--skip-supply`, `--skip-audit`, `--skip-coverage-audit`, `--drill-days`, `--drill-weeks`, `--drill-months`.
 - **Cron sugerido:** Diario tras carga de viajes, ej. `0 6 * * * cd /path/to/backend && python -m scripts.run_pipeline_refresh_and_audit >> /var/log/ct_pipeline.log 2>&1`.
 - **Reejecución manual:** Mismo comando; o `POST /ops/pipeline-refresh` (puede tardar varios minutos).
 

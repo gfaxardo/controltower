@@ -7,8 +7,21 @@ from app.services.projection_ytd_period_service import (
 
 
 def test_total_slice_copies_summary_api_fields():
+    cb = {
+        "date_range_start": "2026-01-01",
+        "date_range_end": "2026-05-05",
+        "real_data_cutoff": "2026-05-05",
+        "plan_expected_cutoff": "2026-05-05",
+        "real_accumulated_trips": 100.5,
+        "plan_expected_accumulated_trips": 80.0,
+        "gap_accumulated_trips": 20.5,
+        "attainment_formula": "real_accumulated_trips / plan_expected_accumulated_trips * 100",
+        "expected_method": "weekly_intraweek",
+        "grain": "weekly",
+    }
     api = {
         "grain": "weekly",
+        "calculation_basis": cb,
         "ytd_real_trips": 100.5,
         "ytd_plan_expected_trips": 80.0,
         "ytd_gap_trips": 20.5,
@@ -29,10 +42,13 @@ def test_total_slice_copies_summary_api_fields():
     assert sl["ytd_real_trips"] == 100.5
     assert sl["ytd_plan_expected_trips"] == 80.0
     assert sl["ytd_attainment_pct"] == 125.62
+    assert sl["calculation_basis"]["expected_method"] == "weekly_intraweek"
+    assert sl["calculation_basis"]["real_accumulated_trips"] == 100.5
     assert sl["pacing_vs_expected"] == "ahead"
 
 
 def test_aggregate_city_slices_sums_trips():
+    ref_basis = {"date_range_start": "2026-01-01", "date_range_end": "2026-05-06"}
     s1 = {
         "slice_key": "peru::lima::a::0::",
         "slice_level": "lob",
@@ -42,6 +58,7 @@ def test_aggregate_city_slices_sums_trips():
         "ytd_plan_expected_revenue": 100.0,
         "ytd_avg_active_drivers_real": 2.0,
         "ytd_avg_active_drivers_expected": 2.0,
+        "calculation_basis": ref_basis,
     }
     s2 = {
         "slice_key": "peru::lima::b::0::",
@@ -52,6 +69,7 @@ def test_aggregate_city_slices_sums_trips():
         "ytd_plan_expected_revenue": 200.0,
         "ytd_avg_active_drivers_real": 3.0,
         "ytd_avg_active_drivers_expected": 2.5,
+        "calculation_basis": ref_basis,
     }
     out = _aggregate_ytd_slice_payloads_for_scope(
         [s1, s2],
@@ -64,3 +82,5 @@ def test_aggregate_city_slices_sums_trips():
     assert out["slice_level"] == "city"
     assert out["ytd_attainment_pct"] == round((40 / 30) * 100, 2)
     assert out["metric_trace"]["basis"] == "authoritative_backend_additive_rollup"
+    assert out["calculation_basis"]["expected_method"] == "mixed"
+    assert out["calculation_basis"]["real_accumulated_trips"] == 40.0
