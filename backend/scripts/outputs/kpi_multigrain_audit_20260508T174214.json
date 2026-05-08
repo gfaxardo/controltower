@@ -1,0 +1,18 @@
+{
+  "reference_trip_date": "2026-05-03",
+  "periods": [
+    {
+      "y": 2026,
+      "m": 4,
+      "label": "manual"
+    }
+  ],
+  "checks": [],
+  "raw_summary_counts": {
+    "ok": 0,
+    "expected_non_comparable": 0,
+    "warning": 0,
+    "fail": 0,
+    "not_certified": 0
+  }
+}

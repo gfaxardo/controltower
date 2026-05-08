@@ -1,0 +1,334 @@
+{
+  "day": {
+    "table": "ops.real_business_slice_day_fact",
+    "time_col": "trip_date",
+    "min": "2025-01-01",
+    "max": "2026-05-03",
+    "row_count": 7933,
+    "top_countries": [
+      {
+        "country": "colombia",
+        "trips": 6939721
+      },
+      {
+        "country": "peru",
+        "trips": 5730736
+      }
+    ],
+    "top_cities": [
+      {
+        "city": "lima",
+        "trips": 5181866
+      },
+      {
+        "city": "cali",
+        "trips": 5117502
+      },
+      {
+        "city": "barranquilla",
+        "trips": 963996
+      },
+      {
+        "city": "medellin",
+        "trips": 805104
+      },
+      {
+        "city": "trujillo",
+        "trips": 358575
+      },
+      {
+        "city": "arequipa",
+        "trips": 190295
+      },
+      {
+        "city": "bogota",
+        "trips": 38218
+      },
+      {
+        "city": "bucaramanga",
+        "trips": 9985
+      },
+      {
+        "city": "cucuta",
+        "trips": 4916
+      }
+    ],
+    "top_business_slices": [
+      {
+        "business_slice": "Auto regular",
+        "trips": 10477239
+      },
+      {
+        "business_slice": "Taxi Moto",
+        "trips": 1363363
+      },
+      {
+        "business_slice": "PRO",
+        "trips": 271724
+      },
+      {
+        "business_slice": "Tuk Tuk",
+        "trips": 221264
+      },
+      {
+        "business_slice": "YMA",
+        "trips": 166043
+      },
+      {
+        "business_slice": "Delivery",
+        "trips": 85791
+      },
+      {
+        "business_slice": "Carga",
+        "trips": 51965
+      },
+      {
+        "business_slice": "Delivery moto",
+        "trips": 33068
+      }
+    ]
+  },
+  "week": {
+    "table": "ops.real_business_slice_week_fact",
+    "time_col": "week_start",
+    "min": "2024-12-30",
+    "max": "2026-04-27",
+    "row_count": 1199,
+    "top_countries": [
+      {
+        "country": "colombia",
+        "trips": 6939721
+      },
+      {
+        "country": "peru",
+        "trips": 5730736
+      }
+    ],
+    "top_cities": [
+      {
+        "city": "lima",
+        "trips": 5181866
+      },
+      {
+        "city": "cali",
+        "trips": 5117502
+      },
+      {
+        "city": "barranquilla",
+        "trips": 963996
+      },
+      {
+        "city": "medellin",
+        "trips": 805104
+      },
+      {
+        "city": "trujillo",
+        "trips": 358575
+      },
+      {
+        "city": "arequipa",
+        "trips": 190295
+      },
+      {
+        "city": "bogota",
+        "trips": 38218
+      },
+      {
+        "city": "bucaramanga",
+        "trips": 9985
+      },
+      {
+        "city": "cucuta",
+        "trips": 4916
+      }
+    ],
+    "top_business_slices": [
+      {
+        "business_slice": "Auto regular",
+        "trips": 10477239
+      },
+      {
+        "business_slice": "Taxi Moto",
+        "trips": 1363363
+      },
+      {
+        "business_slice": "PRO",
+        "trips": 271724
+      },
+      {
+        "business_slice": "Tuk Tuk",
+        "trips": 221264
+      },
+      {
+        "business_slice": "YMA",
+        "trips": 166043
+      },
+      {
+        "business_slice": "Delivery",
+        "trips": 85791
+      },
+      {
+        "business_slice": "Carga",
+        "trips": 51965
+      },
+      {
+        "business_slice": "Delivery moto",
+        "trips": 33068
+      }
+    ]
+  },
+  "month": {
+    "table": "ops.real_business_slice_month_fact",
+    "time_col": "month",
+    "min": "2025-01-01",
+    "max": "2026-05-01",
+    "row_count": 300,
+    "top_countries": [
+      {
+        "country": "colombia",
+        "trips": 6939721
+      },
+      {
+        "country": "peru",
+        "trips": 5730736
+      }
+    ],
+    "top_cities": [
+      {
+        "city": "lima",
+        "trips": 5181866
+      },
+      {
+        "city": "cali",
+        "trips": 5117502
+      },
+      {
+        "city": "barranquilla",
+        "trips": 963996
+      },
+      {
+        "city": "medellin",
+        "trips": 805104
+      },
+      {
+        "city": "trujillo",
+        "trips": 358575
+      },
+      {
+        "city": "arequipa",
+        "trips": 190295
+      },
+      {
+        "city": "bogota",
+        "trips": 38218
+      },
+      {
+        "city": "bucaramanga",
+        "trips": 9985
+      },
+      {
+        "city": "cucuta",
+        "trips": 4916
+      }
+    ],
+    "top_business_slices": [
+      {
+        "business_slice": "Auto regular",
+        "trips": 10477239
+      },
+      {
+        "business_slice": "Taxi Moto",
+        "trips": 1363363
+      },
+      {
+        "business_slice": "PRO",
+        "trips": 271724
+      },
+      {
+        "business_slice": "Tuk Tuk",
+        "trips": 221264
+      },
+      {
+        "business_slice": "YMA",
+        "trips": 166043
+      },
+      {
+        "business_slice": "Delivery",
+        "trips": 85791
+      },
+      {
+        "business_slice": "Carga",
+        "trips": 51965
+      },
+      {
+        "business_slice": "Delivery moto",
+        "trips": 33068
+      }
+    ]
+  },
+  "last_6_calendar_months": [
+    {
+      "month_start": "2026-05-01",
+      "trips": 78363
+    },
+    {
+      "month_start": "2026-04-01",
+      "trips": 804949
+    },
+    {
+      "month_start": "2026-03-01",
+      "trips": 855135
+    },
+    {
+      "month_start": "2026-02-01",
+      "trips": 821395
+    },
+    {
+      "month_start": "2026-01-01",
+      "trips": 866463
+    },
+    {
+      "month_start": "2025-12-01",
+      "trips": 901990
+    }
+  ],
+  "last_8_week_starts": [
+    {
+      "week_start": "2026-04-27",
+      "trips": 181445
+    },
+    {
+      "week_start": "2026-04-20",
+      "trips": 190452
+    },
+    {
+      "week_start": "2026-04-13",
+      "trips": 188914
+    },
+    {
+      "week_start": "2026-04-06",
+      "trips": 196246
+    },
+    {
+      "week_start": "2026-03-30",
+      "trips": 178754
+    },
+    {
+      "week_start": "2026-03-23",
+      "trips": 196575
+    },
+    {
+      "week_start": "2026-03-16",
+      "trips": 199703
+    },
+    {
+      "week_start": "2026-03-09",
+      "trips": 189448
+    }
+  ],
+  "last_months_with_trips_positive": [
+    "2026-05-01",
+    "2026-04-01",
+    "2026-03-01"
+  ]
+}
