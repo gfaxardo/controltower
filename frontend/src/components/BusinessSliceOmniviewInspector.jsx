@@ -39,6 +39,20 @@ export default function BusinessSliceOmniviewInspector ({
     setCopiedQuery(null)
   }, [selection?.id])
 
+  const { lineData, periodDeltas, period, raw, kpiKey: selectedKpiKey } = selection || {}
+  const label = (grain === 'daily' && raw?.day_label) ? String(raw.day_label) : periodLabel(period, grain)
+  const selectedKpi = MATRIX_KPIS.find((kpi) => kpi.key === selectedKpiKey) || MATRIX_KPIS[0]
+  const ins = insightForSelection
+  const pState = periodStates?.get(period)
+  const periodEngineRec = useMemo(
+    () => (matrixMeta?.period_states || []).find((r) => r.period_key === period) || null,
+    [matrixMeta, period]
+  )
+  const hasPartialDelta = Object.values(periodDeltas || {}).some((d) => d?.isPartialComparison)
+  const comparisonDelta = periodDeltas?.[selectedKpiKey] || Object.values(periodDeltas || {}).find(Boolean)
+  const comparisonDesc = describeComparison(comparisonDelta, grain)
+  const hasEquivalentComparison = !!comparisonDelta?.is_equivalent_comparison
+
   if (!selection) {
     return (
       <aside className={`${w} shrink-0 rounded-lg border border-gray-200 bg-white shadow-sm self-start sticky top-2`}>
@@ -60,20 +74,6 @@ export default function BusinessSliceOmniviewInspector ({
       </aside>
     )
   }
-
-  const { lineData, periodDeltas, period, raw, kpiKey: selectedKpiKey } = selection
-  const label = (grain === 'daily' && raw?.day_label) ? String(raw.day_label) : periodLabel(period, grain)
-  const selectedKpi = MATRIX_KPIS.find((kpi) => kpi.key === selectedKpiKey) || MATRIX_KPIS[0]
-  const ins = insightForSelection
-  const pState = periodStates?.get(period)
-  const periodEngineRec = useMemo(
-    () => (matrixMeta?.period_states || []).find((r) => r.period_key === period) || null,
-    [matrixMeta, period]
-  )
-  const hasPartialDelta = Object.values(periodDeltas || {}).some((d) => d?.isPartialComparison)
-  const comparisonDelta = periodDeltas?.[selectedKpiKey] || Object.values(periodDeltas || {}).find(Boolean)
-  const comparisonDesc = describeComparison(comparisonDelta, grain)
-  const hasEquivalentComparison = !!comparisonDelta?.is_equivalent_comparison
 
   const handleCopyQuery = async (label, sql) => {
     try {

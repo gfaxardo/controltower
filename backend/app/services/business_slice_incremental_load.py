@@ -169,7 +169,7 @@ FROM (
             b.trip_week,
             b.hour_of_day,
             b.trip_hour_start,
-            b.revenue_yego_net,
+            b.revenue_yego_real AS revenue_yego_net,
             b.ticket,
             b.km,
             b.duration_minutes,
@@ -398,7 +398,7 @@ FROM (
             b.country, b.city, b.tipo_servicio, b.works_terms,
             b.completed_flag, b.cancelled_flag, b.trip_date, b.trip_month,
             b.trip_week, b.hour_of_day, b.trip_hour_start,
-            b.revenue_yego_net, b.ticket, b.km, b.duration_minutes,
+            b.revenue_yego_real AS revenue_yego_net, b.ticket, b.km, b.duration_minutes,
             b.gmv_passenger_paid, b.total_fare, b.condicion, b.source_table,
             rl.id AS mapping_rule_id, rl.business_slice_name, rl.fleet_display_name,
             rl.is_subfleet, rl.subfleet_name, rl.parent_fleet_name, rl.rule_type,
@@ -1032,6 +1032,8 @@ def load_business_slice_day_for_month(
     """
     Calcula day_fact para un mes completo. Reutiliza la misma estrategia
     de materialización enriched del loader mensual.
+    
+    NOTA: No hace DELETE - usa INSERT directo para no perder datos si falla.
     """
     if target_month.day != 1:
         target_month = target_month.replace(day=1)
@@ -1044,15 +1046,6 @@ def load_business_slice_day_for_month(
     import calendar
     last_day = calendar.monthrange(target_month.year, target_month.month)[1]
     end_date = date(target_month.year, target_month.month, last_day)
-
-    cur.execute(
-        f"DELETE FROM {FACT_DAY} WHERE trip_date >= %s::date AND trip_date <= %s::date",
-        (target_month, end_date),
-    )
-    deleted = cur.rowcount
-    if conn is not None:
-        conn.commit()
-    print(f"day_fact {target_month}: deleted={deleted}; grain={grain}", flush=True)
 
     mat_rows = _materialize_enriched_for_month(cur, target_month, conn)
     if mat_rows == 0:
@@ -1072,23 +1065,13 @@ def load_business_slice_day_for_month(
         chunks = list(cur.fetchall())
 
     n = len(chunks)
-    print(f"  {n} chunk(s) — day_fact resolución inline desde temp table", flush=True)
+    print(f"  {n} chunk(s) — day_fact resolución inline desde temp table (sin DELETE)", flush=True)
 
     for i, chunk in enumerate(chunks):
         c_country, c_city = chunk[0], chunk[1] if len(chunk) > 1 else None
         apply_business_slice_load_session_settings(cur)
         t_chunk = time.perf_counter()
         try:
-            if use_country_only:
-                cur.execute(
-                    f"DELETE FROM {FACT_DAY} WHERE trip_date >= %s AND trip_date <= %s AND country IS NOT DISTINCT FROM %s",
-                    (target_month, end_date, c_country),
-                )
-            else:
-                cur.execute(
-                    f"DELETE FROM {FACT_DAY} WHERE trip_date >= %s AND trip_date <= %s AND country IS NOT DISTINCT FROM %s AND city IS NOT DISTINCT FROM %s",
-                    (target_month, end_date, c_country, c_city),
-                )
             cur.execute(resolve_sql, (c_country, c_city))
             rows = cur.rowcount
         except Exception as e:
