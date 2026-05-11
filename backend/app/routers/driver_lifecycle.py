@@ -28,6 +28,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ops/driver-lifecycle", tags=["driver-lifecycle"])
 
 
+
+
+
 @router.get("/weekly")
 @router.get("/weekly-kpis")
 async def driver_lifecycle_weekly(
