@@ -12,7 +12,7 @@ import time
 from datetime import date
 from typing import Any, Dict, List, Optional
 
-from app.db.connection import get_db, get_db_audit
+from app.db.connection import get_db
 from app.services.business_slice_incremental_load import (
     load_business_slice_day_for_month,
     load_business_slice_month,
@@ -130,16 +130,13 @@ def run_business_slice_real_refresh_job(force: bool = False) -> Dict[str, Any]:
         try:
             t_m = time.perf_counter()
             logger.info("omniview_real_refresh_job day_fact month=%s", mo_label)
-            with get_db_audit(timeout_ms=timeout_ms) as conn:
+            with get_db() as conn:
                 cur = conn.cursor()
                 nd = load_business_slice_day_for_month(cur, mo, conn)
                 conn.commit()
                 logger.info("omniview_real_refresh_job week_fact month=%s", mo_label)
                 nw = load_business_slice_week_for_month(cur, mo, conn)
                 conn.commit()
-                # FASE_KPI_CONSISTENCY: incluir month_fact para mantener
-                # los tres granos sincronizados y evitar ROLLUP_MISMATCH
-                # por staleness del fact mensual.
                 nm: int | None = None
                 if include_month_fact:
                     logger.info("omniview_real_refresh_job month_fact month=%s", mo_label)
