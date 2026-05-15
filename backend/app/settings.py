@@ -104,14 +104,26 @@ class Settings(BaseSettings):
 
     # ── Omniview Matrix: refresh automático day_fact + week_fact (loader incremental) ──
     OMNIVIEW_REAL_REFRESH_ENABLED: bool = Field(
-        default=False,
-        description="Si True, APScheduler ejecuta recarga day/week fact periódicamente (mes actual + anterior).",
+        default=True,
+        description="Si True, APScheduler ejecuta recarga day/week fact diariamente a las 4am.",
+    )
+    OMNIVIEW_REAL_REFRESH_HOUR: int = Field(
+        default=4,
+        ge=0,
+        le=23,
+        description="Hora del día para ejecutar el refresh automático (0-23).",
+    )
+    OMNIVIEW_REAL_REFRESH_MINUTE: int = Field(
+        default=0,
+        ge=0,
+        le=59,
+        description="Minuto del día para ejecutar el refresh automático (0-59).",
     )
     OMNIVIEW_REAL_REFRESH_INTERVAL_MINUTES: int = Field(
         default=60,
         ge=15,
         le=1440,
-        description="Intervalo del job de refresh (mín. 15 min).",
+        description="Intervalo del job de refresh (mín. 15 min) - OBSOLETO: usar OMNIVIEW_REAL_REFRESH_HOUR/MINUTE.",
     )
     OMNIVIEW_REAL_REFRESH_TIMEOUT_MS: int = Field(
         default=1_800_000,

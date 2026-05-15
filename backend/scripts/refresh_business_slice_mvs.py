@@ -44,7 +44,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import psycopg2.errors
 
-from app.db.connection import get_db_audit
+from app.db.connection import get_db
 from app.services.business_slice_incremental_load import (
     backfill_business_slice_months,
     load_business_slice_day_for_month,
@@ -134,9 +134,8 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    with get_db_audit(timeout_ms=_LOAD_TIMEOUT_MS) as conn:
+    with get_db() as conn:
         cur = conn.cursor()
-        cur.execute("SET statement_timeout = %s", (_LOAD_TIMEOUT_MS,))
         _require_business_slice_facts(cur)
 
         if args.hour_from and args.hour_to:

@@ -132,20 +132,21 @@ async def startup_event():
             _omniview_real_refresh_scheduler = BackgroundScheduler(daemon=True)
 
             if settings.OMNIVIEW_REAL_REFRESH_ENABLED:
-                interval = max(15, int(settings.OMNIVIEW_REAL_REFRESH_INTERVAL_MINUTES))
                 _omniview_real_refresh_scheduler.add_job(
                     run_business_slice_real_refresh_job,
-                    "interval",
-                    minutes=interval,
+                    "cron",
+                    hour=settings.OMNIVIEW_REAL_REFRESH_HOUR,
+                    minute=settings.OMNIVIEW_REAL_REFRESH_MINUTE,
                     id="omniview_business_slice_real_refresh",
                     replace_existing=True,
                     max_instances=1,
                     coalesce=True,
-                    misfire_grace_time=300,
+                    misfire_grace_time=600,
                 )
                 logger.info(
-                    "Omniview REAL refresh programado: cada %s min (day_fact + week_fact, 2 meses).",
-                    interval,
+                    "Omniview REAL refresh programado: %02d:%02d (day_fact + week_fact + month_fact, 2 meses).",
+                    settings.OMNIVIEW_REAL_REFRESH_HOUR,
+                    settings.OMNIVIEW_REAL_REFRESH_MINUTE,
                 )
 
             if settings.OMNIVIEW_REAL_WATCHDOG_ENABLED:
