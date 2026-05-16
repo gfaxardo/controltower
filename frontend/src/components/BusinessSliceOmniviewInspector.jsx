@@ -53,27 +53,7 @@ export default function BusinessSliceOmniviewInspector ({
   const comparisonDesc = describeComparison(comparisonDelta, grain)
   const hasEquivalentComparison = !!comparisonDelta?.is_equivalent_comparison
 
-  if (!selection) {
-    return (
-      <aside className={`${w} shrink-0 rounded-lg border border-gray-200 bg-white shadow-sm self-start sticky top-2`}>
-        <div className="px-4 py-3 border-b border-gray-100">
-          <h3 className="text-xs font-bold text-gray-600 uppercase tracking-wide">Inspector</h3>
-        </div>
-        <div className="p-4">
-          <p className="text-[11px] text-gray-400 leading-relaxed">
-            Click en una celda de la Matrix para abrir un diagnóstico operativo o el detalle normal de la selección.
-          </p>
-          <div className="mt-4 flex items-center justify-center">
-            <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center">
-              <svg className="w-5 h-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-              </svg>
-            </div>
-          </div>
-        </div>
-      </aside>
-    )
-  }
+  if (!selection) return null
 
   const handleCopyQuery = async (label, sql) => {
     try {

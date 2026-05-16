@@ -122,7 +122,21 @@ Si algún ítem falla, la feature se rechaza o se marca como **PREMATURE** hasta
 
 ---
 
-## Regla 9: Cierre de Motor
+## Regla 9: Feature en Código ≠ Feature en UI
+
+1. **Una feature implementada en código no equivale a una feature habilitada en UI.** Para aparecer en producción, una vista debe cumplir TODAS estas condiciones:
+   - Estar registrada en `CONTROL_TOWER_NAVIGATION_REGISTRY` (ver [controlTowerNavigationRegistry.js](../../frontend/src/config/controlTowerNavigationRegistry.js)).
+   - Tener `productionReady = true`.
+   - Tener `visibility = KEEP_VISIBLE`.
+   - Pertenecer a un motor en estado ACTIVE o READY NEXT.
+2. Las vistas de motores en BACKLOG **no deben aparecer en navegación de producción**, aunque el código del componente exista.
+3. Toda vista nueva debe declarar su clasificación de visibilidad (KEEP_VISIBLE, HIDE_FROM_NAV, DEV_ONLY, BACKLOG_ONLY, NEEDS_VALIDATION) en el registry.
+4. La navegación visible se deriva exclusivamente del registry, no de arrays hardcodeados en `App.jsx`.
+5. Ver [UI_PRODUCTION_VISIBILITY_RULES.md](./UI_PRODUCTION_VISIBILITY_RULES.md) para las reglas completas de visibilidad.
+
+---
+
+## Regla 11: Cierre de Motor
 
 Un motor se considera **CERRADO** cuando:
 
@@ -138,7 +152,7 @@ Al cerrar un motor:
 
 ---
 
-## Regla 10: Auditoría de Cumplimiento
+## Regla 12: Auditoría de Cumplimiento
 
 Cada sprint o ciclo de desarrollo debe incluir una **micro-auditoría arquitectónica**:
 

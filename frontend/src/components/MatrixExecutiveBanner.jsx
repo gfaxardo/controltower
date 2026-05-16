@@ -15,9 +15,9 @@ export default function MatrixExecutiveBanner ({
 }) {
   if (loading || !executive) {
     return (
-      <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 min-h-[36px] flex items-center gap-2">
+      <div className="rounded-md border border-ct-border bg-ct-surface px-3 py-1.5 min-h-[36px] flex items-center gap-2">
         <span className="inline-block w-3 h-3 border-[1.5px] border-slate-300 border-t-slate-500 rounded-full animate-spin flex-shrink-0" />
-        <span className="text-[11px] text-slate-400">Data Trust ejecutivo…</span>
+        <span className="text-[11px] text-ct-text3">Data Trust ejecutivo…</span>
       </div>
     )
   }
@@ -106,7 +106,7 @@ export default function MatrixExecutiveBanner ({
         )}
         {confScore != null && !Number.isNaN(confScore) && (
           <span
-            className="text-[11px] tabular-nums shrink-0 text-slate-700"
+            className="text-[11px] tabular-nums shrink-0 text-ct-text"
             title={pillarBits || 'Confianza integrada (coverage, freshness, consistency)'}
           >
             Conf. <strong>{confScore}</strong>
@@ -114,7 +114,7 @@ export default function MatrixExecutiveBanner ({
         )}
         {penaltyCode && (
           <span
-            className="text-[10px] shrink-0 text-slate-600 hidden md:inline"
+            className="text-[10px] shrink-0 text-ct-text hidden md:inline"
             title={hardCap?.reason || `Cap aplicado por ${penaltyCode}`}
           >
             Penalizado por {penaltyCode}
@@ -160,23 +160,23 @@ export default function MatrixExecutiveBanner ({
         </p>
       )}
       {playbook && (playbook.recommended_action || playbook.operational_meaning) && (
-        <p className="text-[10px] mt-0.5 leading-tight text-slate-700 border-t border-slate-200/80 pt-1">
-          <span className="font-semibold text-slate-800">Acción estándar: </span>
+        <p className="text-[10px] mt-0.5 leading-tight text-ct-text border-t border-ct-border/80 pt-1">
+          <span className="font-semibold text-ct-text">Acción estándar: </span>
           {playbook.recommended_action || playbook.operational_meaning}
           {playbook.owner_hint && (
-            <span className="text-slate-500"> · owner: {playbook.owner_hint}</span>
+            <span className="text-ct-text2"> · owner: {playbook.owner_hint}</span>
           )}
         </p>
       )}
       {recPreview.length > 0 && (
-        <p className="text-[10px] mt-0.5 leading-tight text-slate-600 border-t border-slate-200/80 pt-1">
-          <span className="font-semibold text-slate-700">Sugerencias: </span>
+        <p className="text-[10px] mt-0.5 leading-tight text-ct-text border-t border-ct-border/80 pt-1">
+          <span className="font-semibold text-ct-text">Sugerencias: </span>
           {recPreview.join(' · ')}
         </p>
       )}
       {Array.isArray(contextHints) && contextHints.length > 0 && (
-        <p className="text-[10px] mt-0.5 leading-tight text-slate-600 border-t border-slate-200/80 pt-1">
-          <span className="font-semibold text-slate-700">Contexto operativo: </span>
+        <p className="text-[10px] mt-0.5 leading-tight text-ct-text border-t border-ct-border/80 pt-1">
+          <span className="font-semibold text-ct-text">Contexto operativo: </span>
           {contextHints.join(' · ')}
         </p>
       )}

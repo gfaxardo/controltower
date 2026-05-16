@@ -360,23 +360,23 @@ export default function RealLOBDrillView () {
   // ─── Vista diaria: subtab visible al entrar a Real LOB ─────────────────
   if (subView === 'daily') {
     return (
-      <div className="bg-white p-6 rounded-lg shadow-md">
-        <div className="flex flex-wrap items-center gap-2 mb-4 border-b border-gray-200 pb-4">
-          <h3 className="text-lg font-semibold text-gray-800">Real LOB</h3>
+      <div className="bg-ct-card p-6 rounded-lg shadow-md">
+        <div className="flex flex-wrap items-center gap-2 mb-4 border-b border-ct-border pb-4">
+          <h3 className="text-lg font-semibold text-ct-text">Real LOB</h3>
           <DataTrustBadge status={dataTrust.status} message={dataTrust.message} last_update={dataTrust.last_update} />
           <DataStateBadge state="canonical" />
           <span className="w-px h-6 bg-gray-300" />
           <button
             type="button"
             onClick={() => setSubView('drill')}
-            className={`px-3 py-1.5 rounded text-sm font-medium ${subView !== 'daily' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+            className={`px-3 py-1.5 rounded text-sm font-medium ${subView !== 'daily' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-ct-text hover:bg-gray-300'}`}
           >
             Drill (semanal/mensual)
           </button>
           <button
             type="button"
             onClick={() => setSubView('daily')}
-            className={`px-3 py-1.5 rounded text-sm font-medium ${subView === 'daily' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+            className={`px-3 py-1.5 rounded text-sm font-medium ${subView === 'daily' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-ct-text hover:bg-gray-300'}`}
           >
             Vista diaria
           </button>
@@ -387,71 +387,71 @@ export default function RealLOBDrillView () {
   }
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-md">
+    <div className="bg-ct-card p-6 rounded-lg shadow-md">
       {/* Fila 1: Título + subtabs Drill | Vista diaria (siempre visibles) */}
-      <div className="flex flex-wrap items-center gap-2 mb-4 border-b border-gray-200 pb-4">
-        <h3 className="text-lg font-semibold text-gray-800">Real LOB</h3>
+      <div className="flex flex-wrap items-center gap-2 mb-4 border-b border-ct-border pb-4">
+        <h3 className="text-lg font-semibold text-ct-text">Real LOB</h3>
         <DataTrustBadge status={dataTrust.status} message={dataTrust.message} last_update={dataTrust.last_update} />
         <DataStateBadge state="canonical" />
         <span className="w-px h-6 bg-gray-300" />
         <button
           type="button"
           onClick={() => setSubView('drill')}
-          className={`px-3 py-1.5 rounded text-sm font-medium ${subView === 'drill' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+          className={`px-3 py-1.5 rounded text-sm font-medium ${subView === 'drill' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-ct-text hover:bg-gray-300'}`}
         >
           Drill (semanal/mensual)
         </button>
         <button
           type="button"
           onClick={() => setSubView('daily')}
-          className={`px-3 py-1.5 rounded text-sm font-medium ${subView === 'daily' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+          className={`px-3 py-1.5 rounded text-sm font-medium ${subView === 'daily' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-ct-text hover:bg-gray-300'}`}
         >
           Vista diaria
         </button>
       </div>
       <div className="flex flex-wrap justify-between items-center gap-4 mb-4">
-        <span className="text-sm text-gray-600">Drill por país — Periodo:</span>
+        <span className="text-sm text-ct-text">Drill por país — Periodo:</span>
         <div className="flex flex-wrap gap-2 items-center">
-          <span className="text-sm text-gray-500">Periodo:</span>
+          <span className="text-sm text-ct-text2">Periodo:</span>
           <button
             type="button"
             onClick={() => handlePeriodTypeChange('monthly')}
-            className={`px-3 py-1.5 rounded text-sm ${periodType === 'monthly' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}
+            className={`px-3 py-1.5 rounded text-sm ${periodType === 'monthly' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-ct-text'}`}
           >
             Mensual
           </button>
           <button
             type="button"
             onClick={() => handlePeriodTypeChange('weekly')}
-            className={`px-3 py-1.5 rounded text-sm ${periodType === 'weekly' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}
+            className={`px-3 py-1.5 rounded text-sm ${periodType === 'weekly' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-ct-text'}`}
           >
             Semanal
           </button>
           <span className="w-px h-6 bg-gray-300" />
-          <span className="text-sm text-gray-500">Desglose:</span>
+          <span className="text-sm text-ct-text2">Desglose:</span>
           <button
             type="button"
             onClick={() => handleDrillByChange('lob')}
-            className={`px-3 py-1.5 rounded text-sm ${drillBy === 'lob' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}
+            className={`px-3 py-1.5 rounded text-sm ${drillBy === 'lob' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-ct-text'}`}
           >
             LOB
           </button>
           <button
             type="button"
             onClick={() => handleDrillByChange('park')}
-            className={`px-3 py-1.5 rounded text-sm ${drillBy === 'park' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}
+            className={`px-3 py-1.5 rounded text-sm ${drillBy === 'park' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-ct-text'}`}
           >
             Park
           </button>
           <button
             type="button"
             onClick={() => handleDrillByChange('service_type')}
-            className={`px-3 py-1.5 rounded text-sm ${drillBy === 'service_type' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}
+            className={`px-3 py-1.5 rounded text-sm ${drillBy === 'service_type' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-ct-text'}`}
           >
             Tipo de servicio
           </button>
           <span className="w-px h-6 bg-gray-300" />
-          <span className="text-sm text-gray-500">Park:</span>
+          <span className="text-sm text-ct-text2">Park:</span>
           <select
             value={parkId}
             onChange={(e) => {
@@ -481,7 +481,7 @@ export default function RealLOBDrillView () {
             })}
           </select>
           <span className="w-px h-6 bg-gray-300" />
-          <span className="text-sm text-gray-500">Segmento:</span>
+          <span className="text-sm text-ct-text2">Segmento:</span>
           <select
             value={segment}
             onChange={(e) => {
@@ -499,7 +499,7 @@ export default function RealLOBDrillView () {
       </div>
 
       {/* Semántica temporal: siempre visible (fuente: GET /ops/period-semantics, no depende del drill) */}
-      <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg text-slate-800 text-sm mb-4">
+      <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg text-ct-text text-sm mb-4">
         <div className="font-semibold text-emerald-900 mb-2">Períodos (semántica cerrada / abierta)</div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {periodSemantics ? (
@@ -510,7 +510,7 @@ export default function RealLOBDrillView () {
               <div><strong>Mes actual (parcial):</strong> <span className="font-mono">{periodSemantics.current_open_month_label || '—'}</span></div>
             </>
           ) : (
-            <span className="text-gray-500">Cargando semántica temporal…</span>
+            <span className="text-ct-text2">Cargando semántica temporal…</span>
           )}
         </div>
       </div>
@@ -521,7 +521,7 @@ export default function RealLOBDrillView () {
       )}
 
       {lobCoverage && (lobCoverage.min_trip_date_loaded || lobCoverage.max_trip_date_loaded) && (
-        <div className="p-3 bg-slate-50 border border-slate-200 rounded text-slate-700 text-sm mb-4">
+        <div className="p-3 bg-ct-surface border border-ct-border rounded text-ct-text text-sm mb-4">
           <span className="font-medium">Cobertura actual:</span>{' '}
           {lobCoverage.min_trip_date_loaded && lobCoverage.max_trip_date_loaded
             ? `${lobCoverage.min_trip_date_loaded} — ${lobCoverage.max_trip_date_loaded}`
@@ -529,7 +529,7 @@ export default function RealLOBDrillView () {
               ? `Último día con data: ${lobCoverage.max_trip_date_loaded}`
               : `Desde: ${lobCoverage.min_trip_date_loaded}`}
           {lobCoverage.recent_days_config != null && (
-            <span className="ml-2 text-slate-500">(ventana: {lobCoverage.recent_days_config} días)</span>
+            <span className="ml-2 text-ct-text2">(ventana: {lobCoverage.recent_days_config} días)</span>
           )}
         </div>
       )}
@@ -546,15 +546,15 @@ export default function RealLOBDrillView () {
           <p className="text-sm text-amber-700">Error: {comparative.error}</p>
         )}
         {!comparativeLoading && comparative && !comparative.error && (!comparative.by_country || comparative.by_country.length === 0) && (
-          <p className="text-sm text-gray-600">Sin datos para períodos cerrados (compruebe que real_rollup_day_fact tenga datos).</p>
+          <p className="text-sm text-ct-text">Sin datos para períodos cerrados (compruebe que real_rollup_day_fact tenga datos).</p>
         )}
         {comparative && !comparative.error && comparative.by_country?.length > 0 && (
           <div className="flex flex-wrap gap-4">
             {comparative.by_country.map(({ country: c, metrics }) => (
               <div key={c} className="flex flex-wrap gap-3 items-baseline">
-                <span className="font-medium text-gray-800 uppercase">{c}</span>
+                <span className="font-medium text-ct-text uppercase">{c}</span>
                 {metrics && metrics.slice(0, 5).map((m) => (
-                  <span key={m.metric} className="text-sm text-gray-700" title={`Actual: ${m.value_current ?? '—'} | Anterior: ${m.value_previous ?? '—'} | Δ: ${m.delta_abs ?? '—'}`}>
+                  <span key={m.metric} className="text-sm text-ct-text" title={`Actual: ${m.value_current ?? '—'} | Anterior: ${m.value_previous ?? '—'} | Δ: ${m.delta_abs ?? '—'}`}>
                     {m.metric}: {m.delta_pct != null ? `${m.delta_pct > 0 ? '↑' : m.delta_pct < 0 ? '↓' : '→'} ${Number(m.delta_pct).toFixed(1)}%` : '—'}
                   </span>
                 ))}
@@ -582,7 +582,7 @@ export default function RealLOBDrillView () {
             <div className="h-4 bg-gray-200 rounded w-1/3" />
             <div className="h-32 bg-gray-200 rounded" />
           </div>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-ct-text2">
             Cargando drill… Puede tardar hasta 5 minutos. Si tarda más, revisa la consola del backend.
           </p>
         </div>
@@ -594,8 +594,8 @@ export default function RealLOBDrillView () {
               <section key={country}>
                 {/* Cobertura para este país */}
                 {countryCoverage && (countryCoverage.last_trip_date || countryCoverage.last_month_with_data || countryCoverage.last_week_with_data) && (
-                  <div className="mb-2 p-3 bg-slate-100 rounded border border-slate-200 text-sm">
-                    <span className="font-medium text-slate-600">{country}:</span>{' '}
+                  <div className="mb-2 p-3 bg-ct-surface rounded border border-ct-border text-sm">
+                    <span className="font-medium text-ct-text">{country}:</span>{' '}
                     último día con data <span className="font-mono">{countryCoverage.last_trip_date || '—'}</span>
                     {periodType === 'monthly' && (<> · último mes <span className="font-mono">{countryCoverage.last_month_with_data || '—'}</span></>)}
                     {periodType === 'weekly' && (<> · última semana <span className="font-mono">{countryCoverage.last_week_with_data || '—'}</span></>)}
@@ -603,29 +603,29 @@ export default function RealLOBDrillView () {
                 )}
                 {/* KPI bar por país: totales de los periodos listados (no del drill expandido) */}
                 {kpis && (
-                  <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-6 gap-3 mb-3 p-4 bg-slate-50 rounded-lg border border-slate-200">
-                    <div className="col-span-full md:col-span-6 text-xs text-slate-500 mb-1" title="Estas métricas corresponden a la suma de todos los periodos de la tabla inferior">
+                  <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-6 gap-3 mb-3 p-4 bg-ct-surface rounded-lg border border-ct-border">
+                    <div className="col-span-full md:col-span-6 text-xs text-ct-text2 mb-1" title="Estas métricas corresponden a la suma de todos los periodos de la tabla inferior">
                       Totales (periodos listados)
                     </div>
                     <div>
-                      <div className="text-xs text-slate-500">Total viajes</div>
+                      <div className="text-xs text-ct-text2">Total viajes</div>
                       <div className="text-lg font-semibold">{formatNumber(kpis.total_trips)}</div>
                     </div>
                     <div title={MARGIN_TOOLTIP}>
-                      <div className="text-xs text-slate-500">Margen total</div>
+                      <div className="text-xs text-ct-text2">Margen total</div>
                       <div className="text-lg font-semibold">{kpis.total_trips ? formatMargin(kpis.margin_total_pos, kpis.total_trips) : '—'}</div>
                     </div>
                     <div title={MARGIN_TOOLTIP}>
-                      <div className="text-xs text-slate-500">Margen/trip</div>
+                      <div className="text-xs text-ct-text2">Margen/trip</div>
                       <div className="text-lg font-semibold">{formatMargin(kpis.margin_unit_pos, kpis.total_trips)}</div>
                     </div>
                     <div>
-                      <div className="text-xs text-slate-500">Km prom</div>
+                      <div className="text-xs text-ct-text2">Km prom</div>
                       <div className="text-lg font-semibold">{formatDistanceKm(kpis.km_prom, kpis.total_trips)}</div>
                     </div>
                     {segment === 'Todos' && (kpis.b2b_trips != null || kpis.b2b_pct != null) && (
                       <div>
-                        <div className="text-xs text-slate-500">Viajes B2B / %B2B</div>
+                        <div className="text-xs text-ct-text2">Viajes B2B / %B2B</div>
                         <div className="text-lg font-semibold">
                           {formatNumber(kpis.b2b_trips)}
                           {kpis.b2b_pct != null && ` (${Number(kpis.b2b_pct * 100).toFixed(2)}%)`}
@@ -633,54 +633,54 @@ export default function RealLOBDrillView () {
                       </div>
                     )}
                     <div>
-                      <div className="text-xs text-slate-500">Activos</div>
+                      <div className="text-xs text-ct-text2">Activos</div>
                       <div className="text-lg font-semibold">{formatNumber(kpis.active_drivers)}</div>
                     </div>
                     <div>
-                      <div className="text-xs text-slate-500">Solo cancelan</div>
+                      <div className="text-xs text-ct-text2">Solo cancelan</div>
                       <div className="text-lg font-semibold">{formatNumber(kpis.cancel_only_drivers)}</div>
                     </div>
                     <div>
-                      <div className="text-xs text-slate-500">% Solo cancelan</div>
+                      <div className="text-xs text-ct-text2">% Solo cancelan</div>
                       <div className="text-lg font-semibold">{kpis.cancel_only_pct != null ? `${Number(kpis.cancel_only_pct).toFixed(2)}%` : '—'}</div>
                     </div>
                     <div>
-                      <div className="text-xs text-slate-500">Último periodo</div>
+                      <div className="text-xs text-ct-text2">Último periodo</div>
                       <div className="text-sm font-medium">{kpis.last_period || '—'}</div>
                     </div>
                   </div>
                 )}
                 {rows.length === 0 ? (
-                  <div className="p-4 border border-gray-200 rounded-lg bg-gray-50 text-sm text-gray-500">
+                  <div className="p-4 border border-ct-border rounded-lg bg-ct-bg text-sm text-ct-text2">
                     Sin datos para este país en el rango seleccionado.
                   </div>
                 ) : (
-                <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                <div className="overflow-x-auto border border-ct-border rounded-lg">
                   <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-ct-bg">
                       <tr>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-8" />
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Periodo</th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Viajes</th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{COMPARATIVE_LABELS.deltaPctLabel(periodType)}</th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Cancel.</th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{COMPARATIVE_LABELS.deltaPctLabel(periodType)}</th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Activos</th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Solo cancelan</th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">% Solo cancelan</th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase" title={MARGIN_TOOLTIP}>Margen total</th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{COMPARATIVE_LABELS.deltaPctLabel(periodType)}</th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase" title={MARGIN_TOOLTIP}>Margen/trip</th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{COMPARATIVE_LABELS.deltaPctLabel(periodType)}</th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Km prom</th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-20">{COMPARATIVE_LABELS.deltaPctLabel(periodType)}</th>
-                        <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Segmento / B2B</th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase w-16">{COMPARATIVE_LABELS.ppLabel(periodType)}</th>
-                        <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Estado</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-ct-text2 uppercase w-8" />
+                        <th className="px-3 py-2 text-left text-xs font-medium text-ct-text2 uppercase">Periodo</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-ct-text2 uppercase">Viajes</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-ct-text2 uppercase w-20">{COMPARATIVE_LABELS.deltaPctLabel(periodType)}</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-ct-text2 uppercase">Cancel.</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-ct-text2 uppercase w-20">{COMPARATIVE_LABELS.deltaPctLabel(periodType)}</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-ct-text2 uppercase">Activos</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-ct-text2 uppercase">Solo cancelan</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-ct-text2 uppercase">% Solo cancelan</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-ct-text2 uppercase" title={MARGIN_TOOLTIP}>Margen total</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-ct-text2 uppercase w-20">{COMPARATIVE_LABELS.deltaPctLabel(periodType)}</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-ct-text2 uppercase" title={MARGIN_TOOLTIP}>Margen/trip</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-ct-text2 uppercase w-20">{COMPARATIVE_LABELS.deltaPctLabel(periodType)}</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-ct-text2 uppercase">Km prom</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-ct-text2 uppercase w-20">{COMPARATIVE_LABELS.deltaPctLabel(periodType)}</th>
+                        <th className="px-3 py-2 text-center text-xs font-medium text-ct-text2 uppercase">Segmento / B2B</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-ct-text2 uppercase w-16">{COMPARATIVE_LABELS.ppLabel(periodType)}</th>
+                        <th className="px-3 py-2 text-center text-xs font-medium text-ct-text2 uppercase">Estado</th>
                       </tr>
                     </thead>
                     {/* Subrow headers: Dimensión | Viajes | Margen total | Margen/trip | Km prom | B2B */}
-                    <tbody className="bg-white divide-y divide-gray-200">
+                    <tbody className="bg-ct-card divide-y divide-gray-200">
                       {rows.map((row) => {
                         const rowId = `${(row.country || countryCode || '').trim()}|${normalizePeriodStart(row.period_start)}`
                         const key = subrowKey((row.country || countryCode || '').trim(), row.period_start)
@@ -700,16 +700,16 @@ export default function RealLOBDrillView () {
                           <Fragment key={rowId}>
                             <tr
                               onClick={() => toggleExpand((row.country || countryCode || '').trim(), row.period_start)}
-                              className="cursor-pointer hover:bg-slate-50 select-none"
+                              className="cursor-pointer hover:bg-ct-surface select-none"
                             >
-                              <td className="px-3 py-2 text-sm text-gray-500">
+                              <td className="px-3 py-2 text-sm text-ct-text2">
                                 {sr?.loading ? (
                                   <span className="animate-pulse">…</span>
                                 ) : (
                                   <span className="inline-block w-5 text-center">{isExp ? '▼' : '▶'}</span>
                                 )}
                               </td>
-                              <td className="px-3 py-2 text-sm font-medium text-gray-900">
+                              <td className="px-3 py-2 text-sm font-medium text-ct-text">
                                 {formatPeriod(row.period_start, periodType)}
                                 {row.is_partial_comparison && (
                                   <span className={`ml-1 inline-flex px-1.5 py-0.5 rounded text-xs font-medium ${GRID_ESTADO.PARCIAL.className}`} title={GRID_ESTADO.PARCIAL.title}>{GRID_ESTADO.PARCIAL.label}</span>
@@ -804,12 +804,12 @@ export default function RealLOBDrillView () {
                             {isExp && sr && (
                               <>
                                 {sr.loading && (
-                                  <tr key={`${rowId}-sub-loading`} className="bg-slate-50">
-                                    <td colSpan={18} className="px-4 py-3 text-sm text-gray-500">Cargando…</td>
+                                  <tr key={`${rowId}-sub-loading`} className="bg-ct-surface">
+                                    <td colSpan={18} className="px-4 py-3 text-sm text-ct-text2">Cargando…</td>
                                   </tr>
                                 )}
                                 {sr.error && (
-                                  <tr key={`${rowId}-sub-err`} className="bg-slate-50">
+                                  <tr key={`${rowId}-sub-err`} className="bg-ct-surface">
                                     <td colSpan={18} className="px-4 py-3 text-sm text-red-600">{sr.error}</td>
                                   </tr>
                                 )}
@@ -828,9 +828,9 @@ export default function RealLOBDrillView () {
                                       : '—'
                                     const dimLabel = drillBy === 'lob' ? (r.lob_group ?? '—') : drillBy === 'park' ? (r.park_label ?? r.dimension_key ?? r.park_name_resolved ?? r.park_name ?? '—') : formatRealServiceTypeDisplay(r.service_type ?? r.dimension_key) || '—'
                                     return (
-                                      <tr key={`${rowId}-drill-${i}`} className="bg-slate-50">
+                                      <tr key={`${rowId}-drill-${i}`} className="bg-ct-surface">
                                         <td className="px-3 py-2" />
-                                        <td className="px-3 py-2 text-sm text-gray-900 pl-6">{dimLabel}</td>
+                                        <td className="px-3 py-2 text-sm text-ct-text pl-6">{dimLabel}</td>
                                         <td className="px-3 py-2 text-sm text-right">{formatNumber(r.trips)}</td>
                                         <td className={`px-3 py-2 text-sm text-right ${getComparativeClass(r.viajes_trend).bg}`}>
                                           {r.viajes_delta_pct != null ? <span className={getComparativeClass(r.viajes_trend).text}>{getComparativeClass(r.viajes_trend).arrow} {Number(r.viajes_delta_pct).toFixed(1)}%</span> : '—'}
@@ -868,14 +868,14 @@ export default function RealLOBDrillView () {
                                       </tr>
                                     )
                                   }                                  ) : (
-                                    <tr key={`${rowId}-sub-empty`} className="bg-slate-50">
-                                      <td colSpan={18} className="px-4 py-3 text-sm text-gray-500">Sin datos para este periodo.</td>
+                                    <tr key={`${rowId}-sub-empty`} className="bg-ct-surface">
+                                      <td colSpan={18} className="px-4 py-3 text-sm text-ct-text2">Sin datos para este periodo.</td>
                                     </tr>
                                   )
                                 })()}
                                 {sr.data && sr.data.length === 0 && (
-                                  <tr key={`${rowId}-sub-empty`} className="bg-slate-50">
-                                    <td colSpan={18} className="px-4 py-3 text-sm text-gray-500">Sin datos para este periodo.</td>
+                                  <tr key={`${rowId}-sub-empty`} className="bg-ct-surface">
+                                    <td colSpan={18} className="px-4 py-3 text-sm text-ct-text2">Sin datos para este periodo.</td>
                                   </tr>
                                 )}
                               </>
@@ -893,7 +893,7 @@ export default function RealLOBDrillView () {
         </div>
       )}
 
-      <p className="mt-4 text-xs text-gray-500">
+      <p className="mt-4 text-xs text-ct-text2">
         Clic en una fila para desplegar desglose por {drillBy === 'lob' ? 'LOB' : drillBy === 'park' ? 'Park' : 'Tipo de servicio'}.
         Orden: más reciente → más antiguo; subfilas por viajes descendente.
       </p>

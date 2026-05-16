@@ -9,6 +9,8 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background: #f5f3f0;
+  color: #292524;
 }
 
 @keyframes indeterminate-slide {
@@ -16,8 +18,3 @@ body {
   50%  { transform: translateX(150%); }
   100% { transform: translateX(150%); }
 }
-
-
-
-
-

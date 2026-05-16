@@ -76,23 +76,23 @@ const KPI_FOCUS_OPTIONS = [
 
 const btnCls = (active) =>
   `px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-    active ? 'bg-slate-900 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+    active ? 'bg-ct-nav text-white shadow-sm' : 'bg-ct-card text-ct-text border border-ct-border hover:border-gray-300 hover:bg-ct-bg'
   }`
 
 const densityCls = (active) =>
   `px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-    active ? 'bg-slate-900 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+    active ? 'bg-ct-nav text-white shadow-sm' : 'bg-ct-card text-ct-text2 border border-ct-border hover:border-gray-300 hover:bg-ct-bg'
   }`
 
 const modeCls = (active) =>
   `px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-    active ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50'
+    active ? 'bg-blue-600 text-white shadow-sm' : 'bg-ct-card text-ct-text2 border border-ct-border hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50'
   }`
 
 const selectCls =
-  'uppercase border border-gray-200 rounded-md text-sm px-2.5 py-1.5 bg-white focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none text-gray-700 tracking-wide'
+  'uppercase border border-ct-border rounded-md text-sm px-2.5 py-1.5 bg-ct-card focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none text-ct-text tracking-wide'
 const miniSelectCls =
-  'uppercase border border-gray-200 rounded-md text-xs px-2 py-1 bg-white outline-none text-gray-600 focus:ring-1 focus:ring-blue-400 tracking-wide'
+  'uppercase border border-ct-border rounded-md text-xs px-2 py-1 bg-ct-card outline-none text-ct-text focus:ring-1 focus:ring-blue-400 tracking-wide'
 
 /** Si true (p. ej. VITE_OMNIVIEW_MATRIX_MANUAL_LOAD en .env.development), no se llama a la API pesada hasta pulsar «Cargar datos». */
 const MANUAL_LOAD = import.meta.env.VITE_OMNIVIEW_MATRIX_MANUAL_LOAD === 'true'
@@ -342,7 +342,7 @@ export default function BusinessSliceOmniviewMatrix () {
     const border =
       st === 'critical' ? 'border-red-200 bg-red-50 text-red-900'
         : st === 'stale' ? 'border-amber-200 bg-amber-50 text-amber-900'
-          : st === 'empty' || st === 'unknown' ? 'border-slate-200 bg-slate-50 text-slate-800'
+          : st === 'empty' || st === 'unknown' ? 'border-ct-border bg-ct-surface text-ct-text'
             : 'border-emerald-200 bg-emerald-50 text-emerald-900'
     const emoji = st === 'critical' ? '🔴' : st === 'stale' ? '🟡' : st === 'fresh' ? '🟢' : '🟡'
     let mainLine = ''
@@ -366,7 +366,7 @@ export default function BusinessSliceOmniviewMatrix () {
           <span className="ml-1">· lag {sliceRealFreshness.lag_days} día(s)</span>
         )}
         {up.status && up.status !== 'fresh' && (
-          <span className="block mt-1 text-slate-600">
+          <span className="block mt-1 text-ct-text">
             Fuente viajes ({up.source || 'upstream'}): {up.status}
             {up.max_event_date ? ` · max ${up.max_event_date}` : ''}
             {up.error ? ` · ${up.error}` : ''}
@@ -880,7 +880,7 @@ export default function BusinessSliceOmniviewMatrix () {
 
   return (
     <div className="relative" data-omniview-matrix-root style={{ width: '100vw', left: '50%', right: '50%', marginLeft: '-50vw', marginRight: '-50vw' }}>
-      <div className="px-4 md:px-6 lg:px-8 space-y-3">
+      <div className="px-3 sm:px-4 space-y-2">
         {heavyQueriesEnabled && (
           <MatrixExecutiveBanner
             executive={executiveForBanner}
@@ -894,14 +894,12 @@ export default function BusinessSliceOmniviewMatrix () {
           />
         )}
 
-        {/* ── Controls ──────────────────────────────────────────── */}
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm divide-y divide-gray-100">
-
-          {/* Fila 1: Filtros de datos */}
-          <div className="px-4 py-3 flex flex-wrap items-end gap-x-4 gap-y-3">
+        {/* Controls */}
+        <div className="rounded-lg border border-ct-border bg-ct-card overflow-hidden">
+          <div className="px-3 py-2 flex flex-wrap items-end gap-x-3 gap-y-2">
             {/* Grano temporal */}
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Grano</span>
+              <span className="text-2xs font-semibold text-ct-text3 uppercase tracking-wider">Grano</span>
               <div className="flex gap-1">
                 {GRAINS.map((g) => (
                   <button key={g.id} type="button" className={`${btnCls(grain === g.id)} uppercase tracking-wide`} onClick={() => setGrain(g.id)}>{g.label}</button>
@@ -929,7 +927,7 @@ export default function BusinessSliceOmniviewMatrix () {
             )}
             {grain === 'weekly' && (
               <div className="flex flex-col gap-1 self-end pb-1">
-                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Scope semanal</span>
+                <span className="text-[10px] font-semibold text-ct-text3 uppercase tracking-wider">Scope semanal</span>
                 <span
                   className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-blue-700"
                   title={ISO_WEEK_SCOPE_TOOLTIP}
@@ -939,22 +937,22 @@ export default function BusinessSliceOmniviewMatrix () {
               </div>
             )}
 
-            <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none self-end pb-1.5 uppercase tracking-wide">
+            <label className="flex items-center gap-1.5 text-xs text-ct-text2 cursor-pointer select-none self-end pb-1.5 uppercase tracking-wide">
               <input type="checkbox" checked={showSubfleets} onChange={(e) => setShowSubfleets(e.target.checked)}
                 className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5" />
               Subflotas
             </label>
           </div>
 
-          <div className="px-4 py-2 border-t border-gray-100 bg-slate-50/40">
+          <div className="px-4 py-2 border-t border-ct-border bg-ct-surface/40">
             <OmniviewDataHelp />
           </div>
 
           {/* Fila 2: Controles de visualización */}
-          <div className="px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-2 bg-gray-50/60">
+          <div className="px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-2 bg-ct-bg/60">
             {/* Modo Evolución / Vs Proyección */}
             <div className="flex items-center gap-1">
-              <span className="text-[11px] font-medium text-gray-400 mr-1">Modo</span>
+              <span className="text-[11px] font-medium text-ct-text3 mr-1">Modo</span>
               <div className="flex gap-1">
                 <button type="button" className={btnCls(viewMode === 'evolucion')} onClick={() => setViewMode('evolucion')}>Evolución</button>
                 <button type="button" className={btnCls(viewMode === 'proyeccion')} onClick={() => setViewMode('proyeccion')}>Vs Proyección</button>
@@ -965,7 +963,7 @@ export default function BusinessSliceOmniviewMatrix () {
               <>
                 <div className="w-px h-4 bg-gray-200 hidden sm:block" />
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-medium text-gray-400">Plan</span>
+                  <span className="text-[11px] font-medium text-ct-text3">Plan</span>
                   {planVersions.length > 0 ? (
                     <select className={miniSelectCls} value={planVersion} onChange={(e) => setPlanVersion(e.target.value)}>
                       {planVersions.map((v) => <option key={v} value={v}>{v}</option>)}
@@ -993,7 +991,7 @@ export default function BusinessSliceOmniviewMatrix () {
             {/* Modo Data / Insight */}
             {!isProjectionMode && (
             <div className="flex items-center gap-1">
-              <span className="text-[11px] font-medium text-gray-400 mr-1">Vista</span>
+              <span className="text-[11px] font-medium text-ct-text3 mr-1">Vista</span>
               <div className="flex gap-1">
                 <button type="button" className={modeCls(!insightMode)} onClick={() => setInsightMode(false)}>Data</button>
                 <button type="button" className={modeCls(insightMode)} onClick={() => setInsightMode(true)}>
@@ -1010,7 +1008,7 @@ export default function BusinessSliceOmniviewMatrix () {
 
             {/* Orden */}
             <div className="flex items-center gap-1.5">
-              <span className="text-[11px] font-medium text-gray-400">Orden</span>
+              <span className="text-[11px] font-medium text-ct-text3">Orden</span>
               <select className={miniSelectCls} value={sortKey} onChange={(e) => setSortKey(e.target.value)}>
                 {sortSelectOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
               </select>
@@ -1020,7 +1018,7 @@ export default function BusinessSliceOmniviewMatrix () {
 
             {/* Densidad */}
             <div className="flex items-center gap-1">
-              <span className="text-[11px] font-medium text-gray-400 mr-1">Densidad</span>
+              <span className="text-[11px] font-medium text-ct-text3 mr-1">Densidad</span>
               <div className="flex gap-1">
                 <button type="button" className={densityCls(!compact)} onClick={() => setCompact(false)}>Cómodo</button>
                 <button type="button" className={densityCls(compact)} onClick={() => setCompact(true)}>Compacto</button>
@@ -1030,7 +1028,7 @@ export default function BusinessSliceOmniviewMatrix () {
             <div className="ml-auto flex items-center gap-2">
               <button type="button"
                 onClick={() => setFactStatusOpen((o) => !o)}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all border ${factStatusOpen ? 'bg-slate-800 text-white border-slate-800' : 'text-gray-500 bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all border ${factStatusOpen ? 'bg-slate-800 text-white border-slate-800' : 'text-ct-text2 bg-ct-card border-ct-border hover:border-gray-300 hover:bg-ct-bg'}`}
                 title="Ver estado de materialización de FACT tables">
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7M4 7c0-2 1-3 3-3h10c2 0 3 1 3 3M4 7h16" />
@@ -1041,7 +1039,7 @@ export default function BusinessSliceOmniviewMatrix () {
                 <>
                   <div className="w-px h-4 bg-gray-200" />
                   <button type="button" onClick={handleExport}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-gray-500 bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-ct-text2 bg-ct-card border border-ct-border hover:border-gray-300 hover:bg-ct-bg transition-all"
                     title="Exportar matriz a CSV">
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V3" />
@@ -1073,15 +1071,15 @@ export default function BusinessSliceOmniviewMatrix () {
           )}
 
           {MANUAL_LOAD && !heavyQueriesEnabled && (
-            <div className="mt-3 rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white px-6 py-6 flex flex-col items-center gap-4 text-center shadow-sm">
-              <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center">
-                <svg className="w-5 h-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <div className="mt-3 rounded-lg border border-ct-border bg-gradient-to-br from-slate-50 to-white px-6 py-6 flex flex-col items-center gap-4 text-center shadow-sm">
+              <div className="w-10 h-10 rounded-full bg-ct-surface flex items-center justify-center">
+                <svg className="w-5 h-5 text-ct-text2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6" />
                 </svg>
               </div>
               <div>
-                <p className="text-sm font-semibold text-slate-800">Omniview Matrix — carga diferida</p>
-                <p className="mt-1 text-xs text-slate-500 max-w-sm">
+                <p className="text-sm font-semibold text-ct-text">Omniview Matrix — carga diferida</p>
+                <p className="mt-1 text-xs text-ct-text2 max-w-sm">
                   No se ejecutan consultas a la base de datos hasta que pulses el botón. Ajusta los filtros y carga cuando estés listo.
                 </p>
                 {blockedByCountry && (
@@ -1094,7 +1092,7 @@ export default function BusinessSliceOmniviewMatrix () {
                 type="button"
                 disabled={blockedByCountry}
                 onClick={() => setHeavyQueriesEnabled(true)}
-                className="px-6 py-2 rounded-lg text-sm font-semibold bg-slate-900 text-white hover:bg-slate-700 transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-6 py-2 rounded-lg text-sm font-semibold bg-ct-nav text-white hover:bg-slate-700 transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Cargar datos
               </button>
@@ -1157,19 +1155,7 @@ export default function BusinessSliceOmniviewMatrix () {
         )}
 
         {heavyQueriesEnabled && isProjectionMode && projectionReady && projectionMeta && (
-          <ProjectionOperationalSuggestionsBlock projectionMeta={projectionMeta} compact={compact} />
-        )}
-
-        {heavyQueriesEnabled && isProjectionMode && projectionReady && projectionMeta && (
-          <ProjectionContextualOperationalSuggestionsBlock projectionMeta={projectionMeta} compact={compact} />
-        )}
-
-        {heavyQueriesEnabled && isProjectionMode && projectionReady && projectionMeta && (
-          <ProjectionDecisionRecommendationsBlock projectionMeta={projectionMeta} compact={compact} />
-        )}
-
-        {heavyQueriesEnabled && isProjectionMode && projectionReady && projectionMeta && (
-          <ProjectionGlobalStrategicQueueBlock projectionMeta={projectionMeta} compact={compact} />
+          <OperationalOpportunitiesSummary projectionMeta={projectionMeta} compact={compact} />
         )}
 
         {/* ── Context bar (Vs Proyección) ─────────────────────── */}
@@ -1191,11 +1177,11 @@ export default function BusinessSliceOmniviewMatrix () {
 
         {/* ── KPI focus mode ────────────────────────────────────── */}
         {heavyQueriesEnabled && !blockedByCountry && ((!isProjectionMode && rows.length > 0) || (isProjectionMode && projectionRows.length > 0)) && (
-          <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+          <div className="rounded-lg border border-ct-border bg-ct-card px-4 py-3 shadow-sm">
             <div className="flex flex-wrap items-center gap-3">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">KPI focus mode</p>
-                <p className="mt-1 text-xs text-gray-500">La matriz conserva la lectura temporal, pero muestra una sola métrica a la vez.</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-ct-text3">KPI focus mode</p>
+                <p className="mt-1 text-xs text-ct-text2">La matriz conserva la lectura temporal, pero muestra una sola métrica a la vez.</p>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {KPI_FOCUS_OPTIONS.map((option) => (
@@ -1238,7 +1224,7 @@ export default function BusinessSliceOmniviewMatrix () {
         )}
 
         {loading && heavyQueriesEnabled && (
-          <div className="flex items-center gap-2 text-xs text-gray-500 py-6 justify-center">
+          <div className="flex items-center gap-2 text-xs text-ct-text2 py-6 justify-center">
             <span className="inline-block w-3.5 h-3.5 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
             Cargando datos…
           </div>
@@ -1326,7 +1312,7 @@ export default function BusinessSliceOmniviewMatrix () {
 
         {/* ── Sin proyección cargada ──────────────────────────────── */}
         {heavyQueriesEnabled && projectionReady && isProjectionMode && planVersions.length === 0 && (
-          <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50/60 px-6 py-10 text-center flex flex-col items-center gap-4">
+          <div className="rounded-lg border border-dashed border-amber-300 bg-amber-50/60 px-6 py-10 text-center flex flex-col items-center gap-4">
             <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
               <svg className="w-6 h-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z" />
@@ -1351,13 +1337,13 @@ export default function BusinessSliceOmniviewMatrix () {
           </div>
         )}
         {heavyQueriesEnabled && projectionReady && isProjectionMode && planVersions.length > 0 && !planVersion && (
-          <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50/60 px-6 py-8 text-center">
+          <div className="rounded-lg border border-dashed border-amber-300 bg-amber-50/60 px-6 py-8 text-center">
             <p className="text-sm font-semibold text-amber-800">Selecciona una versión de plan</p>
             <p className="mt-1 text-xs text-amber-600">Para ver la comparación Plan vs Real, selecciona una versión de proyección en el selector de arriba.</p>
           </div>
         )}
         {projectionEmptyKind === 'needs_country' && (
-          <div className="rounded-xl border border-dashed border-amber-200 bg-amber-50/70 px-6 py-8 text-center">
+          <div className="rounded-lg border border-dashed border-amber-200 bg-amber-50/70 px-6 py-8 text-center">
             <p className="text-sm font-semibold text-amber-900">Selecciona un país</p>
             <p className="mt-1 text-xs text-amber-800 max-w-md mx-auto">
               Para semanal o diario en Vs Proyección hace falta país: la meta se deriva del plan mensual y el real se filtra por país.
@@ -1365,7 +1351,7 @@ export default function BusinessSliceOmniviewMatrix () {
           </div>
         )}
         {projectionEmptyKind === 'plan_without_real' && (
-          <div className="rounded-xl border border-dashed border-amber-200 bg-amber-50/70 px-6 py-8 text-center">
+          <div className="rounded-lg border border-dashed border-amber-200 bg-amber-50/70 px-6 py-8 text-center">
             <p className="text-sm font-semibold text-amber-900">Hay proyección cargada pero no hay ejecución asociada</p>
             <p className="mt-1 text-xs text-amber-800 max-w-md mx-auto">
               {(grain === 'weekly' || grain === 'daily')
@@ -1375,9 +1361,9 @@ export default function BusinessSliceOmniviewMatrix () {
           </div>
         )}
         {projectionEmptyKind === 'no_data' && (
-          <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/80 px-6 py-8 text-center">
-            <p className="text-sm font-semibold text-gray-600">Sin datos de proyección</p>
-            <p className="mt-1 text-xs text-gray-500">No hay datos de proyección para la versión seleccionada con los filtros actuales.</p>
+          <div className="rounded-lg border border-dashed border-gray-300 bg-ct-bg/80 px-6 py-8 text-center">
+            <p className="text-sm font-semibold text-ct-text">Sin datos de proyección</p>
+            <p className="mt-1 text-xs text-ct-text2">No hay datos de proyección para la versión seleccionada con los filtros actuales.</p>
           </div>
         )}
       </div>
@@ -1385,9 +1371,9 @@ export default function BusinessSliceOmniviewMatrix () {
       {/* ── Modal subida de proyección ──────────────────────────── */}
       {uploadModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
+          <div className="w-full max-w-md bg-ct-card rounded-2xl shadow-2xl border border-ct-border overflow-hidden">
             {/* Header */}
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div className="px-6 py-4 border-b border-ct-border flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
                   <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1395,14 +1381,14 @@ export default function BusinessSliceOmniviewMatrix () {
                   </svg>
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-gray-900">Subir archivo de proyección</p>
-                  <p className="text-[11px] text-gray-500">Formato Ruta 27 · CSV o Excel</p>
+                  <p className="text-sm font-semibold text-ct-text">Subir archivo de proyección</p>
+                  <p className="text-[11px] text-ct-text2">Formato Ruta 27 · CSV o Excel</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => { setUploadModalOpen(false); setUploadFile(null); setUploadError(null); setUploadSuccess(null) }}
-                className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded"
+                className="text-ct-text3 hover:text-ct-text transition-colors p-1 rounded"
                 disabled={uploadLoading}
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1415,21 +1401,21 @@ export default function BusinessSliceOmniviewMatrix () {
             <div className="px-6 py-5 space-y-4">
               {/* Zona de selección de archivo */}
               <div
-                className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-colors group"
+                className="border-2 border-dashed border-ct-border rounded-lg p-6 text-center cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-colors group"
                 onClick={() => uploadInputRef.current?.click()}
               >
-                <svg className="w-8 h-8 text-gray-300 group-hover:text-blue-400 mx-auto mb-2 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <svg className="w-8 h-8 text-ct-text3 group-hover:text-blue-400 mx-auto mb-2 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                 </svg>
                 {uploadFile ? (
                   <div>
                     <p className="text-sm font-semibold text-blue-700">{uploadFile.name}</p>
-                    <p className="text-[11px] text-gray-400 mt-0.5">{(uploadFile.size / 1024).toFixed(1)} KB · Haz clic para cambiar</p>
+                    <p className="text-[11px] text-ct-text3 mt-0.5">{(uploadFile.size / 1024).toFixed(1)} KB · Haz clic para cambiar</p>
                   </div>
                 ) : (
                   <div>
-                    <p className="text-sm text-gray-500 font-medium">Haz clic para seleccionar archivo</p>
-                    <p className="text-[11px] text-gray-400 mt-0.5">CSV o Excel (.xlsx) · Formato Ruta 27</p>
+                    <p className="text-sm text-ct-text2 font-medium">Haz clic para seleccionar archivo</p>
+                    <p className="text-[11px] text-ct-text3 mt-0.5">CSV o Excel (.xlsx) · Formato Ruta 27</p>
                   </div>
                 )}
                 <input
@@ -1442,14 +1428,14 @@ export default function BusinessSliceOmniviewMatrix () {
               </div>
 
               {/* Formatos aceptados */}
-              <div className="bg-gray-50 rounded-lg px-3 py-2.5 space-y-2.5">
-                <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Formatos aceptados</p>
+              <div className="bg-ct-bg rounded-lg px-3 py-2.5 space-y-2.5">
+                <p className="text-[10px] font-semibold text-ct-text2 uppercase tracking-wide">Formatos aceptados</p>
                 <div className="space-y-1.5">
                   <div className="flex items-start gap-2">
                     <span className="mt-0.5 flex-shrink-0 w-4 h-4 rounded bg-blue-100 text-blue-700 text-[9px] font-bold flex items-center justify-center">1</span>
                     <div>
-                      <p className="text-[10px] font-semibold text-gray-700">Plantilla Control Tower (Excel multi-hoja)</p>
-                      <p className="text-[10px] text-gray-500 leading-relaxed">
+                      <p className="text-[10px] font-semibold text-ct-text">Plantilla Control Tower (Excel multi-hoja)</p>
+                      <p className="text-[10px] text-ct-text2 leading-relaxed">
                         Hojas: <span className="font-mono">TRIPS · REVENUE · DRIVERS</span><br />
                         Columnas fijas: <span className="font-mono">country, city, linea_negocio</span><br />
                         Columnas de meses: <span className="font-mono">2026-01, 2026-02…</span>
@@ -1457,10 +1443,10 @@ export default function BusinessSliceOmniviewMatrix () {
                     </div>
                   </div>
                   <div className="flex items-start gap-2">
-                    <span className="mt-0.5 flex-shrink-0 w-4 h-4 rounded bg-gray-200 text-gray-600 text-[9px] font-bold flex items-center justify-center">2</span>
+                    <span className="mt-0.5 flex-shrink-0 w-4 h-4 rounded bg-gray-200 text-ct-text text-[9px] font-bold flex items-center justify-center">2</span>
                     <div>
-                      <p className="text-[10px] font-semibold text-gray-700">Formato long/tabular Ruta 27 (CSV o Excel)</p>
-                      <p className="text-[10px] text-gray-500 font-mono leading-relaxed">
+                      <p className="text-[10px] font-semibold text-ct-text">Formato long/tabular Ruta 27 (CSV o Excel)</p>
+                      <p className="text-[10px] text-ct-text2 font-mono leading-relaxed">
                         country, city, lob_base, segment,<br />
                         year, month, trips_plan,<br />
                         active_drivers_plan, avg_ticket_plan
@@ -1509,7 +1495,7 @@ export default function BusinessSliceOmniviewMatrix () {
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-4 border-t border-gray-100 space-y-2">
+            <div className="px-6 py-4 border-t border-ct-border space-y-2">
               {uploadLoading && (
                 <div className="flex items-center gap-2 text-[11px] text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
                   <span className="inline-block w-3 h-3 border-[1.5px] border-blue-300 border-t-blue-600 rounded-full animate-spin flex-shrink-0" />
@@ -1521,7 +1507,7 @@ export default function BusinessSliceOmniviewMatrix () {
                   type="button"
                   onClick={() => { setUploadModalOpen(false); setUploadFile(null); setUploadError(null); setUploadSuccess(null) }}
                   disabled={uploadLoading}
-                  className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors disabled:opacity-50"
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-ct-text bg-gray-100 hover:bg-gray-200 transition-colors disabled:opacity-50"
                 >
                   Cancelar
                 </button>
@@ -1554,6 +1540,84 @@ export default function BusinessSliceOmniviewMatrix () {
   )
 }
 
+function OperationalOpportunitiesSummary ({ projectionMeta, compact }) {
+  const py = compact ? 'py-1.5' : 'py-2'
+  const opsSuggestions = Array.isArray(projectionMeta?.operational_suggestions) ? projectionMeta.operational_suggestions : []
+  const ctxSuggestions = Array.isArray(projectionMeta?.contextual_suggestions) ? projectionMeta.contextual_suggestions : []
+  const decisions = Array.isArray(projectionMeta?.decision_recommendations) ? projectionMeta.decision_recommendations : []
+  const globalQueue = Array.isArray(projectionMeta?.global_strategic_queue) ? projectionMeta.global_strategic_queue : []
+
+  const totalOpportunities = opsSuggestions.length + ctxSuggestions.length
+  const byType = {
+    operacionales: opsSuggestions.length,
+    contextuales: ctxSuggestions.length,
+  }
+
+  const topProblems = [
+    ...opsSuggestions.slice(0, 2).map((s) => ({ type: 'operacional', item: s })),
+    ...ctxSuggestions.slice(0, 1).map((s) => ({ type: 'contextual', item: s })),
+  ].slice(0, 3)
+
+  if (totalOpportunities === 0) return null
+
+  return (
+    <div className={`rounded-lg border border-ct-border bg-ct-card shadow-sm px-4 ${py}`}>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        <div>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-ct-text2">
+            Oportunidades operativas
+          </span>
+          <span className="ml-2 text-[11px] text-ct-text">
+            <strong>{totalOpportunities}</strong> detectadas
+            {byType.operacionales > 0 && <span className="text-ct-text2"> · {byType.operacionales} operacionales</span>}
+            {byType.contextuales > 0 && <span className="text-ct-text2"> · {byType.contextuales} contextuales</span>}
+          </span>
+        </div>
+        <a
+          href="/operacion/oportunidades"
+          className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 whitespace-nowrap"
+        >
+          Ir a Oportunidades Operativas →
+        </a>
+      </div>
+
+      {topProblems.length > 0 && (
+        <div className="mt-2 space-y-1">
+          {topProblems.map((tp, i) => {
+            const s = tp.item
+            const headline = s?.recommended_action_name || s?.opportunity?.headline || `Oportunidad ${i + 1}`
+            const city = s?.city || s?.country || ''
+            const slice = s?.business_slice_name || s?.lob || ''
+            return (
+              <div key={i} className="flex items-center gap-2 text-[10px] text-ct-text">
+                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                  i === 0 ? 'bg-amber-500' : i === 1 ? 'bg-blue-500' : 'bg-slate-400'
+                }`} />
+                <span className="font-medium truncate max-w-[16rem]">{headline}</span>
+                {(city || slice) && (
+                  <span className="text-ct-text3 truncate hidden sm:inline">
+                    {[city, slice].filter(Boolean).join(' · ')}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  className="ml-auto text-[10px] text-blue-600 hover:underline flex-shrink-0"
+                  onClick={() => {
+                    const evt = new CustomEvent('omniview:navigate-opportunity', { detail: { type: tp.type, index: i } })
+                    window.dispatchEvent(evt)
+                  }}
+                >
+                  Ver diagnóstico
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function OperationalContextBar ({ grain, periodStates, allPeriods, comparisonMeta, freshnessInfo, sliceMaxTripDate, coverageSummary, compact, matrixMeta, execKpis }) {
   const df = matrixMeta?.data_freshness
   const lagStr = df?.lag_days != null && df?.status !== 'broken' ? String(df.lag_days) : '—'
@@ -1563,7 +1627,7 @@ function OperationalContextBar ({ grain, periodStates, allPeriods, comparisonMet
   const dataFreshnessCls = df?.status === 'ok' ? 'text-emerald-800 font-semibold'
     : df?.status === 'warning' ? 'text-amber-800 font-semibold'
     : df?.status === 'stale' ? 'text-red-800 font-semibold'
-    : 'text-slate-700 font-semibold'
+    : 'text-ct-text font-semibold'
   const hasPartial = [...(periodStates?.values() || [])].some(
     (s) => s === PERIOD_STATES.PARTIAL || s === PERIOD_STATES.CURRENT_DAY || s === PERIOD_STATES.OPEN
   )
@@ -1595,8 +1659,8 @@ function OperationalContextBar ({ grain, periodStates, allPeriods, comparisonMet
   const py = compact ? 'py-1' : 'py-1.5'
 
   return (
-    <div className={`rounded-lg border border-slate-200 bg-slate-50 shadow-sm px-4 ${py} flex flex-wrap items-center gap-x-4 gap-y-1`}>
-      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Contexto</span>
+    <div className={`rounded-lg border border-ct-border bg-ct-surface shadow-sm px-4 ${py} flex flex-wrap items-center gap-x-4 gap-y-1`}>
+      <span className="text-[10px] font-bold text-ct-text2 uppercase tracking-wider">Contexto</span>
 
       <span
         className={`text-[11px] ${dataFreshnessCls}`}
@@ -1604,11 +1668,11 @@ function OperationalContextBar ({ grain, periodStates, allPeriods, comparisonMet
       >
         {dataFreshnessLine}
         {df?.status && (
-          <span className="ml-1.5 text-[9px] font-bold uppercase text-slate-500">[{df.status}]</span>
+          <span className="ml-1.5 text-[9px] font-bold uppercase text-ct-text2">[{df.status}]</span>
         )}
       </span>
 
-      <span className="text-[10px] text-slate-600">
+      <span className="text-[10px] text-ct-text">
         {compLabel}
       </span>
 
@@ -1641,20 +1705,20 @@ function OperationalContextBar ({ grain, periodStates, allPeriods, comparisonMet
 
       {freshnessInfo && !df?.max_data_date && (
         <span
-          className="text-[10px] text-slate-500"
+          className="text-[10px] text-ct-text2"
           title={sliceMaxTripDate ? `Business slice day_fact: ${sliceMaxTripDate}. ${freshnessInfo.message || ''}` : freshnessInfo.message}>
           Trust API: {sliceMaxTripDate || freshnessInfo.derived_max_date || '—'}
         </span>
       )}
 
       {cov && (cov.total_trips_real_raw ?? cov.total_trips) > 0 && (
-        <span className="text-[10px] text-slate-600 ml-auto flex items-center gap-2">
+        <span className="text-[10px] text-ct-text ml-auto flex items-center gap-2">
           <span title="Mapped / universo RAW (public.trips_unified)">
             Cobertura: <strong className={cov.coverage_pct >= 95 ? 'text-emerald-700' : cov.coverage_pct >= 80 ? 'text-amber-700' : 'text-red-700'}>{cov.coverage_pct}%</strong>
-            <span className="text-slate-400 font-normal"> RAW {(cov.total_trips_real_raw ?? cov.total_trips).toLocaleString()}</span>
+            <span className="text-ct-text3 font-normal"> RAW {(cov.total_trips_real_raw ?? cov.total_trips).toLocaleString()}</span>
           </span>
           {cov.unmapped_trips > 0 && (
-            <span className="text-slate-400">Sin mapear: {cov.unmapped_trips.toLocaleString()}</span>
+            <span className="text-ct-text3">Sin mapear: {cov.unmapped_trips.toLocaleString()}</span>
           )}
           {cov.identity_check_ok === false && (
             <span className="text-amber-700" title="RAW vs resolved o conteos por estado">⚠ identidad</span>
@@ -1666,13 +1730,13 @@ function OperationalContextBar ({ grain, periodStates, allPeriods, comparisonMet
         <span className="text-[10px] text-amber-800" title="Volumen en bucket UNMAPPED (calidad de mapeo, no LOB)">
           Sin mapear en vista: {execKpis.unmapped_trips_volume.toLocaleString()} viajes
           {execKpis.unmapped_share_of_trips != null && (
-            <span className="text-slate-500"> ({(execKpis.unmapped_share_of_trips * 100).toFixed(1)}% del volumen mostrado)</span>
+            <span className="text-ct-text2"> ({(execKpis.unmapped_share_of_trips * 100).toFixed(1)}% del volumen mostrado)</span>
           )}
         </span>
       )}
 
       {matrixMeta?.period_states?.length > 0 && (
-        <span className="text-[10px] text-slate-500 hidden lg:inline" title="State Engine: max por período en day_fact (no solo global)">
+        <span className="text-[10px] text-ct-text2 hidden lg:inline" title="State Engine: max por período en day_fact (no solo global)">
           Estados: backend · máx global {matrixMeta.slice_max_trip_date || '—'} · por período ✓
         </span>
       )}
@@ -1799,8 +1863,8 @@ function ProjectionContextualOperationalSuggestionsBlock ({ projectionMeta, comp
 
   if (integrityBroken) {
     return (
-      <div className={`rounded-lg border border-slate-200 bg-white shadow-sm px-4 ${py}`}>
-        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+      <div className={`rounded-lg border border-ct-border bg-ct-card shadow-sm px-4 ${py}`}>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-ct-text mb-1">
           Sugerencias operativas contextualizadas
         </p>
         <p className="text-[11px] text-rose-800" role="status">
@@ -1837,10 +1901,10 @@ function ProjectionContextualOperationalSuggestionsBlock ({ projectionMeta, comp
           return (
             <li
               key={s.suggestion_id}
-              className="rounded-md border border-violet-100 bg-white/90 p-2.5 text-[11px] text-slate-800 shadow-sm"
+              className="rounded-md border border-violet-100 bg-ct-card/90 p-2.5 text-[11px] text-ct-text shadow-sm"
             >
               <div className="flex flex-wrap items-baseline justify-between gap-1 mb-1">
-                <span className="font-semibold text-slate-900">{s.entity}</span>
+                <span className="font-semibold text-ct-text">{s.entity}</span>
                 <span className="text-[9px] text-violet-800 font-semibold tabular-nums">
                   Apalancamiento {s.operational_leverage_score ?? '—'}/100
                 </span>
@@ -1848,16 +1912,16 @@ function ProjectionContextualOperationalSuggestionsBlock ({ projectionMeta, comp
               <p className="font-semibold text-violet-900 text-[11px] leading-snug mb-1">
                 {s.recommended_action_name || s.action_type}
               </p>
-              <div className="text-[10px] text-slate-600 mb-1">
-                <span className="text-slate-400">Pool</span>{' '}
+              <div className="text-[10px] text-ct-text mb-1">
+                <span className="text-ct-text3">Pool</span>{' '}
                 <strong className="tabular-nums">{pool.total_candidates != null ? Number(pool.total_candidates).toLocaleString() : '—'}</strong>
                 {reachPct != null && (
-                  <span className="text-slate-500 ml-1 tabular-nums">
+                  <span className="text-ct-text2 ml-1 tabular-nums">
                     · alcanzable ~{reachPct}%
                   </span>
                 )}
                 {pool.pool_method && (
-                  <span className="text-slate-400 ml-1">({pool.pool_method})</span>
+                  <span className="text-ct-text3 ml-1">({pool.pool_method})</span>
                 )}
               </div>
               {segs.length > 0 && (
@@ -1865,7 +1929,7 @@ function ProjectionContextualOperationalSuggestionsBlock ({ projectionMeta, comp
                   {segs.slice(0, 3).map((seg, i) => (
                     <span
                       key={`${s.suggestion_id}-seg-${i}`}
-                      className="rounded bg-slate-100 px-1.5 py-px text-[9px] text-slate-700"
+                      className="rounded bg-ct-surface px-1.5 py-px text-[9px] text-ct-text"
                     >
                       {SEGMENT_LABEL_ES[seg.segment_id] || SEGMENT_LABEL_ES[seg.segment] || seg.segment_id || seg.segment}:{' '}
                       <span className="font-bold tabular-nums">{seg.drivers != null ? seg.drivers : '—'}</span>
@@ -1873,8 +1937,8 @@ function ProjectionContextualOperationalSuggestionsBlock ({ projectionMeta, comp
                   ))}
                 </div>
               )}
-              <p className="text-[10px] text-slate-700 mb-1">
-                <span className="text-slate-400">Recup. est.</span>{' '}
+              <p className="text-[10px] text-ct-text mb-1">
+                <span className="text-ct-text3">Recup. est.</span>{' '}
                 {rec.potential_trips_recovered_weekly != null
                   ? (
                     <span>
@@ -1883,7 +1947,7 @@ function ProjectionContextualOperationalSuggestionsBlock ({ projectionMeta, comp
                     )
                   : '—'}
                 {rec.potential_gap_recovery_pct != null && (
-                  <span className="text-slate-500 tabular-nums">{` · ~${Number(rec.potential_gap_recovery_pct).toFixed(1)}% gap (orden magnitud)`}</span>
+                  <span className="text-ct-text2 tabular-nums">{` · ~${Number(rec.potential_gap_recovery_pct).toFixed(1)}% gap (orden magnitud)`}</span>
                 )}
               </p>
               {rec.recovery_method && (
@@ -1892,13 +1956,13 @@ function ProjectionContextualOperationalSuggestionsBlock ({ projectionMeta, comp
                 </p>
               )}
               {reasoning.main_problem_detected && (
-                <p className="text-[9px] text-slate-600 leading-snug mb-1.5 line-clamp-3" title={reasoning.main_problem_detected}>
-                  <span className="text-slate-400">Razonamiento</span> {reasoning.main_problem_detected}
+                <p className="text-[9px] text-ct-text leading-snug mb-1.5 line-clamp-3" title={reasoning.main_problem_detected}>
+                  <span className="text-ct-text3">Razonamiento</span> {reasoning.main_problem_detected}
                 </p>
               )}
               {ctxLine && (
-                <p className="text-[9px] text-slate-600 leading-snug mb-1.5 line-clamp-2" title={ctxLine}>
-                  <span className="text-slate-400">Contexto</span> {ctxLine}
+                <p className="text-[9px] text-ct-text leading-snug mb-1.5 line-clamp-2" title={ctxLine}>
+                  <span className="text-ct-text3">Contexto</span> {ctxLine}
                 </p>
               )}
               {Array.isArray(s.suggested_operational_focus) && s.suggested_operational_focus.length > 0 && (
@@ -1906,18 +1970,18 @@ function ProjectionContextualOperationalSuggestionsBlock ({ projectionMeta, comp
                   {s.suggested_operational_focus.slice(0, 4).map((f, fi) => (
                     <span
                       key={`${s.suggestion_id}-f-${fi}`}
-                      className="rounded border border-slate-200/80 bg-slate-50/90 px-1.5 py-px text-[8px] text-slate-600"
+                      className="rounded border border-ct-border/80 bg-ct-surface/90 px-1.5 py-px text-[8px] text-ct-text"
                     >
                       {f}
                     </span>
                   ))}
                 </div>
               )}
-              <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[9px] text-slate-600 mb-1.5">
-                <span><span className="text-slate-400">Prioridad</span> {s.priority_score ?? '—'}</span>
-                <span><span className="text-slate-400">Confianza</span> {confidenceLabel(s.confidence)}</span>
+              <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[9px] text-ct-text mb-1.5">
+                <span><span className="text-ct-text3">Prioridad</span> {s.priority_score ?? '—'}</span>
+                <span><span className="text-ct-text3">Confianza</span> {confidenceLabel(s.confidence)}</span>
               </div>
-              <details className="group mt-1 border-t border-slate-100 pt-1.5 text-[9px] text-slate-600">
+              <details className="group mt-1 border-t border-ct-border pt-1.5 text-[9px] text-ct-text">
                 <summary className="cursor-pointer list-none text-violet-800 font-semibold marker:content-none flex items-center gap-1">
                   <span aria-hidden>▸</span>
                   <span className="group-open:hidden">Cómo se estimó</span>
@@ -1925,17 +1989,17 @@ function ProjectionContextualOperationalSuggestionsBlock ({ projectionMeta, comp
                 </summary>
                 <div className="mt-1 space-y-1 pl-3 border-l border-violet-100">
                   {rec.confidence_reason && (
-                    <p><span className="text-slate-400">Confianza (por qué):</span> {rec.confidence_reason}</p>
+                    <p><span className="text-ct-text3">Confianza (por qué):</span> {rec.confidence_reason}</p>
                   )}
                   {rec.sample_size != null && (
-                    <p className="tabular-nums"><span className="text-slate-400">sample_size:</span> {rec.sample_size}</p>
+                    <p className="tabular-nums"><span className="text-ct-text3">sample_size:</span> {rec.sample_size}</p>
                   )}
                   {rec.historical_reference_window && (
-                    <p><span className="text-slate-400">Ventana referencia:</span> {rec.historical_reference_window}</p>
+                    <p><span className="text-ct-text3">Ventana referencia:</span> {rec.historical_reference_window}</p>
                   )}
                   {Array.isArray(rec.assumptions_used) && rec.assumptions_used.length > 0 && (
                     <div>
-                      <span className="text-slate-400">Supuestos</span>
+                      <span className="text-ct-text3">Supuestos</span>
                       <ul className="list-disc list-inside text-[8px] space-y-0.5 mt-0.5">
                         {rec.assumptions_used.slice(0, 8).map((a, i) => (
                           <li key={i}>{typeof a === 'string' ? a : JSON.stringify(a)}</li>
@@ -1944,12 +2008,12 @@ function ProjectionContextualOperationalSuggestionsBlock ({ projectionMeta, comp
                     </div>
                   )}
                   {Object.keys(levBd).length > 0 && (
-                    <p className="text-[8px] text-slate-500 leading-relaxed font-mono break-all">
+                    <p className="text-[8px] text-ct-text2 leading-relaxed font-mono break-all">
                       leverage_breakdown: {JSON.stringify(levBd)}
                     </p>
                   )}
                   {reasoning.why_this_action && (
-                    <p><span className="text-slate-400">Por qué esta acción:</span> {reasoning.why_this_action}</p>
+                    <p><span className="text-ct-text3">Por qué esta acción:</span> {reasoning.why_this_action}</p>
                   )}
                 </div>
               </details>
@@ -1957,14 +2021,14 @@ function ProjectionContextualOperationalSuggestionsBlock ({ projectionMeta, comp
                 <button
                   type="button"
                   disabled
-                  className="cursor-not-allowed rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-medium text-slate-400"
+                  className="cursor-not-allowed rounded border border-ct-border bg-ct-surface px-2 py-1 text-[9px] font-medium text-ct-text3"
                 >
                   Ver detalle
                 </button>
                 <button
                   type="button"
                   disabled
-                  className="cursor-not-allowed rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-medium text-slate-400"
+                  className="cursor-not-allowed rounded border border-ct-border bg-ct-surface px-2 py-1 text-[9px] font-medium text-ct-text3"
                 >
                   {s.next_step_preview?.entity_type === 'drivers'
                     ? 'Ver conductores afectados'
@@ -2009,7 +2073,7 @@ function ProjectionDecisionRecommendationsBlock ({ projectionMeta, compact }) {
       )
     }
     return (
-      <span className="rounded bg-slate-100 px-1.5 py-px text-[9px] font-bold uppercase text-slate-700">
+      <span className="rounded bg-ct-surface px-1.5 py-px text-[9px] font-bold uppercase text-ct-text">
         No recomendada
       </span>
     )
@@ -2022,8 +2086,8 @@ function ProjectionDecisionRecommendationsBlock ({ projectionMeta, compact }) {
 
   if (integrityBroken) {
     return (
-      <div className={`rounded-lg border border-slate-200 bg-white shadow-sm px-4 ${py}`}>
-        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+      <div className={`rounded-lg border border-ct-border bg-ct-card shadow-sm px-4 ${py}`}>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-ct-text mb-1">
           Recomendaciones priorizadas
         </p>
         <p className="text-[11px] text-rose-800" role="status">
@@ -2074,53 +2138,53 @@ function ProjectionDecisionRecommendationsBlock ({ projectionMeta, compact }) {
           return (
             <li
               key={r.recommendation_id || `${r.entity}-${act.action_type}`}
-              className="rounded-md border border-teal-100 bg-white/90 p-2.5 text-[11px] text-slate-800 shadow-sm"
+              className="rounded-md border border-teal-100 bg-ct-card/90 p-2.5 text-[11px] text-ct-text shadow-sm"
             >
               <div className="flex flex-wrap items-baseline justify-between gap-1 mb-1">
-                <span className="font-semibold text-slate-900">{r.entity}</span>
+                <span className="font-semibold text-ct-text">{r.entity}</span>
                 {statusBadge(r.decision_status)}
               </div>
               <p className="font-semibold text-teal-950 text-[11px] leading-snug mb-1">
                 {act.action_name || act.action_type}
               </p>
-              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-slate-600 mb-1">
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-ct-text mb-1">
                 <span>
-                  <span className="text-slate-400">Score decisión</span>{' '}
+                  <span className="text-ct-text3">Score decisión</span>{' '}
                   <strong className="tabular-nums">{r.decision_score != null ? Number(r.decision_score).toFixed(1) : '—'}</strong>/100
                 </span>
                 <span>
-                  <span className="text-slate-400">Confianza datos</span> {confidenceLabel(cons.data_confidence)}
+                  <span className="text-ct-text3">Confianza datos</span> {confidenceLabel(cons.data_confidence)}
                 </span>
                 {cons.execution_enabled === false && (
-                  <span className="text-slate-500">Ejecución: desactivada</span>
+                  <span className="text-ct-text2">Ejecución: desactivada</span>
                 )}
               </div>
               {reasoning.why_selected && (
-                <p className="text-[10px] text-slate-700 leading-snug mb-1 line-clamp-3" title={reasoning.why_selected}>
-                  <span className="text-slate-400">Razón principal</span> {reasoning.why_selected}
+                <p className="text-[10px] text-ct-text leading-snug mb-1 line-clamp-3" title={reasoning.why_selected}>
+                  <span className="text-ct-text3">Razón principal</span> {reasoning.why_selected}
                 </p>
               )}
               {reasoning.expected_operational_benefit && (
-                <p className="text-[9px] text-slate-600 leading-snug mb-1 line-clamp-2">
-                  <span className="text-slate-400">Beneficio esperado</span> {reasoning.expected_operational_benefit}
+                <p className="text-[9px] text-ct-text leading-snug mb-1 line-clamp-2">
+                  <span className="text-ct-text3">Beneficio esperado</span> {reasoning.expected_operational_benefit}
                 </p>
               )}
               {Array.isArray(reasoning.main_tradeoffs) && reasoning.main_tradeoffs.length > 0 && (
-                <div className="text-[9px] text-slate-600 mb-1">
-                  <span className="text-slate-400">Tradeoffs</span>{' '}
+                <div className="text-[9px] text-ct-text mb-1">
+                  <span className="text-ct-text3">Tradeoffs</span>{' '}
                   <span className="leading-snug">{reasoning.main_tradeoffs.slice(0, 3).join(' · ')}</span>
                 </div>
               )}
               {alts.length > 0 && (
                 <div className="flex flex-wrap gap-1 mb-1.5 text-[9px]">
-                  <span className="text-slate-400 w-full">Alternativas</span>
+                  <span className="text-ct-text3 w-full">Alternativas</span>
                   {alts.slice(0, 4).map((a, ai) => (
                     <span
                       key={`${r.recommendation_id}-alt-${ai}`}
                       className={`rounded px-1.5 py-px font-medium tabular-nums ${
                         a.decision_status === 'alternative'
                           ? 'border border-amber-200 bg-amber-50 text-amber-950'
-                          : 'border border-slate-200 bg-slate-50 text-slate-600'
+                          : 'border border-ct-border bg-ct-surface text-ct-text'
                       }`}
                       title={a.action_name ? `${a.action_name} (${a.decision_status})` : a.decision_status}
                     >
@@ -2131,7 +2195,7 @@ function ProjectionDecisionRecommendationsBlock ({ projectionMeta, compact }) {
                   ))}
                 </div>
               )}
-              <details className="group mt-1 border-t border-slate-100 pt-1.5 text-[9px] text-slate-600">
+              <details className="group mt-1 border-t border-ct-border pt-1.5 text-[9px] text-ct-text">
                 <summary className="cursor-pointer list-none text-teal-900 font-semibold marker:content-none flex items-center gap-1">
                   <span aria-hidden>▸</span>
                   <span className="group-open:hidden">Trazabilidad y desglose</span>
@@ -2166,7 +2230,7 @@ function ProjectionDecisionRecommendationsBlock ({ projectionMeta, compact }) {
                   )}
                   {Array.isArray(reasoning.why_not_other_actions) && reasoning.why_not_other_actions.length > 0 && (
                     <div>
-                      <span className="text-slate-400">Por qué no otras acciones</span>
+                      <span className="text-ct-text3">Por qué no otras acciones</span>
                       <ul className="list-disc list-inside text-[8px] space-y-0.5 mt-0.5">
                         {reasoning.why_not_other_actions.slice(0, 6).map((w, wi) => (
                           <li key={wi}>{w}</li>
@@ -2176,11 +2240,11 @@ function ProjectionDecisionRecommendationsBlock ({ projectionMeta, compact }) {
                   )}
                   {alts.length > 0 && (
                     <div className="mt-1.5">
-                      <span className="text-slate-400">Lista completa de alternativas</span>
-                      <ul className="mt-0.5 max-h-28 overflow-y-auto list-disc list-inside text-[8px] text-slate-600 space-y-0.5 pr-1">
+                      <span className="text-ct-text3">Lista completa de alternativas</span>
+                      <ul className="mt-0.5 max-h-28 overflow-y-auto list-disc list-inside text-[8px] text-ct-text space-y-0.5 pr-1">
                         {alts.map((a, ai) => (
                           <li key={`${r.recommendation_id}-alta-${ai}`} className="tabular-nums">
-                            <span className="font-medium text-slate-800">{a.action_name || a.action_type}</span>
+                            <span className="font-medium text-ct-text">{a.action_name || a.action_type}</span>
                             {' '}
                             · score {a.decision_score != null ? Number(a.decision_score).toFixed(1) : '—'}
                             {' '}
@@ -2196,14 +2260,14 @@ function ProjectionDecisionRecommendationsBlock ({ projectionMeta, compact }) {
                 <button
                   type="button"
                   disabled
-                  className="cursor-not-allowed rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-medium text-slate-400"
+                  className="cursor-not-allowed rounded border border-ct-border bg-ct-surface px-2 py-1 text-[9px] font-medium text-ct-text3"
                 >
                   Aceptar orden sugerido
                 </button>
                 <button
                   type="button"
                   disabled
-                  className="cursor-not-allowed rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-medium text-slate-400"
+                  className="cursor-not-allowed rounded border border-ct-border bg-ct-surface px-2 py-1 text-[9px] font-medium text-ct-text3"
                 >
                   Enviar a operaciones
                 </button>
@@ -2263,8 +2327,8 @@ function ProjectionGlobalStrategicQueueBlock ({ projectionMeta, compact }) {
 
   if (integrityBroken) {
     return (
-      <div className={`rounded-lg border border-slate-200 bg-white shadow-sm px-4 ${py}`}>
-        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+      <div className={`rounded-lg border border-ct-border bg-ct-card shadow-sm px-4 ${py}`}>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-ct-text mb-1">
           Prioridades estratégicas globales
         </p>
         <p className="text-[11px] text-rose-800" role="status">
@@ -2339,18 +2403,18 @@ function ProjectionGlobalStrategicQueueBlock ({ projectionMeta, compact }) {
           const trace = g.global_policy_trace || {}
           const breakdown = trace.score_breakdown || {}
           const teams = Array.isArray(rp.required_team_type) ? rp.required_team_type : []
-          const roleClass = PORTFOLIO_ROLE_BADGE[role.role_type] || 'border-slate-200 bg-slate-50 text-slate-700'
+          const roleClass = PORTFOLIO_ROLE_BADGE[role.role_type] || 'border-ct-border bg-ct-surface text-ct-text'
           return (
             <li
               key={g.global_recommendation_id || `${g.global_priority_rank}-${ent.label}`}
-              className="rounded-md border border-indigo-100 bg-white/95 p-2.5 text-[11px] text-slate-800 shadow-sm"
+              className="rounded-md border border-indigo-100 bg-ct-card/95 p-2.5 text-[11px] text-ct-text shadow-sm"
             >
               <div className="flex flex-wrap items-baseline justify-between gap-1 mb-1">
                 <div className="flex items-baseline gap-2 min-w-0">
                   <span className="rounded bg-indigo-100 px-1.5 py-px text-[9px] font-bold text-indigo-950 tabular-nums">
                     #{g.global_priority_rank}
                   </span>
-                  <span className="font-semibold text-slate-900 truncate">
+                  <span className="font-semibold text-ct-text truncate">
                     {entityLabel(ent)}
                   </span>
                 </div>
@@ -2361,36 +2425,36 @@ function ProjectionGlobalStrategicQueueBlock ({ projectionMeta, compact }) {
               <p className="font-semibold text-indigo-950 text-[11px] leading-snug mb-1">
                 {sel.action_name || sel.action_type}
               </p>
-              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-slate-600 mb-1">
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-ct-text mb-1">
                 <span>
-                  <span className="text-slate-400">Score global</span>{' '}
+                  <span className="text-ct-text3">Score global</span>{' '}
                   <strong className="tabular-nums">{g.global_decision_score != null ? Number(g.global_decision_score).toFixed(1) : '—'}</strong>/100
                 </span>
                 <span>
-                  <span className="text-slate-400">Confianza datos</span>{' '}
+                  <span className="text-ct-text3">Confianza datos</span>{' '}
                   {confidenceLabel(cons.data_confidence)}
                 </span>
                 <span>
-                  <span className="text-slate-400">Carga</span>{' '}
+                  <span className="text-ct-text3">Carga</span>{' '}
                   {OPERATIONAL_LOAD_LABEL_ES[rp.estimated_operational_load] || rp.estimated_operational_load || '—'}
                 </span>
                 {cons.execution_enabled === false && (
-                  <span className="text-slate-500">Ejecución: desactivada</span>
+                  <span className="text-ct-text2">Ejecución: desactivada</span>
                 )}
               </div>
               {reasoning.why_prioritized_globally && (
-                <p className="text-[10px] text-slate-700 leading-snug mb-1 line-clamp-3" title={reasoning.why_prioritized_globally}>
-                  <span className="text-slate-400">Por qué priorizado</span> {reasoning.why_prioritized_globally}
+                <p className="text-[10px] text-ct-text leading-snug mb-1 line-clamp-3" title={reasoning.why_prioritized_globally}>
+                  <span className="text-ct-text3">Por qué priorizado</span> {reasoning.why_prioritized_globally}
                 </p>
               )}
               {reasoning.expected_business_impact && (
-                <p className="text-[9px] text-slate-600 leading-snug mb-1 line-clamp-2">
-                  <span className="text-slate-400">Impacto esperado</span> {reasoning.expected_business_impact}
+                <p className="text-[9px] text-ct-text leading-snug mb-1 line-clamp-2">
+                  <span className="text-ct-text3">Impacto esperado</span> {reasoning.expected_business_impact}
                 </p>
               )}
               {reasoning.strategic_relevance && (
-                <p className="text-[9px] text-slate-600 leading-snug mb-1 line-clamp-2">
-                  <span className="text-slate-400">Relevancia estratégica</span> {reasoning.strategic_relevance}
+                <p className="text-[9px] text-ct-text leading-snug mb-1 line-clamp-2">
+                  <span className="text-ct-text3">Relevancia estratégica</span> {reasoning.strategic_relevance}
                 </p>
               )}
               {(teams.length > 0 || risks.operational_saturation_risk) && (
@@ -2398,7 +2462,7 @@ function ProjectionGlobalStrategicQueueBlock ({ projectionMeta, compact }) {
                   {teams.slice(0, 4).map((t, ti) => (
                     <span
                       key={`${g.global_recommendation_id}-team-${ti}`}
-                      className="rounded border border-slate-200 bg-slate-50/90 px-1.5 py-px text-[8px] text-slate-700"
+                      className="rounded border border-ct-border bg-ct-surface/90 px-1.5 py-px text-[8px] text-ct-text"
                     >
                       {t}
                     </span>
@@ -2410,7 +2474,7 @@ function ProjectionGlobalStrategicQueueBlock ({ projectionMeta, compact }) {
                   )}
                 </div>
               )}
-              <details className="group mt-1 border-t border-slate-100 pt-1.5 text-[9px] text-slate-600">
+              <details className="group mt-1 border-t border-ct-border pt-1.5 text-[9px] text-ct-text">
                 <summary className="cursor-pointer list-none text-indigo-900 font-semibold marker:content-none flex items-center gap-1">
                   <span aria-hidden>▸</span>
                   <span className="group-open:hidden">Detalles, riesgos y trazabilidad</span>
@@ -2420,10 +2484,10 @@ function ProjectionGlobalStrategicQueueBlock ({ projectionMeta, compact }) {
                   {(reasoning.urgency_reasoning || reasoning.execution_feasibility) && (
                     <>
                       {reasoning.urgency_reasoning && (
-                        <p><span className="text-slate-400">Urgencia</span> {reasoning.urgency_reasoning}</p>
+                        <p><span className="text-ct-text3">Urgencia</span> {reasoning.urgency_reasoning}</p>
                       )}
                       {reasoning.execution_feasibility && (
-                        <p><span className="text-slate-400">Viabilidad ejecución</span> {reasoning.execution_feasibility}</p>
+                        <p><span className="text-ct-text3">Viabilidad ejecución</span> {reasoning.execution_feasibility}</p>
                       )}
                     </>
                   )}
@@ -2440,7 +2504,7 @@ function ProjectionGlobalStrategicQueueBlock ({ projectionMeta, compact }) {
                   )}
                   {(risks.operational_saturation_risk || risks.execution_complexity_risk || risks.confidence_risk) && (
                     <div>
-                      <span className="text-slate-400">Riesgos</span>
+                      <span className="text-ct-text3">Riesgos</span>
                       <ul className="list-disc list-inside text-[8px] space-y-0.5 mt-0.5">
                         {risks.operational_saturation_risk && (
                           <li>{risks.operational_saturation_risk}</li>
@@ -2456,12 +2520,12 @@ function ProjectionGlobalStrategicQueueBlock ({ projectionMeta, compact }) {
                   )}
                   {Array.isArray(rp.required_team_type) && rp.required_team_type.length > 0 && (
                     <p className="text-[8px]">
-                      <span className="text-slate-400">Equipos sugeridos:</span> {rp.required_team_type.join(', ')}
+                      <span className="text-ct-text3">Equipos sugeridos:</span> {rp.required_team_type.join(', ')}
                     </p>
                   )}
                   {role.role_type && (
                     <p className="text-[8px]">
-                      <span className="text-slate-400">Rol portfolio:</span> {PORTFOLIO_ROLE_LABEL_ES[role.role_type] || role.role_type}
+                      <span className="text-ct-text3">Rol portfolio:</span> {PORTFOLIO_ROLE_LABEL_ES[role.role_type] || role.role_type}
                       {role.portfolio_balance_weight != null && (
                         <span className="ml-1 tabular-nums">
                           · balance {Number(role.portfolio_balance_weight).toFixed(0)}/100
@@ -2487,14 +2551,14 @@ function ProjectionGlobalStrategicQueueBlock ({ projectionMeta, compact }) {
                 <button
                   type="button"
                   disabled
-                  className="cursor-not-allowed rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-medium text-slate-400"
+                  className="cursor-not-allowed rounded border border-ct-border bg-ct-surface px-2 py-1 text-[9px] font-medium text-ct-text3"
                 >
                   Aceptar prioridad global
                 </button>
                 <button
                   type="button"
                   disabled
-                  className="cursor-not-allowed rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-medium text-slate-400"
+                  className="cursor-not-allowed rounded border border-ct-border bg-ct-surface px-2 py-1 text-[9px] font-medium text-ct-text3"
                 >
                   Enviar a planeación
                 </button>
@@ -2532,8 +2596,8 @@ function ProjectionOperationalSuggestionsBlock ({ projectionMeta, compact }) {
   const top = suggestions.slice(0, 5)
 
   return (
-    <div className={`rounded-lg border border-slate-200 bg-white shadow-sm px-4 ${py}`}>
-      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-2">
+    <div className={`rounded-lg border border-ct-border bg-ct-card shadow-sm px-4 ${py}`}>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-ct-text mb-2">
         Sugerencias operativas
       </p>
 
@@ -2553,7 +2617,7 @@ function ProjectionOperationalSuggestionsBlock ({ projectionMeta, compact }) {
       )}
 
       {!disabled && st?.status === 'empty' && (
-        <p className="text-[11px] text-slate-500" role="status">
+        <p className="text-[11px] text-ct-text2" role="status">
           {st.reason === 'no_ytd_alerts' && 'Sin sugerencias en esta vista (no hay alertas YTD).'}
           {st.reason === 'no_suggestions' && 'Sin sugerencias en esta vista (no se derivaron acciones desde las alertas).'}
           {st.reason === 'suggestion_engine_error' && 'Sin sugerencias en esta vista (error al generar sugerencias).'}
@@ -2568,10 +2632,10 @@ function ProjectionOperationalSuggestionsBlock ({ projectionMeta, compact }) {
           {top.map((s) => (
             <li
               key={s.suggestion_id}
-              className="rounded-md border border-slate-100 bg-slate-50/80 p-2.5 text-[11px] text-slate-800 shadow-sm"
+              className="rounded-md border border-ct-border bg-ct-surface/80 p-2.5 text-[11px] text-ct-text shadow-sm"
             >
               <div className="flex flex-wrap items-start justify-between gap-1 mb-1">
-                <span className="font-semibold text-slate-900 leading-snug min-w-0">{s.entity}</span>
+                <span className="font-semibold text-ct-text leading-snug min-w-0">{s.entity}</span>
                 <span
                   className={`flex-shrink-0 text-[9px] font-bold uppercase px-1 rounded ${
                     s.level === 'critical'
@@ -2587,30 +2651,30 @@ function ProjectionOperationalSuggestionsBlock ({ projectionMeta, compact }) {
               <p className="font-semibold text-indigo-900 text-[11px] leading-snug mb-1">
                 {s.recommended_action_name}
               </p>
-              <p className="text-[10px] text-slate-600 leading-snug mb-1.5 line-clamp-3" title={s.why}>
+              <p className="text-[10px] text-ct-text leading-snug mb-1.5 line-clamp-3" title={s.why}>
                 {s.why}
               </p>
-              <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[9px] text-slate-600 mb-2">
+              <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[9px] text-ct-text mb-2">
                 <span>
-                  <span className="text-slate-400">Owner</span> {s.owner_suggested}
+                  <span className="text-ct-text3">Owner</span> {s.owner_suggested}
                 </span>
                 <span>
-                  <span className="text-slate-400">Canal</span> {s.channel_suggested}
+                  <span className="text-ct-text3">Canal</span> {s.channel_suggested}
                 </span>
                 <span>
-                  <span className="text-slate-400">Impacto</span> {impactLabel(s.expected_impact)}
+                  <span className="text-ct-text3">Impacto</span> {impactLabel(s.expected_impact)}
                 </span>
                 <span className="tabular-nums">
-                  <span className="text-slate-400">Prioridad</span> {s.priority_score ?? '—'}
+                  <span className="text-ct-text3">Prioridad</span> {s.priority_score ?? '—'}
                 </span>
                 <span>
-                  <span className="text-slate-400">Confianza</span> {confidenceLabel(s.confidence)}
+                  <span className="text-ct-text3">Confianza</span> {confidenceLabel(s.confidence)}
                 </span>
               </div>
               <button
                 type="button"
                 disabled
-                className="w-full cursor-not-allowed rounded border border-slate-200 bg-slate-100 px-2 py-1 text-[9px] font-semibold text-slate-500"
+                className="w-full cursor-not-allowed rounded border border-ct-border bg-ct-surface px-2 py-1 text-[9px] font-semibold text-ct-text2"
                 title="La ejecución de acciones no está habilitada en esta fase"
               >
                 Ejecución no habilitada
@@ -2634,26 +2698,26 @@ function ProjectionYtdAlertsBlock ({ alerts, compact }) {
   if (topProblems.length === 0 && topOpps.length === 0) return null
 
   return (
-    <div className={`rounded-lg border border-slate-200 bg-white shadow-sm px-4 ${py}`}>
-      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-2">Top problemas del negocio</p>
+    <div className={`rounded-lg border border-ct-border bg-ct-card shadow-sm px-4 ${py}`}>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-ct-text mb-2">Top problemas del negocio</p>
       <div className={`grid gap-3 ${compact ? 'grid-cols-1' : 'md:grid-cols-2'}`}>
         <div>
           <p className="text-[9px] font-semibold text-rose-800 mb-1.5">Top 3 críticos / alerta</p>
           {topProblems.length === 0
-            ? <p className="text-[11px] text-slate-400">Sin alertas en esta vista.</p>
+            ? <p className="text-[11px] text-ct-text3">Sin alertas en esta vista.</p>
             : (
-              <ol className="space-y-1.5 list-decimal list-inside text-[11px] text-slate-800">
+              <ol className="space-y-1.5 list-decimal list-inside text-[11px] text-ct-text">
                 {topProblems.map((a, i) => (
                   <li key={`p-${i}-${a.entity}`} className="leading-snug">
                     <span className="font-semibold">{a.entity}</span>
                     <span className={`ml-1 px-1 rounded text-[9px] font-bold ${a.level === 'critical' ? 'bg-rose-100 text-rose-900' : 'bg-amber-100 text-amber-900'}`}>
                       {a.level === 'critical' ? 'CRÍTICO' : 'ALERTA'}
                     </span>
-                    <span className="text-slate-600 tabular-nums">{` · gap ${a.gap_trips != null ? `${Number(a.gap_trips) >= 0 ? '+' : ''}${Number(a.gap_trips).toLocaleString()} trips` : '—'}`}</span>
+                    <span className="text-ct-text tabular-nums">{` · gap ${a.gap_trips != null ? `${Number(a.gap_trips) >= 0 ? '+' : ''}${Number(a.gap_trips).toLocaleString()} trips` : '—'}`}</span>
                     {a.gap_pct != null && (
-                      <span className="text-slate-500 tabular-nums">{` (${Number(a.gap_pct) >= 0 ? '+' : ''}${Number(a.gap_pct).toFixed(1)}%)`}</span>
+                      <span className="text-ct-text2 tabular-nums">{` (${Number(a.gap_pct) >= 0 ? '+' : ''}${Number(a.gap_pct).toFixed(1)}%)`}</span>
                     )}
-                    <span className="text-slate-500">{` · driver: ${DRIVER_LABEL_ES[a.principal_driver] || a.principal_driver || '—'}`}</span>
+                    <span className="text-ct-text2">{` · driver: ${DRIVER_LABEL_ES[a.principal_driver] || a.principal_driver || '—'}`}</span>
                   </li>
                 ))}
               </ol>
@@ -2662,18 +2726,18 @@ function ProjectionYtdAlertsBlock ({ alerts, compact }) {
         <div>
           <p className="text-[9px] font-semibold text-emerald-800 mb-1.5">Top 3 oportunidades</p>
           {topOpps.length === 0
-            ? <p className="text-[11px] text-slate-400">Sin oportunidades destacadas.</p>
+            ? <p className="text-[11px] text-ct-text3">Sin oportunidades destacadas.</p>
             : (
-              <ol className="space-y-1.5 list-decimal list-inside text-[11px] text-slate-800">
+              <ol className="space-y-1.5 list-decimal list-inside text-[11px] text-ct-text">
                 {topOpps.map((a, i) => (
                   <li key={`o-${i}-${a.entity}`} className="leading-snug">
                     <span className="font-semibold">{a.entity}</span>
                     <span className="ml-1 px-1 rounded text-[9px] font-bold bg-emerald-100 text-emerald-900">OPORTUNIDAD</span>
-                    <span className="text-slate-600 tabular-nums">{` · gap ${a.gap_trips != null ? `${Number(a.gap_trips) >= 0 ? '+' : ''}${Number(a.gap_trips).toLocaleString()} trips` : '—'}`}</span>
+                    <span className="text-ct-text tabular-nums">{` · gap ${a.gap_trips != null ? `${Number(a.gap_trips) >= 0 ? '+' : ''}${Number(a.gap_trips).toLocaleString()} trips` : '—'}`}</span>
                     {a.gap_pct != null && (
-                      <span className="text-slate-500 tabular-nums">{` (${Number(a.gap_pct) >= 0 ? '+' : ''}${Number(a.gap_pct).toFixed(1)}%)`}</span>
+                      <span className="text-ct-text2 tabular-nums">{` (${Number(a.gap_pct) >= 0 ? '+' : ''}${Number(a.gap_pct).toFixed(1)}%)`}</span>
                     )}
-                    <span className="text-slate-500">{` · driver: ${DRIVER_LABEL_ES[a.principal_driver] || a.principal_driver || '—'}`}</span>
+                    <span className="text-ct-text2">{` · driver: ${DRIVER_LABEL_ES[a.principal_driver] || a.principal_driver || '—'}`}</span>
                   </li>
                 ))}
               </ol>
@@ -2699,8 +2763,8 @@ function ProjectionYtdSummaryBar ({ ytd, grain, compact }) {
     : pacing === 'behind'
       ? 'bg-red-100 text-red-900 border-red-200'
       : pacing === 'on_track'
-        ? 'bg-slate-100 text-slate-800 border-slate-200'
-        : 'bg-slate-50 text-slate-500 border-slate-200'
+        ? 'bg-ct-surface text-ct-text border-ct-border'
+        : 'bg-ct-surface text-ct-text2 border-ct-border'
   const pacingLabel = pacing === 'ahead' ? 'Adelantado'
     : pacing === 'behind' ? 'Atrasado'
       : pacing === 'on_track' ? 'En ritmo'
@@ -2733,53 +2797,53 @@ function ProjectionYtdSummaryBar ({ ytd, grain, compact }) {
           </span>
         )}
         {trend && (
-          <span className="text-[9px] font-semibold text-slate-700" title="Tendencia reciente (hasta 3 períodos, cumplimiento agregado)">
+          <span className="text-[9px] font-semibold text-ct-text" title="Tendencia reciente (hasta 3 períodos, cumplimiento agregado)">
             Tendencia: <span className="tabular-nums text-[11px]">{trendArrow}</span> {trendLabel}
           </span>
         )}
       </div>
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-800">
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-ct-text">
         <span>
-          <span className="text-slate-500">Real trips</span>{' '}
+          <span className="text-ct-text2">Real trips</span>{' '}
           <strong>{ytd.ytd_real_trips != null ? Number(ytd.ytd_real_trips).toLocaleString() : '—'}</strong>
         </span>
         <span>
-          <span className="text-slate-500">Plan esp.</span>{' '}
+          <span className="text-ct-text2">Plan esp.</span>{' '}
           <strong>{ytd.ytd_plan_expected_trips != null ? Number(ytd.ytd_plan_expected_trips).toLocaleString() : '—'}</strong>
         </span>
         <span>
-          <span className="text-slate-500">Gap</span>{' '}
+          <span className="text-ct-text2">Gap</span>{' '}
           <strong>{gapT != null ? `${gapT >= 0 ? '+' : ''}${Number(gapT).toLocaleString()}` : '—'}</strong>
         </span>
         <span className="inline-flex items-center gap-1">
-          <span className="text-slate-500">Cump.</span>
+          <span className="text-ct-text2">Cump.</span>
           <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
           <strong style={{ color: attColor }}>{att != null ? fmtAttainment(att) : '—'}</strong>
         </span>
         {ddr != null && (
           <span title="Promedio ponderado por trips del período (no suma de drivers únicos)">
-            <span className="text-slate-500">Drv.ø</span>{' '}
+            <span className="text-ct-text2">Drv.ø</span>{' '}
             <strong className="tabular-nums">{Number(ddr).toFixed(1)}</strong>
           </span>
         )}
         {prod != null && (
           <span title="Productividad YTD: trips / drivers ponderados">
-            <span className="text-slate-500">TPD</span>{' '}
+            <span className="text-ct-text2">TPD</span>{' '}
             <strong className="tabular-nums">{Number(prod).toFixed(2)}</strong>
           </span>
         )}
         {ytd.ytd_real_revenue != null && (
-          <span className="text-slate-600">
-            <span className="text-slate-500">Rev.R</span>{' '}
+          <span className="text-ct-text">
+            <span className="text-ct-text2">Rev.R</span>{' '}
             <strong>{Number(ytd.ytd_real_revenue).toLocaleString()}</strong>
             {ytd.ytd_plan_expected_revenue != null && (
-              <span className="text-slate-400 font-normal">{` / esp. ${Number(ytd.ytd_plan_expected_revenue).toLocaleString()}`}</span>
+              <span className="text-ct-text3 font-normal">{` / esp. ${Number(ytd.ytd_plan_expected_revenue).toLocaleString()}`}</span>
             )}
           </span>
         )}
       </div>
       {ytd.active_drivers_note && (
-        <p className="mt-1 text-[9px] text-slate-500 leading-snug max-w-4xl">{ytd.active_drivers_note}</p>
+        <p className="mt-1 text-[9px] text-ct-text2 leading-snug max-w-4xl">{ytd.active_drivers_note}</p>
       )}
     </div>
   )
@@ -2800,7 +2864,7 @@ function ProjectionContextBar ({ grain, projMatrix, projectionMeta, planVersion,
   const dataFreshnessClsP = df?.status === 'ok' ? 'text-emerald-800 font-semibold'
     : df?.status === 'warning' ? 'text-amber-800 font-semibold'
     : df?.status === 'stale' ? 'text-red-800 font-semibold'
-    : 'text-slate-700 font-semibold'
+    : 'text-ct-text font-semibold'
 
   const curveSummary = projectionMeta?.curve_summary || {}
 
@@ -2822,8 +2886,8 @@ function ProjectionContextBar ({ grain, projMatrix, projectionMeta, planVersion,
     : null
 
   return (
-    <div className={`rounded-lg border border-slate-200 bg-slate-50 shadow-sm px-4 ${py} flex flex-wrap items-center gap-x-4 gap-y-1`}>
-      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Proyección</span>
+    <div className={`rounded-lg border border-ct-border bg-ct-surface shadow-sm px-4 ${py} flex flex-wrap items-center gap-x-4 gap-y-1`}>
+      <span className="text-[10px] font-bold text-ct-text2 uppercase tracking-wider">Proyección</span>
 
       <span
         className={`text-[11px] ${dataFreshnessClsP}`}
@@ -2831,21 +2895,21 @@ function ProjectionContextBar ({ grain, projMatrix, projectionMeta, planVersion,
       >
         {dataFreshnessLineP}
         {df?.status && (
-          <span className="ml-1.5 text-[9px] font-bold uppercase text-slate-500">[{df.status}]</span>
+          <span className="ml-1.5 text-[9px] font-bold uppercase text-ct-text2">[{df.status}]</span>
         )}
       </span>
 
-      <span className="text-[10px] text-slate-600">
+      <span className="text-[10px] text-ct-text">
         Plan: <strong>{planVersion || '—'}</strong>
       </span>
 
       {projectionMeta?.plan_loaded_at && (
-        <span className="text-[10px] text-slate-500">
+        <span className="text-[10px] text-ct-text2">
           Cargado: {projectionMeta.plan_loaded_at}
         </span>
       )}
 
-      <span className="text-[10px] text-slate-600">
+      <span className="text-[10px] text-ct-text">
         Grano: <strong className="uppercase">{grain}</strong>
       </span>
 
@@ -2865,8 +2929,8 @@ function ProjectionContextBar ({ grain, projMatrix, projectionMeta, planVersion,
         if (plan == null && real == null) return null
 
         return (
-          <span key={kpi} className="inline-flex items-center gap-1.5 text-[10px] text-slate-600">
-            <strong className="text-slate-700">{label}:</strong>
+          <span key={kpi} className="inline-flex items-center gap-1.5 text-[10px] text-ct-text">
+            <strong className="text-ct-text">{label}:</strong>
             {plan != null && <span>P {Number(plan).toLocaleString()}</span>}
             {real != null && <span>R {Number(real).toLocaleString()}</span>}
             {attainment != null && (
@@ -2875,7 +2939,7 @@ function ProjectionContextBar ({ grain, projMatrix, projectionMeta, planVersion,
                 <span style={{ color: attColor }} className="font-semibold">{fmtAttainment(attainment)}</span>
               </span>
             )}
-            {gap != null && <span className="text-slate-400">Gap {gap >= 0 ? '+' : ''}{Number(gap).toLocaleString()}</span>}
+            {gap != null && <span className="text-ct-text3">Gap {gap >= 0 ? '+' : ''}{Number(gap).toLocaleString()}</span>}
           </span>
         )
       })}
@@ -2902,19 +2966,19 @@ function ReconciliationSummaryBar ({ reconciliation }) {
   } = reconciliation
   const chips = [
     { label: 'Con plan', value: matched, color: 'text-emerald-700 bg-emerald-50 border-emerald-200', title: 'Filas con real y plan matched' },
-    { label: 'Sin proyección', value: missing_plan, color: 'text-slate-500 bg-slate-50 border-slate-200', title: 'Real existe, sin plan correspondiente' },
+    { label: 'Sin proyección', value: missing_plan, color: 'text-ct-text2 bg-ct-surface border-ct-border', title: 'Real existe, sin plan correspondiente' },
     { label: 'Plan sin real', value: pwr, color: 'text-amber-600 bg-amber-50 border-amber-200', title: 'Plan resuelto, sin ejecución visible' },
     { label: 'Sin mapear', value: unresolved_plan, color: 'text-red-600 bg-red-50 border-red-200', title: 'Plan no resuelto a tajada canónica' },
   ]
   return (
     <div className="flex items-center gap-3 flex-wrap px-1">
-      <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Reconciliación:</span>
+      <span className="text-[10px] font-semibold text-ct-text3 uppercase tracking-wide">Reconciliación:</span>
       {chips.map(c => (
         <span key={c.label} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${c.color}`} title={c.title}>
           {c.label} <span className="font-bold">{c.value}</span>
         </span>
       ))}
-      <span className="text-[10px] text-gray-300">
+      <span className="text-[10px] text-ct-text3">
         ({total_real_rows} filas reales base
         {total_display_rows != null ? ` · ${total_display_rows} filas en respuesta` : ''})
       </span>
@@ -2962,38 +3026,38 @@ function PlanWithoutRealSection ({ rows = [], count, grain, planVersion }) {
         <button
           type="button"
           onClick={() => setOpen(o => !o)}
-          className="flex-shrink-0 px-2.5 py-1 rounded text-[11px] font-semibold border border-blue-200 bg-white text-blue-600 hover:bg-blue-100 transition-colors"
+          className="flex-shrink-0 px-2.5 py-1 rounded text-[11px] font-semibold border border-blue-200 bg-ct-card text-blue-600 hover:bg-blue-100 transition-colors"
         >
           {open ? 'Cerrar' : `Ver ${groupList.length} tajadas`}
         </button>
       </div>
 
       {open && (
-        <div className="border-t border-blue-100 bg-white px-4 py-3">
-          <div className="overflow-x-auto rounded border border-gray-100">
+        <div className="border-t border-blue-100 bg-ct-card px-4 py-3">
+          <div className="overflow-x-auto rounded border border-ct-border">
             <table className="text-[10px] w-full border-collapse">
               <thead>
-                <tr className="bg-slate-50 text-slate-500 uppercase tracking-wide">
-                  <th className="px-2 py-1 text-left font-semibold border-b border-gray-100">País</th>
-                  <th className="px-2 py-1 text-left font-semibold border-b border-gray-100">Ciudad</th>
-                  <th className="px-2 py-1 text-left font-semibold border-b border-gray-100">Tajada</th>
-                  <th className="px-2 py-1 text-left font-semibold border-b border-gray-100">Períodos sin real</th>
+                <tr className="bg-ct-surface text-ct-text2 uppercase tracking-wide">
+                  <th className="px-2 py-1 text-left font-semibold border-b border-ct-border">País</th>
+                  <th className="px-2 py-1 text-left font-semibold border-b border-ct-border">Ciudad</th>
+                  <th className="px-2 py-1 text-left font-semibold border-b border-ct-border">Tajada</th>
+                  <th className="px-2 py-1 text-left font-semibold border-b border-ct-border">Períodos sin real</th>
                 </tr>
               </thead>
               <tbody>
                 {groupList.map((g, i) => (
                   <tr key={i} className={i % 2 === 1 ? 'bg-blue-50/20' : ''}>
-                    <td className="px-2 py-1 border-b border-gray-50 font-mono text-gray-600">{g.country}</td>
-                    <td className="px-2 py-1 border-b border-gray-50 font-mono text-gray-600">{g.city}</td>
+                    <td className="px-2 py-1 border-b border-gray-50 font-mono text-ct-text">{g.country}</td>
+                    <td className="px-2 py-1 border-b border-gray-50 font-mono text-ct-text">{g.city}</td>
                     <td className="px-2 py-1 border-b border-gray-50 font-medium text-blue-700">{g.business_slice_name}</td>
-                    <td className="px-2 py-1 border-b border-gray-50 text-gray-400">{g.periods.sort().join(', ')}</td>
+                    <td className="px-2 py-1 border-b border-gray-50 text-ct-text3">{g.periods.sort().join(', ')}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <p className="text-[10px] text-gray-400 mt-2">
-            Auditoría completa: <code className="bg-gray-50 px-1 rounded">GET /plan/reconciliation-audit?plan_version={planVersion}</code>
+          <p className="text-[10px] text-ct-text3 mt-2">
+            Auditoría completa: <code className="bg-ct-bg px-1 rounded">GET /plan/reconciliation-audit?plan_version={planVersion}</code>
           </p>
         </div>
       )}
@@ -3063,7 +3127,7 @@ function UnmappedBadge ({ count, rows = [], planVersion }) {
         <button
           type="button"
           onClick={open ? () => setOpen(false) : handleOpenAudit}
-          className="flex-shrink-0 px-2.5 py-1 rounded text-[11px] font-semibold border border-amber-300 bg-white text-amber-700 hover:bg-amber-100 transition-colors"
+          className="flex-shrink-0 px-2.5 py-1 rounded text-[11px] font-semibold border border-amber-300 bg-ct-card text-amber-700 hover:bg-amber-100 transition-colors"
         >
           {open ? 'Cerrar' : 'Ver detalle'}
         </button>
@@ -3071,10 +3135,10 @@ function UnmappedBadge ({ count, rows = [], planVersion }) {
 
       {/* ── Panel de detalle expandible ──────────────────── */}
       {open && (
-        <div className="border-t border-amber-200 bg-white px-4 py-3">
+        <div className="border-t border-amber-200 bg-ct-card px-4 py-3">
           {auditLoading && (
-            <div className="flex items-center gap-2 text-xs text-gray-500 py-2">
-              <span className="w-3.5 h-3.5 border-2 border-gray-200 border-t-amber-500 rounded-full animate-spin" />
+            <div className="flex items-center gap-2 text-xs text-ct-text2 py-2">
+              <span className="w-3.5 h-3.5 border-2 border-ct-border border-t-amber-500 rounded-full animate-spin" />
               Cargando auditoría completa…
             </div>
           )}
@@ -3083,24 +3147,24 @@ function UnmappedBadge ({ count, rows = [], planVersion }) {
             <div className="space-y-3">
               {/* Resumen */}
               <div className="flex flex-wrap gap-4 text-xs">
-                <span><span className="text-gray-400">Total plan:</span> <strong>{auditData.total_rows}</strong></span>
-                <span><span className="text-gray-400">Resueltos:</span> <strong className="text-emerald-700">{auditData.resolved}</strong></span>
-                <span><span className="text-gray-400">Sin mapear:</span> <strong className="text-red-600">{auditData.unresolved}</strong></span>
-                <span><span className="text-gray-400">Cobertura:</span> <strong className={alertLevel === 'critical' ? 'text-red-600' : alertLevel === 'warning' ? 'text-amber-600' : 'text-emerald-700'}>{auditData.coverage_pct?.toFixed(1)}%</strong></span>
-                <span><span className="text-gray-400">Aliases conocidos:</span> <strong>{auditData.alias_map_size}</strong></span>
+                <span><span className="text-ct-text3">Total plan:</span> <strong>{auditData.total_rows}</strong></span>
+                <span><span className="text-ct-text3">Resueltos:</span> <strong className="text-emerald-700">{auditData.resolved}</strong></span>
+                <span><span className="text-ct-text3">Sin mapear:</span> <strong className="text-red-600">{auditData.unresolved}</strong></span>
+                <span><span className="text-ct-text3">Cobertura:</span> <strong className={alertLevel === 'critical' ? 'text-red-600' : alertLevel === 'warning' ? 'text-amber-600' : 'text-emerald-700'}>{auditData.coverage_pct?.toFixed(1)}%</strong></span>
+                <span><span className="text-ct-text3">Aliases conocidos:</span> <strong>{auditData.alias_map_size}</strong></span>
               </div>
               {/* Tabla de no mapeados */}
               {auditData.unresolved_items?.length > 0 && (
-                <div className="overflow-x-auto rounded border border-gray-100">
+                <div className="overflow-x-auto rounded border border-ct-border">
                   <table className="text-[10px] w-full border-collapse">
                     <thead>
-                      <tr className="bg-slate-50 text-slate-500 uppercase tracking-wide">
-                        <th className="px-2 py-1 text-left font-semibold border-b border-gray-100">País</th>
-                        <th className="px-2 py-1 text-left font-semibold border-b border-gray-100">Ciudad</th>
-                        <th className="px-2 py-1 text-left font-semibold border-b border-gray-100">raw_lob</th>
-                        <th className="px-2 py-1 text-left font-semibold border-b border-gray-100">Alias resuelto</th>
-                        <th className="px-2 py-1 text-left font-semibold border-b border-gray-100">Motivo</th>
-                        <th className="px-2 py-1 text-left font-semibold border-b border-gray-100">Periodo</th>
+                      <tr className="bg-ct-surface text-ct-text2 uppercase tracking-wide">
+                        <th className="px-2 py-1 text-left font-semibold border-b border-ct-border">País</th>
+                        <th className="px-2 py-1 text-left font-semibold border-b border-ct-border">Ciudad</th>
+                        <th className="px-2 py-1 text-left font-semibold border-b border-ct-border">raw_lob</th>
+                        <th className="px-2 py-1 text-left font-semibold border-b border-ct-border">Alias resuelto</th>
+                        <th className="px-2 py-1 text-left font-semibold border-b border-ct-border">Motivo</th>
+                        <th className="px-2 py-1 text-left font-semibold border-b border-ct-border">Periodo</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3109,17 +3173,17 @@ function UnmappedBadge ({ count, rows = [], planVersion }) {
                           <td className="px-2 py-1 border-b border-gray-50 font-mono">{item.raw_country}</td>
                           <td className="px-2 py-1 border-b border-gray-50 font-mono">{item.raw_city}</td>
                           <td className="px-2 py-1 border-b border-gray-50 font-mono text-red-700">{item.raw_lob}</td>
-                          <td className="px-2 py-1 border-b border-gray-50 text-gray-400">{item.canonical_lob_base || '—'}</td>
+                          <td className="px-2 py-1 border-b border-gray-50 text-ct-text3">{item.canonical_lob_base || '—'}</td>
                           <td className="px-2 py-1 border-b border-gray-50 text-amber-700 max-w-xs truncate" title={item.resolution_note}>{item.resolution_note}</td>
-                          <td className="px-2 py-1 border-b border-gray-50 text-gray-500">{item.period}</td>
+                          <td className="px-2 py-1 border-b border-gray-50 text-ct-text2">{item.period}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
               )}
-              <p className="text-[10px] text-gray-400">
-                Endpoint: <code className="bg-gray-50 px-1 rounded">GET /plan/mapping-audit?plan_version={planVersion}</code>
+              <p className="text-[10px] text-ct-text3">
+                Endpoint: <code className="bg-ct-bg px-1 rounded">GET /plan/mapping-audit?plan_version={planVersion}</code>
               </p>
             </div>
           )}
