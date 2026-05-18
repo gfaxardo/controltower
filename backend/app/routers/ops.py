@@ -395,10 +395,37 @@ async def get_plan_vs_real_monthly_endpoint(
 
 @router.get("/control-loop/plan-versions")
 async def control_loop_plan_versions_endpoint():
-    """Lista `plan_version` disponibles en staging Control Loop."""
+    """Lista plan_version disponibles en staging Control Loop con metadata si existe."""
     try:
-        versions = list_control_loop_plan_versions()
-        return {"plan_versions": versions, "total": len(versions)}
+        versions_raw = list_control_loop_plan_versions()
+
+        # Intentar enriquecer con metadata desde plan.plan_versions_metadata
+        try:
+            from app.adapters.plan_repo import get_plan_versions_with_metadata
+            meta_list = get_plan_versions_with_metadata()
+            meta_map = {m["plan_version_key"]: m for m in meta_list if m.get("plan_version_key")}
+            enriched = []
+            for v in versions_raw:
+                meta = meta_map.get(v)
+                if meta:
+                    enriched.append({
+                        "plan_version_key": v,
+                        "display_name": meta.get("display_name", v),
+                        "description": meta.get("description"),
+                        "source_filename": meta.get("source_filename"),
+                        "uploaded_by": meta.get("uploaded_by"),
+                        "uploaded_at": meta.get("uploaded_at"),
+                        "status": meta.get("status", "active"),
+                        "row_count": meta.get("row_count"),
+                    })
+                else:
+                    enriched.append({"plan_version_key": v, "display_name": v, "status": "active"})
+            return {"versions": enriched, "total": len(enriched)}
+        except ImportError:
+            pass
+
+        # Fallback: lista plana de strings
+        return {"versions": [{"plan_version_key": v, "display_name": v, "status": "active"} for v in versions_raw], "total": len(versions_raw)}
     except Exception as e:
         logger.error("control-loop/plan-versions: %s", e)
         raise HTTPException(status_code=500, detail=str(e))

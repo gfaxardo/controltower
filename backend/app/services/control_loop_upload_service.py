@@ -133,6 +133,21 @@ def run_control_loop_upload(
     inserted, dup_db = insert_valid_metric_rows(batch_id, pv, valid_payload)
     rej_count = insert_rejects(batch_id, pv, rejects)
 
+    # Registrar metadata de versión
+    try:
+        from app.adapters.plan_repo import upsert_plan_version_metadata
+        upsert_plan_version_metadata(
+            plan_version_key=pv,
+            display_name=pv,
+            source_filename=filename,
+            row_count=inserted,
+            valid_rows=inserted,
+            invalid_rows=len(rejects),
+            status="active",
+        )
+    except Exception as e:
+        logger.warning("No se pudo guardar metadata de versión: %s", e)
+
     return {
         "success": True,
         "plan_version": pv,

@@ -1,7 +1,7 @@
 from app.db.connection import get_db
 from psycopg2.extras import RealDictCursor
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from datetime import datetime
 import hashlib
 import json
@@ -384,4 +384,181 @@ def get_plan_data(
             
     except Exception as e:
         logger.error(f"Error al obtener datos del plan: {e}")
+        raise
+
+
+# ─── Version metadata governance ─────────────────────────────────────────────
+
+def upsert_plan_version_metadata(
+    plan_version_key: str,
+    display_name: Optional[str] = None,
+    description: Optional[str] = None,
+    source_filename: Optional[str] = None,
+    uploaded_by: Optional[str] = None,
+    row_count: Optional[int] = None,
+    valid_rows: Optional[int] = None,
+    invalid_rows: Optional[int] = None,
+    min_period: Optional[str] = None,
+    max_period: Optional[str] = None,
+    status: str = "active",
+) -> Dict[str, Any]:
+    """
+    Inserta o actualiza metadata de versión en plan.plan_versions_metadata.
+    Si ya existe, actualiza campos de metadata (NO el plan_version_key).
+    """
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO plan.plan_versions_metadata (
+                    plan_version_key, display_name, description, source_filename,
+                    uploaded_by, row_count, valid_rows, invalid_rows,
+                    min_period, max_period, status, updated_at
+                ) VALUES (
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s::date, %s::date, %s, NOW()
+                )
+                ON CONFLICT (plan_version_key) DO UPDATE SET
+                    display_name    = COALESCE(EXCLUDED.display_name, plan.plan_versions_metadata.display_name),
+                    description     = COALESCE(EXCLUDED.description, plan.plan_versions_metadata.description),
+                    source_filename = COALESCE(EXCLUDED.source_filename, plan.plan_versions_metadata.source_filename),
+                    row_count       = COALESCE(EXCLUDED.row_count, plan.plan_versions_metadata.row_count),
+                    valid_rows      = COALESCE(EXCLUDED.valid_rows, plan.plan_versions_metadata.valid_rows),
+                    invalid_rows    = COALESCE(EXCLUDED.invalid_rows, plan.plan_versions_metadata.invalid_rows),
+                    min_period      = COALESCE(EXCLUDED.min_period, plan.plan_versions_metadata.min_period),
+                    max_period      = COALESCE(EXCLUDED.max_period, plan.plan_versions_metadata.max_period),
+                    updated_at      = NOW()
+                RETURNING id, plan_version_key, display_name, status
+                """,
+                (
+                    plan_version_key,
+                    display_name or plan_version_key,
+                    description,
+                    source_filename,
+                    uploaded_by,
+                    row_count,
+                    valid_rows,
+                    invalid_rows,
+                    min_period,
+                    max_period,
+                    status,
+                ),
+            )
+            result = cursor.fetchone()
+            conn.commit()
+            cursor.close()
+            if result:
+                return {
+                    "id": result[0],
+                    "plan_version_key": result[1],
+                    "display_name": result[2],
+                    "status": result[3],
+                }
+            return {"plan_version_key": plan_version_key, "display_name": display_name or plan_version_key, "status": status}
+    except Exception as e:
+        logger.error(f"Error en upsert_plan_version_metadata: {e}")
+        return {"plan_version_key": plan_version_key, "display_name": display_name or plan_version_key, "status": "error", "error": str(e)}
+
+
+def get_plan_versions_with_metadata() -> List[Dict[str, Any]]:
+    """
+    Lista versiones desde plan.plan_versions_metadata con conteo de filas
+    desde las tablas fuente.
+    """
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT
+                    m.plan_version_key,
+                    m.display_name,
+                    m.description,
+                    m.source_filename,
+                    m.uploaded_by,
+                    m.uploaded_at,
+                    m.status,
+                    m.row_count,
+                    m.valid_rows,
+                    m.invalid_rows,
+                    m.min_period,
+                    m.max_period,
+                    COALESCE(d.row_count, 0) AS actual_rows
+                FROM plan.plan_versions_metadata m
+                LEFT JOIN (
+                    SELECT plan_version, COUNT(*) AS row_count
+                    FROM ops.plan_trips_monthly
+                    GROUP BY plan_version
+                    UNION ALL
+                    SELECT plan_version, COUNT(*) AS row_count
+                    FROM staging.control_loop_plan_metric_long
+                    GROUP BY plan_version
+                ) d ON d.plan_version = m.plan_version_key
+                ORDER BY m.uploaded_at DESC
+                """
+            )
+            rows = cursor.fetchall()
+            cursor.close()
+            results = []
+            for r in rows:
+                results.append({
+                    "plan_version_key": r[0],
+                    "display_name": r[1],
+                    "description": r[2],
+                    "source_filename": r[3],
+                    "uploaded_by": r[4],
+                    "uploaded_at": r[5].isoformat() if r[5] else None,
+                    "status": r[6],
+                    "row_count": r[7],
+                    "valid_rows": r[8],
+                    "invalid_rows": r[9],
+                    "min_period": r[10].isoformat() if r[10] else None,
+                    "max_period": r[11].isoformat() if r[11] else None,
+                    "actual_rows": r[12],
+                })
+            return results
+    except Exception as e:
+        logger.warning(f"Error en get_plan_versions_with_metadata (fallback a query simple): {e}")
+        return []
+
+
+def update_plan_version_display_name(
+    plan_version_key: str,
+    display_name: str,
+    description: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Actualiza solo display_name y description de una versión.
+    No modifica plan_version_key ni datos de plan.
+    """
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE plan.plan_versions_metadata
+                SET display_name = %s,
+                    description = COALESCE(%s, description),
+                    updated_at = NOW()
+                WHERE plan_version_key = %s
+                RETURNING plan_version_key, display_name, description, status, updated_at
+                """,
+                (display_name, description, plan_version_key),
+            )
+            result = cursor.fetchone()
+            conn.commit()
+            cursor.close()
+            if result:
+                return {
+                    "plan_version_key": result[0],
+                    "display_name": result[1],
+                    "description": result[2],
+                    "status": result[3],
+                    "updated_at": result[4].isoformat() if result[4] else None,
+                }
+            raise ValueError(f"Versión no encontrada: {plan_version_key}")
+    except Exception as e:
+        logger.error(f"Error en update_plan_version_display_name: {e}")
         raise

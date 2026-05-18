@@ -44,10 +44,20 @@ function OperationalOpportunitiesView () {
           getPlanVersions(),
         ])
         if (cancelled) return
-        const all = [...(cpv?.versions || []), ...(pv?.versions || [])]
-        const unique = [...new Map(all.map((v) => [v.plan_version || v, v])).values()]
+        const normalize = (item) => {
+          if (typeof item === 'string') return { key: item, label: item }
+          return { key: item.plan_version_key || item.plan_version || item.key, label: item.display_name || item.label || item.plan_version_key || item.plan_version || item.key }
+        }
+        const rawList = [
+          ...(cpv?.versions || cpv?.plan_versions || []),
+          ...(Array.isArray(pv) ? pv : (pv?.versions || []))
+        ]
+        const unique = [...new Map(rawList.map(v => {
+          const n = normalize(v)
+          return [n.key, n]
+        })).values()]
         setPlanVersions(unique)
-        if (unique.length > 0) setPlanVersion(unique[0].plan_version || unique[0])
+        if (unique.length > 0) setPlanVersion(unique[0].key)
       } catch (e) {
         if (!cancelled) console.warn('No se pudieron cargar versiones de plan:', e.message)
       }
@@ -209,8 +219,8 @@ function OperationalOpportunitiesView () {
           >
             <option value="">— Versión del plan —</option>
             {planVersions.map((v) => (
-              <option key={v.plan_version || v} value={v.plan_version || v}>
-                {v.plan_version || v}
+              <option key={v.key} value={v.key}>
+                {v.label || v.key}
               </option>
             ))}
           </select>

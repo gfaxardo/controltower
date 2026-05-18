@@ -17,6 +17,8 @@ import {
   uploadPlanRuta27UI,
   getPlanMappingAudit,
 } from '../services/api.js'
+import { exportOmniviewFull } from '../utils/omniviewExport.js'
+import ProjectionVersionSelector from './projections/ProjectionVersionSelector.jsx'
 import {
   buildMatrix,
   computeDeltas as computeDeltasFn,
@@ -32,20 +34,21 @@ import {
   signalColorForKpi,
   signalArrow,
   fmtDelta,
-  exportMatrixCsv,
-  downloadCsv,
   loadPersistedState,
   persistState,
   SORT_OPTIONS,
   resolveMainIssueCellTarget,
+  findCurrentPeriodIndex,
+  getCurrentPeriodKey,
 } from './omniview/omniviewMatrixUtils.js'
-import { INSIGHT_CONFIG } from './omniview/insightConfig.js'
-import { detectInsights, buildInsightCellMap } from './omniview/insightEngine.js'
-import { loadInsightUserPatch, mergeInsightRuntimeConfig } from './omniview/insightUserSettings.js'
 import BusinessSliceOmniviewMatrixTable from './BusinessSliceOmniviewMatrixTable.jsx'
+import BusinessSliceOmniviewMatrixHeader, { COL1_W, COL2_W } from './BusinessSliceOmniviewMatrixHeader.jsx'
 import { buildProjectionMatrix, PROJECTION_KPIS, fmtAttainment, projectionSignalColor, SIGNAL_DOT } from './omniview/projectionMatrixUtils.js'
 import { validateProjectionOmniviewContract, logProjectionYtdPopDebug } from './omniview/projectionContractValidation.js'
 import BusinessSliceOmniviewInspector from './BusinessSliceOmniviewInspector.jsx'
+import { loadInsightUserPatch, mergeInsightRuntimeConfig } from './omniview/insightUserSettings.js'
+import { detectInsights, buildInsightCellMap } from './omniview/insightEngine.js'
+import { INSIGHT_CONFIG } from './omniview/insightConfig.js'
 import OmniviewPriorityPanel from './OmniviewPriorityPanel.jsx'
 import OmniviewProjectionDrill from './OmniviewProjectionDrill.jsx'
 import BusinessSliceInsightsPanel from './BusinessSliceInsightsPanel.jsx'
@@ -140,6 +143,20 @@ export default function BusinessSliceOmniviewMatrix () {
   const [err, setErr] = useState(null)
   const [selectedCell, setSelectedCell] = useState(null)
   const [selection, setSelection] = useState(null)
+  const [selectionHistory, setSelectionHistory] = useState([])
+
+  // Escape key closes inspector/drill globally
+  useEffect(() => {
+    if (!selection) return
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        setSelection(null)
+        setSelectedCell(null)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selection])
 
   const [viewMode, setViewMode] = useState(saved?.viewMode || 'evolucion')
   const [planVersion, setPlanVersion] = useState(saved?.planVersion || '')
@@ -170,16 +187,36 @@ export default function BusinessSliceOmniviewMatrix () {
       getPlanVersions(),
       getControlLoopPlanVersions(),
     ]).then(([r1, r2]) => {
+      // Normalizar a { key, label, display_name, ... }
+      const normalize = (item) => {
+        if (typeof item === 'string') return { key: item, label: item, display_name: item }
+        if (item?.plan_version_key) {
+          return { key: item.plan_version_key, label: item.display_name || item.plan_version_key, ...item }
+        }
+        if (item?.plan_version) {
+          return { key: item.plan_version, label: item.plan_version, display_name: item.plan_version }
+        }
+        return null
+      }
       const fromPlan = r1.status === 'fulfilled'
-        ? (Array.isArray(r1.value) ? r1.value.map((v) => v?.plan_version ?? v) : [])
+        ? (Array.isArray(r1.value) ? r1.value.map(normalize).filter(Boolean) : [])
         : []
       const fromCL = r2.status === 'fulfilled'
-        ? (Array.isArray(r2.value) ? r2.value : (r2.value?.data || []))
+        ? (Array.isArray(r2.value) ? r2.value : (r2.value?.data || r2.value?.versions || []))
+            .map(normalize).filter(Boolean)
         : []
-      const merged = [...new Set([...fromPlan, ...fromCL])].filter(Boolean)
+
+      // Merge por key única
+      const seen = new Set()
+      const merged = []
+      for (const v of [...fromPlan, ...fromCL]) {
+        if (seen.has(v.key)) continue
+        seen.add(v.key)
+        merged.push(v)
+      }
       setPlanVersions(merged)
       if ((autoSelect || !planVersion) && merged.length > 0) {
-        setPlanVersion(merged[0])
+        setPlanVersion(merged[0].key)
       }
     })
   }, [planVersion]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -707,6 +744,43 @@ export default function BusinessSliceOmniviewMatrix () {
   }, [matrixTrust])
 
   const execNavPendingRef = useRef(false)
+  const scrollContainerRef = useRef(null)
+
+  const currentPeriodKey = useMemo(
+    () => getCurrentPeriodKey(grain),
+    [grain]
+  )
+
+  const autoScrollAppliedRef = useRef(false)
+
+  const scrollToCurrentPeriod = useCallback(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    const allPeriods = matrix.allPeriods || []
+    if (!allPeriods.length) return
+    const colW = compact ? 58 : 66
+    const idx = findCurrentPeriodIndex(allPeriods, grain)
+    if (idx < 0) return
+    const targetLeft = COL1_W + COL2_W + (idx * colW)
+    const viewportWidth = container.clientWidth
+    const scrollTo = Math.max(0, targetLeft - (viewportWidth / 2) + (colW / 2))
+    container.scrollTo({ left: scrollTo, behavior: 'smooth' })
+  }, [matrix.allPeriods, grain, compact])
+
+  useEffect(() => {
+    if (loading || blockedByCountry || rows.length === 0) return
+    if (!autoScrollAppliedRef.current) {
+      const timer = setTimeout(() => {
+        scrollToCurrentPeriod()
+        autoScrollAppliedRef.current = true
+      }, 300)
+      return () => clearTimeout(timer)
+    }
+  }, [loading, blockedByCountry, rows.length, scrollToCurrentPeriod])
+
+  useEffect(() => {
+    autoScrollAppliedRef.current = false
+  }, [grain, year, viewMode, country, city, businessSlice, focusedKpi])
 
   const executiveForBanner = useMemo(() => {
     if (!matrixTrust) return null
@@ -825,7 +899,16 @@ export default function BusinessSliceOmniviewMatrix () {
 
   const handleCellClick = useCallback((cellInfo) => {
     setSelectedCell((prev) => (prev === cellInfo.id ? null : cellInfo.id))
-    setSelection((prev) => (prev?.id === cellInfo.id ? null : cellInfo))
+    setSelection((prev) => {
+      const next = prev?.id === cellInfo.id ? null : cellInfo
+      if (next && prev && prev.id !== next.id) {
+        setSelectionHistory(h => {
+          const filtered = h.filter(s => s.id !== next.id)
+          return [...filtered.slice(-9), prev]
+        })
+      }
+      return next
+    })
   }, [])
 
   useEffect(() => {
@@ -874,12 +957,22 @@ export default function BusinessSliceOmniviewMatrix () {
   }, [matrix, periodStates])
 
   const handleExport = useCallback(() => {
-    const csv = exportMatrixCsv(matrix, grain)
-    downloadCsv(csv, `omniview_matrix_${grain}_${new Date().toISOString().slice(0, 16).replace(/[:-]/g, '')}.csv`)
-  }, [matrix, grain])
+    exportOmniviewFull({
+      viewMode, grain, country, city, businessSlice, fleet, year, month,
+      planVersion, planVersions, showSubfleets, sortKey, focusedKpi, compact,
+      matrix, projMatrix, projectionRows, projectionMeta,
+      freshnessInfo, coverageSummary, matrixMeta, matrixTrust,
+      sliceMaxTripDate, maxDataDate,
+      periodStates, rows,
+    })
+  }, [viewMode, grain, country, city, businessSlice, fleet, year, month,
+    planVersion, planVersions, showSubfleets, sortKey, focusedKpi, compact,
+    matrix, projMatrix, projectionRows, projectionMeta,
+    freshnessInfo, coverageSummary, matrixMeta, matrixTrust,
+    sliceMaxTripDate, maxDataDate, periodStates, rows])
 
   return (
-    <div className="relative" data-omniview-matrix-root style={{ width: '100vw', left: '50%', right: '50%', marginLeft: '-50vw', marginRight: '-50vw' }}>
+    <div className="relative overflow-x-hidden" data-omniview-matrix-root style={{ width: '100vw', left: '50%', right: '50%', marginLeft: '-50vw', marginRight: '-50vw' }}>
       <div className="px-3 sm:px-4 space-y-2">
         {heavyQueriesEnabled && (
           <MatrixExecutiveBanner
@@ -942,6 +1035,16 @@ export default function BusinessSliceOmniviewMatrix () {
                 className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5" />
               Subflotas
             </label>
+
+            <button type="button" onClick={() => {
+              setCountry(''); setCity(''); setBusinessSlice(''); setFleet('')
+              setYear(normalizeOmniviewYear(new Date().getFullYear())); setMonth('')
+              setSortKey('alpha'); setFocusedKpi('trips_completed')
+            }}
+              className="self-end pb-1.5 px-2 py-0.5 rounded text-[10px] text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              title="Restablecer filtros">
+              Reset
+            </button>
           </div>
 
           <div className="px-4 py-2 border-t border-ct-border bg-ct-surface/40">
@@ -963,14 +1066,12 @@ export default function BusinessSliceOmniviewMatrix () {
               <>
                 <div className="w-px h-4 bg-gray-200 hidden sm:block" />
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-medium text-ct-text3">Plan</span>
-                  {planVersions.length > 0 ? (
-                    <select className={miniSelectCls} value={planVersion} onChange={(e) => setPlanVersion(e.target.value)}>
-                      {planVersions.map((v) => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  ) : (
-                    <span className="text-[10px] text-amber-600 font-medium">Sin versiones</span>
-                  )}
+                  <ProjectionVersionSelector
+                    versions={planVersions}
+                    selectedVersionKey={planVersion}
+                    onChange={(key) => setPlanVersion(key)}
+                    onRenameSuccess={() => loadPlanVersions()}
+                  />
                   <button
                     type="button"
                     onClick={() => { setUploadModalOpen(true); setUploadError(null); setUploadSuccess(null) }}
@@ -1035,17 +1136,27 @@ export default function BusinessSliceOmniviewMatrix () {
                 </svg>
                 FACT tables
               </button>
-              {rows.length > 0 && (
+              {(rows.length > 0 || (isProjectionMode && projectionRows.length > 0)) && (
                 <>
                   <div className="w-px h-4 bg-gray-200" />
                   <button type="button" onClick={handleExport}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-ct-text2 bg-ct-card border border-ct-border hover:border-gray-300 hover:bg-ct-bg transition-all"
-                    title="Exportar matriz a CSV">
+                    title="Descargar Omniview Matrix (CSV)">
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V3" />
                     </svg>
-                    Exportar CSV
+                    Descargar
                   </button>
+                  {!isProjectionMode && (
+                    <button type="button" onClick={scrollToCurrentPeriod}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 hover:border-blue-300 transition-all"
+                      title={grain === 'daily' ? 'Ir a hoy' : grain === 'weekly' ? 'Ir a semana actual' : 'Ir a mes actual'}>
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      {grain === 'daily' ? 'Ir a hoy' : grain === 'weekly' ? 'Ir a sem. actual' : 'Ir a mes actual'}
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -1224,9 +1335,28 @@ export default function BusinessSliceOmniviewMatrix () {
         )}
 
         {loading && heavyQueriesEnabled && (
-          <div className="flex items-center gap-2 text-xs text-ct-text2 py-6 justify-center">
-            <span className="inline-block w-3.5 h-3.5 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
-            Cargando datos…
+          <div className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
+            <div className="px-4 py-3 bg-slate-800 flex gap-3">
+              <div className="h-3 w-16 bg-slate-600 rounded animate-pulse" />
+              <div className="h-3 w-20 bg-slate-600 rounded animate-pulse" />
+              <div className="h-3 w-14 bg-slate-600 rounded animate-pulse ml-auto" />
+              <div className="h-3 w-12 bg-slate-600 rounded animate-pulse" />
+              <div className="h-3 w-12 bg-slate-600 rounded animate-pulse" />
+            </div>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex gap-2 px-4 py-2 border-b border-gray-100">
+                <div className={`h-3 rounded animate-pulse bg-gray-200 ${i === 0 ? 'w-24' : 'w-20'}`} />
+                <div className="h-3 w-12 rounded animate-pulse bg-gray-100 ml-auto" />
+                <div className="h-3 w-10 rounded animate-pulse bg-gray-100" />
+                <div className="h-3 w-10 rounded animate-pulse bg-gray-100" />
+                <div className="h-3 w-10 rounded animate-pulse bg-gray-100" />
+                <div className="h-3 w-10 rounded animate-pulse bg-gray-100" />
+              </div>
+            ))}
+            <div className="flex items-center gap-2 px-4 py-2 text-xs text-ct-text2">
+              <span className="inline-block w-3 h-3 border-[1.5px] border-gray-300 border-t-blue-500 rounded-full animate-spin" />
+              Cargando datos…
+            </div>
           </div>
         )}
 
@@ -1241,17 +1371,21 @@ export default function BusinessSliceOmniviewMatrix () {
                 lineImpactMap={lineImpactMap} periodStates={periodStates}
                 matrixTrust={matrixTrust}
                 focusedKpi={focusedKpi}
+                currentPeriodKey={currentPeriodKey}
+                scrollContainerRef={scrollContainerRef}
               />
             </div>
             <BusinessSliceOmniviewInspector
               selection={selection} grain={grain} compact={compact}
-              onClose={() => { setSelection(null); setSelectedCell(null) }}
+              onClose={() => { setSelection(null); setSelectedCell(null); setSelectionHistory([]) }}
               insightForSelection={insightForSelection}
               insightTransparency={engineConfig.transparency}
               periodStates={periodStates} coverageSummary={coverageSummary}
               matrixTrust={matrixTrust}
               matrixMeta={matrixMeta}
               onTrustStateRefresh={refreshMatrixTrust}
+              selectionHistory={selectionHistory}
+              onGoBack={(prev) => { setSelection(prev); setSelectedCell(prev.id); setSelectionHistory(h => h.filter(s => s.id !== prev.id)) }}
             />
           </div>
         )}
@@ -1284,6 +1418,8 @@ export default function BusinessSliceOmniviewMatrix () {
                 mode="projection"
                 projectionAuthoritativeYtd={projectionMeta?.authoritative_ytd}
                 projectionIntegrityBroken={projectionIntegrityBroken}
+                currentPeriodKey={currentPeriodKey}
+                scrollContainerRef={scrollContainerRef}
               />
             </div>
             <OmniviewProjectionDrill

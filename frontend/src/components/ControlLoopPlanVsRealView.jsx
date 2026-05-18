@@ -57,9 +57,14 @@ export default function ControlLoopPlanVsRealView () {
     setVersionsLoading(true)
     try {
       const res = await getControlLoopPlanVersions()
-      const v = res.plan_versions || []
+      // Compatible con ambos formatos: array de strings o array de objetos {plan_version_key, display_name}
+      const raw = res.versions || res.plan_versions || []
+      const v = raw.map(item => {
+        if (typeof item === 'string') return { key: item, label: item }
+        return { key: item.plan_version_key || item.key, label: item.display_name || item.plan_version_key || item.key, ...item }
+      })
       setPlanVersions(v)
-      if (v.length && !planVersion) setPlanVersion(v[0])
+      if (v.length && !planVersion) setPlanVersion(v[0].key)
     } catch {
       setPlanVersions([])
     } finally {
@@ -199,7 +204,7 @@ export default function ControlLoopPlanVsRealView () {
               {!versionsLoading && !planVersions.length && <option value="">Sin versiones — suba una plantilla</option>}
               {!versionsLoading && planVersions.length > 0 && <option value="">Seleccionar…</option>}
               {planVersions.map((v) => (
-                <option key={v} value={v}>{v}</option>
+                <option key={v.key} value={v.key}>{v.label || v.key}</option>
               ))}
             </select>
           </label>

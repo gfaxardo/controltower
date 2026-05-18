@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { MATRIX_KPIS } from './omniview/omniviewMatrixUtils.js'
+import { MATRIX_KPIS, periodHeaderPrimary } from './omniview/omniviewMatrixUtils.js'
 import {
   PROJECTION_KPIS,
   fmtAttainment,
@@ -111,6 +111,9 @@ function DrillContent ({ selection, grain, compact, onClose, projectionMeta, pla
       </div>
 
       <div className="divide-y divide-gray-100 max-h-[calc(100vh-200px)] overflow-y-auto">
+        {/* Evolution Chart — Real vs Proyección + tendencia */}
+        <ProjectionEvolutionChart selection={selection} grain={grain} compact={compact} />
+
         {/* FASE_KPI_CONSISTENCY: Tipo de KPI y comparabilidad cross-grain */}
         <KpiContractSection kpiKey={kpiKey} kpiContract={projectionMeta?.kpi_contract} labelCls={labelCls} valueCls={valueCls} />
 
@@ -570,6 +573,156 @@ function RootCauseSection ({ kpiKey, periodDeltas, compact }) {
       )}
     </div>
   )
+}
+
+// ─── Evolution Chart (Real vs Proyección + tendencia) ──────────────────
+
+function ProjectionEvolutionChart ({ selection, grain, compact }) {
+  const { lineData, kpiKey: initialKpi } = selection
+  const [chartKpi, setChartKpi] = useState(initialKpi)
+
+  const series = useMemo(() => {
+    if (!lineData?.periods) return { points: [], projPoints: [], labels: [], trend: [], min: 0, max: 100 }
+    const entries = [...lineData.periods.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+    const isProjectable = PROJECTION_KPIS.includes(chartKpi)
+    const points = []
+    const projPoints = []
+    const labels = []
+
+    for (const [pk, cell] of entries) {
+      const realVal = isProjectable
+        ? (cell.projection?.[chartKpi]?.actual ?? cell.metrics?.[chartKpi])
+        : cell.metrics?.[chartKpi]
+      if (realVal == null && !isProjectable) continue
+      const projVal = isProjectable
+        ? (cell.projection?.[chartKpi]?.projected_expected ?? cell.projection?.[chartKpi]?.projected_total)
+        : null
+      points.push({ period: pk, value: Number(realVal) })
+      if (projVal != null) projPoints.push({ period: pk, value: Number(projVal) })
+      const d = new Date(pk + 'T00:00:00')
+      labels.push(grain === 'daily'
+        ? `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
+        : grain === 'weekly'
+          ? periodHeaderPrimary(pk, grain)
+          : periodHeaderPrimary(pk, grain))
+    }
+
+    if (points.length < 2) return { points, projPoints, labels, trend: [], min: 0, max: 100 }
+    const values = points.map(p => p.value)
+    const allValues = [...values, ...projPoints.map(p => p.value)]
+    const trend = computeMovingAverage(values, Math.min(3, values.length))
+    const min = Math.min(...allValues, ...trend.filter(v => v != null))
+    const max = Math.max(...allValues, ...trend.filter(v => v != null))
+    const pad = Math.max((max - min) * 0.1, 1)
+    return {
+      points, projPoints, labels, trend,
+      min: Math.max(0, Math.floor(min - pad)),
+      max: Math.ceil(max + pad),
+      isProjectable,
+    }
+  }, [lineData, chartKpi, grain])
+
+  const { points, projPoints, labels, trend, min, max, isProjectable } = series
+  if (points.length < 2) {
+    return (
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-[9px] text-gray-400 uppercase tracking-wider">Evolución</span>
+          <select value={chartKpi} onChange={e => setChartKpi(e.target.value)}
+            className="text-[9px] py-px px-1 rounded border border-gray-200 bg-white text-gray-600">
+            {MATRIX_KPIS.map(k => <option key={k.key} value={k.key}>{k.label}</option>)}
+          </select>
+        </div>
+        <p className="text-[9px] text-gray-400 py-1">Datos insuficientes para mostrar evolución.</p>
+      </div>
+    )
+  }
+
+  const w = 260, h = 90, padX = 32, padY = 10, padB = 14
+  const plotW = w - padX - 6, plotH = h - padY - padB
+  const range = max - min || 1
+  const toX = (i) => padX + (points.length === 1 ? plotW / 2 : (i / (points.length - 1)) * plotW)
+  const toY = (v) => padY + plotH - ((v - min) / range) * plotH
+
+  const realLine = points.map((p, i) => `${toX(i)},${toY(p.value)}`).join(' ')
+  const trendLine = trend.map((v, i) => v != null ? `${toX(i)},${toY(v)}` : null).filter(Boolean).join(' ')
+  const projLine = isProjectable && projPoints.length >= 2
+    ? projPoints.map((p, i) => {
+        const idx = points.findIndex(rp => rp.period === p.period)
+        return idx >= 0 ? `${toX(idx)},${toY(p.value)}` : null
+      }).filter(Boolean).join(' ')
+    : null
+
+  const yTicks = []
+  for (let t = 0; t <= 3; t++) {
+    const val = min + (range * t / 3)
+    yTicks.push({ y: toY(val), label: val >= 1000 ? `${(val/1000).toFixed(0)}K` : val.toFixed(0) })
+  }
+
+  return (
+    <div className="px-3 py-2.5">
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className="text-[9px] text-gray-400 uppercase tracking-wider shrink-0">Evolución</span>
+        <select value={chartKpi} onChange={e => setChartKpi(e.target.value)}
+          className="text-[9px] py-px px-1.5 rounded border border-gray-200 bg-white text-gray-600 outline-none">
+          {MATRIX_KPIS.map(k => <option key={k.key} value={k.key}>{k.label}</option>)}
+        </select>
+      </div>
+      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ maxWidth: w }}>
+        {yTicks.map((t, i) => (
+          <g key={`g-${i}`}>
+            <line x1={padX} y1={t.y} x2={w - 4} y2={t.y} stroke="#e5e7eb" strokeWidth={0.5} />
+            <text x={padX - 3} y={t.y + 3} textAnchor="end" className="fill-gray-400" style={{ fontSize: '6px' }}>{t.label}</text>
+          </g>
+        ))}
+        {labels.filter((_, i) => i % Math.max(1, Math.floor(labels.length / 5)) === 0 || i === labels.length - 1).map((l, i) => {
+          const realIdx = labels.indexOf(l)
+          if (realIdx < 0) return null
+          return <text key={`xl-${i}`} x={toX(realIdx)} y={h - 3} textAnchor="middle" className="fill-gray-400" style={{ fontSize: '6px' }}>{l}</text>
+        })}
+        {trendLine && (
+          <polyline points={trendLine} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="4,2" />
+        )}
+        {projLine && (
+          <polyline points={projLine} fill="none" stroke="#8b5cf6" strokeWidth={1.5} strokeDasharray="3,1" />
+        )}
+        <polyline points={realLine} fill="none" stroke="#3b82f6" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        {points.map((p, i) => (
+          <circle key={`d-${i}`} cx={toX(i)} cy={toY(p.value)} r={2.2} fill="#3b82f6" stroke="white" strokeWidth={1} />
+        ))}
+        {projPoints.filter(p => points.some(rp => rp.period === p.period)).map((p, i) => {
+          const idx = points.findIndex(rp => rp.period === p.period)
+          return <circle key={`pd-${i}`} cx={toX(idx)} cy={toY(p.value)} r={2.2} fill="#8b5cf6" stroke="white" strokeWidth={1} />
+        })}
+        {/* Legend */}
+        <line x1={w - 85} y1={6} x2={w - 73} y2={6} stroke="#3b82f6" strokeWidth={2} />
+        <text x={w - 71} y={8} className="fill-gray-600" style={{ fontSize: '6px' }}>Real</text>
+        {projLine && (
+          <>
+            <line x1={w - 52} y1={6} x2={w - 40} y2={6} stroke="#8b5cf6" strokeWidth={1.5} strokeDasharray="3,1" />
+            <text x={w - 38} y={8} className="fill-gray-600" style={{ fontSize: '6px' }}>Proy</text>
+          </>
+        )}
+        {trendLine && (
+          <>
+            <line x1={projLine ? w - 24 : w - 36} y1={6} x2={projLine ? w - 12 : w - 24} y2={6} stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="3,2" />
+            <text x={projLine ? w - 10 : w - 22} y={8} className="fill-gray-600" style={{ fontSize: '6px' }}>Tend.</text>
+          </>
+        )}
+      </svg>
+    </div>
+  )
+}
+
+function computeMovingAverage (values, windowSize) {
+  const result = []
+  for (let i = 0; i < values.length; i++) {
+    const start = Math.max(0, i - Math.floor(windowSize / 2))
+    const end = Math.min(values.length, i + Math.floor(windowSize / 2) + 1)
+    const slice = values.slice(start, end)
+    result.push(slice.reduce((a, b) => a + b, 0) / slice.length)
+  }
+  return result
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────

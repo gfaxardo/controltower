@@ -102,6 +102,8 @@ export default function BusinessSliceOmniviewMatrixTable ({
   mode = 'evolution',
   projectionAuthoritativeYtd = null,
   projectionIntegrityBroken = false,
+  currentPeriodKey = null,
+  scrollContainerRef = null,
 }) {
   const isProjection = mode === 'projection'
   const { cities, allPeriods, totals, comparisonTotals, comparisonMeta, cityVolumeMap, lineVolumeMap, periodMeta, periodDayLabels } = matrix
@@ -153,6 +155,34 @@ export default function BusinessSliceOmniviewMatrixTable ({
     })
   }
 
+  const expandAll = () => setCollapsed(new Set())
+  const collapseAll = () => setCollapsed(new Set(cityEntries.map(([k]) => k)))
+
+  const expandedCount = cityEntries.length - collapsed.size
+
+  // Proyección usa columnas más anchas para acomodar el formato Proy/Real/Av/Gap
+  const colW = isProjection
+    ? (compact ? 78 : 90)
+    : (compact ? 58 : 66)
+
+  // Column visibility tracking for position indicator
+  const [visibleColRange, setVisibleColRange] = useState({ start: 0, end: allPeriods.length })
+  useEffect(() => {
+    const el = scrollContainerRef?.current
+    if (!el || !allPeriods.length) return
+    const update = () => {
+      const scrollLeft = el.scrollLeft
+      const viewW = el.clientWidth
+      const fixedW = COL1_W + COL2_W
+      const start = Math.max(0, Math.floor((scrollLeft - fixedW) / colW))
+      const end = Math.min(allPeriods.length, Math.ceil((scrollLeft - fixedW + viewW) / colW) + 1)
+      setVisibleColRange({ start: Math.max(0, start), end: Math.max(1, end) })
+    }
+    update()
+    el.addEventListener('scroll', update, { passive: true })
+    return () => el.removeEventListener('scroll', update)
+  }, [scrollContainerRef, allPeriods, colW])
+
   if (!allPeriods.length) {
     return (
       <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50/80 p-10 text-center">
@@ -165,14 +195,58 @@ export default function BusinessSliceOmniviewMatrixTable ({
     )
   }
 
-  // Proyección usa columnas más anchas para acomodar el formato Proy/Real/Av/Gap
-  const colW = isProjection
-    ? (compact ? 72 : 90)
-    : (compact ? 58 : 66)
+  const handleTableKeyDown = (e) => {
+    if (!selectedCell || !onCellClick) return
+    const parts = selectedCell.split('::')
+    if (parts.length < 4) return
+    const [selCity, selLine, selPeriod, selKpi] = parts
+    const periodIdx = allPeriods.indexOf(selPeriod)
+    const flatLines = []
+    for (const [ck, cd] of cityEntries) {
+      if (collapsed.has(ck)) continue
+      const lines = [...cd.lines.entries()]
+      for (const [lk] of lines) {
+        flatLines.push({ cityKey: ck, lineKey: lk, lineData: cd.lines.get(lk) })
+      }
+    }
+    const lineIdx = flatLines.findIndex(l => l.cityKey === selCity && l.lineKey === selLine)
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      e.preventDefault()
+      const dir = e.key === 'ArrowRight' ? 1 : -1
+      const newPeriodIdx = periodIdx + dir
+      if (newPeriodIdx < 0 || newPeriodIdx >= allPeriods.length) return
+      const newPk = allPeriods[newPeriodIdx]
+      const newCellId = `${selCity}::${selLine}::${newPk}::${selKpi}`
+      onCellClick({ id: newCellId, cityKey: selCity, lineKey: selLine, period: newPk, kpiKey: selKpi, lineData: flatLines[lineIdx]?.lineData })
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      const dir = e.key === 'ArrowDown' ? 1 : -1
+      const newLineIdx = Math.max(0, Math.min(flatLines.length - 1, lineIdx + dir))
+      const nl = flatLines[newLineIdx]
+      if (!nl) return
+      const delltas = mode === 'projection' ? computeProjectionDeltas(nl.lineData.periods, allPeriods) : computeDeltas(nl.lineData.periods, allPeriods, periodStates)
+      const newCellId = `${nl.cityKey}::${nl.lineKey}::${selPeriod}::${selKpi}`
+      onCellClick({ id: newCellId, cityKey: nl.cityKey, lineKey: nl.lineKey, period: selPeriod, kpiKey: selKpi, lineData: nl.lineData, periodDeltas: delltas.get(selPeriod), raw: nl.lineData.periods.get(selPeriod)?.raw })
+    }
+  }
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden" data-omniview-matrix-table>
-      <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: 'calc(100vh - 240px)' }}>
+      {cityEntries.length > 1 && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50/80 border-b border-gray-200 text-[10px]">
+          <button type="button" onClick={expandAll} className="px-2 py-0.5 rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-100 hover:text-gray-800 transition-colors">Expandir todo</button>
+          <button type="button" onClick={collapseAll} className="px-2 py-0.5 rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-100 hover:text-gray-800 transition-colors">Colapsar todo</button>
+          <span className="text-gray-400 ml-1">{expandedCount}/{cityEntries.length} ciudades</span>
+          {selectedCell && (
+            <span className="ml-auto text-gray-400 flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" /></svg>
+              Usa ←↑↓→ para navegar
+            </span>
+          )}
+        </div>
+      )}
+      <div ref={scrollContainerRef} className="overflow-x-auto overflow-y-auto" style={{ maxHeight: 'calc(100vh - 240px)' }} tabIndex={0} onKeyDown={selectedCell ? handleTableKeyDown : undefined}>
         <table className="border-collapse min-w-full" style={{ tableLayout: 'fixed', width: 'auto' }}>
           <colgroup>
             <col style={{ width: COL1_W, minWidth: COL1_W }} />
@@ -182,7 +256,7 @@ export default function BusinessSliceOmniviewMatrixTable ({
             ))}
           </colgroup>
 
-          <BusinessSliceOmniviewMatrixHeader allPeriods={allPeriods} grain={grain} compact={compact} periodStates={periodStates} matrixTrust={isProjection ? null : matrixTrust} focusedKpi={activeKpi} periodMeta={isProjection ? periodMeta : null} periodDayLabels={isProjection ? null : periodDayLabels} isProjection={isProjection} />
+          <BusinessSliceOmniviewMatrixHeader allPeriods={allPeriods} grain={grain} compact={compact} periodStates={periodStates} matrixTrust={isProjection ? null : matrixTrust} focusedKpi={activeKpi} periodMeta={isProjection ? periodMeta : null} periodDayLabels={isProjection ? null : periodDayLabels} isProjection={isProjection} currentPeriodKey={currentPeriodKey} />
 
           <tbody>
             {isProjection
@@ -236,12 +310,20 @@ export default function BusinessSliceOmniviewMatrixTable ({
                   mode={mode}
                   projectionIntegrityBroken={projectionIntegrityBroken}
                   projectionAuthoritativeYtd={projectionAuthoritativeYtd}
+                  currentPeriodKey={currentPeriodKey}
                 />
               )
             })}
           </tbody>
         </table>
       </div>
+      {allPeriods.length > 6 && (
+        <div className="px-3 py-1 border-t border-gray-200 bg-gray-50/60 text-[9px] text-gray-400 flex items-center gap-2">
+          <span>Mostrando columnas {visibleColRange.start + 1}–{Math.min(visibleColRange.end, allPeriods.length)} de {allPeriods.length}</span>
+          <button type="button" onClick={() => scrollContainerRef.current?.scrollTo({ left: 0, behavior: 'smooth' })}
+            className="ml-auto px-1.5 py-px rounded border border-gray-200 hover:bg-gray-100 text-gray-500">◀◀ Inicio</button>
+        </div>
+      )}
     </div>
   )
 }
@@ -257,9 +339,9 @@ const TotalsRow = memo(function TotalsRow ({ allPeriods, totalsDeltas, compact, 
       style={{ position: 'sticky', top: headerH, zIndex: 18 }}
     >
       <td className={`sticky left-0 z-10 px-2 ${py} ${valSize} font-bold text-slate-600 uppercase tracking-wide border-r border-slate-200`}
-        style={{ backgroundColor: 'rgb(243,244,248)', minWidth: COL1_W }}>Total</td>
+        style={{ backgroundColor: 'rgb(243,244,248)', minWidth: COL1_W, boxShadow: '2px 0 4px rgba(0,0,0,0.05)' }}>Total</td>
       <td className={`sticky z-10 px-2 ${py} border-r border-slate-200`}
-        style={{ left: COL1_W, backgroundColor: 'rgb(243,244,248)', minWidth: COL2_W }} />
+        style={{ left: COL1_W, backgroundColor: 'rgb(243,244,248)', minWidth: COL2_W, boxShadow: '3px 0 8px rgba(0,0,0,0.06)' }} />
       {allPeriods.map((pk, periodIdx) => {
         const pDeltas = totalsDeltas.get(pk)
         const zebra = periodIdx % 2 === 1
@@ -303,9 +385,9 @@ const ProjectionTotalsRow = memo(function ProjectionTotalsRow ({ allPeriods, tot
       style={{ position: 'sticky', top: headerH, zIndex: 18 }}
     >
       <td className={`sticky left-0 z-10 px-2 ${py} ${valSize} font-bold text-slate-600 uppercase tracking-wide border-r border-slate-200`}
-        style={{ backgroundColor: 'rgb(243,244,248)', minWidth: COL1_W }}>Total</td>
+        style={{ backgroundColor: 'rgb(243,244,248)', minWidth: COL1_W, boxShadow: '2px 0 4px rgba(0,0,0,0.05)' }}>Total</td>
       <td className={`sticky z-10 px-2 ${py} border-r border-slate-200`}
-        style={{ left: COL1_W, backgroundColor: 'rgb(243,244,248)', minWidth: COL2_W }}
+        style={{ left: COL1_W, backgroundColor: 'rgb(243,244,248)', minWidth: COL2_W, boxShadow: '3px 0 8px rgba(0,0,0,0.06)' }}
         title={totalYtdSlice ? buildYtdSliceTooltip(totalYtdSlice) : undefined}
       >
         {ytdVis && ytdVis.label !== 'YTD —' && (
@@ -403,7 +485,7 @@ const ProjectionTotalsRow = memo(function ProjectionTotalsRow ({ allPeriods, tot
   )
 })
 
-function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, onToggle, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode, periodMeta = null, periodDayLabels = null, projectionIntegrityBroken = false, projectionAuthoritativeYtd = null }) {
+function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, onToggle, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode, periodMeta = null, periodDayLabels = null, projectionIntegrityBroken = false, projectionAuthoritativeYtd = null, currentPeriodKey = null }) {
   const totalCols = allPeriods.length
   const py = compact ? 'py-1' : 'py-1.5'
   const fontSize = compact ? 'text-[11px]' : 'text-xs'
@@ -418,8 +500,8 @@ function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, o
   return (
     <>
       <tr className="bg-slate-100 hover:bg-slate-200/80 cursor-pointer transition-colors border-t-2 border-slate-300" onClick={onToggle}>
-        <td colSpan={2} className={`sticky left-0 z-10 bg-slate-100 px-2 ${py} ${fontSize} font-bold text-slate-700 uppercase tracking-wide select-none`}
-          style={{ minWidth: COL1_W + COL2_W }}
+        <td colSpan={2} className={`sticky left-0 z-10 px-2 ${py} ${fontSize} font-bold text-slate-700 uppercase tracking-wide select-none`}
+          style={{ minWidth: COL1_W + COL2_W, backgroundColor: 'rgb(241,245,249)', boxShadow: '3px 0 8px rgba(0,0,0,0.06)' }}
           title={cityYtdSlice ? buildYtdSliceTooltip(cityYtdSlice) : undefined}>
           <span className="inline-block w-3.5 text-center mr-1 text-slate-400 text-[10px]">{isCollapsed ? '▶' : '▼'}</span>
           {cityData.city}
@@ -439,13 +521,13 @@ function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, o
           allPeriods={allPeriods} onCellClick={onCellClick} selectedCell={selectedCell} grain={grain} compact={compact}
           insightCellMap={insightCellMap} insightMode={insightMode} periodStates={periodStates}
           matrixTrust={matrixTrust} trustLine={trustLine} focusedKpi={focusedKpi} mode={mode} periodMeta={periodMeta} periodDayLabels={periodDayLabels}
-          projectionIntegrityBroken={projectionIntegrityBroken} />
+          projectionIntegrityBroken={projectionIntegrityBroken} currentPeriodKey={currentPeriodKey} />
       ))}
     </>
   )
 }
 
-function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode, periodMeta = null, periodDayLabels = null, projectionIntegrityBroken = false }) {
+function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode, periodMeta = null, periodDayLabels = null, projectionIntegrityBroken = false, currentPeriodKey = null }) {
   const isProjection = mode === 'projection'
   const deltas = useMemo(
     () => isProjection
@@ -484,9 +566,9 @@ function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClic
 
   return (
     <tr className={`border-b border-gray-100/80 ${isSubfleet ? 'bg-gray-50/40' : 'bg-white'} hover:bg-blue-50/40 transition-colors`}>
-      <td className={`sticky left-0 z-10 bg-inherit border-r border-gray-100 ${py}`} style={{ width: COL1_W, minWidth: COL1_W }} />
-      <td className={`sticky z-10 bg-inherit px-2 ${py} ${fontSize} text-gray-700 font-medium border-r border-gray-200 whitespace-nowrap overflow-hidden text-ellipsis`}
-        style={{ left: COL1_W, width: COL2_W, minWidth: COL2_W }}
+      <td className={`sticky left-0 z-10 border-r border-gray-100 ${py}`} style={{ width: COL1_W, minWidth: COL1_W, backgroundColor: isSubfleet ? 'rgb(250,250,250)' : 'rgb(255,255,255)', boxShadow: '2px 0 4px rgba(0,0,0,0.04)' }} />
+      <td className={`sticky z-10 px-2 ${py} ${fontSize} text-gray-700 font-medium border-r border-gray-200 whitespace-nowrap overflow-hidden text-ellipsis`}
+        style={{ left: COL1_W, width: COL2_W, minWidth: COL2_W, backgroundColor: isSubfleet ? 'rgb(250,250,250)' : 'rgb(255,255,255)', boxShadow: '3px 0 8px rgba(0,0,0,0.06)' }}
         title={[lineYtdSlice ? buildYtdSliceTooltip(lineYtdSlice) : null, `${lineData.business_slice_name}${lineData.fleet_display_name && lineData.fleet_display_name !== '—' && lineData.fleet_display_name !== lineData.business_slice_name ? ` · ${lineData.fleet_display_name}` : ''}${isSubfleet ? ` (sub: ${lineData.subfleet_name})` : ''}`].filter(Boolean).join('\n\n')}>
         <div className="flex items-center gap-1 flex-wrap min-w-0">
           <span className="min-w-0 truncate">
@@ -523,6 +605,7 @@ function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClic
             periodKey={pk}
             matrixCellId={cellId}
             mode={mode}
+            isCurrentPeriod={!isProjection && currentPeriodKey === pk}
             onClick={() => onCellClick?.({
               id: cellId, cityKey, lineKey, period: pk, kpiKey: focusedKpi.key,
               lineData, periodDeltas, raw: lineData.periods.get(pk)?.raw,

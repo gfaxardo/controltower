@@ -139,6 +139,14 @@ export const getPlanVersions = async () => {
   return response.data
 }
 
+/** Actualiza display_name de una versión de proyección. */
+export const patchPlanVersion = async (planVersionKey, displayName, description = null) => {
+  const params = { display_name: displayName }
+  if (description) params.description = description
+  const response = await api.patch(`/plan/versions/${encodeURIComponent(planVersionKey)}`, null, { params })
+  return response.data
+}
+
 /** Sube archivo CSV o Excel (Ruta 27) desde la UI. Genera versión con timestamp automático. */
 export const uploadPlanRuta27UI = async (file) => {
   const formData = new FormData()

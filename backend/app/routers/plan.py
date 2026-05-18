@@ -1,7 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Query
 from app.services.plan_parser_service import parse_proyeccion_sheet_legacy as parse_proyeccion_sheet, parse_simple_template
 from app.services.plan_parser_service import _separate_by_universe, _find_missing_combos
-from app.adapters.plan_repo import save_plan_rows, save_plan_rows_raw, save_plan_projection_raw, calculate_file_hash, get_plan_data
+from app.adapters.plan_repo import save_plan_rows, save_plan_rows_raw, save_plan_projection_raw, calculate_file_hash, get_plan_data, upsert_plan_version_metadata, get_plan_versions_with_metadata, update_plan_version_display_name
 from app.models.schemas import PlanUploadResponse
 from app.utils.json_sanitizer import sanitize_for_json
 from typing import Optional, List, Dict
@@ -425,12 +425,24 @@ async def get_missing(
 @router.get("/versions")
 async def get_plan_versions():
     """
-    Lista todas las versiones del plan disponibles en ops.plan_trips_monthly,
-    ordenadas por fecha de creación descendente.
+    Lista todas las versiones del plan con metadata de gobierno.
+
+    Retorna objetos con:
+    - plan_version_key (llave técnica, inmutable)
+    - display_name (nombre visible, editable)
+    - description, source_filename, uploaded_by, uploaded_at
+    - status (active/archived)
+    - row_count, valid_rows, invalid_rows
+    - min_period, max_period
     """
     try:
-        from app.db.connection import get_db
-        with get_db() as conn:
+        results = get_plan_versions_with_metadata()
+        if results:
+            return results
+
+        # Fallback: query directa si la tabla de metadata aún no se migró
+        from app.db.connection import get_db as _get_db
+        with _get_db() as conn:
             cursor = conn.cursor()
             try:
                 cursor.execute("""
@@ -442,19 +454,63 @@ async def get_plan_versions():
                     GROUP BY plan_version
                     ORDER BY MIN(created_at) DESC
                 """)
-                results = cursor.fetchall()
+                fallback = cursor.fetchall()
                 return [
                     {
-                        "plan_version": r[0],
-                        "created_at": r[1].isoformat() if r[1] else None,
-                        "rows": r[2],
+                        "plan_version_key": r[0],
+                        "display_name": r[0],
+                        "description": None,
+                        "source_filename": None,
+                        "uploaded_by": None,
+                        "uploaded_at": r[1].isoformat() if r[1] else None,
+                        "status": "active",
+                        "row_count": r[2],
+                        "valid_rows": r[2],
+                        "invalid_rows": 0,
+                        "min_period": None,
+                        "max_period": None,
+                        "actual_rows": r[2],
                     }
-                    for r in results
+                    for r in fallback
                 ]
             finally:
                 cursor.close()
     except Exception as e:
         logger.error(f"Error al obtener versiones del plan: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/versions/{plan_version_key}")
+async def patch_plan_version(
+    plan_version_key: str,
+    display_name: Optional[str] = None,
+    description: Optional[str] = None,
+):
+    """
+    Actualiza metadata de una versión de proyección.
+
+    Solo permite cambiar:
+    - display_name (nombre visible en la UI)
+    - description (nota opcional)
+
+    NO modifica:
+    - plan_version_key (llave técnica)
+    - datos de plan ya cargados
+    - métricas calculadas
+    """
+    if not display_name:
+        raise HTTPException(status_code=400, detail="display_name es requerido")
+    try:
+        result = update_plan_version_display_name(
+            plan_version_key=plan_version_key,
+            display_name=display_name.strip(),
+            description=description.strip() if description else None,
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error en PATCH /plan/versions/{plan_version_key}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -499,6 +555,16 @@ async def upload_plan_ruta27_ui(file: UploadFile = File(...)):
             logger.info("upload_ruta27_ui: formato=plantilla_control_tower archivo=%s", file.filename)
             rows, warnings = parse_control_tower_template(file_content, file.filename)
             final_version, inserted_count = ingest_control_tower_rows(rows, plan_version)
+
+            # Registrar metadata de versión
+            upsert_plan_version_metadata(
+                plan_version_key=final_version,
+                display_name=final_version,
+                source_filename=file.filename,
+                row_count=inserted_count,
+                valid_rows=inserted_count,
+                status="active",
+            )
 
             return {
                 "success":             True,
@@ -554,6 +620,16 @@ async def upload_plan_ruta27_ui(file: UploadFile = File(...)):
             spec.loader.exec_module(ingest_module)
 
             final_version, inserted_count = ingest_module.ingest_plan_from_csv(tmp_path, plan_version)
+
+            # Registrar metadata de versión
+            upsert_plan_version_metadata(
+                plan_version_key=final_version,
+                display_name=final_version,
+                source_filename=file.filename,
+                row_count=inserted_count,
+                valid_rows=inserted_count,
+                status="active",
+            )
 
             return {
                 "success":          True,

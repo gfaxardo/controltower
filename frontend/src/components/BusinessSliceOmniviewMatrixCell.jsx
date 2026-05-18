@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useState, useCallback, useEffect } from 'react'
 import { fmtValue, fmtDelta, signalColorForKpi, signalArrow, buildCellTooltip, trustPeriodCellOverlayClass, trustSegmentsDetailForTooltip } from './omniview/omniviewMatrixUtils.js'
 import {
   fmtAttainment,
@@ -37,7 +37,33 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
   periodKey = null,
   matrixCellId = null,
   mode = 'evolution',
+  isCurrentPeriod = false,
 }) {
+  const [ctxMenu, setCtxMenu] = useState(null)
+
+  const handleContextMenu = useCallback((e) => {
+    e.preventDefault()
+    const val = delta ? fmtValue(delta.value, kpiKey) : '—'
+    setCtxMenu({ x: e.clientX, y: e.clientY, value: val, label: `${lineName} · ${periodLbl} · ${kpi.label}` })
+  }, [delta, kpiKey, kpi, lineName, periodLbl])
+
+  const copyValue = useCallback(async () => {
+    if (ctxMenu) {
+      try { await navigator.clipboard.writeText(ctxMenu.value) } catch {}
+      setCtxMenu(null)
+    }
+  }, [ctxMenu])
+
+  useEffect(() => {
+    if (!ctxMenu) return
+    const close = () => setCtxMenu(null)
+    window.addEventListener('click', close)
+    window.addEventListener('scroll', close, { capture: true })
+    return () => {
+      window.removeEventListener('click', close)
+      window.removeEventListener('scroll', close, { capture: true })
+    }
+  }, [ctxMenu])
   if (mode === 'projection') {
     return (
       <ProjectionCellRender
@@ -69,16 +95,35 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
   const dimmed = insightMode && !hasInsight
   const isPC = delta?.isPartialComparison
 
+  function renderCtxMenu () {
+    if (!ctxMenu) return null
+    return (
+      <div className="fixed z-[100] bg-white border border-gray-300 rounded-lg shadow-xl py-1 min-w-[160px]"
+        style={{ left: ctxMenu.x, top: ctxMenu.y }}>
+        <div className="px-3 py-1 text-[9px] text-gray-400 border-b border-gray-100 truncate">{ctxMenu.label}</div>
+        <button onClick={copyValue}
+          className="w-full text-left px-3 py-1.5 text-[11px] text-gray-700 hover:bg-blue-50 flex items-center gap-2">
+          <svg className="w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+          Copiar valor
+        </button>
+      </div>
+    )
+  }
+
   if (!delta) {
     const emptyTooltip = [buildCellTooltip(kpi, null, cityName, lineName, periodLbl, periodState, grain, tipTrust), segDetail].filter(Boolean).join('\n\n')
     return (
-      <td
-        data-matrix-cell-id={matrixCellId || undefined}
-        className={`px-1 ${py} text-center ${valSize} text-gray-300 border-r border-gray-100/60 cursor-default select-none ${trustOverlay} ${isSelected ? 'bg-blue-50' : zebra ? 'bg-slate-50/50' : ''} ${dimmed ? 'opacity-30' : ''}`}
-        title={emptyTooltip || undefined}
-      >
-        —
-      </td>
+      <>
+        <td
+          data-matrix-cell-id={matrixCellId || undefined}
+          className={`px-1 ${py} text-center ${valSize} text-gray-400 cursor-default select-none ${trustOverlay} ${isSelected ? 'bg-blue-50' : isCurrentPeriod ? 'bg-blue-50/25' : zebra ? 'bg-slate-50/50' : ''} ${dimmed ? 'opacity-30' : ''} border-r border-gray-200/60`}
+          title={emptyTooltip || undefined}
+          onContextMenu={handleContextMenu}
+        >
+          —
+        </td>
+        {renderCtxMenu()}
+      </>
     )
   }
 
@@ -89,24 +134,29 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
   const tooltip = [buildCellTooltip(kpi, delta, cityName, lineName, periodLbl, periodState, grain, tipTrust), segDetail].filter(Boolean).join('\n\n')
 
   return (
-    <td
-      data-matrix-cell-id={matrixCellId || undefined}
-      className={`px-1 ${py} text-center whitespace-nowrap cursor-pointer select-none border-r border-gray-100/60 transition-colors ${trustOverlay}
-        ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-300'
-          : hasInsight ? insightBorder
-          : zebra ? 'bg-slate-50/50 hover:bg-blue-50/40'
-          : 'hover:bg-blue-50/40'}
-        ${dimmed ? 'opacity-30' : ''}`}
-      onClick={onClick}
-      title={tooltip}
-    >
-      <div className={`${valSize} font-semibold text-gray-800 leading-none`}>{val}</div>
-      {deltaTxt && (
-        <div className={`${deltaSize} leading-none font-medium mt-px`} style={{ color, opacity: isPC ? 0.55 : 1 }}>
-          {arrow}{deltaTxt}{isPC ? '~' : ''}
-        </div>
-      )}
-    </td>
+    <>
+      <td
+        data-matrix-cell-id={matrixCellId || undefined}
+        className={`px-1 ${py} text-center whitespace-nowrap cursor-pointer select-none border-r border-gray-200/60 transition-colors ${trustOverlay}
+          ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-300'
+            : hasInsight ? insightBorder
+            : isCurrentPeriod ? 'bg-blue-50/20'
+            : zebra ? 'bg-slate-50/50 hover:bg-blue-50/40'
+            : 'hover:bg-blue-50/40'}
+          ${dimmed ? 'opacity-30' : ''}`}
+        onClick={onClick}
+        title={tooltip}
+        onContextMenu={handleContextMenu}
+      >
+        <div className={`${valSize} font-semibold text-gray-900 leading-none`}>{val}</div>
+        {deltaTxt && (
+          <div className={`${deltaSize} leading-none font-medium mt-px`} style={{ color, opacity: isPC ? 0.7 : 1 }}>
+            {arrow}{deltaTxt}{isPC ? '~' : ''}
+          </div>
+        )}
+      </td>
+      {renderCtxMenu()}
+    </>
   )
 })
 
@@ -137,7 +187,7 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
   const szAv     = compact ? 'text-[8px]' : 'text-[8px]'
   const szGap    = compact ? 'text-[7px]' : 'text-[7px]'
   const szStatus = compact ? 'text-[7px]' : 'text-[7px]'
-  const py       = compact ? 'py-0.5' : 'py-1'
+  const py       = compact ? 'py-px' : 'py-1'
 
   // Extraer comparison_status de cualquier delta disponible (todos los KPIs del período tienen el mismo)
   const comparisonStatus = delta?.comparison_status

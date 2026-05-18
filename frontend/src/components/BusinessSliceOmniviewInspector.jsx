@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { MATRIX_KPIS, fmtValue, fmtRaw, fmtDelta, signalColorForKpi, signalArrow, periodLabel, periodStateLabel, PERIOD_STATES, describeComparison } from './omniview/omniviewMatrixUtils.js'
+import { MATRIX_KPIS, fmtValue, fmtRaw, fmtDelta, signalColorForKpi, signalArrow, periodLabel, periodStateLabel, PERIOD_STATES, describeComparison, periodHeaderPrimary, periodHeaderSecondary } from './omniview/omniviewMatrixUtils.js'
 import { resolveTrustIssueForSelection } from './omniview/trustInspectorDiagnostics.js'
 import { logMatrixIssueAction } from '../services/api.js'
 
@@ -15,6 +15,8 @@ export default function BusinessSliceOmniviewInspector ({
   matrixTrust,
   matrixMeta = null,
   onTrustStateRefresh,
+  selectionHistory = [],
+  onGoBack = null,
 }) {
   const w = compact ? 'w-80' : 'w-[25rem]'
   const trustIssue = useMemo(
@@ -97,6 +99,13 @@ export default function BusinessSliceOmniviewInspector ({
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Inspector</span>
+            {selectionHistory.length > 0 && onGoBack && (
+              <button type="button" onClick={() => onGoBack(selectionHistory[selectionHistory.length - 1])}
+                className="text-[9px] text-slate-400 hover:text-white flex items-center gap-0.5" title="Volver a la celda anterior">
+                <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                Volver
+              </button>
+            )}
             {trustIssue && (
               <span className={`px-1.5 py-px rounded text-[9px] font-bold uppercase tracking-wide ${modeBadgeCls}`}>
                 {trustIssue.decisionMode}
@@ -109,6 +118,18 @@ export default function BusinessSliceOmniviewInspector ({
             {lineData.fleet_display_name !== '—' && ` · ${lineData.fleet_display_name}`}
             {lineData.is_subfleet && ` · Sub: ${lineData.subfleet_name}`}
           </div>
+          {selectionHistory.length > 0 && (
+            <div className="flex items-center gap-1 mt-1 flex-wrap">
+              {selectionHistory.slice(-3).map((h, i) => (
+                <button key={h.id} type="button" onClick={() => onGoBack?.(h)}
+                  className="text-[8px] text-slate-500 hover:text-slate-300 bg-slate-800 hover:bg-slate-700 px-1.5 py-px rounded truncate max-w-[120px]"
+                  title={`${h.cityKey || ''} · ${h.lineData?.business_slice_name || ''} · ${h.period || ''}`}>
+                  {i > 0 && <span className="text-slate-600 mr-0.5">←</span>}
+                  {h.lineData?.business_slice_name?.slice(0, 10) || '—'} · {h.period?.slice(0, 7) || '—'}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <button type="button" onClick={onClose} className="text-slate-400 hover:text-white text-sm leading-none shrink-0" title="Cerrar">×</button>
       </div>
@@ -391,7 +412,7 @@ export default function BusinessSliceOmniviewInspector ({
         <>
           {ins && <InsightBanner insight={ins} transparency={insightTransparency} />}
 
-          <SparklineBar lineData={lineData} kpiKey={selectedKpiKey} />
+          <EvolutionChart lineData={lineData} grain={grain} kpiKey={selectedKpiKey} allKpis={MATRIX_KPIS} compact={compact} />
 
           <div className={`${compact ? 'p-2 space-y-1' : 'p-3 space-y-1.5'} max-h-[50vh] overflow-y-auto`}>
             {MATRIX_KPIS.map((kpi) => {
@@ -528,6 +549,142 @@ function InsightBanner ({ insight, transparency }) {
       )}
     </div>
   )
+}
+
+function EvolutionChart ({ lineData, grain, kpiKey, allKpis, compact }) {
+  const [chartKpi, setChartKpi] = useState(kpiKey)
+  useEffect(() => { setChartKpi(kpiKey) }, [kpiKey])
+
+  const series = useMemo(() => {
+    if (!lineData?.periods) return { points: [], labels: [], trend: [], min: 0, max: 100 }
+    const sorted = [...lineData.periods.entries()]
+      .filter(([, v]) => v?.metrics?.[chartKpi] != null)
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+    const kpi = allKpis.find(k => k.key === chartKpi)
+    const points = sorted.map(([pk, v]) => ({
+      period: pk,
+      value: Number(v.metrics[chartKpi]),
+      label: grain === 'daily'
+        ? `dd/mm`.replace('dd', String(new Date(pk + 'T00:00:00').getDate()).padStart(2, '0')).replace('mm', String(new Date(pk + 'T00:00:00').getMonth() + 1).padStart(2, '0'))
+        : grain === 'weekly'
+          ? periodHeaderPrimary(pk, grain)
+          : periodHeaderPrimary(pk, grain),
+    }))
+    if (points.length < 2) return { points, labels: points.map(p => p.label), trend: [], min: 0, max: 100 }
+    const values = points.map(p => p.value)
+    const trend = computeMovingAverage(values, Math.min(3, values.length))
+    const min = Math.min(...values, ...trend.filter(v => v != null))
+    const max = Math.max(...values, ...trend.filter(v => v != null))
+    const pad = Math.max((max - min) * 0.1, 1)
+    return {
+      points,
+      labels: points.map(p => p.label),
+      trend,
+      min: Math.max(0, Math.floor(min - pad)),
+      max: Math.ceil(max + pad),
+      unit: kpi?.showAsPct ? '%' : kpi?.unit === 'currency' ? '' : '',
+    }
+  }, [lineData, chartKpi, grain, allKpis])
+
+  const { points, labels, trend, min, max } = series
+  if (points.length < 2) {
+    return (
+      <div className="px-3 py-2 border-b border-gray-100">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-[9px] text-gray-400 uppercase tracking-wider">Evolución</span>
+          <KpiSelector current={chartKpi} kpis={allKpis} onChange={setChartKpi} compact={compact} />
+        </div>
+        <p className="text-[9px] text-gray-400 py-2">Datos insuficientes para mostrar evolución.</p>
+      </div>
+    )
+  }
+
+  const w = 280, h = 100, padX = 30, padY = 12, padB = 16
+  const plotW = w - padX - 8, plotH = h - padY - padB
+  const range = max - min || 1
+
+  const toX = (i) => padX + (points.length === 1 ? plotW / 2 : (i / (points.length - 1)) * plotW)
+  const toY = (v) => padY + plotH - ((v - min) / range) * plotH
+
+  const realLine = points.map((p, i) => `${toX(i)},${toY(p.value)}`).join(' ')
+  const trendLine = trend.map((v, i) => v != null ? `${toX(i)},${toY(v)}` : null).filter(Boolean).join(' ')
+
+  const yTicks = []
+  for (let t = 0; t <= 4; t++) {
+    const val = min + (range * t / 4)
+    yTicks.push({ y: toY(val), label: series.unit === '%' ? `${val.toFixed(0)}%` : val >= 1000 ? `${(val/1000).toFixed(0)}K` : val.toFixed(0) })
+  }
+
+  return (
+    <div className="px-3 py-2 border-b border-gray-100">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-[9px] text-gray-400 uppercase tracking-wider shrink-0">Evolución</span>
+        <KpiSelector current={chartKpi} kpis={allKpis} onChange={setChartKpi} compact={compact} />
+      </div>
+      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ maxWidth: w }}>
+        {/* Grid */}
+        {yTicks.map((t, i) => (
+          <g key={`g-${i}`}>
+            <line x1={padX} y1={t.y} x2={w - 4} y2={t.y} stroke="#e5e7eb" strokeWidth={0.5} />
+            <text x={padX - 3} y={t.y + 3} textAnchor="end" className="text-[7px] fill-gray-400" style={{ fontSize: '6px' }}>{t.label}</text>
+          </g>
+        ))}
+        {/* X labels */}
+        {labels.filter((_, i) => i % Math.max(1, Math.floor(labels.length / 6)) === 0 || i === labels.length - 1).map((l, i) => {
+          const realIdx = labels.indexOf(l)
+          if (realIdx < 0) return null
+          return (
+            <text key={`xl-${i}`} x={toX(realIdx)} y={h - 3} textAnchor="middle" className="fill-gray-400" style={{ fontSize: '6px' }}>{l}</text>
+          )
+        })}
+        {/* Trend line (area-like) */}
+        {trendLine && (
+          <polyline points={trendLine} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="4,2" />
+        )}
+        {/* Real line */}
+        <polyline points={realLine} fill="none" stroke="#3b82f6" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        {/* Dots */}
+        {points.map((p, i) => (
+          <circle key={`d-${i}`} cx={toX(i)} cy={toY(p.value)} r={2.5} fill="#3b82f6" stroke="white" strokeWidth={1} />
+        ))}
+        {/* Legend */}
+        <line x1={w - 70} y1={6} x2={w - 58} y2={6} stroke="#3b82f6" strokeWidth={2} />
+        <text x={w - 56} y={8} className="fill-gray-600" style={{ fontSize: '6px' }}>Real</text>
+        {trendLine && (
+          <>
+            <line x1={w - 38} y1={6} x2={w - 26} y2={6} stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="3,2" />
+            <text x={w - 24} y={8} className="fill-gray-600" style={{ fontSize: '6px' }}>Tend.</text>
+          </>
+        )}
+      </svg>
+    </div>
+  )
+}
+
+function KpiSelector ({ current, kpis, onChange, compact }) {
+  return (
+    <select
+      value={current}
+      onChange={(e) => onChange(e.target.value)}
+      className={`${compact ? 'text-[9px] py-px' : 'text-[10px] py-0.5'} px-1.5 rounded border border-gray-200 bg-white text-gray-600 outline-none`}
+    >
+      {kpis.map(kpi => (
+        <option key={kpi.key} value={kpi.key}>{kpi.label}</option>
+      ))}
+    </select>
+  )
+}
+
+function computeMovingAverage (values, windowSize) {
+  const result = []
+  for (let i = 0; i < values.length; i++) {
+    const start = Math.max(0, i - Math.floor(windowSize / 2))
+    const end = Math.min(values.length, i + Math.floor(windowSize / 2) + 1)
+    const slice = values.slice(start, end)
+    const avg = slice.reduce((a, b) => a + b, 0) / slice.length
+    result.push(avg)
+  }
+  return result
 }
 
 function SparklineBar ({ lineData, kpiKey }) {

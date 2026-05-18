@@ -112,6 +112,7 @@ export function periodKey (row, grain) {
 
 const MONTH_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
 const MONTH_SHORT_UPPER = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC']
+const MONTH_FULL_ES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE']
 const DAYS_ES = ['DOMINGO', 'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO']
 const DAYS_ES_SHORT = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB']
 export const ISO_WEEK_SCOPE_TOOLTIP = 'Las semanas son ISO completas (lunes-domingo). Pueden incluir días de meses distintos.'
@@ -127,6 +128,16 @@ function weekRangeLabelFromStart (key) {
     return `${weekStart.getDate()} ${MS[weekStart.getMonth()]} ${weekStart.getFullYear()} – ${weekEnd.getDate()} ${MS[weekEnd.getMonth()]} ${weekEnd.getFullYear()}`
   }
   return `${weekStart.getDate()} ${MS[weekStart.getMonth()]} – ${weekEnd.getDate()} ${MS[weekEnd.getMonth()]}`
+}
+
+function weekRangeLabelNumeric (key) {
+  const d = new Date(key + 'T00:00:00')
+  if (isNaN(d)) return null
+  const weekStart = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  const weekEnd = new Date(weekStart)
+  weekEnd.setDate(weekStart.getDate() + 6)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${pad(weekStart.getDate())}/${pad(weekStart.getMonth() + 1)}/${weekStart.getFullYear()} – ${pad(weekEnd.getDate())}/${pad(weekEnd.getMonth() + 1)}/${weekEnd.getFullYear()}`
 }
 
 export function periodLabel (key, grain, periodDayLabelsMap = null) {
@@ -192,6 +203,86 @@ function getISOWeekYear (d) {
   const copy = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
   copy.setUTCDate(copy.getUTCDate() + 4 - (copy.getUTCDay() || 7))
   return copy.getUTCFullYear()
+}
+
+function getMondayOfISOWeek (d) {
+  const day = d.getDay()
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1)
+  const monday = new Date(d.getFullYear(), d.getMonth(), diff)
+  return monday
+}
+
+function toDateKey (d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+export function getCurrentPeriodKey (grain) {
+  const now = new Date()
+  if (grain === 'daily') return toDateKey(now)
+  if (grain === 'weekly') {
+    const monday = getMondayOfISOWeek(now)
+    return toDateKey(monday)
+  }
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+}
+
+export function isCurrentPeriod (pk, grain) {
+  return pk === getCurrentPeriodKey(grain)
+}
+
+export function findCurrentPeriodIndex (allPeriods, grain) {
+  if (!allPeriods?.length) return -1
+  const currentKey = getCurrentPeriodKey(grain)
+  const idx = allPeriods.indexOf(currentKey)
+  if (idx >= 0) return idx
+  for (let i = allPeriods.length - 1; i >= 0; i--) {
+    if (grain === 'monthly') {
+      if (allPeriods[i].startsWith(currentKey.slice(0, 7))) return i
+    }
+    if (allPeriods[i] <= currentKey) return i
+  }
+  return allPeriods.length - 1
+}
+
+export function getCurrentPeriodBadge (pk, grain) {
+  if (!isCurrentPeriod(pk, grain)) return null
+  if (grain === 'daily') return 'HOY'
+  if (grain === 'weekly') return 'SEMANA ACTUAL'
+  return 'MES ACTUAL'
+}
+
+export function periodHeaderPrimary (key, grain, periodDayLabelsMap = null) {
+  if (!key) return '—'
+  if (grain === 'daily') {
+    if (periodDayLabelsMap?.get?.(key)) return periodDayLabelsMap.get(key)
+    const d = new Date(key + 'T00:00:00')
+    if (isNaN(d)) return String(key).slice(0, 10)
+    return DAYS_ES[d.getDay()]
+  }
+  if (grain === 'weekly') {
+    const d = new Date(key + 'T00:00:00')
+    if (isNaN(d)) return String(key).slice(0, 10)
+    return `S${getISOWeek(d)}-${getISOWeekYear(d)}`
+  }
+  const d = new Date(key + 'T00:00:00')
+  if (isNaN(d)) return String(key).slice(0, 7)
+  return MONTH_FULL_ES[d.getMonth()]
+}
+
+export function periodHeaderSecondary (key, grain) {
+  if (!key) return null
+  if (grain === 'daily') {
+    const d = new Date(key + 'T00:00:00')
+    if (isNaN(d)) return String(key).slice(0, 10)
+    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+  }
+  if (grain === 'weekly') {
+    const range = weekRangeLabelNumeric(key)
+    return range || null
+  }
+  const d = new Date(key + 'T00:00:00')
+  if (isNaN(d)) return String(key).slice(0, 4)
+  return String(d.getFullYear())
 }
 
 // ─── Period State ─────────────────────────────────────────────────────────
