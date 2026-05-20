@@ -248,6 +248,14 @@ class Settings(BaseSettings):
         description="Tolerancia %% para drift de conservación sin ajuste (además de drift_abs<=1).",
     )
 
+    # ── Fraud: Bank Account Cluster (Fase 1F-2) ──
+    BANK_CLUSTER_SALT: str = Field(
+        default="",
+        description="Salt para SHA-256 en bank cluster key. Si vacio, hash sin salt (riesgo documentado). "
+                    "NO rotar sin plan de rehash de fraud.payment_identity_source y fraud.external_identity_clusters. "
+                    "NUNCA se imprime en logs ni reportes.",
+    )
+
     model_config = {
         "env_file": os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"),
         "case_sensitive": False,
