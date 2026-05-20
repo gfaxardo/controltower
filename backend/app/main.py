@@ -120,60 +120,68 @@ async def startup_event():
 
     global _omniview_real_refresh_scheduler
     if settings.OMNIVIEW_REAL_REFRESH_ENABLED or settings.OMNIVIEW_REAL_WATCHDOG_ENABLED:
-        try:
-            from apscheduler.schedulers.background import BackgroundScheduler
+        from app.services.refresh_control_service import is_scheduler_enabled
 
-            from app.omniview_real_scheduler_info import attach_omniview_scheduler
-            from app.services.business_slice_real_refresh_job import (
-                run_business_slice_real_refresh_job,
+        if not is_scheduler_enabled():
+            logger.info(
+                "APScheduler NO iniciado: CT_SCHEDULER_ENABLED=false en entorno %s.",
+                getattr(settings, "ENVIRONMENT", "unknown"),
             )
-            from app.services.real_data_watchdog_service import run_real_data_watchdog
+        else:
+            try:
+                from apscheduler.schedulers.background import BackgroundScheduler
 
-            _omniview_real_refresh_scheduler = BackgroundScheduler(daemon=True)
+                from app.omniview_real_scheduler_info import attach_omniview_scheduler
+                from app.services.business_slice_real_refresh_job import (
+                    run_business_slice_real_refresh_job_safe,
+                )
+                from app.services.real_data_watchdog_service import run_real_data_watchdog
 
-            if settings.OMNIVIEW_REAL_REFRESH_ENABLED:
-                _omniview_real_refresh_scheduler.add_job(
-                    run_business_slice_real_refresh_job,
-                    "cron",
-                    hour=settings.OMNIVIEW_REAL_REFRESH_HOUR,
-                    minute=settings.OMNIVIEW_REAL_REFRESH_MINUTE,
-                    id="omniview_business_slice_real_refresh",
-                    replace_existing=True,
-                    max_instances=1,
-                    coalesce=True,
-                    misfire_grace_time=600,
-                )
-                logger.info(
-                    "Omniview REAL refresh programado: %02d:%02d (day_fact + week_fact + month_fact, 2 meses).",
-                    settings.OMNIVIEW_REAL_REFRESH_HOUR,
-                    settings.OMNIVIEW_REAL_REFRESH_MINUTE,
-                )
+                _omniview_real_refresh_scheduler = BackgroundScheduler(daemon=True)
 
-            if settings.OMNIVIEW_REAL_WATCHDOG_ENABLED:
-                wd_min = max(5, int(settings.OMNIVIEW_REAL_WATCHDOG_INTERVAL_MINUTES))
-                _omniview_real_refresh_scheduler.add_job(
-                    run_real_data_watchdog,
-                    "interval",
-                    minutes=wd_min,
-                    id="omniview_real_data_watchdog",
-                    replace_existing=True,
-                    max_instances=1,
-                    coalesce=True,
-                    misfire_grace_time=120,
-                )
-                logger.info(
-                    "Omniview REAL watchdog programado: cada %s min.",
-                    wd_min,
-                )
+                if settings.OMNIVIEW_REAL_REFRESH_ENABLED:
+                    _omniview_real_refresh_scheduler.add_job(
+                        run_business_slice_real_refresh_job_safe,
+                        "cron",
+                        hour=settings.OMNIVIEW_REAL_REFRESH_HOUR,
+                        minute=settings.OMNIVIEW_REAL_REFRESH_MINUTE,
+                        id="omniview_business_slice_real_refresh",
+                        replace_existing=True,
+                        max_instances=1,
+                        coalesce=True,
+                        misfire_grace_time=600,
+                    )
+                    logger.info(
+                        "Omniview REAL refresh programado: %02d:%02d (day_fact + week_fact + month_fact, 2 meses).",
+                        settings.OMNIVIEW_REAL_REFRESH_HOUR,
+                        settings.OMNIVIEW_REAL_REFRESH_MINUTE,
+                    )
 
-            _omniview_real_refresh_scheduler.start()
-            attach_omniview_scheduler(_omniview_real_refresh_scheduler)
-            logger.info("APScheduler Omniview (refresh/watchdog) iniciado.")
-        except Exception as e:
-            logger.exception(
-                "No se pudo iniciar Omniview APScheduler (continuando sin él): %s",
-                e,
-            )
+                if settings.OMNIVIEW_REAL_WATCHDOG_ENABLED:
+                    wd_min = max(5, int(settings.OMNIVIEW_REAL_WATCHDOG_INTERVAL_MINUTES))
+                    _omniview_real_refresh_scheduler.add_job(
+                        run_real_data_watchdog,
+                        "interval",
+                        minutes=wd_min,
+                        id="omniview_real_data_watchdog",
+                        replace_existing=True,
+                        max_instances=1,
+                        coalesce=True,
+                        misfire_grace_time=120,
+                    )
+                    logger.info(
+                        "Omniview REAL watchdog programado: cada %s min.",
+                        wd_min,
+                    )
+
+                _omniview_real_refresh_scheduler.start()
+                attach_omniview_scheduler(_omniview_real_refresh_scheduler)
+                logger.info("APScheduler Omniview (refresh/watchdog) iniciado.")
+            except Exception as e:
+                logger.exception(
+                    "No se pudo iniciar Omniview APScheduler (continuando sin él): %s",
+                    e,
+                )
 
 
 @app.on_event("shutdown")

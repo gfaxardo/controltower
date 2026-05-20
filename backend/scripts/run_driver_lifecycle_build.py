@@ -63,6 +63,17 @@ def run_build():
         return False
     with open(sql_path, "r", encoding="utf-8") as f:
         content = f.read()
+
+    # Guardrail Fase 1B: bloquear DROP + CASCADE en producción sin flag explícito
+    from app.services.refresh_control_service import check_destructive_sql_safe
+
+    if not check_destructive_sql_safe(content, "driver_lifecycle_build.sql"):
+        print(
+            "[BLOCKED] DROP + CASCADE detectado en producción y CT_ALLOW_DESTRUCTIVE_REFRESH no está activado.\n"
+            "Set CT_ALLOW_DESTRUCTIVE_REFRESH=1 solo para una ventana de backfill autorizada."
+        )
+        return False
+
     statements = split_sql(content)
     print(f"[INFO] {len(statements)} sentencias a ejecutar.")
     init_db_pool()
@@ -254,21 +265,35 @@ HAVING COUNT(*) > 1
 
 
 if __name__ == "__main__":
+    from app.services.refresh_control_service import refresh_guard
+
     db, user, host, port = get_connection_info()
     print("=" * 60)
     print("1) Build driver_lifecycle_build.sql")
     print(f"   Config: db={db} user={user} host={host}:{port}")
     print("=" * 60)
-    if not run_build():
-        sys.exit(1)
-    print("\n" + "=" * 60)
-    print("2) Refresh MVs: ops.refresh_driver_lifecycle_mvs()")
-    print("=" * 60)
-    if not run_refresh():
-        sys.exit(1)
-    print("\n" + "=" * 60)
-    print("3) Validaciones")
-    print("=" * 60)
-    if not run_validations():
-        print("\n[WARN] Algunas validaciones fallaron o se saltaron. Revisar resumen.")
-    print("\nListo.")
+
+    with refresh_guard(
+        refresh_name="driver_lifecycle_build",
+        pipeline_name="driver_lifecycle",
+        trigger_source="manual",
+        grain="mixed",
+        period_status="mixed",
+    ) as guard:
+        if guard.skipped:
+            print("[SKIPPED] Otro refresh de driver lifecycle ya está en curso (lock held).")
+            sys.exit(0)
+
+        if not run_build():
+            sys.exit(1)
+        print("\n" + "=" * 60)
+        print("2) Refresh MVs: ops.refresh_driver_lifecycle_mvs()")
+        print("=" * 60)
+        if not run_refresh():
+            sys.exit(1)
+        print("\n" + "=" * 60)
+        print("3) Validaciones")
+        print("=" * 60)
+        if not run_validations():
+            print("\n[WARN] Algunas validaciones fallaron o se saltaron. Revisar resumen.")
+        print("\nListo.")

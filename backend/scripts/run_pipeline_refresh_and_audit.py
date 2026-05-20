@@ -9,6 +9,8 @@ Orden: 1) Refresh cadena hourly-first (hour → day → week → month),
 El backfill legacy (backfill_real_lob_mvs) ya no forma parte del camino principal REAL;
 real_rollup_day_fact es vista sobre day_v2; real_drill_dim_fact se puebla desde day_v2/week_v3.
 
+Fase 1B: protegido con advisory lock + refresh_run_log.
+
 Uso: cd backend && python -m scripts.run_pipeline_refresh_and_audit
 
 Opciones:
@@ -21,6 +23,7 @@ Opciones:
   --skip-backfill       No-op (compatibilidad con POST /ops/pipeline-refresh y docs legacy).
   --drill-days N        Ventana días para drill day (default: 120).
   --drill-weeks N       Ventana semanas para drill week (default: 18).
+  --trigger-source      manual | cron | deploy | api (default: manual)
 
 Diseñado para cron diario tras carga de viajes. Deja evidencia en ops.data_freshness_audit.
 """
@@ -227,47 +230,67 @@ def main() -> None:
     parser.add_argument("--drill-days", type=int, default=120, help="Ventana días para drill (default 120)")
     parser.add_argument("--drill-weeks", type=int, default=18, help="Ventana semanas para drill (default 18)")
     parser.add_argument("--drill-months", type=int, default=6, help="Ventana meses para drill (default 6)")
+    parser.add_argument(
+        "--trigger-source",
+        type=str,
+        default="manual",
+        choices=["manual", "cron", "deploy", "api"],
+        help="Origen del trigger para refresh_run_log (default: manual)",
+    )
     args = parser.parse_args()
 
     if getattr(args, "skip_backfill", False):
         logger.info("skip-backfill: no-op (pipeline ya no ejecuta backfill_real_lob_mvs).")
 
-    ok = True
-    if not getattr(args, "skip_hourly_first", False):
-        ok = run_hourly_first_chain() and ok
-    else:
-        logger.info("Skip hourly-first chain (--skip-hourly-first)")
-    if not getattr(args, "skip_drill_populate", False):
-        ok = run_populate_drill(days=args.drill_days, weeks=args.drill_weeks, months=args.drill_months) and ok
-    else:
-        logger.info("Skip drill populate (--skip-drill-populate)")
+    from app.services.refresh_control_service import refresh_guard
 
-    if not args.skip_driver:
-        ok = run_refresh_driver_lifecycle() and ok
-    else:
-        logger.info("Skip driver lifecycle (--skip-driver)")
+    with refresh_guard(
+        refresh_name="pipeline_refresh_and_audit",
+        pipeline_name="main_refresh_pipeline",
+        trigger_source=args.trigger_source,
+        grain="mixed",
+        period_status="mixed",
+    ) as guard:
+        if guard.skipped:
+            logger.info("Pipeline SKIPPED: otro refresh ya está en curso (lock held).")
+            sys.exit(0)
 
-    if not args.skip_supply:
-        ok = run_refresh_supply() and ok
-    else:
-        logger.info("Skip supply (--skip-supply)")
+        ok = True
+        if not getattr(args, "skip_hourly_first", False):
+            ok = run_hourly_first_chain() and ok
+        else:
+            logger.info("Skip hourly-first chain (--skip-hourly-first)")
+        if not getattr(args, "skip_drill_populate", False):
+            ok = run_populate_drill(days=args.drill_days, weeks=args.drill_weeks, months=args.drill_months) and ok
+        else:
+            logger.info("Skip drill populate (--skip-drill-populate)")
 
-    if not getattr(args, "skip_plan_vs_real_mv", False):
-        ok = run_refresh_plan_vs_real_monthly_mvs() and ok
-    else:
-        logger.info("Skip Plan vs Real MV refresh (--skip-plan-vs-real-mv)")
+        if not args.skip_driver:
+            ok = run_refresh_driver_lifecycle() and ok
+        else:
+            logger.info("Skip driver lifecycle (--skip-driver)")
 
-    if not args.skip_audit:
-        ok = run_audit() and ok
-        if not getattr(args, "skip_coverage_audit", False):
-            ok = run_trips_2026_coverage_audit() and ok
-        ok = run_margin_quality_audit() and ok
-    else:
-        logger.info("Skip audit (--skip-audit)")
+        if not args.skip_supply:
+            ok = run_refresh_supply() and ok
+        else:
+            logger.info("Skip supply (--skip-supply)")
 
-    if not ok:
-        sys.exit(1)
-    logger.info("Pipeline refresh + audit completado.")
+        if not getattr(args, "skip_plan_vs_real_mv", False):
+            ok = run_refresh_plan_vs_real_monthly_mvs() and ok
+        else:
+            logger.info("Skip Plan vs Real MV refresh (--skip-plan-vs-real-mv)")
+
+        if not args.skip_audit:
+            ok = run_audit() and ok
+            if not getattr(args, "skip_coverage_audit", False):
+                ok = run_trips_2026_coverage_audit() and ok
+            ok = run_margin_quality_audit() and ok
+        else:
+            logger.info("Skip audit (--skip-audit)")
+
+        if not ok:
+            sys.exit(1)
+        logger.info("Pipeline refresh + audit completado.")
 
 
 if __name__ == "__main__":

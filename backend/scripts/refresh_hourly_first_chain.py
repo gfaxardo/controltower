@@ -90,9 +90,61 @@ def main():
     ap = argparse.ArgumentParser(description="Refresh cadena hourly-first: hour → day → week → month")
     ap.add_argument("--skip-hour", action="store_true", help="No refrescar hour (solo day/week/month)")
     ap.add_argument("--timeout", type=int, default=1800, help="Timeout por REFRESH en segundos")
+    ap.add_argument(
+        "--trigger-source",
+        type=str,
+        default="manual",
+        choices=["manual", "cron", "deploy", "api"],
+        help="Origen del trigger para refresh_run_log (default: manual)",
+    )
+    ap.add_argument(
+        "--allow-closed-period",
+        action="store_true",
+        help="Permite refrescar periodo closed/locked (requiere CT_ALLOW_CLOSED_PERIOD_REFRESH=1).",
+    )
+    ap.add_argument(
+        "--reason",
+        type=str,
+        default=None,
+        help="Razon obligatoria para backfill de periodo cerrado.",
+    )
     args = ap.parse_args()
-    ok = run_refresh(skip_hour=args.skip_hour, timeout_sec=args.timeout)
-    sys.exit(0 if ok else 1)
+
+    from app.services.refresh_control_service import refresh_guard
+    from app.services.period_closure_service import check_period_refresh_guard
+
+    # Period Closure Guard (Fase 1D-B) — check monthly grain since chain ends at month
+    from datetime import date as _d
+    today = _d.today()
+    month_start = today.replace(day=1)
+
+    period_check = check_period_refresh_guard(
+        grain="monthly",
+        period_start=month_start,
+        refresh_name="refresh_hourly_first_chain",
+        trigger_source=args.trigger_source,
+        reason=args.reason,
+        allow_closed_flag=args.allow_closed_period,
+    )
+
+    if period_check["blocked"]:
+        logger.error("BLOCKED: %s", period_check["reason"])
+        sys.exit(2)
+    if period_check["would_block"]:
+        logger.warning("DRY-RUN: %s", period_check["reason"])
+
+    with refresh_guard(
+        refresh_name="refresh_hourly_first_chain",
+        pipeline_name="hourly_first",
+        trigger_source=args.trigger_source,
+        grain="mixed",
+        period_status="mixed",
+    ) as guard:
+        if guard.skipped:
+            logger.info("Hourly-first chain SKIPPED: lock held.")
+            sys.exit(0)
+        ok = run_refresh(skip_hour=args.skip_hour, timeout_sec=args.timeout)
+        sys.exit(0 if ok else 1)
 
 
 if __name__ == "__main__":

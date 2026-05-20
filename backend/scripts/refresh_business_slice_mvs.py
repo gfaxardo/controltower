@@ -132,61 +132,114 @@ def main() -> int:
             "city_week / city_day se comportan como city (la materialización elimina el cuello)."
         ),
     )
+    ap.add_argument(
+        "--trigger-source",
+        type=str,
+        default="manual",
+        choices=["manual", "cron", "deploy", "api", "scheduler"],
+        help="Origen del trigger para refresh_run_log (default: manual)",
+    )
+    ap.add_argument(
+        "--allow-closed-period",
+        action="store_true",
+        help="Permite refrescar un periodo closed/locked (requiere CT_ALLOW_CLOSED_PERIOD_REFRESH=1 y --reason).",
+    )
+    ap.add_argument(
+        "--reason",
+        type=str,
+        default=None,
+        help="Razon obligatoria para backfill de periodo cerrado.",
+    )
     args = ap.parse_args()
 
-    with get_db() as conn:
-        cur = conn.cursor()
-        _require_business_slice_facts(cur)
+    from app.services.refresh_control_service import refresh_guard
 
-        if args.hour_from and args.hour_to:
-            hf = datetime.fromisoformat(args.hour_from.replace("Z", "+00:00"))
-            ht = datetime.fromisoformat(args.hour_to.replace("Z", "+00:00"))
-            n = load_business_slice_hour_block(cur, hf, ht)
-            conn.commit()
-            cur.close()
-            print(f"OK: hour_fact bloque [{hf}, {ht}) filas insertadas={n}")
+    with refresh_guard(
+        refresh_name="refresh_business_slice_mvs",
+        pipeline_name="business_slice",
+        trigger_source=args.trigger_source,
+        grain="daily",
+        period_status="mixed",
+    ) as guard:
+        if guard.skipped:
+            print("SKIPPED: otro refresh de business slice ya está en curso (lock held).")
             return 0
 
-        if args.backfill_from and args.backfill_to:
-            start = _parse_ym(args.backfill_from)
-            end = _parse_ym(args.backfill_to)
-            start = month_first_day(start.year, start.month)
-            end = month_first_day(end.year, end.month)
-            total, months = backfill_business_slice_months(
-                cur, start, end, conn,
-                chunk_grain=args.chunk_grain,
-                with_daily=args.with_daily,
-            )
-            conn.commit()
-            cur.close()
-            print(f"OK: backfill {len(months)} meses, filas insertadas month_fact (suma)={total}")
-            if args.with_daily:
-                print("  (day_fact + week_fact también cargados por mes)")
-            return 0
+        # ── Period Closure Guard (Fase 1D-B) ──
+        from app.services.period_closure_service import check_period_refresh_guard
 
         if args.month:
             target = _parse_month(args.month)
+        elif args.backfill_from:
+            target = _parse_ym(args.backfill_from)
         else:
-            today = date.today()
-            target = month_first_day(today.year, today.month)
+            target = date.today().replace(day=1)
 
-        n = load_business_slice_month(cur, target, conn, chunk_grain=args.chunk_grain)
-        conn.commit()
+        period_check = check_period_refresh_guard(
+            grain="monthly",
+            period_start=target,
+            refresh_name="refresh_business_slice_mvs",
+            trigger_source=args.trigger_source,
+            reason=args.reason,
+            allow_closed_flag=args.allow_closed_period,
+        )
 
-        if args.with_daily:
-            print(f"\n--- Cargando day_fact para {target} ---")
-            nd = load_business_slice_day_for_month(cur, target, conn, chunk_grain=args.chunk_grain)
+        if period_check["blocked"]:
+            print(f"[BLOCKED] {period_check['reason']}")
+            print("  Use --allow-closed-period --reason '...' with CT_ALLOW_CLOSED_PERIOD_REFRESH=1 for authorized backfill.")
+            return 2
+
+        if period_check["would_block"]:
+            print(f"[DRY-RUN] {period_check['reason']}")
+            print("  Set CT_PERIOD_CLOSURE_DRY_RUN=false to enforce blocking.")
+
+        with get_db() as conn:
+            cur = conn.cursor()
+            _require_business_slice_facts(cur)
+
+            if args.hour_from and args.hour_to:
+                hf = datetime.fromisoformat(args.hour_from.replace("Z", "+00:00"))
+                ht = datetime.fromisoformat(args.hour_to.replace("Z", "+00:00"))
+                n = load_business_slice_hour_block(cur, hf, ht)
+                conn.commit()
+                cur.close()
+                print(f"OK: hour_fact bloque [{hf}, {ht}) filas insertadas={n}")
+                return 0
+
+            if args.backfill_from and args.backfill_to:
+                start = _parse_ym(args.backfill_from)
+                end = _parse_ym(args.backfill_to)
+                start = month_first_day(start.year, start.month)
+                end = month_first_day(end.year, end.month)
+                total, months = backfill_business_slice_months(
+                    cur, start, end, conn,
+                    chunk_grain=args.chunk_grain,
+                    with_daily=args.with_daily,
+                )
+                conn.commit()
+                cur.close()
+                print(f"OK: backfill {len(months)} meses, filas insertadas month_fact (suma)={total}")
+                if args.with_daily:
+                    print("  (day_fact + week_fact también cargados por mes)")
+                return 0
+
+            n = load_business_slice_month(cur, target, conn, chunk_grain=args.chunk_grain)
             conn.commit()
-            print(f"\n--- Cargando week_fact (rollup desde day_fact) ---")
-            nw = load_business_slice_week_for_month(cur, target, conn)
-            conn.commit()
-            print(f"OK: month_fact={n}, day_fact={nd}, week_fact={nw} para mes={target}")
-        else:
-            print(f"OK: month_fact mes={target} filas insertadas={n}")
 
-        cur.close()
-        print("Opcional: python -m scripts.validate_business_slice_refresh")
-        return 0
+            if args.with_daily:
+                print(f"\n--- Cargando day_fact para {target} ---")
+                nd = load_business_slice_day_for_month(cur, target, conn, chunk_grain=args.chunk_grain)
+                conn.commit()
+                print(f"\n--- Cargando week_fact (rollup desde day_fact) ---")
+                nw = load_business_slice_week_for_month(cur, target, conn)
+                conn.commit()
+                print(f"OK: month_fact={n}, day_fact={nd}, week_fact={nw} para mes={target}")
+            else:
+                print(f"OK: month_fact mes={target} filas insertadas={n}")
+
+            cur.close()
+            print("Opcional: python -m scripts.validate_business_slice_refresh")
+            return 0
 
 
 if __name__ == "__main__":

@@ -43,7 +43,9 @@ _filters_lock = threading.Lock()
 FILTERS_CACHE_TTL_SEC = 300.0
 
 # Tabla canónica mensual (carga incremental). La vista homónima sigue existiendo por compat.
-FACT_MONTHLY = "ops.real_business_slice_month_fact"
+# Fase 1F: redirect a serving view (snapshot para locked, working_fact para open).
+FACT_MONTHLY = "ops.v_real_business_slice_month_serving"
+FACT_MONTHLY_RAW = "ops.real_business_slice_month_fact"  # backup para refresh/escritura
 MV_MONTHLY = FACT_MONTHLY
 FACT_DAILY = "ops.real_business_slice_day_fact"
 FACT_WEEKLY = "ops.real_business_slice_week_fact"

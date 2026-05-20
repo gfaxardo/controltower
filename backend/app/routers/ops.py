@@ -990,7 +990,11 @@ async def get_supply_series_endpoint(
             cols = ["period_start", "park_name", "city", "country", "activations", "active_drivers", "churned", "reactivated", "churn_rate", "reactivation_rate", "net_growth"]
             body = _to_csv(data, [c for c in cols if data and data[0].get(c) is not None] or cols)
             return Response(content=body, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=supply_series.csv"})
-        return {"data": data}
+        return {
+            "data": data,
+            "source_name": "ops.v_supply_weekly_serving" if grain == "weekly" else "ops.v_supply_monthly_serving",
+            "data_status": "ok" if data else "empty",
+        }
     except Exception as e:
         logger.error("GET /ops/supply/series: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -1039,7 +1043,11 @@ async def get_supply_summary_endpoint(
 ):
     """Summary cards del rango visible (sumas y tasas ponderadas)."""
     try:
-        return get_supply_summary(park_id=park_id, from_date=from_, to_date=to, grain=grain)
+        return {
+            **get_supply_summary(park_id=park_id, from_date=from_, to_date=to, grain=grain),
+            "source_name": "ops.v_supply_weekly_serving" if grain == "weekly" else "ops.v_supply_monthly_serving",
+            "data_status": "ok",
+        }
     except Exception as e:
         logger.error("GET /ops/supply/summary: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -1063,7 +1071,7 @@ async def get_supply_global_series_endpoint(
                 cols = ["period_start", "country", "city"] + [c for c in cols if c != "period_start"]
             body = _to_csv(data, cols)
             return Response(content=body, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=supply_global.csv"})
-        return {"data": data}
+        return {"data": data, "source_name": "ops.v_supply_weekly_serving" if grain == "weekly" else "ops.v_supply_monthly_serving", "data_status": "ok" if data else "empty"}
     except Exception as e:
         logger.error("GET /ops/supply/global/series: %s", e)
         raise HTTPException(status_code=500, detail=str(e))

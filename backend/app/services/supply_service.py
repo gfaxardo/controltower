@@ -1,6 +1,6 @@
 """
 Control Tower Supply (REAL): parks geo, series semanal/mensual, summary.
-Fuente: dim.v_geo_park, ops.mv_supply_weekly, ops.mv_supply_monthly.
+Fuente: dim.v_geo_park, ops.v_supply_weekly_serving, ops.v_supply_monthly_serving.
 """
 from __future__ import annotations
 
@@ -154,6 +154,7 @@ def get_supply_series(
     """
     Serie por periodo (DESC). park_id obligatorio.
     grain: 'weekly' | 'monthly'
+    Fuente: ops.v_supply_weekly_serving / ops.v_supply_monthly_serving (Fase 1B.2).
     """
     if not park_id or not from_date or not to_date:
         return []
@@ -166,7 +167,7 @@ def get_supply_series(
                     SELECT month_start AS period_start, park_id, park_name, city, country,
                            activations, active_drivers, churned, reactivated,
                            churn_rate, reactivation_rate, net_growth
-                    FROM ops.mv_supply_monthly
+                    FROM ops.v_supply_monthly_serving
                     WHERE park_id = %s AND month_start >= %s::date AND month_start <= %s::date
                     ORDER BY month_start DESC
                     """,
@@ -178,7 +179,7 @@ def get_supply_series(
                     SELECT week_start AS period_start, park_id, park_name, city, country,
                            activations, active_drivers, churned, reactivated,
                            churn_rate, reactivation_rate, net_growth
-                    FROM ops.mv_supply_weekly
+                    FROM ops.v_supply_weekly_serving
                     WHERE park_id = %s AND week_start >= %s::date AND week_start <= %s::date
                     ORDER BY week_start DESC
                     """,
@@ -187,7 +188,7 @@ def get_supply_series(
             rows = cur.fetchall()
             return [dict(r) for r in rows]
         except Exception as e:
-            logger.warning("get_supply_series: %s", e)
+            logger.warning("get_supply_series: %s (source may be missing)", e)
             return []
         finally:
             cur.close()
@@ -268,7 +269,7 @@ def get_supply_global_series(
                                SUM(churned) AS churned,
                                SUM(reactivated) AS reactivated,
                                SUM(net_growth) AS net_growth
-                        FROM ops.mv_supply_monthly
+                        FROM ops.v_supply_monthly_serving
                         WHERE month_start >= %s::date AND month_start <= %s::date
                           AND LOWER(TRIM(country)) = LOWER(TRIM(%s))
                           AND LOWER(TRIM(city)) = LOWER(TRIM(%s))
@@ -286,7 +287,7 @@ def get_supply_global_series(
                                SUM(churned) AS churned,
                                SUM(reactivated) AS reactivated,
                                SUM(net_growth) AS net_growth
-                        FROM ops.mv_supply_monthly
+                        FROM ops.v_supply_monthly_serving
                         WHERE month_start >= %s::date AND month_start <= %s::date
                           AND LOWER(TRIM(country)) = LOWER(TRIM(%s))
                         GROUP BY month_start, country, city
@@ -303,7 +304,7 @@ def get_supply_global_series(
                                SUM(churned) AS churned,
                                SUM(reactivated) AS reactivated,
                                SUM(net_growth) AS net_growth
-                        FROM ops.mv_supply_monthly
+                        FROM ops.v_supply_monthly_serving
                         WHERE month_start >= %s::date AND month_start <= %s::date
                         GROUP BY month_start
                         ORDER BY month_start DESC
@@ -320,7 +321,7 @@ def get_supply_global_series(
                                SUM(churned) AS churned,
                                SUM(reactivated) AS reactivated,
                                SUM(net_growth) AS net_growth
-                        FROM ops.mv_supply_weekly
+                        FROM ops.v_supply_weekly_serving
                         WHERE week_start >= %s::date AND week_start <= %s::date
                           AND LOWER(TRIM(country)) = LOWER(TRIM(%s))
                           AND LOWER(TRIM(city)) = LOWER(TRIM(%s))
@@ -338,7 +339,7 @@ def get_supply_global_series(
                                SUM(churned) AS churned,
                                SUM(reactivated) AS reactivated,
                                SUM(net_growth) AS net_growth
-                        FROM ops.mv_supply_weekly
+                        FROM ops.v_supply_weekly_serving
                         WHERE week_start >= %s::date AND week_start <= %s::date
                           AND LOWER(TRIM(country)) = LOWER(TRIM(%s))
                         GROUP BY week_start, country, city
@@ -355,7 +356,7 @@ def get_supply_global_series(
                                SUM(churned) AS churned,
                                SUM(reactivated) AS reactivated,
                                SUM(net_growth) AS net_growth
-                        FROM ops.mv_supply_weekly
+                        FROM ops.v_supply_weekly_serving
                         WHERE week_start >= %s::date AND week_start <= %s::date
                         GROUP BY week_start
                         ORDER BY week_start DESC
@@ -589,13 +590,14 @@ def get_supply_freshness() -> dict[str, Any]:
     Devuelve última semana disponible, última corrida de refresh y estado del pipeline.
     Regla: expected_week = lunes de la semana actual (floor_to_week(now));
     Fresh si last_week_available >= expected_week - 7 días y last_refresh >= ahora - 36 h.
+    Fuente: ops.v_supply_weekly_serving (Fase 1B.2) + ops.supply_refresh_log.
     """
     with get_db() as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         try:
             cur.execute("""
                 SELECT MAX(week_start) AS last_week_available
-                FROM ops.mv_supply_segments_weekly
+                FROM ops.v_supply_weekly_serving
             """)
             row_week = cur.fetchone()
             last_week = row_week["last_week_available"] if row_week else None
@@ -650,10 +652,19 @@ def get_supply_freshness() -> dict[str, Any]:
                 "last_week_available": _ser_date(last_week),
                 "last_refresh": _ser_ts(last_refresh),
                 "status": status,
+                "source_name": "ops.v_supply_weekly_serving",
+                "data_status": "ok" if last_week is not None else "empty",
             }
         except Exception as e:
             logger.warning("get_supply_freshness: %s", e)
-            return {"last_week_available": None, "last_refresh": None, "status": "unknown"}
+            return {
+                "last_week_available": None,
+                "last_refresh": None,
+                "status": "unknown",
+                "source_name": "ops.v_supply_weekly_serving",
+                "data_status": "source_missing",
+                "warning": f"Supply serving view unavailable: {str(e)[:200]}",
+            }
         finally:
             cur.close()
 
@@ -668,7 +679,7 @@ def get_supply_overview_enhanced(
     """
     Overview enriquecido: series con trips, avg_trips_per_driver, FT_share, PT_share,
     weak_supply_share; cuando grain=weekly añade métricas WoW (drivers_wow_pct, trips_wow_pct, etc.).
-    No modifica MVs; calcula desde ops.mv_supply_weekly + ops.mv_supply_segments_weekly.
+    No modifica MVs; calcula desde ops.v_supply_weekly_serving + ops.mv_supply_segments_weekly.
     """
     if not park_id or not from_date or not to_date:
         return {"summary": {}, "series": [], "series_with_wow": []}
@@ -676,7 +687,7 @@ def get_supply_overview_enhanced(
         cur = conn.cursor(cursor_factory=RealDictCursor)
         try:
             period_col = "week_start" if grain == "weekly" else "month_start"
-            table = "ops.mv_supply_weekly" if grain == "weekly" else "ops.mv_supply_monthly"
+            table = "ops.v_supply_weekly_serving" if grain == "weekly" else "ops.v_supply_monthly_serving"
             cur.execute(
                 f"""
                 SELECT {period_col} AS period_start, park_id, park_name, city, country,

@@ -117,6 +117,9 @@ def run_business_slice_real_refresh_job(force: bool = False) -> Dict[str, Any]:
     errors: List[Dict[str, str]] = []
     log_lines: List[str] = []
 
+    # ── Period Closure Guard (Fase 1D-B) ──
+    from app.services.period_closure_service import check_period_refresh_guard
+
     logger.info(
         "omniview_real_refresh_job START months=%s timeout_ms=%s",
         [m.isoformat() for m in months],
@@ -198,6 +201,31 @@ def run_business_slice_real_refresh_job(force: bool = False) -> Dict[str, Any]:
         "upstream_preflight": upstream,
         "before_max_trip_date": before_max,
     }
+
+
+def run_business_slice_real_refresh_job_safe(force: bool = False) -> Dict[str, Any]:
+    """Wrapper con advisory lock + ledger para uso desde APScheduler (evita race condition multi-worker)."""
+    from app.services.refresh_control_service import refresh_guard
+
+    with refresh_guard(
+        refresh_name="omniview_business_slice_real_refresh",
+        pipeline_name="business_slice",
+        trigger_source="scheduler",
+        grain="daily",
+        period_status="mixed",
+    ) as guard:
+        if guard.skipped:
+            return {
+                "ok": True,
+                "skipped": True,
+                "reason": "lock_held_by_another_worker",
+            }
+        try:
+            result = run_business_slice_real_refresh_job(force=force)
+            guard.run_id = getattr(guard, "run_id", None)
+            return result
+        except Exception as e:
+            raise
 
 
 def _month_first(d: date) -> date:

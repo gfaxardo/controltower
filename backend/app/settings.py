@@ -185,6 +185,50 @@ class Settings(BaseSettings):
         description="URL opcional POST JSON en alertas del watchdog (vacío = desactivado).",
     )
 
+    # ── Refresh Hardening (Fase 1B) ──
+    CT_ALLOW_DESTRUCTIVE_REFRESH: bool = Field(
+        default=False,
+        description="Solo en ventana de backfill autorizada: permite DROP+CASCADE en scripts de refresh.",
+    )
+    CT_SCHEDULER_ENABLED: bool = Field(
+        default=False,
+        description="En producción debe ser false salvo configuración explícita. Habilita APScheduler para refrescos automáticos.",
+    )
+    CT_REFRESH_LOCKS_ENABLED: bool = Field(
+        default=True,
+        description="Advisory locks para evitar refresh concurrente del mismo pipeline/scope.",
+    )
+    CT_REFRESH_LEDGER_ENABLED: bool = Field(
+        default=True,
+        description="Registrar cada refresh en ops.refresh_run_log.",
+    )
+
+    # ── Closed Period Protection (Fase 1D) ──
+    CT_DATA_LAG_DAYS: int = Field(
+        default=1,
+        ge=0,
+        le=7,
+        description="Días de lag aceptable para considerar datos como 'fresh'. D-1 = ayer cerrado.",
+    )
+    CT_ALLOW_CLOSED_PERIOD_REFRESH: bool = Field(
+        default=False,
+        description="Solo true en ventana de backfill autorizada. Permite refrescar periodos locked/closed.",
+    )
+    CT_PERIOD_CLOSURE_ENABLED: bool = Field(
+        default=True,
+        description="Habilita protección de periodos cerrados contra refresh normal.",
+    )
+    CT_PERIOD_CLOSURE_DRY_RUN: bool = Field(
+        default=True,
+        description="Si true, el cierre de periodos no bloquea refrescos — solo reporta qué se habría bloqueado.",
+    )
+    CT_MIN_MAPPING_COVERAGE_PCT: float = Field(
+        default=99.0,
+        ge=0.0,
+        le=100.0,
+        description="Cobertura mínima de business_slice mapping para considerar un periodo cerrable.",
+    )
+
     # ── Projection Integrity Engine (Omniview proyección derivada mensual) ──
     PROJECTION_SMOOTHING_ALPHA_WEEK: float = Field(
         default=0.7,
