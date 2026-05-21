@@ -46,8 +46,22 @@ def find_open_case(driver_id, park_id, severity=None):
     return None
 
 
-def create_or_update_case(driver_id, park_id, severity, risk_score, triggered_rules, recommended_action):
-    """Crea o actualiza un caso. Si existe y la severidad sube, actualiza."""
+def create_or_update_case(driver_id, park_id, severity, risk_score, triggered_rules, recommended_action,
+                         confidence_score=None, confidence_reason=None):
+    """Crea o actualiza un caso. Si existe y la severidad sube, actualiza.
+
+    F1F-5C: Admite confidence_score y confidence_reason opcionales.
+    Si no se pasan, se calculan desde triggered_rules via fraud_confidence_scoring.
+    """
+    # Auto-compute confidence if not provided
+    if confidence_score is None:
+        try:
+            from app.services.fraud.fraud_confidence_scoring import compute_case_confidence, build_signal_bundle
+            bundle = build_signal_bundle(triggered_rules)
+            confidence_score, confidence_reason = compute_case_confidence(bundle)
+        except Exception:
+            pass
+
     existing = find_open_case(driver_id, park_id)
     severity_order = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 
@@ -62,11 +76,14 @@ def create_or_update_case(driver_id, park_id, severity, risk_score, triggered_ru
                 cur.execute("""
                     UPDATE fraud.risk_cases
                     SET severity = %s, risk_score = %s, recommended_action = %s,
-                        case_reason = %s, updated_at = now()
+                        case_reason = %s, case_confidence_score = %s,
+                        confidence_reason = %s, updated_at = now()
                     WHERE id = %s
                     RETURNING id, case_code
                 """, (severity, risk_score, recommended_action,
                       Json({"triggered_rules": triggered_rules, "updated": True}),
+                      confidence_score,
+                      Json(confidence_reason) if confidence_reason else None,
                       existing["id"]))
                 r = cur.fetchone()
                 conn.commit()
@@ -76,9 +93,15 @@ def create_or_update_case(driver_id, park_id, severity, risk_score, triggered_ru
             # Misma severidad: actualizar score y reason
             cur.execute("""
                 UPDATE fraud.risk_cases
-                SET risk_score = %s, case_reason = %s, updated_at = now()
+                SET risk_score = %s, case_reason = %s,
+                    case_confidence_score = COALESCE(%s, case_confidence_score),
+                    confidence_reason = COALESCE(%s, confidence_reason),
+                    updated_at = now()
                 WHERE id = %s
-            """, (risk_score, Json({"triggered_rules": triggered_rules}), existing["id"]))
+            """, (risk_score, Json({"triggered_rules": triggered_rules}),
+                  confidence_score,
+                  Json(confidence_reason) if confidence_reason else None,
+                  existing["id"]))
             conn.commit()
             cur.close()
             return {"id": existing["id"], "case_code": existing["case_code"], "updated": True}
@@ -88,14 +111,17 @@ def create_or_update_case(driver_id, park_id, severity, risk_score, triggered_ru
         cur.execute("""
             INSERT INTO fraud.risk_cases
                 (case_code, driver_id, park_id, severity, status, risk_score,
-                 case_reason, recommended_action, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, 'open', %s, %s, %s, now(), now())
+                 case_reason, recommended_action, case_confidence_score,
+                 confidence_reason, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, 'open', %s, %s, %s, %s, %s, now(), now())
             ON CONFLICT (case_code) DO NOTHING
             RETURNING id, case_code
         """, (
             case_code, driver_id, park_id, severity, risk_score,
             Json({"triggered_rules": triggered_rules}),
-            recommended_action
+            recommended_action,
+            confidence_score,
+            Json(confidence_reason) if confidence_reason else None,
         ))
         r = cur.fetchone()
         if r is None:
@@ -137,7 +163,9 @@ def list_cases(status=None, severity=None, park_id=None, driver_id=None,
         cur = conn.cursor()
         cur.execute(f"""
             SELECT id, case_code, driver_id, park_id, severity, status, risk_score,
-                   case_reason, recommended_action, created_at, updated_at
+                   case_reason, recommended_action, created_at, updated_at,
+                   case_confidence_score, confidence_reason,
+                   calibration_status, calibration_version
             FROM fraud.risk_cases rc
             WHERE {where_clause}
             ORDER BY created_at DESC
@@ -153,6 +181,10 @@ def list_cases(status=None, severity=None, park_id=None, driver_id=None,
             "case_reason": r[7], "recommended_action": r[8],
             "created_at": r[9].isoformat() if r[9] else None,
             "updated_at": r[10].isoformat() if r[10] else None,
+            "case_confidence_score": float(r[11]) if r[11] is not None else None,
+            "confidence_reason": r[12],
+            "calibration_status": r[13],
+            "calibration_version": r[14],
         }
         for r in rows
     ]

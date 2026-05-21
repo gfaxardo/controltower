@@ -15,6 +15,30 @@ from app.db.connection import get_db
 router = APIRouter(prefix="/fraud", tags=["fraud"])
 
 
+# ── F1F-7: Daily operational status helper ──
+def _compute_daily_operational_status(open_cases_count: int, trust_count: int) -> str:
+    """Determina si el modulo esta listo para operacion recurrente diaria."""
+    if trust_count < 100:
+        return "not_ready"
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM fraud.routine_run_log WHERE frequency = 'daily' AND status = 'completed'")
+            daily_runs = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM fraud.driver_risk_snapshot WHERE behavioral_profile_class IS NOT NULL")
+            profiles = cur.fetchone()[0]
+            cur.close()
+    except Exception:
+        daily_runs = 0
+        profiles = 0
+
+    if profiles >= 500:
+        return "ready"
+    elif daily_runs >= 1:
+        return "conditional"
+    return "not_ready"
+
+
 @router.get("/health")
 async def health():
     """Estado general del modulo antifraude."""
@@ -59,6 +83,8 @@ async def health():
         "open_cases_count": open_cases_count,
         "drivers_classified": trust_count,
         "salt_configured": salt_configured,
+        # ── F1F-7: Daily operational readiness ──
+        "fraud_daily_operational_status": _compute_daily_operational_status(open_cases_count, trust_count),
     }
 
 
@@ -326,32 +352,40 @@ async def get_driver_risk(driver_id_param: str):
                 "computed_at": row[6].isoformat() if row[6] else None,
             }
 
-        # ── Trip behavior signals (Fase 1F-5) ──
+        # ── Trip behavior signals (Fase 1F-5C) ──
         trip_behavior_signals = None
         try:
-            cur.execute("""
-                SELECT triggered_rules, risk_score, severity
-                FROM fraud.driver_risk_snapshot
-                WHERE driver_id = %s AND action_reason IS NOT NULL
-            """, (driver_id_param,))
-            beh_row = cur.fetchone()
-            if beh_row:
-                triggered = beh_row[0] or []
-                trigger_codes = [t.get("rule_code") if isinstance(t, dict) else None for t in triggered] if isinstance(triggered, list) else []
-                behavioral_codes = [
-                    "REPEATED_ORIGIN_PATTERN", "REPEATED_ROUTE_SIGNATURE",
-                    "SHORT_TRIP_FARMING_PATTERN", "ROUTE_LOOP_PATTERN",
-                    "COORDINATED_ORIGIN_PATTERN", "LOW_AVG_DISTANCE_PATTERN",
-                    "LOW_AVG_DURATION_PATTERN", "EXTREME_SHORT_TRIP_RATIO",
-                    "LOW_VARIANCE_PATTERN", "BEHAVIORAL_DRIVER_PROFILE",
-                ]
-                has_behavioral = any(c in behavioral_codes for c in trigger_codes if c)
-                trip_behavior_signals = {
-                    "has_behavioral_flags": has_behavioral,
-                    "behavioral_risk_score": float(beh_row[1] or 0),
-                    "behavioral_severity": beh_row[2],
-                    "triggered_behavioral_rules": [c for c in trigger_codes if c in behavioral_codes],
-                }
+            with get_db() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT triggered_rules, risk_score, severity,
+                           behavioral_profile_class, behavioral_confidence_score,
+                           behavioral_profile_reason
+                    FROM fraud.driver_risk_snapshot
+                    WHERE driver_id = %s AND action_reason IS NOT NULL
+                """, (driver_id_param,))
+                beh_row = cur.fetchone()
+                if beh_row:
+                    triggered = beh_row[0] or []
+                    trigger_codes = [t.get("rule_code") if isinstance(t, dict) else None for t in triggered] if isinstance(triggered, list) else []
+                    behavioral_codes = [
+                        "REPEATED_ORIGIN_PATTERN", "REPEATED_ROUTE_SIGNATURE",
+                        "SHORT_TRIP_FARMING_PATTERN", "ROUTE_LOOP_PATTERN",
+                        "COORDINATED_ORIGIN_PATTERN", "LOW_AVG_DISTANCE_PATTERN",
+                        "LOW_AVG_DURATION_PATTERN", "EXTREME_SHORT_TRIP_RATIO",
+                        "LOW_VARIANCE_PATTERN", "BEHAVIORAL_DRIVER_PROFILE",
+                    ]
+                    has_behavioral = any(c in behavioral_codes for c in trigger_codes if c)
+                    trip_behavior_signals = {
+                        "has_behavioral_flags": has_behavioral,
+                        "behavioral_risk_score": float(beh_row[1] or 0),
+                        "behavioral_severity": beh_row[2],
+                        "triggered_behavioral_rules": [c for c in trigger_codes if c in behavioral_codes],
+                        "behavioral_profile_class": beh_row[3],
+                        "behavioral_confidence_score": float(beh_row[4]) if beh_row[4] is not None else None,
+                        "behavioral_profile_reason": beh_row[5],
+                    }
+                cur.close()
         except Exception:
             pass
 
@@ -447,14 +481,32 @@ async def post_action_manual_log(
 
 @router.get("/routines/status")
 async def routines_status():
-    """Estado de las rutinas antifraude, leyendo de fraud.routine_run_log."""
+    """Estado de las rutinas antifraude, con frecuencia y readiness.
+
+    F1F-7: Incluye frequency, daily_ready, weekly_ready, last_error.
+    """
     status_map = {
         "driver_trust": "ready", "trip_anomalies": "ready",
         "referral_abuse": "ready", "pickup_clusters": "ready",
-        "park_concentration": "ready", "bank_account_cluster": "wired — public.payment_details (0 rows, pending data)",
-        "identity_clusters": "ready — wired to public.payment_details",
+        "park_concentration": "ready", "bank_account_cluster": "wired",
+        "identity_clusters": "ready",
         "balance_negative": "disabled — no balance source",
         "driver_trust_full_universe": "ready",
+    }
+
+    # ── F1F-7: Behavioral routines with performance thresholds ──
+    behavioral_daily_ready = {
+        "repeated_origin_pattern": 30, "low_avg_distance_pattern": 15,
+        "low_avg_duration_pattern": 15, "extreme_short_trip_ratio": 15,
+        "low_variance_pattern": 15, "short_trip_farming": 15,
+        "park_behavior_concentration": 15,
+    }
+    behavioral_weekly_ready = {
+        "repeated_route_signature": 120, "route_loop_pattern": 30,
+        "coordinated_origin_pattern": 600, "long_trip_outlier_v2": 120,
+    }
+    behavioral_monthly_ready = {
+        "behavioral_driver_profile": 600,
     }
 
     routines = []
@@ -462,8 +514,10 @@ async def routines_status():
         with get_db() as conn:
             cur = conn.cursor()
             cur.execute("""
-                SELECT DISTINCT ON (routine_name) routine_name, mode, status, dry_run,
-                       duration_seconds, started_at, finished_at, result_summary
+                SELECT DISTINCT ON (routine_name)
+                       routine_name, mode, status, dry_run,
+                       duration_seconds, started_at, finished_at, result_summary,
+                       frequency
                 FROM fraud.routine_run_log
                 ORDER BY routine_name, started_at DESC
             """)
@@ -474,6 +528,9 @@ async def routines_status():
                     "last_started_at": r[5].isoformat() if r[5] else None,
                     "last_finished_at": r[6].isoformat() if r[6] else None,
                     "last_result_summary": r[7],
+                    "frequency": r[8],
+                    "daily_ready": r[0] in behavioral_daily_ready,
+                    "weekly_ready": r[0] in behavioral_weekly_ready or r[0] in behavioral_daily_ready,
                 })
             cur.close()
     except Exception:
@@ -488,6 +545,9 @@ async def routines_status():
                 "last_dry_run": None, "last_duration_seconds": None,
                 "last_started_at": None, "last_finished_at": None,
                 "last_result_summary": None,
+                "frequency": None,
+                "daily_ready": name in behavioral_daily_ready,
+                "weekly_ready": name in behavioral_weekly_ready or name in behavioral_daily_ready,
             })
 
     return {"routines": routines}
@@ -643,8 +703,13 @@ async def payment_identity_summary():
 
 @router.get("/trip-behavior/summary")
 async def trip_behavior_summary():
-    """Resumen del motor de fraude conductual. Agregado desde fraud.risk_cases y fraud.driver_risk_snapshot."""
+    """Resumen del motor de fraude conductual. Agregado desde fraud.risk_cases y fraud.driver_risk_snapshot.
+
+    F1F-5C: Incluye config_version, confidence_distribution, behavioral_profile_distribution, suppressed_cases_count.
+    """
     try:
+        from app.services.fraud.fraud_behavioral_routines import CONFIG_VERSION
+
         with get_db() as conn:
             cur = conn.cursor()
 
@@ -653,15 +718,6 @@ async def trip_behavior_summary():
             trips_total = cur.fetchone()[0]
 
             # Drivers flagged by behavioral rules
-            behavioral_codes = [
-                "REPEATED_ORIGIN_PATTERN", "REPEATED_ROUTE_SIGNATURE",
-                "SHORT_TRIP_FARMING_PATTERN", "ROUTE_LOOP_PATTERN",
-                "COORDINATED_ORIGIN_PATTERN", "LOW_AVG_DISTANCE_PATTERN",
-                "LOW_AVG_DURATION_PATTERN", "EXTREME_SHORT_TRIP_RATIO",
-                "LOW_VARIANCE_PATTERN", "BEHAVIORAL_DRIVER_PROFILE",
-            ]
-            code_list = "', '".join(behavioral_codes)
-
             cur.execute(f"""
                 SELECT COUNT(DISTINCT driver_id) FROM fraud.risk_cases
                 WHERE status = 'open'
@@ -670,6 +726,13 @@ async def trip_behavior_summary():
             drivers_flagged = cur.fetchone()[0] or 0
 
             # Count by rule type
+            behavioral_codes = [
+                "REPEATED_ORIGIN_PATTERN", "REPEATED_ROUTE_SIGNATURE",
+                "SHORT_TRIP_FARMING_PATTERN", "ROUTE_LOOP_PATTERN",
+                "COORDINATED_ORIGIN_PATTERN", "LOW_AVG_DISTANCE_PATTERN",
+                "LOW_AVG_DURATION_PATTERN", "EXTREME_SHORT_TRIP_RATIO",
+                "LOW_VARIANCE_PATTERN", "BEHAVIORAL_DRIVER_PROFILE",
+            ]
             rule_counts = {}
             for code in behavioral_codes:
                 try:
@@ -682,9 +745,66 @@ async def trip_behavior_summary():
                 except Exception:
                     rule_counts[code] = 0
 
+            # ── F1F-5C: Confidence distribution ──
+            confidence_distribution = {"low_confidence": 0, "medium_confidence": 0, "high_confidence": 0, "very_high_confidence": 0}
+            try:
+                cur.execute("""
+                    SELECT
+                        COUNT(*) FILTER (WHERE case_confidence_score BETWEEN 0 AND 39) AS low,
+                        COUNT(*) FILTER (WHERE case_confidence_score BETWEEN 40 AND 59) AS medium,
+                        COUNT(*) FILTER (WHERE case_confidence_score BETWEEN 60 AND 79) AS high,
+                        COUNT(*) FILTER (WHERE case_confidence_score >= 80) AS very_high
+                    FROM fraud.risk_cases
+                    WHERE status = 'open' AND case_confidence_score IS NOT NULL
+                """)
+                r = cur.fetchone()
+                if r:
+                    confidence_distribution = {
+                        "low_confidence": r[0] or 0,
+                        "medium_confidence": r[1] or 0,
+                        "high_confidence": r[2] or 0,
+                        "very_high_confidence": r[3] or 0,
+                    }
+            except Exception:
+                pass
+
+            # ── F1F-5C: Behavioral profile distribution ──
+            profile_distribution = {"normal": 0, "watchlist": 0, "suspicious": 0, "high_risk": 0, "critical_pattern": 0}
+            try:
+                cur.execute("""
+                    SELECT behavioral_profile_class, COUNT(*)
+                    FROM fraud.driver_risk_snapshot
+                    WHERE behavioral_profile_class IS NOT NULL
+                    GROUP BY behavioral_profile_class
+                """)
+                for row in cur.fetchall():
+                    if row[0] in profile_distribution:
+                        profile_distribution[row[0]] = row[1] or 0
+            except Exception:
+                pass
+
+            # ── F1F-5C: Suppressed cases count (from routine_run_log) ──
+            suppressed_cases = 0
+            try:
+                cur.execute("""
+                    SELECT COALESCE(SUM((result_summary->>'suppressed')::int), 0)
+                    FROM fraud.routine_run_log
+                    WHERE routine_name IN (
+                        'repeated_origin_pattern', 'repeated_route_signature',
+                        'short_trip_farming', 'route_loop_pattern',
+                        'coordinated_origin_pattern', 'low_avg_distance_pattern',
+                        'low_avg_duration_pattern', 'extreme_short_trip_ratio',
+                        'low_variance_pattern', 'behavioral_driver_profile'
+                    )
+                """)
+                suppressed_cases = cur.fetchone()[0] or 0
+            except Exception:
+                pass
+
             # Top behavioral risk drivers
             cur.execute("""
-                SELECT driver_id, park_id, risk_score, severity, action_reason
+                SELECT driver_id, park_id, risk_score, severity, action_reason,
+                       behavioral_profile_class, behavioral_confidence_score
                 FROM fraud.driver_risk_snapshot
                 WHERE action_reason IS NOT NULL
                 ORDER BY risk_score DESC
@@ -699,6 +819,8 @@ async def trip_behavior_summary():
                     "risk_score": float(r[2] or 0),
                     "severity": r[3],
                     "behavioral_risk_score": action_reason.get("behavioral_risk_score") if isinstance(action_reason, dict) else None,
+                    "behavioral_profile_class": r[5],
+                    "behavioral_confidence_score": float(r[6]) if r[6] is not None else None,
                 })
 
             # Top origin clusters from cases
@@ -742,8 +864,12 @@ async def trip_behavior_summary():
             cur.close()
 
         return {
+            "config_version": CONFIG_VERSION,
             "trips_analyzed": trips_total,
             "drivers_flagged": drivers_flagged,
+            "candidates_count": confidence_distribution.get("low_confidence", 0) + confidence_distribution.get("medium_confidence", 0),
+            "cases_count": open_cases,
+            "suppressed_cases_count": suppressed_cases,
             "repeated_origin_count": rule_counts.get("REPEATED_ORIGIN_PATTERN", 0),
             "repeated_route_count": rule_counts.get("REPEATED_ROUTE_SIGNATURE", 0),
             "short_trip_farming_count": rule_counts.get("SHORT_TRIP_FARMING_PATTERN", 0),
@@ -753,7 +879,8 @@ async def trip_behavior_summary():
             "low_avg_duration_count": rule_counts.get("LOW_AVG_DURATION_PATTERN", 0),
             "extreme_short_trip_ratio_count": rule_counts.get("EXTREME_SHORT_TRIP_RATIO", 0),
             "low_variance_count": rule_counts.get("LOW_VARIANCE_PATTERN", 0),
-            "cases_created": open_cases,
+            "confidence_distribution": confidence_distribution,
+            "behavioral_profile_distribution": profile_distribution,
             "top_origin_clusters": top_origins,
             "top_route_signatures": top_routes,
             "top_behavioral_risk_drivers": top_drivers,

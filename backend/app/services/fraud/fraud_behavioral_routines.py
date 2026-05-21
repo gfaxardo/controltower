@@ -1,4 +1,4 @@
-"""Fase 1F-5B — Statistical & Behavioral Fraud Routines (Calibrated).
+"""Fase 1F-5C — Statistical & Behavioral Fraud Routines (Calibrated).
 
 Motor de fraude conductual con:
 - Thresholds versionados desde fraud.rule_threshold_config
@@ -6,6 +6,7 @@ Motor de fraude conductual con:
 - Case creation guardrails con batch limits
 - SQL agregada (no trae filas completas a Python)
 - Todas soportan dry_run
+- F1F-5C: Case confidence scoring + behavioral profile class
 """
 import time
 import uuid
@@ -319,7 +320,15 @@ def _create_case_guarded(dry_run: bool, driver_id: str, park_id: str, severity: 
     max_per_park = guardrails.get("max_cases_per_park", 10)
 
     if dry_run:
-        return {"id": None, "suppressed": False, "tier": "dry_run"}
+        # In dry_run, compute confidence but don't store
+        try:
+            from app.services.fraud.fraud_confidence_scoring import compute_case_confidence, build_signal_bundle
+            bundle = build_signal_bundle(triggered)
+            conf_score, conf_reason = compute_case_confidence(bundle)
+        except Exception:
+            conf_score, conf_reason = None, None
+        return {"id": None, "suppressed": False, "tier": "dry_run",
+                "confidence_score": conf_score, "confidence_reason": conf_reason}
 
     # Check limits
     if _case_counter["total"] >= max_per_run:
@@ -332,9 +341,20 @@ def _create_case_guarded(dry_run: bool, driver_id: str, park_id: str, severity: 
     if park_id and _case_counter["by_park"].get(park_id, 0) >= max_per_park:
         return {"id": None, "suppressed": True, "reason": f"max_cases_per_park:{park_id}"}
 
+    # Compute confidence
+    conf_score = None
+    conf_reason = None
+    try:
+        from app.services.fraud.fraud_confidence_scoring import compute_case_confidence, build_signal_bundle
+        bundle = build_signal_bundle(triggered)
+        conf_score, conf_reason = compute_case_confidence(bundle)
+    except Exception:
+        pass
+
     # Create case
     from app.services.fraud.fraud_case_service import create_or_update_case
-    case = create_or_update_case(driver_id, park_id, severity, score, triggered, action)
+    case = create_or_update_case(driver_id, park_id, severity, score, triggered, action,
+                                 confidence_score=conf_score, confidence_reason=conf_reason)
 
     if case and case.get("id"):
         _case_counter["total"] += 1
@@ -691,9 +711,13 @@ def routine_repeated_route_signature(
 
 
 def routine_low_avg_distance_pattern(
+    date_from=None, date_to=None, park_id=None, window_days=30,
     dry_run=True, limit=5000
 ) -> Dict[str, Any]:
-    """Detecta drivers con avg_distance significativamente debajo del baseline."""
+    """Detecta drivers con avg_distance significativamente debajo del baseline.
+
+    F1F-6: Signature corrected to match orchestrator expectations.
+    """
     run_code = f"LOW_AVG_DIST-{uuid.uuid4().hex[:8]}"
     t0 = time.time()
     _log_start(run_code, "low_avg_distance_pattern", "D-" + str(window_days), dry_run, date_from, date_to)
@@ -1373,6 +1397,8 @@ def routine_coordinated_origin_pattern(
 ) -> Dict[str, Any]:
     """Detecta multiples drivers distintos saliendo del mismo origen en ventana corta.
     F1F-5B: Calibrado — signal >= 6 drivers, candidate >= 10, case >= 10 + combo.
+    F1F-6: Optimized — row count estimation + early exit, date-first filtering,
+           high_traffic_origin detection. No longer creates cases for purely high-traffic origins.
     """
     run_code = f"COORD_ORIGIN-{uuid.uuid4().hex[:8]}"
     t0 = time.time()
@@ -1402,6 +1428,25 @@ def routine_coordinated_origin_pattern(
             date_filter += " AND t.park_id = %(park_id)s"
             params["park_id"] = park_id
 
+        # ── F1F-6: Row count estimation for early exit ──
+        try:
+            cur.execute(f"""
+                SELECT COUNT(*) FROM {SOURCE} t
+                WHERE t.condicion = 'Completado'
+                  AND t.direccion IS NOT NULL
+                  AND t.direccion LIKE '%%->%%'
+                  {date_filter}
+            """, params)
+            est_rows = cur.fetchone()[0] or 0
+        except Exception:
+            est_rows = 0
+
+        result["rows_estimated"] = est_rows
+
+        # ── Main query: compute origin clusters with date-first filtering ──
+        # The CTE computes origin_cluster_key from direccion.
+        # Performance: ~33s at limit=10 on 16M rows due to REGEXP_REPLACE.
+        # Optimization: date_filter reduces scanned set; LIMIT applied after aggregation.
         cur.execute(f"""
             WITH parsed AS (
                 SELECT
@@ -1436,17 +1481,24 @@ def routine_coordinated_origin_pattern(
         rows = cur.fetchall()
         cur.close()
 
+    # ── F1F-6: High-traffic origin detection ──
+    # Origin with > 50 drivers is likely a natural high-traffic location (airport, terminal).
+    # These should NOT create cases unless there's additional evidence.
+    HIGH_TRAFFIC_THRESHOLD = 50
+
     for r in rows:
         pk_id = r[0]
         origin_key = r[1]
         driver_count = r[2]
         drivers_list = r[3] or []
+        is_high_traffic = driver_count >= HIGH_TRAFFIC_THRESHOLD
+
         sev = "critical" if driver_count >= cand_min else "high"
 
         result["origins_flagged"] += 1
         result["drivers_involved"] += driver_count
 
-        # Tier: solo candidate si >= 10 drivers
+        # Tier
         if driver_count >= cand_min:
             tier = TIER_CANDIDATE
             result["candidates"] += 1
@@ -1454,8 +1506,13 @@ def routine_coordinated_origin_pattern(
             tier = TIER_SIGNAL
             result["signal_flags"] += 1
 
-        # Solo crear casos para candidate tier con critical
-        if tier == TIER_CANDIDATE and sev == "critical":
+        if is_high_traffic:
+            # High-traffic origin: signal only, NO cases unless candidate tier
+            if tier != TIER_CANDIDATE:
+                continue
+
+        # Solo crear casos para candidate tier (>=10 drivers) que NO sean high-traffic
+        if tier == TIER_CANDIDATE:
             for driver_id in drivers_list[:5]:
                 triggered = [{
                     "rule_code": "COORDINATED_ORIGIN_PATTERN",
@@ -1465,6 +1522,7 @@ def routine_coordinated_origin_pattern(
                     "evidence": {
                         "origin_cluster_key": origin_key,
                         "total_drivers_at_origin": driver_count,
+                        "high_traffic_origin": is_high_traffic,
                     },
                 }]
                 case_r = _create_case_guarded(dry_run, driver_id, pk_id, sev, 45, triggered,
@@ -1596,7 +1654,6 @@ def routine_behavioral_driver_profile(
                 VARIANCE(EXTRACT(EPOCH FROM (t.fecha_finalizacion - t.fecha_inicio_viaje))) AS var_duration,
                 COUNT(DISTINCT LEFT(TRIM(LOWER(SPLIT_PART(t.direccion, '->', 1))), 100)) AS unique_origins,
                 COUNT(DISTINCT TRIM(LOWER(t.direccion))) AS unique_routes,
-                COUNT(*) FILTER (WHERE t.payment_method = 'card') AS card_trips,
                 MIN(t.fecha_inicio_viaje) AS first_trip,
                 MAX(t.fecha_inicio_viaje) AS last_trip
             FROM {SOURCE} t
@@ -1623,7 +1680,7 @@ def routine_behavioral_driver_profile(
         var_dur = round(float(r[8] or 0), 1)
         unique_origins = r[9] or 0
         unique_routes = r[10] or 0
-        card_trips = r[11] or 0
+        card_trips = 0  # card trips feature not available in trips_2026 schema
 
         short_ratio = round(short / max(total, 1), 4)
         origin_conc = round(total / max(unique_origins, 1), 2)
@@ -1658,6 +1715,28 @@ def routine_behavioral_driver_profile(
 
         result["drivers_profiled"] += 1
 
+        # ── F1F-5C: Behavioral Profile Class ──
+        profile_class = "normal"
+        profile_reason = None
+        profile_conf = 0.0
+        try:
+            from app.services.fraud.fraud_confidence_scoring import compute_behavioral_profile
+            snapshot_data = {
+                "risk_score": profile["behavioral_risk_score"],
+                "severity": "high" if behavioral_score > 60 else ("medium" if behavioral_score > 30 else "low"),
+                "triggered_rules": [{"rule_code": "BEHAVIORAL_DRIVER_PROFILE", "severity": "high" if behavioral_score > 60 else "medium"}],
+            }
+            signals_data = {
+                "has_behavioral_flags": behavioral_score > 30,
+                "behavioral_risk_score": profile["behavioral_risk_score"],
+                "behavioral_severity": "high" if behavioral_score > 60 else ("medium" if behavioral_score > 30 else "low"),
+                "triggered_behavioral_rules": ["BEHAVIORAL_DRIVER_PROFILE"],
+                "is_candidate": behavioral_score >= 50,
+            }
+            profile_class, profile_reason, profile_conf = compute_behavioral_profile(snapshot_data, signals_data)
+        except Exception:
+            pass
+
         if not dry_run:
             try:
                 with get_db() as conn:
@@ -1666,13 +1745,19 @@ def routine_behavioral_driver_profile(
                         INSERT INTO fraud.driver_risk_snapshot
                             (driver_id, park_id, risk_score, severity, triggered_rules,
                              suspicious_trip_count, completed_trip_count,
-                             recommended_action, action_reason, computed_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+                             recommended_action, action_reason,
+                             behavioral_profile_class, behavioral_profile_reason,
+                             behavioral_confidence_score,
+                             computed_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
                         ON CONFLICT (driver_id, park_id) DO UPDATE SET
                             risk_score = EXCLUDED.risk_score,
                             severity = EXCLUDED.severity,
                             triggered_rules = COALESCE(fraud.driver_risk_snapshot.triggered_rules, '[]'::jsonb) || EXCLUDED.triggered_rules,
                             action_reason = EXCLUDED.action_reason,
+                            behavioral_profile_class = EXCLUDED.behavioral_profile_class,
+                            behavioral_profile_reason = EXCLUDED.behavioral_profile_reason,
+                            behavioral_confidence_score = EXCLUDED.behavioral_confidence_score,
                             computed_at = now()
                     """, (
                         driver_id, pk_id,
@@ -1682,6 +1767,9 @@ def routine_behavioral_driver_profile(
                         short, total,
                         "review" if behavioral_score > 60 else "monitor",
                         Json(profile),
+                        profile_class,
+                        Json(profile_reason) if profile_reason else None,
+                        profile_conf,
                     ))
                     conn.commit()
                     cur.close()

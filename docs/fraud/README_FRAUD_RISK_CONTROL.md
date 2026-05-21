@@ -79,6 +79,54 @@ Detecta patrones de fraude en conductores y viajes sin tocar modulos existentes.
 
 **Endpoint**: `GET /fraud/trip-behavior/summary`
 
+### Behavioral Profile Class (Fase 1F-6)
+
+Los drivers se clasifican en 5 perfiles conductuales:
+
+| Profile | Score | Significado |
+|---|---|---|
+| `normal` | < 30 | Sin senales preocupantes |
+| `watchlist` | 30-49 | Senales debiles, observar |
+| `suspicious` | 50-69 | Patron inusual, revisar |
+| `high_risk` | 70-84 | Senales fuertes, investigar |
+| `critical_pattern` | >= 85 | Patron critico, prioridad maxima |
+
+**Endpoint**: `GET /fraud/drivers/risk?behavioral_profile_class=high_risk`
+
+### Behavioral Confidence Score (Fase 1F-6)
+
+Score deterministico 0-100 por driver, almacenado en `fraud.driver_risk_snapshot.behavioral_confidence_score`. Complementa el `behavioral_profile_class` con granularidad numerica.
+
+### Performance (Fase 1F-6)
+
+| Categoria | Rutinas | Runtime total | Frecuencia |
+|---|---|---|---|
+| Rapidas | 7 | ~23s | Daily |
+| Lentas | 4 | ~540s | Weekly |
+| Total | 12 | ~575s | — |
+
+Rutinas lentas que requieren optimizacion de indices:
+- `coordinated_origin_pattern` (~304s)
+- `repeated_route_signature` (~87s)
+- `long_trip_outlier_v2` (~82s)
+- `behavioral_driver_profile` (~67s)
+
+### Limites operativos
+
+| Guardrail | Valor | Proposito |
+|---|---|---|
+| max_cases_per_run | 50 | No crear mas de 50 casos por ejecucion |
+| max_cases_per_rule | 20 | Limitar concentracion por regla |
+| max_cases_per_park | 10 | Evitar concentracion geografica |
+| max_cases_per_driver | 1 | Un solo caso abierto por driver/park |
+
+### Uso para Autocobro Eligibility (futuro)
+
+Los `behavioral_profile_class` seran input para politicas de elegibilidad de autocobro:
+- `normal` / `watchlist`: elegible
+- `suspicious`: revision manual
+- `high_risk` / `critical_pattern`: no elegible hasta revision y clearance
+
 ## Trust Tier
 
 | Tier | Condicion |
@@ -134,6 +182,74 @@ Deteccion de multiples drivers compartiendo cuenta bancaria via `public.payment_
 - `fraud_seed_rules.py` — Seed idempotente de reglas
 - `fraud_recompute.py` — Recomputo bajo demanda
 - `fraud_daily_control.py` — Rutina diaria (lista para cron)
+
+## Case Confidence Score (Fase 1F-5C)
+
+Score deterministico 0-100 que ayuda a priorizar la revision de casos sin ejecutar acciones automaticas.
+
+### Como interpretar confidence
+
+| Score | Label | Significado | Accion sugerida |
+|---|---|---|---|
+| 0-39 | low_confidence | Senal debil, posible ruido | Review rapida, probable descarte |
+| 40-59 | medium_confidence | Combinacion moderada de senales | Review detallada |
+| 60-79 | high_confidence | Multiples senales fuertes | Prioridad alta |
+| 80-100 | very_high_confidence | Patron critico confirmado | Prioridad inmediata |
+
+### Factores que suben el score
+
+- +20: driver new_or_unproven
+- +20: 2+ reglas de severidad high
+- +30: 1 regla critical
+- +15: repeated_route + low_duration/low_distance
+- +15: short_trip_farming candidate
+- +10: burst_activity
+- +10: coordinated_origin con new drivers
+
+### Factores que bajan el score
+
+- -20: solo repeated_origin (sin combos)
+- -15: high_traffic_origin
+- -20: sample bajo o fallback_used=true
+
+### IMPORTANTE
+
+El confidence score **NO ejecuta acciones**. Solo ayuda a priorizar revision humana. No desconecta, no bloquea pagos, no apaga autocobro.
+
+## Behavioral Profile Class (Fase 1F-5C)
+
+Clasificacion deterministica del perfil conductual de cada driver en 5 categorias.
+
+### Como interpretar profiles
+
+| Profile | Score | Significado |
+|---|---|---|
+| `normal` | < 30 | Sin senales preocupantes. Driver tipico. |
+| `watchlist` | 30-49 | Senales debiles. Observar evolucion. |
+| `suspicious` | 50-69 | Patron inusual. Revisar en profundidad. |
+| `high_risk` | 70-84 | Combinacion de senales fuertes. Investigar. |
+| `critical_pattern` | >= 85 | Patron critico confirmado. Prioridad maxima. |
+
+### Donde se almacena
+
+- `fraud.driver_risk_snapshot.behavioral_profile_class`
+- `fraud.driver_risk_snapshot.behavioral_profile_reason` (JSONB con desglose)
+- `fraud.driver_risk_snapshot.behavioral_confidence_score`
+
+Se recalcula cada vez que corre `routine_behavioral_driver_profile`.
+
+## Candidates vs Cases
+
+- **Signal flags**: detecciones debiles, solo informativas. NO generan casos.
+- **Candidates**: combinacion de senales o anomalia fuerte. Son filtrados para case creation.
+- **Cases**: solo se crean si cumplen criterios estrictos (score >= 80, 2+ high, critical + new, o farming candidate con combo).
+
+## Por que no se automatiza todavia
+
+1. **Sin integracion operativa**: Control Tower no esta conectado a sistemas de pago/autocobro real.
+2. **Fase de validacion**: El motor esta en fase de calibracion y reduccion de ruido.
+3. **Decision humana requerida**: Cada case debe ser revisado antes de cualquier accion.
+4. **Preview-only**: Todas las acciones son preview. Las acciones reales requieren confirmacion manual via `/fraud/actions/manual-log`.
 
 ## Uso rapido
 
