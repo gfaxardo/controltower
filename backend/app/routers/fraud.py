@@ -891,3 +891,110 @@ async def trip_behavior_summary():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ═══════════════════════════════════════════════════════════════════
+# F1F-8: AUTOCOBRO ELIGIBILITY PREVIEW ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════
+
+@router.get("/autocobro/eligibility/summary")
+async def autocobro_eligibility_summary(
+    policy_version: str = Query("autocobro_v1_preview"),
+):
+    """Resumen de distribucion de elegibilidad de autocobro (preview-only)."""
+    try:
+        from app.services.fraud.fraud_autocobro_eligibility_service import get_autocobro_eligibility_summary
+        result = get_autocobro_eligibility_summary(policy_version)
+        result["mode"] = "preview_only"
+        result["actions_executed"] = 0
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/autocobro/eligibility")
+async def autocobro_eligibility_list(
+    policy_version: str = Query("autocobro_v1_preview"),
+    status: Optional[str] = Query(None, description="eligible|review_required|restricted|unknown"),
+    park_id: Optional[str] = Query(None),
+    driver_id: Optional[str] = Query(None),
+    limit: int = Query(100, le=1000),
+    offset: int = Query(0),
+):
+    """Lista de elegibilidad de autocobro con filtros (preview-only)."""
+    try:
+        from app.services.fraud.fraud_autocobro_eligibility_service import get_autocobro_eligibility_list
+        result = get_autocobro_eligibility_list(
+            policy_version=policy_version,
+            status=status,
+            park_id=park_id,
+            driver_id=driver_id,
+            limit=limit,
+            offset=offset,
+        )
+        return {
+            "policy_version": policy_version,
+            "mode": "preview_only",
+            "count": len(result),
+            "results": result,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/autocobro/eligibility/{driver_id}")
+async def autocobro_eligibility_detail(
+    driver_id: str,
+    policy_version: str = Query("autocobro_v1_preview"),
+):
+    """Detalle de elegibilidad de autocobro para un driver (preview-only)."""
+    try:
+        from app.services.fraud.fraud_autocobro_eligibility_service import (
+            compute_driver_autocobro_eligibility,
+        )
+        from app.services.fraud.fraud_case_service import list_cases
+
+        trace = compute_driver_autocobro_eligibility(driver_id, park_id=None, policy_version=policy_version)
+
+        open_cases = list_cases(
+            status="open",
+            driver_id=driver_id,
+            limit=20,
+            offset=0,
+        )
+
+        return {
+            "eligibility": trace,
+            "open_cases": open_cases,
+            "mode": "preview_only",
+            "warning": "Esta evaluacion es preview. NO ejecuta accion real de autocobro.",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/autocobro/eligibility/recompute")
+async def autocobro_eligibility_recompute(
+    policy_version: str = Query("autocobro_v1_preview"),
+    dry_run: bool = Query(True),
+    limit: Optional[int] = Query(None, le=50000),
+    park_id: Optional[str] = Query(None),
+):
+    """Re-computa elegibilidad de autocobro para universo de drivers (preview-only).
+
+    Si dry_run=false, escribe snapshot en fraud.autocobro_eligibility_snapshot.
+    NUNCA ejecuta accion real de autocobro.
+    """
+    try:
+        from app.services.fraud.fraud_autocobro_eligibility_service import recompute_autocobro_eligibility
+        result = recompute_autocobro_eligibility(
+            policy_version=policy_version,
+            dry_run=dry_run,
+            limit=limit,
+            park_id=park_id,
+        )
+        result["mode"] = "preview_only"
+        result["warning"] = "Ninguna accion real de autocobro fue ejecutada. Preview unicamente."
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

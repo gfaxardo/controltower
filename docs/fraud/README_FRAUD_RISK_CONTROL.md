@@ -274,6 +274,80 @@ python scripts/fraud_recompute.py --date-from 2026-05-01 --date-to 2026-05-19 --
 python scripts/validate_fraud_phase1f.py
 ```
 
+## Autocobro Eligibility (Fase 1F-8 / 1F-9)
+
+**Policy Versions:** `autocobro_v1_preview` (deprecated), `autocobro_v2_preview` (active)
+**Status:** Preview-only. NO ejecuta acciones reales de autocobro.
+**Mode:** `preview_only` — dry_run por defecto.
+
+### Estados de elegibilidad (v2)
+
+| Estado | Significado | Accion recomendada |
+|--------|-------------|-------------------|
+| `eligible` | Conductor apto segun senales antifraude | Puede considerarse para autocobro (decision externa) |
+| `near_eligible` | Cerca del threshold de elegibilidad | Monitorear |
+| `review_required` | Senales ambiguas, requiere revision | Revision manual antes de decidir |
+| `stale_profile` | Trusted historico sin actividad D-30 reciente | Esperar actividad reciente |
+| `profile_gap` | En risk snapshot pero sin behavioral profile | Investigar gap de procesamiento |
+| `restricted` | Senales de riesgo detectadas | NO habilitar autocobro |
+| `unknown` | Datos insuficientes | Recolectar mas historial |
+| `unclassified` | No coincide con ninguna categoria | Datos insuficientes para clasificar |
+
+### V2 Distribution (20,505 drivers)
+
+| Estado | Count | % |
+|--------|-------|---|
+| eligible | 5,606 | 27.3% |
+| near_eligible | 0 | 0.0% |
+| review_required | 1,763 | 8.6% |
+| stale_profile | 2,680 | 13.1% |
+| profile_gap | 0 | 0.0% |
+| restricted | 38 | 0.2% |
+| unknown | 2,838 | 13.8% |
+| unclassified | 7,580 | 37.0% |
+
+### Cambios v1 -> v2
+
+- **Bug fix:** Default status cambiado de "eligible" a "unclassified" (7,584 falsos positivos corregidos)
+- **stale_profile:** Trusted historicos sin actividad D-30 ahora tienen categoria propia
+- **near_eligible:** Nueva categoria para drivers cerca del threshold
+- **profile_gap:** Nueva categoria para detectar gaps de procesamiento
+- **X3:** Regla agregada para critical_case_count
+- **E5/E10:** Reglas de elegibilidad refinadas
+
+### Fuentes de datos
+
+- `fraud.driver_trust_snapshot` — trust_tier, total_completed_trips
+- `fraud.driver_risk_snapshot` — behavioral_profile_class, behavioral_confidence_score, recommended_action
+- `fraud.risk_cases` — open cases, severity, case_confidence_score
+- `fraud.payment_identity_source` — synthetic identity flags
+- `fraud.trip_risk_features` — short_trip_farming, high_card_new_driver flags
+
+### Endpoints
+
+| Endpoint | Metodo | Descripcion |
+|----------|--------|-------------|
+| `/fraud/autocobro/eligibility/summary` | GET | Distribucion de elegibilidad |
+| `/fraud/autocobro/eligibility` | GET | Lista filtrable de elegibilidad |
+| `/fraud/autocobro/eligibility/{driver_id}` | GET | Detalle + trace + casos abiertos |
+| `/fraud/autocobro/eligibility/recompute` | POST | Recomputar elegibilidad (dry_run default true) |
+
+### Por que preview-only
+
+1. La politica es nueva y requiere validacion operacional.
+2. El autocobro es una decision de negocio que requiere autorizacion externa.
+3. Los behavioral profiles estan en proceso de poblacion completa.
+4. La cache D-30 requiere primera carga completa.
+
+### Como interpretar resultados
+
+- **eligible:** El conductor pasa todos los filtros antifraude. El equipo de operaciones PUEDE considerarlo apto.
+- **review_required:** Hay senales que requieren criterio humano. No automatizar.
+- **restricted:** El conductor tiene casos abiertos o patrones de riesgo. Requiere resolucion de casos antes de reconsiderar.
+- **unknown:** Faltan datos. Esperar a que acumule mas viajes.
+
+---
+
 ## Lo que NO hace
 
 - NO ejecuta desconexion real de drivers

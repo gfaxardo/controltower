@@ -1607,14 +1607,17 @@ def routine_park_behavior_concentration(
 
 def routine_behavioral_driver_profile(
     date_from=None, date_to=None, park_id=None, window_days=30,
-    dry_run=True, limit=10000
+    dry_run=True, limit=10000, offset=0,
 ) -> Dict[str, Any]:
-    """Construye perfil conductual completo por driver y lo guarda en driver_risk_snapshot."""
+    """Construye perfil conductual completo por driver y lo guarda en driver_risk_snapshot.
+
+    F1F-8: Soporta offset para batch processing sobre universo completo.
+    """
     run_code = f"BEHAVIORAL_PROFILE-{uuid.uuid4().hex[:8]}"
     t0 = time.time()
     _log_start(run_code, "behavioral_driver_profile", "D-" + str(window_days), dry_run, date_from, date_to)
 
-    result = {"drivers_profiled": 0, "dry_run": dry_run}
+    result = {"drivers_profiled": 0, "dry_run": dry_run, "offset": offset}
 
     baseline = get_baseline_for_trip(park_id or "all", window_days)
 
@@ -1622,7 +1625,13 @@ def routine_behavioral_driver_profile(
         cur = conn.cursor()
 
         date_filter = "AND t.fecha_inicio_viaje >= NOW() - INTERVAL '%s days'" % window_days
-        params = {"short_dist": SHORT_TRIP_DISTANCE_M, "short_dur": SHORT_TRIP_DURATION_S, "min_trips": 3}
+        params = {
+            "short_dist": SHORT_TRIP_DISTANCE_M,
+            "short_dur": SHORT_TRIP_DURATION_S,
+            "min_trips": 3,
+            "limit_val": limit,
+            "offset_val": offset,
+        }
         if date_from:
             date_filter = "AND t.fecha_inicio_viaje >= %(date_from)s"
             params["date_from"] = date_from
@@ -1662,8 +1671,9 @@ def routine_behavioral_driver_profile(
               {date_filter}
             GROUP BY t.conductor_id, t.park_id
             HAVING COUNT(*) >= %(min_trips)s
-            LIMIT %(limit)s
-        """, {**params, "limit": limit})
+            ORDER BY t.conductor_id, t.park_id
+            LIMIT %(limit_val)s OFFSET %(offset_val)s
+        """, params)
 
         rows = cur.fetchall()
         cur.close()
@@ -1804,13 +1814,14 @@ ROUTINE_MAP = {
 
 def run_trip_behavior_routines(
     date_from=None, date_to=None, park_id=None, driver_id=None,
-    window_days=7, dry_run=True, limit=5000,
+    window_days=7, dry_run=True, limit=5000, offset=0,
     routines: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Ejecuta rutinas de comportamiento de viaje.
 
     F1F-5B: Tracking de tiers (signal_flags, candidates, cases_created, suppressed).
     Reset del contador de casos al inicio.
+    F1F-8: Soporta offset para behavioral_driver_profile batch processing.
     """
     _reset_case_counter()
 
@@ -1843,7 +1854,7 @@ def run_trip_behavior_routines(
                 res = fn(dry_run=dry_run)
             elif routine_name == "behavioral_driver_profile":
                 res = fn(date_from=date_from, date_to=date_to, park_id=park_id,
-                        window_days=window_days, dry_run=dry_run, limit=limit)
+                        window_days=window_days, dry_run=dry_run, limit=limit, offset=offset)
             else:
                 res = fn(date_from=date_from, date_to=date_to, park_id=park_id,
                         window_days=window_days, dry_run=dry_run, limit=limit)
