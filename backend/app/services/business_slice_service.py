@@ -1245,13 +1245,36 @@ def compute_matrix_data_freshness(
                 cur.execute(
                     f"""
                     SELECT MAX(trip_date) AS mx,
-                           MAX(GREATEST(loaded_at, refreshed_at)) AS lu
+                           MAX(GREATEST(refreshed_at, loaded_at)) AS lu
                     FROM {FACT_DAILY}
                     WHERE {where_sql}
                     """,
                     params,
                 )
                 return cur.fetchone()
+            except Exception:
+                try:
+                    cur.execute(
+                        f"""
+                        SELECT MAX(trip_date) AS mx,
+                               MAX(refreshed_at) AS lu
+                        FROM {FACT_DAILY}
+                        WHERE {where_sql}
+                        """,
+                        params,
+                    )
+                    return cur.fetchone()
+                except Exception:
+                    cur.execute(
+                        f"""
+                        SELECT MAX(trip_date) AS mx
+                        FROM {FACT_DAILY}
+                        WHERE {where_sql}
+                        """,
+                        params,
+                    )
+                    row = cur.fetchone()
+                    return (row[0], None) if row else None
             finally:
                 cur.close()
 
@@ -1261,7 +1284,8 @@ def compute_matrix_data_freshness(
             with get_db() as c:
                 row = _run(c)
         if row:
-            mx, lu = row[0], row[1]
+            mx = row[0]
+            lu = row[1] if len(row) > 1 else None
     except Exception:
         logger.warning("compute_matrix_data_freshness: falló consulta", exc_info=True)
 
@@ -1970,10 +1994,13 @@ def get_business_slice_filters() -> dict[str, Any]:
     with _filters_lock:
         if _filters_store and (now - _filters_store.get("ts", 0.0)) < FILTERS_CACHE_TTL_SEC:
             base = _filters_store["data"]
-            return {
-                **base,
-                "data_freshness": compute_matrix_data_freshness("monthly"),
-            }
+            freshness = {}
+            try:
+                freshness["data_freshness"] = compute_matrix_data_freshness("monthly")
+            except Exception as exc:
+                logger.warning("get_business_slice_filters: freshness compute failed: %s", exc)
+                freshness["data_freshness"] = {"status": "unknown", "max_data_date": None, "last_update_at": None, "lag_days": None}
+            return {**base, **freshness}
     with get_db() as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(
@@ -1996,6 +2023,12 @@ def get_business_slice_filters() -> dict[str, Any]:
     })
     fleets = sorted({r["fleet_display_name"] for r in rows if r.get("fleet_display_name")})
     subfleets = sorted({r["subfleet_name"] for r in rows if r.get("subfleet_name")})
+    freshness = {}
+    try:
+        freshness["data_freshness"] = compute_matrix_data_freshness("monthly")
+    except Exception as exc:
+        logger.warning("get_business_slice_filters: freshness compute failed: %s", exc)
+        freshness["data_freshness"] = {"status": "unknown", "max_data_date": None, "last_update_at": None, "lag_days": None}
     result = {
         "countries": countries,
         "cities": cities,
@@ -2015,11 +2048,12 @@ def get_business_slice_filters() -> dict[str, Any]:
             "completados_por_hora",
             "cancelados_por_hora",
         ],
+        **freshness,
     }
     with _filters_lock:
         _filters_store["ts"] = time.monotonic()
-        _filters_store["data"] = result
-    return {**result, "data_freshness": compute_matrix_data_freshness("monthly")}
+        _filters_store["data"] = {k: v for k, v in result.items() if k != "data_freshness"}
+    return result
 
 
 def get_business_slice_monthly(

@@ -31,6 +31,7 @@ from app.services.business_slice_canonical_service import (
 from app.services.business_slice_service import (
     FACT_DAILY,
     FACT_MONTHLY,
+    FACT_MONTHLY_RAW,
     FACT_WEEKLY,
     compute_matrix_data_freshness,
     explicit_day_temporal_fields,
@@ -2311,6 +2312,65 @@ def _build_daily(
 
 # ── Real data loaders ──────────────────────────────────────────────────────
 
+_REVENUE_SELECT = "ABS(COALESCE(revenue_yego_final, revenue_yego_net)) AS real_revenue, COALESCE(revenue_yego_final, revenue_yego_net) AS real_revenue_raw"
+_REVENUE_SELECT_FALLBACK = "ABS(revenue_yego_net) AS real_revenue, revenue_yego_net AS real_revenue_raw"
+
+_REAL_MONTHLY_SQL = """
+    SELECT month, country, city, business_slice_name,
+           trips_completed AS real_trips,
+           {revenue_expr},
+           active_drivers AS real_active_drivers,
+           trips_cancelled AS real_trips_cancelled,
+           avg_ticket AS real_avg_ticket,
+           commission_pct AS real_commission_pct,
+           trips_per_driver AS real_trips_per_driver,
+           NULL::numeric AS real_cancel_rate_pct
+    FROM {table}
+    WHERE {{where_clause}}
+"""
+
+_REAL_WEEKLY_SQL = """
+    SELECT week_start, country, city, business_slice_name,
+           trips_completed AS real_trips,
+           {revenue_expr},
+           active_drivers AS real_active_drivers,
+           trips_cancelled AS real_trips_cancelled,
+           avg_ticket AS real_avg_ticket,
+           commission_pct AS real_commission_pct,
+           trips_per_driver AS real_trips_per_driver,
+           cancel_rate_pct AS real_cancel_rate_pct
+    FROM {table}
+    WHERE {{where_clause}}
+"""
+
+_REAL_DAILY_SQL = """
+    SELECT trip_date, country, city, business_slice_name,
+           trips_completed AS real_trips,
+           {revenue_expr},
+           active_drivers AS real_active_drivers,
+           trips_cancelled AS real_trips_cancelled,
+           avg_ticket AS real_avg_ticket,
+           commission_pct AS real_commission_pct,
+           trips_per_driver AS real_trips_per_driver,
+           cancel_rate_pct AS real_cancel_rate_pct
+    FROM {table}
+    WHERE {{where_clause}}
+"""
+
+
+def _execute_real_query(cur, sql_template: str, where_clause: str, params: list, table: str):
+    """Try query with revenue_yego_final, fall back to revenue_yego_net if column missing."""
+    sql = sql_template.format(revenue_expr=_REVENUE_SELECT, table=table).format(where_clause=where_clause)
+    try:
+        cur.execute(sql, params)
+        return cur.fetchall()
+    except Exception:
+        pass
+    sql = sql_template.format(revenue_expr=_REVENUE_SELECT_FALLBACK, table=table).format(where_clause=where_clause)
+    cur.execute(sql, params)
+    return cur.fetchall()
+
+
 def _load_real_monthly(conn, country, city, business_slice, year, month):
     clauses = ["(NOT is_subfleet OR is_subfleet IS NULL)"]
     params: List[Any] = []
@@ -2327,24 +2387,10 @@ def _load_real_monthly(conn, country, city, business_slice, year, month):
         clauses.append("EXTRACT(MONTH FROM month) = %s")
         params.append(month)
 
-    sql = f"""
-        SELECT month, country, city, business_slice_name,
-               trips_completed AS real_trips,
-               ABS(COALESCE(revenue_yego_final, revenue_yego_net)) AS real_revenue,
-               COALESCE(revenue_yego_final, revenue_yego_net) AS real_revenue_raw,
-               active_drivers AS real_active_drivers,
-               trips_cancelled AS real_trips_cancelled,
-               avg_ticket AS real_avg_ticket,
-               commission_pct AS real_commission_pct,
-               trips_per_driver AS real_trips_per_driver,
-               NULL::numeric AS real_cancel_rate_pct
-        FROM {FACT_MONTHLY}
-        WHERE {' AND '.join(clauses)}
-    """
+    where_sql = " AND ".join(clauses)
 
     cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute(sql, params)
-    rows = cur.fetchall()
+    rows = _execute_real_query(cur, _REAL_MONTHLY_SQL, where_sql, params, FACT_MONTHLY_RAW)
     cur.close()
 
     result = {}
@@ -2392,31 +2438,17 @@ def _load_real_weekly(conn, country, city, business_slice, year, month):
         clauses.append("EXTRACT(MONTH FROM week_start) = %s")
         params.append(month)
 
-    sql = f"""
-        SELECT week_start, country, city, business_slice_name,
-               trips_completed AS real_trips,
-               ABS(COALESCE(revenue_yego_final, revenue_yego_net)) AS real_revenue,
-               COALESCE(revenue_yego_final, revenue_yego_net) AS real_revenue_raw,
-               active_drivers AS real_active_drivers,
-               trips_cancelled AS real_trips_cancelled,
-               avg_ticket AS real_avg_ticket,
-               commission_pct AS real_commission_pct,
-               trips_per_driver AS real_trips_per_driver,
-               cancel_rate_pct AS real_cancel_rate_pct
-        FROM {FACT_WEEKLY}
-        WHERE {' AND '.join(clauses)}
-    """
+    where_sql = " AND ".join(clauses)
 
     cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute(sql, params)
-    rows = cur.fetchall()
+    rows = _execute_real_query(cur, _REAL_WEEKLY_SQL, where_sql, params, FACT_WEEKLY)
     cur.close()
 
     result = {}
     for r in rows:
-        ws = r["week_start"].isoformat() if hasattr(r["week_start"], "isoformat") else str(r["week_start"])[:10]
+        mk = _month_key(r["week_start"])
         key = _projection_join_key(
-            ws,
+            mk,
             r.get("country"),
             r.get("city"),
             r.get("business_slice_name"),
@@ -2443,24 +2475,10 @@ def _load_real_daily(conn, country, city, business_slice, year, month):
         clauses.append("EXTRACT(MONTH FROM trip_date) = %s")
         params.append(month)
 
-    sql = f"""
-        SELECT trip_date, country, city, business_slice_name,
-               trips_completed AS real_trips,
-               ABS(COALESCE(revenue_yego_final, revenue_yego_net)) AS real_revenue,
-               COALESCE(revenue_yego_final, revenue_yego_net) AS real_revenue_raw,
-               active_drivers AS real_active_drivers,
-               trips_cancelled AS real_trips_cancelled,
-               avg_ticket AS real_avg_ticket,
-               commission_pct AS real_commission_pct,
-               trips_per_driver AS real_trips_per_driver,
-               cancel_rate_pct AS real_cancel_rate_pct
-        FROM {FACT_DAILY}
-        WHERE {' AND '.join(clauses)}
-    """
+    where_sql = " AND ".join(clauses)
 
     cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute(sql, params)
-    rows = cur.fetchall()
+    rows = _execute_real_query(cur, _REAL_DAILY_SQL, where_sql, params, FACT_DAILY)
     cur.close()
 
     result = {}

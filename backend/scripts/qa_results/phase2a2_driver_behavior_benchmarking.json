@@ -1,0 +1,201 @@
+{
+  "validation_id": "phase2a2_driver_behavior_benchmarking",
+  "timestamp": 1779392114.9431603,
+  "verdict": "GO",
+  "passes": 38,
+  "fails": 0,
+  "warns": 0,
+  "total": 38,
+  "results": [
+    {
+      "check": "A.1 Import en main.py",
+      "status": "PASS",
+      "detail": "C:\\Users\\Pc\\Documents\\Cursor Proyectos\\YEGO CONTROL TOWER\\backend\\app\\main.py"
+    },
+    {
+      "check": "A.2 include_router en main.py",
+      "status": "PASS",
+      "detail": "C:\\Users\\Pc\\Documents\\Cursor Proyectos\\YEGO CONTROL TOWER\\backend\\app\\main.py"
+    },
+    {
+      "check": "B.0  GET /driver-behavior/summary -> 200",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "B.1  GET /driver-behavior/group-benchmarks -> 200",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "B.2  GET /driver-behavior/top-vs-risk -> 200",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "B.3  GET /driver-behavior/distributions -> 200",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "A+.1 Fact table exists in ops schema",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "A+.2 Fact table has rows",
+      "status": "PASS",
+      "detail": "rows=309649"
+    },
+    {
+      "check": "A+.3 Fact table has drivers",
+      "status": "PASS",
+      "detail": "drivers=17100"
+    },
+    {
+      "check": "A+.4 Fact table date range valid",
+      "status": "PASS",
+      "detail": "min=2026-02-20 max=2026-05-21"
+    },
+    {
+      "check": "C-FACT.1 data_source is ops.driver_daily_activity_fact",
+      "status": "PASS",
+      "detail": "actual=ops.driver_daily_activity_fact"
+    },
+    {
+      "check": "C-FACT.2 source_type is pre_aggregated_fact",
+      "status": "PASS",
+      "detail": "actual=pre_aggregated_fact"
+    },
+    {
+      "check": "C-FACT.3 No fallback_reason (fact table active)",
+      "status": "PASS",
+      "detail": "actual=None"
+    },
+    {
+      "check": "C-FACT.4 No source_warning",
+      "status": "PASS",
+      "detail": "actual=None"
+    },
+    {
+      "check": "C-FACT.5 fact_meta present",
+      "status": "PASS",
+      "detail": "fact_meta={'rows_count': 309649, 'drivers_count': 17100, 'min_date': '2026-02-20', 'max_date': '2026-05-21'}"
+    },
+    {
+      "check": "C-FACT.6 fact_meta has drivers_count",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "C-FACT.7 fact_meta has rows_count",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "C.1 available_metrics presente",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "C.2 missing_metrics presente",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "C.3 data_source presente",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "C.4 date_range presente",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "C.5 Hay m\u00e9tricas disponibles o faltantes documentadas",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "D.1 groups no vac\u00edo",
+      "status": "PASS",
+      "detail": "Total grupos: 8"
+    },
+    {
+      "check": "D.2 Grupos contienen nombres v\u00e1lidos",
+      "status": "PASS",
+      "detail": "Grupos encontrados: ['AT_RISK', 'CHURNED', 'DECLINING', 'DORMANT', 'GROWING', 'REACTIVATED', 'STABLE', 'TOP_PERFORMER']"
+    },
+    {
+      "check": "D.3 Benchmarks tienen campos requeridos",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "E.1 Sin valores negativos en m\u00e9tricas de trips",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "F.1 TOP_PERFORMER detectado si hay data",
+      "status": "PASS",
+      "detail": "TOP_PERFORMER: 1982 / Total: 10067"
+    },
+    {
+      "check": "G.1 comparisons no vac\u00edo",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "G.2 Sin recomendaciones accionables en interpretaciones",
+      "status": "PASS",
+      "detail": "Se encontraron palabras prohibidas en interpretaciones"
+    },
+    {
+      "check": "H.1 Summary sin recomendaciones accionables",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "I.1 Dimensi\u00f3n inexistente: available=false",
+      "status": "PASS",
+      "detail": "available=False, reason=Dimensi\u00f3n 'nonexistent_dim' no soportada. V\u00e1lidas: city, park, lob, day_of_week, hour."
+    },
+    {
+      "check": "I.2 Dimensi\u00f3n inexistente: reason presente",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "I.3 Dimension inexistente no es 500",
+      "status": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "check": "J.1 GET /ops/driver-lifecycle/summary -> 200",
+      "status": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "check": "K.1 GET /ops/business-slice/matrix-operational-trust -> 200",
+      "status": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "check": "L.1 GET /ops/plan-vs-real/monthly -> 200",
+      "status": "PASS",
+      "detail": "status=200"
+    },
+    {
+      "check": "M.1 /driver-behavior/summary < 15s",
+      "status": "PASS",
+      "detail": "3.3s (umbral: 15s)"
+    },
+    {
+      "check": "N.1 FASE2A2_DRIVER_BEHAVIOR_BENCHMARKING.md existe",
+      "status": "PASS",
+      "detail": ""
+    }
+  ]
+}

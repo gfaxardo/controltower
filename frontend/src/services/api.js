@@ -1029,4 +1029,40 @@ export const logMatrixIssueAction = async (payload) => {
   return response.data
 }
 
+// --- Driver Behavior Benchmarking (Fase 2A.2) ---
+export const getDriverBehaviorSummary = async (params = {}) => {
+  const response = await api.get('/driver-behavior/summary', { params, timeout: 60000 })
+  return response.data
+}
+export const getDriverBehaviorGroupBenchmarks = async (params = {}) => {
+  const response = await api.get('/driver-behavior/group-benchmarks', { params, timeout: 60000 })
+  return response.data
+}
+export const getDriverBehaviorTopVsRisk = async (params = {}) => {
+  const response = await api.get('/driver-behavior/top-vs-risk', { params, timeout: 60000 })
+  return response.data
+}
+export const getDriverBehaviorDistributions = async (params = {}) => {
+  const response = await api.get('/driver-behavior/distributions', { params, timeout: 60000 })
+  return response.data
+}
+
+// --- Behavioral Pattern Diagnosis (Fase 2A.3) ---
+export const getBehavioralPatternsSummary = async (params = {}) => {
+  const response = await api.get('/behavioral-patterns/summary', { params, timeout: 60000 })
+  return response.data
+}
+export const getBehavioralPatterns = async (params = {}) => {
+  const response = await api.get('/behavioral-patterns/patterns', { params, timeout: 60000 })
+  return response.data
+}
+export const getBehavioralGroupProfile = async (params = {}) => {
+  const response = await api.get('/behavioral-patterns/group-profile', { params, timeout: 60000 })
+  return response.data
+}
+export const getBehavioralDeclineSignals = async (params = {}) => {
+  const response = await api.get('/behavioral-patterns/decline-signals', { params, timeout: 60000 })
+  return response.data
+}
+
 export default api

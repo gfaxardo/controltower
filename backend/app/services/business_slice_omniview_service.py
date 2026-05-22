@@ -651,13 +651,14 @@ def _fetch_fact_slice_rows(
     """Fact-first replacement for _fetch_resolved_slice_rows: reads pre-aggregated facts."""
     fw, fp = _filters_fact(country, city, business_slice, fleet, subfleet, include_subfleets)
     where = [f"{time_column} = %s"] + fw
+    sql_revenue_col = "COALESCE(revenue_yego_final, revenue_yego_net)"
     sql = f"""
         SELECT country, city, business_slice_name, fleet_display_name,
                is_subfleet, subfleet_name, parent_fleet_name,
                trips_completed, trips_cancelled, active_drivers,
                avg_ticket, commission_pct, trips_per_driver,
                revenue_yego_net,
-               COALESCE(revenue_yego_final, revenue_yego_net) AS completed_revenue_sum,
+               {sql_revenue_col} AS completed_revenue_sum,
                total_fare_completed_positive_sum AS completed_total_fare_sum
         FROM {fact_table}
         WHERE {" AND ".join(where)}
@@ -665,11 +666,31 @@ def _fetch_fact_slice_rows(
         LIMIT %s
     """
     params = [time_value] + fp + [min(max(limit, 1), 10000)]
+
     _ctx = context_from_policy(_SERVING_POLICY, source_name=fact_table)
-    return execute_db_gated_query(
-        _ctx, _SERVING_POLICY, cur, sql, params,
-        source_name=fact_table, source_type="fact",
-    )
+    try:
+        return execute_db_gated_query(
+            _ctx, _SERVING_POLICY, cur, sql, params,
+            source_name=fact_table, source_type="fact",
+        )
+    except Exception:
+        sql_no_final = f"""
+            SELECT country, city, business_slice_name, fleet_display_name,
+                   is_subfleet, subfleet_name, parent_fleet_name,
+                   trips_completed, trips_cancelled, active_drivers,
+                   avg_ticket, commission_pct, trips_per_driver,
+                   revenue_yego_net,
+                   revenue_yego_net AS completed_revenue_sum,
+                   total_fare_completed_positive_sum AS completed_total_fare_sum
+            FROM {fact_table}
+            WHERE {" AND ".join(where)}
+            ORDER BY trips_completed DESC
+            LIMIT %s
+        """
+        return execute_db_gated_query(
+            _ctx, _SERVING_POLICY, cur, sql_no_final, params,
+            source_name=fact_table, source_type="fact",
+        )
 
 
 def _fetch_fact_rollup_by_country(
@@ -688,36 +709,54 @@ def _fetch_fact_rollup_by_country(
     fw, fp = _filters_fact(country, city, business_slice, fleet, subfleet, include_subfleets)
     where = [f"{time_column} = %s"] + fw
     wh = " AND ".join(where)
-    agg = """
+    params = [time_value] + fp
+    _ctx = context_from_policy(_SERVING_POLICY, source_name=fact_table)
+
+    def _make_agg_sql(with_final: bool) -> str:
+        rf = "COALESCE(revenue_yego_final, revenue_yego_net, 0)" if with_final else "COALESCE(revenue_yego_net, 0)"
+        return f"""
         SUM(trips_completed) AS trips_completed,
         SUM(trips_cancelled) AS trips_cancelled,
         SUM(active_drivers) AS active_drivers,
         CASE WHEN SUM(trips_completed) > 0
              THEN SUM(COALESCE(avg_ticket, 0) * trips_completed) / SUM(trips_completed)
              ELSE NULL END AS avg_ticket,
-        SUM(COALESCE(revenue_yego_final, revenue_yego_net, 0)) AS completed_revenue_sum,
+        SUM({rf}) AS completed_revenue_sum,
         SUM(total_fare_completed_positive_sum) AS completed_total_fare_sum,
         CASE WHEN SUM(total_fare_completed_positive_sum) > 0
-             THEN SUM(COALESCE(revenue_yego_final, revenue_yego_net, 0))
+             THEN SUM({rf})
                   / NULLIF(SUM(total_fare_completed_positive_sum), 0)
              ELSE NULL END AS commission_pct,
         CASE WHEN SUM(active_drivers) > 0
              THEN SUM(trips_completed)::numeric / SUM(active_drivers)
              ELSE NULL END AS trips_per_driver,
-        SUM(COALESCE(revenue_yego_final, revenue_yego_net, 0)) AS revenue_yego_net
+        SUM({rf}) AS revenue_yego_net
     """
-    params = [time_value] + fp
-    _ctx = context_from_policy(_SERVING_POLICY, source_name=fact_table)
-    by_country = execute_db_gated_query(
-        _ctx, _SERVING_POLICY, cur,
-        f"SELECT country, {agg} FROM {fact_table} WHERE {wh} GROUP BY country ORDER BY country",
-        params, source_name=fact_table, source_type="fact",
-    )
-    total_rows = execute_db_gated_query(
-        _ctx, _SERVING_POLICY, cur,
-        f"SELECT {agg} FROM {fact_table} WHERE {wh}",
-        params, source_name=fact_table, source_type="fact",
-    )
+
+    try:
+        agg = _make_agg_sql(with_final=True)
+        by_country = execute_db_gated_query(
+            _ctx, _SERVING_POLICY, cur,
+            f"SELECT country, {agg} FROM {fact_table} WHERE {wh} GROUP BY country ORDER BY country",
+            params, source_name=fact_table, source_type="fact",
+        )
+        total_rows = execute_db_gated_query(
+            _ctx, _SERVING_POLICY, cur,
+            f"SELECT {agg} FROM {fact_table} WHERE {wh}",
+            params, source_name=fact_table, source_type="fact",
+        )
+    except Exception:
+        agg = _make_agg_sql(with_final=False)
+        by_country = execute_db_gated_query(
+            _ctx, _SERVING_POLICY, cur,
+            f"SELECT country, {agg} FROM {fact_table} WHERE {wh} GROUP BY country ORDER BY country",
+            params, source_name=fact_table, source_type="fact",
+        )
+        total_rows = execute_db_gated_query(
+            _ctx, _SERVING_POLICY, cur,
+            f"SELECT {agg} FROM {fact_table} WHERE {wh}",
+            params, source_name=fact_table, source_type="fact",
+        )
     total = total_rows[0] if total_rows else {}
     return by_country, total
 

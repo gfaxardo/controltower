@@ -20,6 +20,7 @@ def get_data_trust_status(view_name: str, _filters: Optional[Dict[str, Any]] = N
     Devuelve { status: "ok" | "warning" | "blocked", message: str, last_update: str | null }.
     Delega en el Confidence Engine; contrato existente para UI (DataTrustBadge).
     Si falla → status "warning", message "Estado de data no disponible".
+    La vista maestra 'omniview-matrix' activa validación completa de integridad.
     """
     view_name = (view_name or "").strip().lower()
     if view_name not in VALID_VIEWS:
@@ -36,5 +37,5 @@ def get_data_trust_status(view_name: str, _filters: Optional[Dict[str, Any]] = N
             "last_update": conf.get("last_update"),
         }
     except Exception as e:
-        logger.debug("data_trust %s: %s", view_name, e)
-        return {"status": "warning", "message": "Estado de data no disponible", "last_update": None}
+        logger.warning("data_trust %s: error delegando a confidence_engine: %s", view_name, e)
+        return {"status": "warning", "message": "Motor de confianza no disponible — verifique estado de la BD", "last_update": None}

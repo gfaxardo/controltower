@@ -18,7 +18,7 @@ from app.omniview_real_scheduler_info import (
     get_next_omniview_refresh_run_iso,
     get_next_omniview_watchdog_run_iso,
 )
-from app.services.business_slice_service import FACT_DAILY, FACT_MONTHLY, FACT_WEEKLY
+from app.services.business_slice_service import FACT_DAILY, FACT_MONTHLY, FACT_MONTHLY_RAW, FACT_WEEKLY
 from app.services.upstream_real_status_service import get_upstream_real_status
 from app.settings import settings
 
@@ -73,6 +73,41 @@ def _aggregated_status_from_lag(lag: Optional[int], stale_days: int, crit_days: 
     return "fresh"
 
 
+def _safe_fetch_meta_columns(cur, table: str, data_col: str) -> tuple:
+    """Fetch MAX over data column + safely try loaded_at/refreshed_at.
+    Returns (max_data, max_loaded_at, max_refreshed_at, warnings: list[str])."""
+    warnings: list[str] = []
+    max_loaded = None
+    max_refreshed = None
+
+    try:
+        cur.execute(
+            f"SELECT MAX({data_col}), MAX(loaded_at), MAX(refreshed_at) FROM {table}"
+        )
+        r = cur.fetchone()
+        max_data = r[0] if r else None
+        max_loaded = r[1] if r else None
+        max_refreshed = r[2] if r else None
+    except Exception:
+        try:
+            cur.execute(
+                f"SELECT MAX({data_col}), MAX(refreshed_at) FROM {table}"
+            )
+            r = cur.fetchone()
+            max_data = r[0] if r else None
+            max_refreshed = r[1] if r else None
+            max_loaded = max_refreshed
+            warnings.append(f"loaded_at missing in {table}, using refreshed_at as fallback")
+        except Exception:
+            cur.execute(f"SELECT MAX({data_col}) FROM {table}")
+            r = cur.fetchone()
+            max_data = r[0] if r else None
+            max_loaded = None
+            max_refreshed = None
+            warnings.append(f"metadata columns missing in {table}")
+    return max_data, max_loaded, max_refreshed, warnings
+
+
 def _collect_aggregated_slice_metrics(cur, today: date, stale_days: int, crit_days: int) -> Dict[str, Any]:
     """Métricas de facts + status solo agregado (day_fact)."""
     out: Dict[str, Any] = {
@@ -82,59 +117,89 @@ def _collect_aggregated_slice_metrics(cur, today: date, stale_days: int, crit_da
         "by_country": [],
         "status": "unknown",
         "lag_days_vs_today": None,
+        "metadata_warnings": [],
     }
 
-    cur.execute(
-        f"SELECT MAX(trip_date), MAX(loaded_at), MAX(refreshed_at) FROM {FACT_DAILY}"
+    # day_fact
+    max_day, day_loaded, day_refreshed, day_warnings = _safe_fetch_meta_columns(
+        cur, FACT_DAILY, "trip_date"
     )
-    r = cur.fetchone()
-    max_day = _d(r[0]) if r else None
+    out["metadata_warnings"].extend(day_warnings)
     out["day_fact"] = {
         "source_name": FACT_DAILY,
-        "max_trip_date": _iso(max_day),
-        "max_loaded_at": _ts(r[1]) if r else None,
-        "max_refreshed_at": _ts(r[2]) if r else None,
+        "max_trip_date": _iso(_d(max_day)),
+        "max_loaded_at": _ts(day_loaded),
+        "max_refreshed_at": _ts(day_refreshed),
     }
 
-    cur.execute(
-        f"SELECT MAX(week_start), MAX(loaded_at), MAX(refreshed_at) FROM {FACT_WEEKLY}"
+    # week_fact
+    max_ws, week_loaded, week_refreshed, week_warnings = _safe_fetch_meta_columns(
+        cur, FACT_WEEKLY, "week_start"
     )
-    rw = cur.fetchone()
-    max_ws = _d(rw[0]) if rw else None
+    out["metadata_warnings"].extend(week_warnings)
     out["week_fact"] = {
         "source_name": FACT_WEEKLY,
-        "max_week_start": _iso(max_ws),
-        "max_loaded_at": _ts(rw[1]) if rw else None,
-        "max_refreshed_at": _ts(rw[2]) if rw else None,
+        "max_week_start": _iso(_d(max_ws)),
+        "max_loaded_at": _ts(week_loaded),
+        "max_refreshed_at": _ts(week_refreshed),
         "note": "week_start es lunes ISO; la semana en curso puede existir con datos parciales.",
     }
 
-    cur.execute(
-        f"SELECT MAX(month), MAX(loaded_at), MAX(refreshed_at) FROM {FACT_MONTHLY}"
+    # month_fact: prefer raw table for metadata columns (serving view may not expose them)
+    max_m, month_loaded, month_refreshed, month_warnings = _safe_fetch_meta_columns(
+        cur, FACT_MONTHLY_RAW, "month"
     )
-    rm = cur.fetchone()
-    max_m = _d(rm[0]) if rm else None
+    out["metadata_warnings"].extend(month_warnings)
     out["month_fact"] = {
         "source_name": FACT_MONTHLY,
-        "max_month": _iso(max_m),
-        "max_loaded_at": _ts(rm[1]) if rm else None,
-        "max_refreshed_at": _ts(rm[2]) if rm else None,
+        "max_month": _iso(_d(max_m)),
+        "max_loaded_at": _ts(month_loaded),
+        "max_refreshed_at": _ts(month_refreshed),
     }
 
-    cur.execute(
-        f"""
-        SELECT lower(trim(country::text)) AS c,
-               MAX(trip_date) AS mx,
-               MAX(loaded_at) AS ml
-        FROM {FACT_DAILY}
-        WHERE country IS NOT NULL AND trim(country::text) <> ''
-        GROUP BY 1
-        ORDER BY 1
-        """
-    )
+    # by_country: defensive
+    try:
+        cur.execute(
+            f"""
+            SELECT lower(trim(country::text)) AS c,
+                   MAX(trip_date) AS mx,
+                   MAX(refreshed_at) AS mr
+            FROM {FACT_DAILY}
+            WHERE country IS NOT NULL AND trim(country::text) <> ''
+            GROUP BY 1
+            ORDER BY 1
+            """
+        )
+    except Exception:
+        try:
+            cur.execute(
+                f"""
+                SELECT lower(trim(country::text)) AS c,
+                       MAX(trip_date) AS mx,
+                       MAX(loaded_at) AS mr
+                FROM {FACT_DAILY}
+                WHERE country IS NOT NULL AND trim(country::text) <> ''
+                GROUP BY 1
+                ORDER BY 1
+                """
+            )
+        except Exception:
+            cur.execute(
+                f"""
+                SELECT lower(trim(country::text)) AS c,
+                       MAX(trip_date) AS mx
+                FROM {FACT_DAILY}
+                WHERE country IS NOT NULL AND trim(country::text) <> ''
+                GROUP BY 1
+                ORDER BY 1
+                """
+            )
     by_country: List[Dict[str, Any]] = []
+    max_day_date = _d(max_day)
     for row in cur.fetchall():
-        co, mx, ml = row[0], _d(row[1]), row[2]
+        co = row[0]
+        mx = _d(row[1])
+        ml = row[2] if len(row) > 2 and row[2] is not None else None
         lag_c = (today - mx).days if mx else None
         if lag_c is None:
             st = "unknown"
@@ -153,13 +218,16 @@ def _collect_aggregated_slice_metrics(cur, today: date, stale_days: int, crit_da
         })
     out["by_country"] = by_country
 
-    if max_day is None:
+    if max_day_date is None:
         out["status"] = "empty"
         out["lag_days_vs_today"] = None
     else:
-        lag = (today - max_day).days
+        lag = (today - max_day_date).days
         out["lag_days_vs_today"] = lag
         out["status"] = _aggregated_status_from_lag(lag, stale_days, crit_days)
+
+    if not out["metadata_warnings"]:
+        del out["metadata_warnings"]
 
     return out
 

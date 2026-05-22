@@ -1,0 +1,283 @@
+{
+  "validation_id": "phase2b_operational_behavioral_intelligence",
+  "verdict": "NO-GO",
+  "timestamp": "2026-05-21T18:59:42",
+  "base_url": "http://127.0.0.1:8000",
+  "total_checks": 54,
+  "passed": 30,
+  "warned": 6,
+  "failed": 18,
+  "critical_failures": 13,
+  "results": [
+    {
+      "check": "A.1 Import en main.py",
+      "status": "PASS",
+      "detail": "C:\\Users\\Pc\\Documents\\Cursor Proyectos\\YEGO CONTROL TOWER\\backend\\app\\main.py"
+    },
+    {
+      "check": "A.2 include_router en main.py",
+      "status": "PASS",
+      "detail": "C:\\Users\\Pc\\Documents\\Cursor Proyectos\\YEGO CONTROL TOWER\\backend\\app\\main.py"
+    },
+    {
+      "check": "B.1 Build SQL existe",
+      "status": "PASS",
+      "detail": "C:\\Users\\Pc\\Documents\\Cursor Proyectos\\YEGO CONTROL TOWER\\backend\\sql\\phase2b_operational_intelligence_build.sql"
+    },
+    {
+      "check": "B.2 driver_trip_behavior_fact en SQL",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "B.3 driver_session_fact en SQL",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "B.4 driver_zone_behavior_fact en SQL",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "C.1 Service file existe",
+      "status": "PASS",
+      "detail": "C:\\Users\\Pc\\Documents\\Cursor Proyectos\\YEGO CONTROL TOWER\\backend\\app\\services\\operational_behavioral_intelligence_service.py"
+    },
+    {
+      "check": "C.2 get_operational_summary definida",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "C.3 get_efficiency_analytics definida",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "C.4 get_session_analytics definida",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "C.5 get_zone_analytics definida",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "C.6 get_time_patterns definida",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "C.7 get_pre_churn_signals definida",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "C.8 get_operational_archetypes definida",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "C.9 get_top_vs_churned definida",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "C.10 NO recomendaciones automáticas (suggestion)",
+      "status": "WARN",
+      "detail": "El servicio no debe generar recomendaciones"
+    },
+    {
+      "check": "C.11 NO IA/ML",
+      "status": "WARN",
+      "detail": "El servicio no debe usar IA"
+    },
+    {
+      "check": "D.1 Router file existe",
+      "status": "PASS",
+      "detail": "C:\\Users\\Pc\\Documents\\Cursor Proyectos\\YEGO CONTROL TOWER\\backend\\app\\routers\\operational_behavioral_intelligence.py"
+    },
+    {
+      "check": "D.2 Prefijo /operational-intelligence",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "D.3 Endpoint /summary",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "D.4 Endpoint /efficiency",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "D.5 Endpoint /sessions",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "D.6 Endpoint /zones",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "D.7 Endpoint /time-patterns",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "D.8 Endpoint /pre-churn-signals",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "D.9 Endpoint /archetypes",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "D.10 Endpoint /top-vs-churned",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "E.1  GET /operational-intelligence/summary -> 404 (3ms)",
+      "status": "FAIL",
+      "detail": "{'detail': 'Not Found'}"
+    },
+    {
+      "check": "E.2  GET /operational-intelligence/efficiency -> 404 (26ms)",
+      "status": "FAIL",
+      "detail": "{'detail': 'Not Found'}"
+    },
+    {
+      "check": "E.3  GET /operational-intelligence/sessions -> 404 (15ms)",
+      "status": "FAIL",
+      "detail": "{'detail': 'Not Found'}"
+    },
+    {
+      "check": "E.4  GET /operational-intelligence/zones -> 404 (5ms)",
+      "status": "FAIL",
+      "detail": "{'detail': 'Not Found'}"
+    },
+    {
+      "check": "E.5  GET /operational-intelligence/time-patterns -> 404 (26ms)",
+      "status": "FAIL",
+      "detail": "{'detail': 'Not Found'}"
+    },
+    {
+      "check": "E.6  GET /operational-intelligence/pre-churn-signals -> 404 (2ms)",
+      "status": "FAIL",
+      "detail": "{'detail': 'Not Found'}"
+    },
+    {
+      "check": "E.7  GET /operational-intelligence/archetypes -> 404 (14ms)",
+      "status": "FAIL",
+      "detail": "{'detail': 'Not Found'}"
+    },
+    {
+      "check": "E.8  GET /operational-intelligence/top-vs-churned -> 404 (1ms)",
+      "status": "FAIL",
+      "detail": "{'detail': 'Not Found'}"
+    },
+    {
+      "check": "F.1 Lifecycle monthly responde",
+      "status": "FAIL",
+      "detail": "HTTP 404"
+    },
+    {
+      "check": "F.2 Lifecycle tiene kpis",
+      "status": "WARN",
+      "detail": "La respuesta debe contener datos"
+    },
+    {
+      "check": "G.1 Benchmarking summary responde",
+      "status": "FAIL",
+      "detail": "HTTP 404"
+    },
+    {
+      "check": "H.1 Patterns summary responde",
+      "status": "FAIL",
+      "detail": "HTTP 404"
+    },
+    {
+      "check": "I.1 Omniview monthly responde",
+      "status": "FAIL",
+      "detail": "HTTP 404"
+    },
+    {
+      "check": "J.1 Plan vs Real responde",
+      "status": "FAIL",
+      "detail": "HTTP 404"
+    },
+    {
+      "check": "K.1 Dashboard existe",
+      "status": "PASS",
+      "detail": "C:\\Users\\Pc\\Documents\\Cursor Proyectos\\YEGO CONTROL TOWER\\frontend\\src\\components\\operationalIntelligence\\OperationalBehavioralIntelligenceDashboard.jsx"
+    },
+    {
+      "check": "K.2 Navigation registry actualizado",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "K.3 App.jsx actualizado",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "L.1 summary tiene campo 'summary'",
+      "status": "FAIL",
+      "detail": ""
+    },
+    {
+      "check": "L.2 summary tiene campo 'source'",
+      "status": "FAIL",
+      "detail": ""
+    },
+    {
+      "check": "L.3 available_objects en source",
+      "status": "WARN",
+      "detail": ""
+    },
+    {
+      "check": "L.4 missing_columns en source",
+      "status": "WARN",
+      "detail": ""
+    },
+    {
+      "check": "L.5 NO recomendaciones en summary",
+      "status": "WARN",
+      "detail": "La respuesta no debe contener recomendaciones"
+    },
+    {
+      "check": "M.1 Archetypes tiene distribution",
+      "status": "FAIL",
+      "detail": ""
+    },
+    {
+      "check": "M.2 Archetypes tiene classification_rules",
+      "status": "FAIL",
+      "detail": ""
+    },
+    {
+      "check": "M.3 Archetypes tiene reference_thresholds",
+      "status": "FAIL",
+      "detail": ""
+    },
+    {
+      "check": "N.1 Todos endpoints < 30s",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "O.1 Ningún endpoint genera recomendaciones",
+      "status": "PASS",
+      "detail": ""
+    }
+  ]
+}

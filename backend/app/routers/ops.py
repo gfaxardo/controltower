@@ -3559,59 +3559,89 @@ async def business_slice_fact_status():
         def _query():
             with get_db() as conn:
                 cur = conn.cursor(cursor_factory=RealDictCursor)
-                cur.execute("""
-                    WITH month_status AS (
-                        SELECT
-                            month::text AS period,
-                            SUM(trips_completed)::bigint AS trips,
-                            COUNT(*)::int AS slices,
-                            MAX(loaded_at) AS loaded_at
-                        FROM ops.real_business_slice_month_fact
-                        GROUP BY month
-                        ORDER BY month
-                    ),
-                    day_months AS (
-                        SELECT
-                            date_trunc('month', trip_date)::date::text AS period,
-                            SUM(trips_completed)::bigint AS trips,
-                            COUNT(DISTINCT trip_date)::int AS days,
-                            MAX(loaded_at) AS loaded_at
-                        FROM ops.real_business_slice_day_fact
-                        GROUP BY 1
-                        ORDER BY 1
-                    ),
-                    week_months AS (
-                        SELECT
-                            date_trunc('month', week_start)::date::text AS period,
-                            SUM(trips_completed)::bigint AS trips,
-                            COUNT(DISTINCT week_start)::int AS weeks,
-                            MAX(loaded_at) AS loaded_at
-                        FROM ops.real_business_slice_week_fact
-                        GROUP BY 1
-                        ORDER BY 1
-                    )
+
+                def _safe_exec(sql: str) -> list[dict]:
+                    try:
+                        cur.execute(sql)
+                        return [dict(r) for r in cur.fetchall()]
+                    except Exception as exc:
+                        logger.warning("fact-status: column error, retrying without loaded_at: %s", exc)
+                        fallback = sql.replace(", MAX(loaded_at) AS loaded_at", "")
+                        fallback = fallback.replace(", MAX(refreshed_at) AS loaded_at", "")
+                        cur.execute(fallback)
+                        rows = [dict(r) for r in cur.fetchall()]
+                        for r in rows:
+                            if "loaded_at" not in r:
+                                r["loaded_at"] = None
+                        return rows
+
+                month_rows = _safe_exec("""
                     SELECT
-                        ms.period,
-                        ms.trips   AS month_trips,
-                        ms.slices  AS month_slices,
-                        ms.loaded_at AS month_loaded_at,
-                        dm.trips   AS day_trips,
-                        dm.days    AS day_days,
-                        dm.loaded_at AS day_loaded_at,
-                        wm.trips   AS week_trips,
-                        wm.weeks   AS week_weeks,
-                        wm.loaded_at AS week_loaded_at
-                    FROM month_status ms
-                    LEFT JOIN day_months dm USING (period)
-                    LEFT JOIN week_months wm USING (period)
-                    ORDER BY ms.period
+                        month::text AS period,
+                        SUM(trips_completed)::bigint AS trips,
+                        COUNT(*)::int AS slices,
+                        MAX(loaded_at) AS loaded_at
+                    FROM ops.real_business_slice_month_fact
+                    GROUP BY month
+                    ORDER BY month
                 """)
-                rows = [dict(r) for r in cur.fetchall()]
-                for r in rows:
+
+                day_rows = _safe_exec("""
+                    SELECT
+                        date_trunc('month', trip_date)::date::text AS period,
+                        SUM(trips_completed)::bigint AS trips,
+                        COUNT(DISTINCT trip_date)::int AS days,
+                        MAX(loaded_at) AS loaded_at
+                    FROM ops.real_business_slice_day_fact
+                    GROUP BY 1
+                    ORDER BY 1
+                """)
+
+                week_rows = _safe_exec("""
+                    SELECT
+                        date_trunc('month', week_start)::date::text AS period,
+                        SUM(trips_completed)::bigint AS trips,
+                        COUNT(DISTINCT week_start)::int AS weeks,
+                        MAX(loaded_at) AS loaded_at
+                    FROM ops.real_business_slice_week_fact
+                    GROUP BY 1
+                    ORDER BY 1
+                """)
+
+                def _to_period_map(rows, key, trips_key, detail_key, loaded_key):
+                    return {r.get(key, ""): r for r in rows}
+
+                ms_map = _to_period_map(month_rows, "period", "trips", "slices", "loaded_at")
+                dm_map = _to_period_map(day_rows, "period", "trips", "days", "loaded_at")
+                wm_map = _to_period_map(week_rows, "period", "trips", "weeks", "loaded_at")
+
+                all_periods = sorted(set(list(ms_map.keys()) + list(dm_map.keys()) + list(wm_map.keys())))
+                merged = []
+                for period in all_periods:
+                    ms = ms_map.get(period, {})
+                    dm = dm_map.get(period, {})
+                    wm = wm_map.get(period, {})
+                    merged.append({
+                        "period": period,
+                        "month_trips": ms.get("trips", 0),
+                        "month_slices": ms.get("slices", 0),
+                        "month_loaded_at": ms.get("loaded_at"),
+                        "day_trips": dm.get("trips", 0),
+                        "day_days": dm.get("days", 0),
+                        "day_loaded_at": dm.get("loaded_at"),
+                        "week_trips": wm.get("trips", 0),
+                        "week_weeks": wm.get("weeks", 0),
+                        "week_loaded_at": wm.get("loaded_at"),
+                    })
+
+                for r in merged:
                     for k in ("month_loaded_at", "day_loaded_at", "week_loaded_at"):
                         if r.get(k) is not None:
-                            r[k] = r[k].isoformat()
-                # Totales globales
+                            try:
+                                r[k] = r[k].isoformat()
+                            except AttributeError:
+                                r[k] = str(r[k])
+
                 cur.execute("SELECT COUNT(DISTINCT month) FROM ops.real_business_slice_month_fact")
                 total_months = (cur.fetchone() or {}).get("count", 0)
                 cur.execute("SELECT COUNT(DISTINCT date_trunc('month', trip_date)::date) FROM ops.real_business_slice_day_fact")
@@ -3620,7 +3650,7 @@ async def business_slice_fact_status():
                 total_week_months = (cur.fetchone() or {}).get("count", 0)
                 cur.close()
             return {
-                "months": rows,
+                "months": merged,
                 "summary": {
                     "total_months_in_month_fact": int(total_months or 0),
                     "total_months_in_day_fact": int(total_day_months or 0),

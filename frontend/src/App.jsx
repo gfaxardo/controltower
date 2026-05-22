@@ -27,6 +27,9 @@ import DriverLifecycleView from './components/DriverLifecycleView'
 import SupplyView from './components/SupplyView'
 import BehavioralAlertsView from './components/BehavioralAlertsView'
 import FleetLeakageView from './components/FleetLeakageView'
+import DriverBehaviorBenchmarkingDashboard from './components/driverBehavior/DriverBehaviorBenchmarkingDashboard'
+import BehavioralPatternDiagnosisDashboard from './components/behavioralPatterns/BehavioralPatternDiagnosisDashboard'
+import OperationalBehavioralIntelligenceDashboard from './components/operationalIntelligence/OperationalBehavioralIntelligenceDashboard'
 import DriverBehaviorView from './components/DriverBehaviorView'
 import ActionEngineView from './components/ActionEngineView'
 import SystemHealthView from './components/SystemHealthView'
@@ -75,6 +78,9 @@ const ROUTE_MAP = [
   { path: '/drivers/lifecycle', tab: TAB_DRIVERS, sub: 'drivers_lifecycle' },
   { path: '/drivers/behavioral-alerts', tab: TAB_DRIVERS, sub: 'drivers_behavioral_alerts' },
   { path: '/drivers/fleet-leakage', tab: TAB_DRIVERS, sub: 'drivers_fleet_leakage' },
+  { path: '/drivers/behavior-benchmarking', tab: TAB_DRIVERS, sub: 'drivers_behavior_benchmarking' },
+  { path: '/drivers/behavioral-patterns', tab: TAB_DRIVERS, sub: 'drivers_behavioral_patterns' },
+  { path: '/drivers/operational-intelligence', tab: TAB_DRIVERS, sub: 'drivers_operational_intelligence' },
   { path: '/riesgo', tab: TAB_RISK, sub: 'riesgo_driver_behavior' },
   { path: '/riesgo/driver-behavior', tab: TAB_RISK, sub: 'riesgo_driver_behavior' },
   { path: '/operacion', tab: TAB_OPERACION, sub: 'operacion_omniview_matrix' },
@@ -100,6 +106,9 @@ const SUB_URL = {
   drivers_lifecycle: '/drivers/lifecycle',
   drivers_behavioral_alerts: '/drivers/behavioral-alerts',
   drivers_fleet_leakage: '/drivers/fleet-leakage',
+  drivers_behavior_benchmarking: '/drivers/behavior-benchmarking',
+  drivers_behavioral_patterns: '/drivers/behavioral-patterns',
+  drivers_operational_intelligence: '/drivers/operational-intelligence',
   riesgo_driver_behavior: '/riesgo/driver-behavior',
   operacion_lob_drill: '/operacion/lob-drill',
   operacion_business_slice: '/operacion/business-slice',
@@ -300,6 +309,9 @@ function ControlTowerApp () {
                 {driversSubTab === 'drivers_lifecycle' && <DriverLifecycleView key={`driver-lifecycle-${refreshKey}`} />}
                 {driversSubTab === 'drivers_behavioral_alerts' && <BehavioralAlertsView key={`behavioral-alerts-${refreshKey}`} />}
                 {driversSubTab === 'drivers_fleet_leakage' && <FleetLeakageView key={`fleet-leakage-${refreshKey}`} />}
+                {driversSubTab === 'drivers_behavior_benchmarking' && <DriverBehaviorBenchmarkingDashboard key={`driver-bench-${refreshKey}`} />}
+                {driversSubTab === 'drivers_behavioral_patterns' && <BehavioralPatternDiagnosisDashboard key={`behavioral-patterns-${refreshKey}`} />}
+                {driversSubTab === 'drivers_operational_intelligence' && <OperationalBehavioralIntelligenceDashboard key={`operational-intel-${refreshKey}`} />}
               </section>
             )}
 
