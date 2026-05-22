@@ -11,7 +11,7 @@ import time
 from calendar import monthrange
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from psycopg2.extras import RealDictCursor
 
@@ -40,7 +40,7 @@ _coverage_summary_refreshing_lock = threading.Lock()
 # Caché de filtros (países/ciudades/slices no cambian en el día; TTL 5 min).
 _filters_store: dict[str, Any] = {}
 _filters_lock = threading.Lock()
-FILTERS_CACHE_TTL_SEC = 300.0
+FILTERS_CACHE_TTL_SEC = 900.0  # 15 min: los catálogos geográficos no cambian frecuentemente
 
 # Tabla canónica mensual (carga incremental). La vista homónima sigue existiendo por compat.
 # Fase 1F: redirect a serving view (snapshot para locked, working_fact para open).
@@ -2001,19 +2001,41 @@ def get_business_slice_filters() -> dict[str, Any]:
                 logger.warning("get_business_slice_filters: freshness compute failed: %s", exc)
                 freshness["data_freshness"] = {"status": "unknown", "max_data_date": None, "last_update_at": None, "lag_days": None}
             return {**base, **freshness}
-    with get_db() as conn:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute(
-            f"""
-            SELECT DISTINCT country, city, business_slice_name, fleet_display_name,
-                   is_subfleet, subfleet_name
-            FROM {MV_MONTHLY}
-            WHERE country IS NOT NULL AND city IS NOT NULL
-            ORDER BY country, city, business_slice_name, fleet_display_name
-            """
-        )
-        rows = cur.fetchall()
-        cur.close()
+
+    # FASE 1G.3: Intento de servir desde catálogo pre-computado
+    rows: List[dict] = []
+    try:
+        with get_db() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute(
+                """
+                SELECT country, city, business_slice_name, fleet_display_name,
+                       is_subfleet, subfleet_name
+                FROM serving.business_slice_filters_catalog
+                ORDER BY country, city, business_slice_name, fleet_display_name
+                """
+            )
+            rows = cur.fetchall()
+            cur.close()
+    except Exception as e:
+        logger.warning("get_business_slice_filters: serving catalog unavailable — %s", e)
+
+    # Fallback: MV scan (solo si el catálogo está vacío o falló)
+    if not rows:
+        with get_db() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute(
+                f"""
+                SELECT DISTINCT country, city, business_slice_name, fleet_display_name,
+                       is_subfleet, subfleet_name
+                FROM {MV_MONTHLY}
+                WHERE country IS NOT NULL AND city IS NOT NULL
+                ORDER BY country, city, business_slice_name, fleet_display_name
+                """
+            )
+            rows = cur.fetchall()
+            cur.close()
+
     countries = sorted({r["country"] for r in rows if r.get("country")})
     cities = sorted({r["city"] for r in rows if r.get("city")})
     slices = sorted({

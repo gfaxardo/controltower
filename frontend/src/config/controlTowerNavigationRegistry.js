@@ -214,7 +214,7 @@ export const CONTROL_TOWER_NAVIGATION_REGISTRY = [
     productionReady: true,
     requiresValidation: false,
     reason: 'Diagnostic Engine (Fase 2C.1): recoverability intelligence. Shadow mode — calcula scores de recuperabilidad sin automatizar acciones. NO recomendaciones. NO intervenciones automaticas.',
-    endpoints: ['/recoverability/summary', '/recoverability/top-recoverable', '/recoverability/distribution', '/recoverability/driver/{driver_id}', '/recoverability/shadow-priority'],
+    endpoints: ['/recoverability/summary', '/recoverability/top-recoverable', '/recoverability/distribution', '/recoverability/driver/{driver_id}', '/recoverability/shadow-priority', '/recoverability/segments', '/recoverability/explainability/{driver_id}', '/recoverability/risk-distribution'],
   },
 
   // ═══════════════════════════════════════════════════════════════════

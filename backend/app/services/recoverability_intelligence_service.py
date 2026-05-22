@@ -27,7 +27,6 @@ logger = logging.getLogger(__name__)
 TIMEOUT_MS = 120000
 
 FACT_TRIP_DAILY = "ops.driver_trip_behavior_daily_fact"
-FACT_SESSION = "ops.driver_session_fact"
 
 # Weights per architecture doc
 WEIGHTS = {
@@ -376,51 +375,114 @@ def compute_recoverability_score(driver: dict, period_days: int, prior_data: dic
     elif score >= 40:
         intervention_urgency = "LOW"
 
+    c1_cont = round(c1 * WEIGHTS["historical_consistency"], 1)
+    c2_cont = round(c2 * WEIGHTS["degradation_severity"], 1)
+    c3_cont = round(c3 * WEIGHTS["recency"], 1)
+    c4_cont = round(c4 * WEIGHTS["archetype_compatibility"], 1)
+    c5_cont = round(c5 * WEIGHTS["efficiency_legacy"], 1)
+
+    components_array = [
+        {
+            "name": "historical_consistency",
+            "score": round(c1, 1),
+            "weight": WEIGHTS["historical_consistency"],
+            "contribution": c1_cont,
+        },
+        {
+            "name": "degradation_severity",
+            "score": round(c2, 1),
+            "weight": WEIGHTS["degradation_severity"],
+            "contribution": c2_cont,
+        },
+        {
+            "name": "recency",
+            "score": round(c3, 1),
+            "weight": WEIGHTS["recency"],
+            "contribution": c3_cont,
+        },
+        {
+            "name": "archetype_compatibility",
+            "score": round(c4, 1),
+            "weight": WEIGHTS["archetype_compatibility"],
+            "contribution": c4_cont,
+        },
+        {
+            "name": "efficiency_legacy",
+            "score": round(c5, 1),
+            "weight": WEIGHTS["efficiency_legacy"],
+            "contribution": c5_cont,
+        },
+    ]
+
+    evidence_array = []
+    evidence_array.append(_explain_consistency(consistency_score, round(consistency_score * 100), period_days))
+    evidence_array.append(_explain_degradation(c2, trips_change_pct))
+    evidence_array.append(_explain_recency(days_since, last_date))
+    evidence_array.append(_explain_archetype(archetypes))
+    evidence_array.append(_explain_efficiency(c5, revenue_per_hour, pop_p50_rev_hour))
+    for m in modifiers:
+        evidence_array.append(m.get("evidence", ""))
+
+    source_metrics = [
+        {"metric": "active_days", "value": active_days, "period_days": period_days},
+        {"metric": "total_trips", "value": trips},
+        {"metric": "days_since_last_activity", "value": days_since},
+        {"metric": "revenue_per_hour", "value": round(revenue_per_hour, 2), "population_p50": round(pop_p50_rev_hour, 2)},
+        {"metric": "peak_hour_share", "value": round(peak_share, 2)},
+        {"metric": "weekend_share", "value": round(weekend_share, 2)},
+    ]
+
     return {
         "driver_id": driver_id,
         "country": driver.get("country", ""),
         "city": driver.get("city", ""),
         "recoverability_state": state["state"],
         "recoverability_score": score,
+        "total_score": score,
+        "bucket": state["state"],
         "state_metadata": {
             "label": state["label"],
             "severity": state["severity"],
             "color": state["color"],
             "description": state["description"],
         },
+        "components": components_array,
+        "modifiers": modifiers,
+        "evidence": evidence_array,
+        "source_metrics": source_metrics,
         "score_breakdown": {
             "historical_consistency": {
                 "score": round(c1, 1),
                 "weight": WEIGHTS["historical_consistency"],
-                "contribution": round(c1 * WEIGHTS["historical_consistency"], 1),
+                "contribution": c1_cont,
                 "evidence": f"consistency_score = {consistency_score:.2f} (activo {active_days} de {period_days} dias)",
                 "raw_value": round(consistency_score, 3),
             },
             "degradation_severity": {
                 "score": round(c2, 1),
                 "weight": WEIGHTS["degradation_severity"],
-                "contribution": round(c2 * WEIGHTS["degradation_severity"], 1),
+                "contribution": c2_cont,
                 "evidence": f"trips_change = {round(trips_change_pct * 100)}%, severity = {_c2_label(c2)}",
                 "raw_value": round(trips_change_pct, 3),
             },
             "recency": {
                 "score": round(c3, 1),
                 "weight": WEIGHTS["recency"],
-                "contribution": round(c3 * WEIGHTS["recency"], 1),
+                "contribution": c3_cont,
                 "evidence": f"Ultimo viaje: hace {days_since} dias" + (f" ({last_date})" if last_date else ""),
                 "raw_value": days_since,
             },
             "archetype_compatibility": {
                 "score": round(c4, 1),
                 "weight": WEIGHTS["archetype_compatibility"],
-                "contribution": round(c4 * WEIGHTS["archetype_compatibility"], 1),
+                "contribution": c4_cont,
                 "evidence": f"Arquetipos: {', '.join(archetypes)}",
                 "raw_value": list(archetypes),
             },
             "efficiency_legacy": {
                 "score": round(c5, 1),
                 "weight": WEIGHTS["efficiency_legacy"],
-                "contribution": round(c5 * WEIGHTS["efficiency_legacy"], 1),
+                "contribution": c5_cont,
                 "evidence": f"revenue_per_hour = {revenue_per_hour:.2f} (p50={pop_p50_rev_hour:.2f})",
                 "raw_value": round(revenue_per_hour, 2),
             },
@@ -532,6 +594,17 @@ def _explain_efficiency(c5: float, rev_hour: float, p50: float) -> str:
         return "Sin datos de eficiencia historica."
 
 
+def _get_population_percentiles(drivers: list) -> tuple:
+    """Compute population p50 and p75 for revenue_per_hour across drivers in scope."""
+    rev_hours = [_safe_num(d.get("revenue_per_hour")) for d in drivers if _safe_num(d.get("revenue_per_hour")) > 0]
+    if not rev_hours:
+        return 10.0, 15.0
+    sorted_rev = sorted(rev_hours)
+    pop_p50 = sorted_rev[len(sorted_rev) // 2]
+    pop_p75 = sorted_rev[int(len(sorted_rev) * 0.75)] if len(sorted_rev) > 3 else pop_p50 * 1.5
+    return pop_p50, pop_p75
+
+
 # ========== PUBLIC API ==========
 
 def get_recoverability_summary(
@@ -547,9 +620,7 @@ def get_recoverability_summary(
     half = period_days // 2
     prior = _get_prior_data(period_days, half, country, city)
 
-    rev_hours = [_safe_num(d.get("revenue_per_hour")) for d in drivers if _safe_num(d.get("revenue_per_hour")) > 0]
-    pop_p50_rev_hour = sorted(rev_hours)[len(rev_hours) // 2] if rev_hours else 10.0
-    pop_p75_rev_hour = sorted(rev_hours)[int(len(rev_hours) * 0.75)] if len(rev_hours) > 3 else pop_p50_rev_hour * 1.5
+    pop_p50_rev_hour, pop_p75_rev_hour = _get_population_percentiles(drivers)
 
     scores = []
     states_count = {}
@@ -607,9 +678,7 @@ def get_top_recoverable(
     half = period_days // 2
     prior = _get_prior_data(period_days, half, country, city)
 
-    rev_hours = [_safe_num(d.get("revenue_per_hour")) for d in drivers if _safe_num(d.get("revenue_per_hour")) > 0]
-    pop_p50 = sorted(rev_hours)[len(rev_hours) // 2] if rev_hours else 10.0
-    pop_p75 = sorted(rev_hours)[int(len(rev_hours) * 0.75)] if len(rev_hours) > 3 else pop_p50 * 1.5
+    pop_p50, pop_p75 = _get_population_percentiles(drivers)
 
     results = []
     for d in drivers:
@@ -644,9 +713,7 @@ def get_recoverability_distribution(
     half = period_days // 2
     prior = _get_prior_data(period_days, half, country, city)
 
-    rev_hours = [_safe_num(d.get("revenue_per_hour")) for d in drivers if _safe_num(d.get("revenue_per_hour")) > 0]
-    pop_p50 = sorted(rev_hours)[len(rev_hours) // 2] if rev_hours else 10.0
-    pop_p75 = sorted(rev_hours)[int(len(rev_hours) * 0.75)] if len(rev_hours) > 3 else pop_p50 * 1.5
+    pop_p50, pop_p75 = _get_population_percentiles(drivers)
 
     state_data = {s["state"]: {"count": 0, "drivers": [], "avg_score": 0.0} for s in STATES}
 
@@ -743,16 +810,13 @@ def get_shadow_priority(
     half = period_days // 2
     prior = _get_prior_data(period_days, half, country, city)
 
-    rev_hours = [_safe_num(d.get("revenue_per_hour")) for d in drivers if _safe_num(d.get("revenue_per_hour")) > 0]
-    pop_p50 = sorted(rev_hours)[len(rev_hours) // 2] if rev_hours else 10.0
-    pop_p75 = sorted(rev_hours)[int(len(rev_hours) * 0.75)] if len(rev_hours) > 3 else pop_p50 * 1.5
+    pop_p50, pop_p75 = _get_population_percentiles(drivers)
 
     results = []
     for d in drivers:
         result = compute_recoverability_score(d, period_days, prior, pop_p50, pop_p75)
         results.append(result)
 
-    # Sort by recoverability_score descending, then by total_revenue for ties
     results.sort(key=lambda x: (x["recoverability_score"], x.get("driver_id", "")), reverse=True)
     total = len(results)
 
@@ -777,4 +841,162 @@ def get_shadow_priority(
         "available": True,
         "shadow_mode": True,
         "note": "Shadow priority only. Visual ranking. No automated actions. No SAC queue routing.",
+    }
+
+
+def get_recoverability_segments(
+    country: Optional[str] = None,
+    city: Optional[str] = None,
+    period_days: int = 28,
+) -> dict:
+    """Recoverability distribution segmented by lifecycle state and archetype."""
+    drivers = _get_driver_data(period_days, country, city)
+    if not drivers:
+        return {"segments": [], "available": False}
+    half = period_days // 2
+    prior = _get_prior_data(period_days, half, country, city)
+    pop_p50, pop_p75 = _get_population_percentiles(drivers)
+
+    results = []
+    for d in drivers:
+        result = compute_recoverability_score(d, period_days, prior, pop_p50, pop_p75)
+        results.append(result)
+
+    by_lifecycle = {}
+    by_archetype = {}
+    for r in results:
+        lc = r.get("lifecycle_state", "UNKNOWN")
+        by_lifecycle.setdefault(lc, {"count": 0, "total_score": 0.0, "drivers": []})
+        by_lifecycle[lc]["count"] += 1
+        by_lifecycle[lc]["total_score"] += r["recoverability_score"]
+        by_lifecycle[lc]["drivers"].append(r)
+
+        for archetype_str in (r.get("score_breakdown", {}).get("archetype_compatibility", {}).get("evidence", "").replace("Arquetipos: ", "").split(", ") if r.get("score_breakdown") else []):
+            archetype = archetype_str.strip()
+            if archetype:
+                by_archetype.setdefault(archetype, {"count": 0, "total_score": 0.0, "drivers": []})
+                by_archetype[archetype]["count"] += 1
+                by_archetype[archetype]["total_score"] += r["recoverability_score"]
+                by_archetype[archetype]["drivers"].append(r)
+
+    lifecycle_segments = []
+    for lc, data in sorted(by_lifecycle.items()):
+        lifecycle_segments.append({
+            "lifecycle_state": lc,
+            "count": data["count"],
+            "avg_recoverability_score": round(data["total_score"] / max(data["count"], 1), 1),
+            "pct": round(data["count"] / max(len(results), 1) * 100, 1),
+        })
+
+    archetype_segments = []
+    for at, data in sorted(by_archetype.items(), key=lambda x: -x[1]["count"]):
+        archetype_segments.append({
+            "archetype": at,
+            "count": data["count"],
+            "avg_recoverability_score": round(data["total_score"] / max(data["count"], 1), 1),
+            "pct": round(data["count"] / max(len(results), 1) * 100, 1),
+        })
+
+    return {
+        "lifecycle_segments": lifecycle_segments,
+        "archetype_segments": archetype_segments,
+        "total_drivers": len(results),
+        "available": True,
+        "shadow_mode": True,
+    }
+
+
+def get_recoverability_explainability(
+    driver_id: str,
+    period_days: int = 28,
+) -> dict:
+    """Dedicated explainability endpoint returning components, evidence, and source_metrics."""
+    with get_db() as conn:
+        cur = _cursor(conn)
+        cur.execute(
+            f"""
+            SELECT f.driver_id, f.country, f.city,
+                   SUM(f.trips)::INTEGER AS trips,
+                   SUM(f.cancelled_trips)::INTEGER AS cancelled_trips,
+                   COUNT(DISTINCT f.activity_date) AS active_days,
+                   SUM(f.revenue) AS total_revenue,
+                   SUM(f.distance_km) AS total_distance_km,
+                   SUM(f.duration_min) AS total_duration_min,
+                   SUM(f.peak_hour_trips) AS peak_hour_trips,
+                   SUM(f.weekend_trips) AS weekend_trips,
+                   SUM(f.weekday_trips) AS weekday_trips,
+                   COUNT(DISTINCT f.park_id) AS zones_used,
+                   MAX(f.activity_date) AS last_activity_date,
+                   CASE WHEN SUM(f.duration_min) > 0 THEN SUM(f.revenue) / (SUM(f.duration_min) / 60.0) END AS revenue_per_hour,
+                   CASE WHEN SUM(f.trips) > 0 THEN SUM(f.peak_hour_trips)::numeric / SUM(f.trips) END AS peak_hour_share,
+                   CASE WHEN SUM(f.trips) > 0 THEN SUM(f.weekend_trips)::numeric / SUM(f.trips) END AS weekend_share,
+                   CASE WHEN SUM(f.duration_min) > 0 THEN SUM(f.trips)::numeric / (SUM(f.duration_min) / 60.0) END AS trips_per_hour,
+                   CASE WHEN SUM(f.distance_km) > 0 THEN SUM(f.revenue) / SUM(f.distance_km) END AS revenue_per_km,
+                   CASE WHEN COUNT(DISTINCT f.activity_date) > 0
+                        THEN SUM(f.trips)::numeric / COUNT(DISTINCT f.activity_date) END AS avg_trips_per_day
+            FROM {FACT_TRIP_DAILY} f
+            WHERE f.driver_id = %(driver_id)s
+              AND f.activity_date >= CURRENT_DATE - %(period)s
+              AND f.trips > 0
+            GROUP BY f.driver_id, f.country, f.city
+            """,
+            {"driver_id": driver_id, "period": period_days},
+        )
+        driver = dict(cur.fetchone() or {})
+        if not driver:
+            return {"driver_id": driver_id, "available": False, "reason": "Driver not found or no trips in period"}
+
+    half = period_days // 2
+    prior = _get_prior_data(period_days, half)
+    pop_p50 = _safe_num(driver.get("revenue_per_hour"), 10)
+    pop_p75 = pop_p50 * 1.5
+
+    result = compute_recoverability_score(driver, period_days, prior, pop_p50, pop_p75)
+    result["available"] = True
+    result["shadow_mode"] = True
+    return result
+
+
+def get_recoverability_risk_distribution(
+    country: Optional[str] = None,
+    city: Optional[str] = None,
+    period_days: int = 28,
+) -> dict:
+    """Risk distribution: counts and percentages by risk severity."""
+    drivers = _get_driver_data(period_days, country, city)
+    if not drivers:
+        return {"risk_distribution": [], "available": False}
+    half = period_days // 2
+    prior = _get_prior_data(period_days, half, country, city)
+    pop_p50, pop_p75 = _get_population_percentiles(drivers)
+
+    risk_buckets = {"critical": 0, "high": 0, "elevated": 0, "moderate": 0, "low": 0}
+    by_state_risk = {}
+    for d in drivers:
+        result = compute_recoverability_score(d, period_days, prior, pop_p50, pop_p75)
+        sev = result.get("state_metadata", {}).get("severity", "low")
+        risk_buckets[sev] = risk_buckets.get(sev, 0) + 1
+        st = result["recoverability_state"]
+        by_state_risk.setdefault(st, {"count": 0, "severity": sev})
+        by_state_risk[st]["count"] += 1
+
+    risk_distribution = [
+        {"severity": "critical", "label": "Critical", "color": "#ef4444", "count": risk_buckets["critical"],
+         "pct": round(risk_buckets["critical"] / max(len(drivers), 1) * 100, 1)},
+        {"severity": "high", "label": "High", "color": "#f97316", "count": risk_buckets["high"],
+         "pct": round(risk_buckets["high"] / max(len(drivers), 1) * 100, 1)},
+        {"severity": "elevated", "label": "Elevated", "color": "#eab308", "count": risk_buckets["elevated"],
+         "pct": round(risk_buckets["elevated"] / max(len(drivers), 1) * 100, 1)},
+        {"severity": "moderate", "label": "Moderate", "color": "#3b82f6", "count": risk_buckets["moderate"],
+         "pct": round(risk_buckets["moderate"] / max(len(drivers), 1) * 100, 1)},
+        {"severity": "low", "label": "Low", "color": "#22c55e", "count": risk_buckets["low"],
+         "pct": round(risk_buckets["low"] / max(len(drivers), 1) * 100, 1)},
+    ]
+
+    return {
+        "risk_distribution": risk_distribution,
+        "total_drivers": len(drivers),
+        "available": True,
+        "shadow_mode": True,
+        "note": "Diagnostic risk distribution shadow only. No automated risk mitigation actions.",
     }

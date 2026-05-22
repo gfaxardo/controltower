@@ -10,6 +10,8 @@ import {
   getRecoverabilityTop,
   getRecoverabilityShadowPriority,
   getDriverRecoverability,
+  getRecoverabilitySegments,
+  getRecoverabilityRiskDistribution,
 } from '../../services/api'
 
 function formatNum(n) {
@@ -42,6 +44,8 @@ export default function RecoverabilityIntelligenceDashboard() {
   const [distribution, setDistribution] = useState(null)
   const [topDrivers, setTopDrivers] = useState([])
   const [shadowPriority, setShadowPriority] = useState([])
+  const [segments, setSegments] = useState(null)
+  const [riskDistribution, setRiskDistribution] = useState(null)
   const [selectedDriver, setSelectedDriver] = useState(null)
   const [driverDetail, setDriverDetail] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -52,16 +56,20 @@ export default function RecoverabilityIntelligenceDashboard() {
     setLoading(true)
     setError(null)
     try {
-      const [s, d, t, p] = await Promise.all([
+      const [s, d, t, p, seg, risk] = await Promise.all([
         getRecoverabilitySummary(params).catch(() => null),
         getRecoverabilityDistribution(params).catch(() => null),
         getRecoverabilityTop({ ...params, limit: 20 }).catch(() => null),
         getRecoverabilityShadowPriority({ ...params, limit: 30 }).catch(() => null),
+        getRecoverabilitySegments(params).catch(() => null),
+        getRecoverabilityRiskDistribution(params).catch(() => null),
       ])
       setSummary(s)
       setDistribution(d)
       setTopDrivers(t?.drivers || [])
       setShadowPriority(p?.priority || [])
+      setSegments(seg)
+      setRiskDistribution(risk)
     } catch (e) {
       setError(e.message || 'Error loading data')
     } finally {
@@ -101,7 +109,7 @@ export default function RecoverabilityIntelligenceDashboard() {
         <div>
           <strong style={{ color: '#f97316' }}>SHADOW MODE</strong>
           <span style={{ color: '#94a3b8', marginLeft: 10 }}>
-            Recoverability scores are diagnostic only. No automated interventions. No SAC queue routing. No recommendations generated.
+            Recoverability Intelligence is running in SHADOW MODE. No operational actions are executed automatically.
           </span>
         </div>
       </div>
@@ -253,6 +261,97 @@ export default function RecoverabilityIntelligenceDashboard() {
           </div>
           <div style={{ marginTop: 8, fontSize: 10, color: '#64748b' }}>
             Shadow priority ranking — no SAC queue routing. Visual diagnostic only.
+          </div>
+        </div>
+      )}
+
+      {/* Recoverability vs Lifecycle & Archetype (segments) */}
+      {segments?.available && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
+          {/* Recoverability vs Lifecycle */}
+          {segments.lifecycle_segments?.length > 0 && (
+            <div style={panelStyle}>
+              <h3 style={sectionTitle}>Recoverability vs Lifecycle</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {segments.lifecycle_segments.map((seg) => (
+                  <div key={seg.lifecycle_state} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{
+                      width: `${Math.max(seg.pct, 2)}%`,
+                      height: 22,
+                      background: '#3b82f6',
+                      borderRadius: 4,
+                      minWidth: 4,
+                      display: 'flex',
+                      alignItems: 'center',
+                      paddingLeft: 8,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      overflow: 'hidden',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {seg.pct > 8 ? seg.lifecycle_state : ''}
+                    </div>
+                    <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                      {seg.lifecycle_state}: {seg.count} ({seg.pct}%) — avg {seg.avg_recoverability_score}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recoverability vs Archetype */}
+          {segments.archetype_segments?.length > 0 && (
+            <div style={panelStyle}>
+              <h3 style={sectionTitle}>Recoverability vs Archetype</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {segments.archetype_segments.slice(0, 8).map((seg) => (
+                  <div key={seg.archetype} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{
+                      width: `${Math.max(seg.pct, 2)}%`,
+                      height: 22,
+                      background: '#8b5cf6',
+                      borderRadius: 4,
+                      minWidth: 4,
+                      display: 'flex',
+                      alignItems: 'center',
+                      paddingLeft: 8,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      overflow: 'hidden',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {seg.pct > 10 ? seg.archetype : ''}
+                    </div>
+                    <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                      {seg.archetype}: {seg.count} ({seg.pct}%) — avg {seg.avg_recoverability_score}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Risk Distribution */}
+      {riskDistribution?.available && (
+        <div style={panelStyle}>
+          <h3 style={sectionTitle}>Risk Distribution</h3>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            {riskDistribution.risk_distribution?.map((r) => (
+              <div key={r.severity} style={{
+                flex: '1 1 120px',
+                background: '#1e293b',
+                borderRadius: 8,
+                padding: 12,
+                textAlign: 'center',
+              }}>
+                <div style={{ fontSize: 20, fontWeight: 700, color: r.color }}>{r.count}</div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{r.label}</div>
+                <div style={{ fontSize: 10, color: '#64748b' }}>{r.pct}%</div>
+              </div>
+            ))}
           </div>
         </div>
       )}

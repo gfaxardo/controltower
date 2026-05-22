@@ -1104,5 +1104,17 @@ export const getRecoverabilityShadowPriority = async (params = {}) => {
   const response = await api.get('/recoverability/shadow-priority', { params, timeout: 60000 })
   return response.data
 }
+export const getRecoverabilitySegments = async (params = {}) => {
+  const response = await api.get('/recoverability/segments', { params, timeout: 60000 })
+  return response.data
+}
+export const getRecoverabilityExplainability = async (driverId, params = {}) => {
+  const response = await api.get(`/recoverability/explainability/${driverId}`, { params, timeout: 60000 })
+  return response.data
+}
+export const getRecoverabilityRiskDistribution = async (params = {}) => {
+  const response = await api.get('/recoverability/risk-distribution', { params, timeout: 60000 })
+  return response.data
+}
 
 export default api

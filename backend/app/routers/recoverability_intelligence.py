@@ -20,6 +20,9 @@ from app.services.recoverability_intelligence_service import (
     get_recoverability_distribution,
     get_driver_recoverability,
     get_shadow_priority,
+    get_recoverability_segments,
+    get_recoverability_explainability,
+    get_recoverability_risk_distribution,
 )
 
 import logging
@@ -121,4 +124,58 @@ async def recoverability_shadow_priority(
         )
     except Exception as e:
         logger.exception("recoverability shadow priority: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/segments")
+async def recoverability_segments(
+    country: Optional[str] = Query(None, description="Filtrar por pais"),
+    city: Optional[str] = Query(None, description="Filtrar por ciudad"),
+    period_days: int = Query(28, ge=7, le=180, description="Dias de la ventana de analisis"),
+):
+    try:
+        return get_recoverability_segments(
+            country=country,
+            city=city,
+            period_days=period_days,
+        )
+    except Exception as e:
+        logger.exception("recoverability segments: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/explainability/{driver_id}")
+async def recoverability_explainability(
+    driver_id: str,
+    period_days: int = Query(28, ge=7, le=180, description="Dias de la ventana de analisis"),
+):
+    try:
+        result = get_recoverability_explainability(
+            driver_id=driver_id,
+            period_days=period_days,
+        )
+        if not result.get("available"):
+            raise HTTPException(status_code=404, detail=result.get("reason", "Driver not found"))
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("recoverability explainability: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/risk-distribution")
+async def recoverability_risk_distribution(
+    country: Optional[str] = Query(None, description="Filtrar por pais"),
+    city: Optional[str] = Query(None, description="Filtrar por ciudad"),
+    period_days: int = Query(28, ge=7, le=180, description="Dias de la ventana de analisis"),
+):
+    try:
+        return get_recoverability_risk_distribution(
+            country=country,
+            city=city,
+            period_days=period_days,
+        )
+    except Exception as e:
+        logger.exception("recoverability risk distribution: %s", e)
         raise HTTPException(status_code=500, detail=str(e))

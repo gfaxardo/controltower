@@ -1003,6 +1003,22 @@ def get_omniview_projection(
             year,
         )
 
+    # FASE 1G.3 — Intento de serving fact para daily/weekly
+    if grain in ("daily", "weekly"):
+        served = _try_load_from_serving_fact(
+            plan_version, grain, country, city, business_slice, year, month
+        )
+        if served is not None:
+            total_s = round(time.perf_counter() - _t0, 3)
+            logger.info(
+                "get_omniview_projection SERVED_FROM_FACT grain=%s rows=%d in %.3fs",
+                grain, len(served.get("data", [])), total_s,
+            )
+            served["meta"]["served_from"] = "fact"
+            served["meta"]["query_duration_ms"] = round(total_s * 1000)
+            served["meta"]["fact_generated_at"] = served["meta"].get("fact_generated_at")
+            return served
+
     _t1 = time.perf_counter()
     plan_rows = _load_plan_for_projection_scope(
         plan_version, grain, country, city, year, month, today
@@ -1421,6 +1437,8 @@ def get_omniview_projection(
     fallback_level_summary = _fallback_level_summary(display_rows)
     logger.info("get_omniview_projection TOTAL=%.2fs", time.perf_counter() - _t0)
 
+    query_duration_ms = round((time.perf_counter() - _t0) * 1000)
+
     last_loaded = None
     for p in plan_rows:
         la = p.get("last_loaded_at")
@@ -1520,7 +1538,174 @@ def get_omniview_projection(
             "contextual_suggestions": contextual_suggestions,
             "decision_recommendations": decision_recommendations,
             "global_decision_queue": global_decision_queue,
+            "served_from": "runtime_fallback",
+            "query_duration_ms": query_duration_ms,
+            "fact_generated_at": None,
         },
+    }
+
+
+def _try_load_from_serving_fact(
+    plan_version: str,
+    grain: str,
+    country: Optional[str],
+    city: Optional[str],
+    business_slice: Optional[str],
+    year: Optional[int],
+    month: Optional[int],
+) -> Optional[Dict[str, Any]]:
+    """Intenta servir proyección desde serving.omniview_projection_daily_fact.
+    Retorna None si no hay datos pre-computados para esta combinación."""
+    clauses = ["plan_version = %s", "grain = %s"]
+    params: List[Any] = [plan_version, grain]
+
+    if country:
+        country_norm = _country_to_fact_name(country)
+        clauses.append("country = %s")
+        params.append(country_norm)
+    if city:
+        clauses.append("city = %s")
+        params.append(_city_to_fact_name(city))
+    if business_slice:
+        clauses.append("business_slice_name = %s")
+        params.append(canonicalize_business_slice_name(business_slice))
+    if year is not None:
+        clauses.append("year = %s")
+        params.append(year)
+    if month is not None:
+        clauses.append("month = %s")
+        params.append(month)
+
+    where = " AND ".join(clauses)
+
+    try:
+        with get_db() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute(
+                f"""
+                SELECT * FROM serving.omniview_projection_daily_fact
+                WHERE {where}
+                ORDER BY year, month, period_key, business_slice_name
+                """
+            )
+            rows = cur.fetchall()
+            cur.close()
+
+        if not rows:
+            return None
+
+        display_rows = [_serving_fact_row_to_display(r) for r in rows]
+        fact_gen_at = max(
+            (r.get("generated_at") for r in rows if r.get("generated_at")),
+            default=None,
+        )
+        if fact_gen_at and hasattr(fact_gen_at, "isoformat"):
+            fact_gen_at = fact_gen_at.isoformat()
+
+        df_fresh = compute_matrix_data_freshness(
+            grain,
+            country=country,
+            city=city,
+            business_slice=business_slice,
+            year=year,
+            month=month,
+        )
+
+        return {
+            "granularity": grain,
+            "plan_version": plan_version,
+            "data": display_rows,
+            "data_freshness": df_fresh,
+            "meta": {
+                "plan_version": plan_version,
+                "plan_loaded_at": None,
+                "fact_generated_at": fact_gen_at,
+                "served_from": "fact",
+                "query_duration_ms": 0,
+                "plan_derivation": {
+                    "monthly_plan_only": True,
+                    "response_grain": grain,
+                    "derivation_source": "serving.omniview_projection_daily_fact",
+                },
+                "kpis_with_projection": list(PROJECTABLE_KPIS),
+                "reconciliation": {
+                    "total_display_rows": len(display_rows),
+                },
+                "data_freshness": df_fresh,
+            },
+            "available": True,
+            "shadow_mode": False,
+        }
+    except Exception as e:
+        logger.warning(
+            "_try_load_from_serving_fact: fallback to runtime — %s", e
+        )
+        return None
+
+
+def _serving_fact_row_to_display(r: dict) -> Dict[str, Any]:
+    """Convierte una fila de serving.omniview_projection_daily_fact a formato display_row."""
+    return {
+        "country": r.get("country", ""),
+        "city": r.get("city", ""),
+        "business_slice_name": r.get("business_slice_name", ""),
+        "fleet_display_name": r.get("fleet_display_name", ""),
+        "is_subfleet": r.get("is_subfleet", False),
+        "subfleet_name": r.get("subfleet_name", ""),
+        "month": r.get("period_key") if r.get("grain") == "monthly" else None,
+        "trip_date": r.get("trip_date"),
+        "week_start": r.get("week_start"),
+        "week_end": r.get("week_end"),
+        "iso_year": r.get("iso_year"),
+        "iso_week": r.get("iso_week"),
+        "month_source": r.get("month_source"),
+        "week_label": r.get("week_label"),
+        "week_range_label": r.get("week_range_label"),
+        "week_full_label": r.get("week_full_label"),
+        "distribution_model": r.get("distribution_model", ""),
+        "comparison_status": r.get("comparison_status", ""),
+        "comparison_basis": r.get("comparison_basis", ""),
+        "year": r.get("year"),
+        "month_number": r.get("month"),
+        "projection_confidence": r.get("projection_confidence", "medium"),
+        "projection_anomaly": r.get("projection_anomaly", False),
+        "trips_completed": _safe_float(r.get("trips_completed")),
+        "revenue_yego_net": _safe_float(r.get("revenue_yego_net")),
+        "active_drivers": _safe_float(r.get("active_drivers")),
+        "trips_completed_projected_total": _safe_float(r.get("trips_completed_projected_total")),
+        "trips_completed_projected_expected": _safe_float(r.get("trips_completed_projected_expected")),
+        "revenue_yego_net_projected_total": _safe_float(r.get("revenue_yego_net_projected_total")),
+        "revenue_yego_net_projected_expected": _safe_float(r.get("revenue_yego_net_projected_expected")),
+        "active_drivers_projected_total": _safe_float(r.get("active_drivers_projected_total")),
+        "active_drivers_projected_expected": _safe_float(r.get("active_drivers_projected_expected")),
+        "trips_completed_attainment_pct": _safe_float(r.get("trips_completed_attainment_pct")),
+        "trips_completed_gap_to_expected": _safe_float(r.get("trips_completed_gap_to_expected")),
+        "trips_completed_gap_pct": _safe_float(r.get("gap_pct")),
+        "trips_completed_gap_to_full": _safe_float(r.get("trips_completed_gap_to_full")),
+        "trips_completed_completion_pct": _safe_float(r.get("trips_completed_completion_pct")),
+        "trips_completed_signal": r.get("trips_completed_signal"),
+        "trips_completed_curve_method": r.get("curve_method"),
+        "trips_completed_curve_confidence": r.get("curve_confidence"),
+        "trips_completed_fallback_level": r.get("fallback_level"),
+        "trips_completed_expected_ratio": _safe_float(r.get("expected_ratio")),
+        "trips_completed_comparison_basis": r.get("comparison_basis"),
+        "revenue_yego_net_attainment_pct": _safe_float(r.get("revenue_yego_net_attainment_pct")),
+        "revenue_yego_net_gap_to_expected": _safe_float(r.get("revenue_yego_net_gap_to_expected")),
+        "revenue_yego_net_gap_pct": _safe_float(r.get("gap_pct")),
+        "revenue_yego_net_gap_to_full": _safe_float(r.get("revenue_yego_net_gap_to_full")),
+        "revenue_yego_net_completion_pct": _safe_float(r.get("revenue_yego_net_completion_pct")),
+        "revenue_yego_net_signal": r.get("revenue_yego_net_signal"),
+        "revenue_yego_net_audit_raw": _safe_float(r.get("real_revenue")),
+        "active_drivers_attainment_pct": _safe_float(r.get("active_drivers_attainment_pct")),
+        "active_drivers_gap_to_expected": _safe_float(r.get("active_drivers_gap_to_expected")),
+        "active_drivers_gap_to_full": _safe_float(r.get("active_drivers_gap_to_full")),
+        "active_drivers_completion_pct": _safe_float(r.get("active_drivers_completion_pct")),
+        "active_drivers_signal": r.get("active_drivers_signal"),
+        "avg_ticket": _safe_float(r.get("avg_ticket")),
+        "commission_pct": _safe_float(r.get("commission_pct")),
+        "trips_per_driver": _safe_float(r.get("trips_per_driver")),
+        "cancel_rate_pct": _safe_float(r.get("cancel_rate_pct")),
+        "trips_cancelled": _safe_float(r.get("trips_cancelled")),
     }
 
 
