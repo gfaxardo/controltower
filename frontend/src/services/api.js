@@ -1083,4 +1083,26 @@ export const getBehavioralDeclineSignals = async (params = {}) => {
   return response.data
 }
 
+// Fase 2C.1 — Recoverability Intelligence (Shadow Mode)
+export const getRecoverabilitySummary = async (params = {}) => {
+  const response = await api.get('/recoverability/summary', { params, timeout: 60000 })
+  return response.data
+}
+export const getRecoverabilityTop = async (params = {}) => {
+  const response = await api.get('/recoverability/top-recoverable', { params, timeout: 60000 })
+  return response.data
+}
+export const getRecoverabilityDistribution = async (params = {}) => {
+  const response = await api.get('/recoverability/distribution', { params, timeout: 60000 })
+  return response.data
+}
+export const getDriverRecoverability = async (driverId, params = {}) => {
+  const response = await api.get(`/recoverability/driver/${driverId}`, { params, timeout: 60000 })
+  return response.data
+}
+export const getRecoverabilityShadowPriority = async (params = {}) => {
+  const response = await api.get('/recoverability/shadow-priority', { params, timeout: 60000 })
+  return response.data
+}
+
 export default api

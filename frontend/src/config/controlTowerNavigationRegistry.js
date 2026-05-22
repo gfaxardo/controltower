@@ -202,6 +202,20 @@ export const CONTROL_TOWER_NAVIGATION_REGISTRY = [
     reason: 'Diagnostic Engine (Fase 2B): inteligencia operacional profunda. KPIs de eficiencia, sesiones, zonas, horarios, pre-churn signals, arquetipos. NO recomendaciones automáticas.',
     endpoints: ['/operational-intelligence/summary', '/operational-intelligence/efficiency', '/operational-intelligence/sessions', '/operational-intelligence/zones', '/operational-intelligence/time-patterns', '/operational-intelligence/pre-churn-signals', '/operational-intelligence/archetypes', '/operational-intelligence/top-vs-churned'],
   },
+  {
+    key: 'drivers_recoverability',
+    label: 'Recoverability',
+    tab: 'Drivers',
+    component: 'RecoverabilityIntelligenceDashboard',
+    route: '/drivers/recoverability',
+    engine: ENGINE.DIAGNOSTIC,
+    phaseStatus: PHASE_STATUS.READY_NEXT,
+    visibility: VISIBILITY.KEEP_VISIBLE,
+    productionReady: true,
+    requiresValidation: false,
+    reason: 'Diagnostic Engine (Fase 2C.1): recoverability intelligence. Shadow mode — calcula scores de recuperabilidad sin automatizar acciones. NO recomendaciones. NO intervenciones automaticas.',
+    endpoints: ['/recoverability/summary', '/recoverability/top-recoverable', '/recoverability/distribution', '/recoverability/driver/{driver_id}', '/recoverability/shadow-priority'],
+  },
 
   // ═══════════════════════════════════════════════════════════════════
   // RIESGO — Diagnostic Engine (READY NEXT) + BACKLOG hidden

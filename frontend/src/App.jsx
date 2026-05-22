@@ -31,6 +31,7 @@ import BehavioralAlertsView from './components/BehavioralAlertsView'
 import FleetLeakageView from './components/FleetLeakageView'
 import BehavioralPatternDiagnosisDashboard from './components/behavioralPatterns/BehavioralPatternDiagnosisDashboard'
 import OperationalBehavioralIntelligenceDashboard from './components/operationalIntelligence/OperationalBehavioralIntelligenceDashboard'
+import RecoverabilityIntelligenceDashboard from './components/recoverability/RecoverabilityIntelligenceDashboard'
 import DriverBehaviorView from './components/DriverBehaviorView'
 import ActionEngineView from './components/ActionEngineView'
 import SystemHealthView from './components/SystemHealthView'
@@ -316,6 +317,7 @@ function ControlTowerApp () {
                 {driversSubTab === 'drivers_fleet_leakage' && <FleetLeakageView key={`fleet-leakage-${refreshKey}`} />}
                 {driversSubTab === 'drivers_behavioral_patterns' && <BehavioralPatternDiagnosisDashboard key={`behavioral-patterns-${refreshKey}`} />}
                 {driversSubTab === 'drivers_operational_intelligence' && <OperationalBehavioralIntelligenceDashboard key={`operational-intel-${refreshKey}`} />}
+                {driversSubTab === 'drivers_recoverability' && <RecoverabilityIntelligenceDashboard key={`recoverability-${refreshKey}`} />}
               </section>
             )}
 

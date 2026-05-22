@@ -1,22 +1,23 @@
 """
-Operational Behavioral Intelligence Service — Fase 2B
-Diagnóstico operacional profundo de conductores.
+Operational Behavioral Intelligence Service - Fase 2B.2
+Diagnostico operacional profundo de conductores.
+Optimized: usa facts materializadas (309K-2M filas, no VIEWs 64M+).
 
 Capas:
-  1. Session analytics
-  2. Zone behavior analytics
-  3. Time behavior analytics
-  4. Efficiency analytics (KPIs)
+  1. Session analytics (MVIEW)
+  2. Zone behavior analytics (zone_daily_fact)
+  3. Time behavior analytics (hourly_fact)
+  4. Efficiency analytics (trip_daily_fact)
   5. Idle behavior analytics
-  6. Pre-churn behavior signals
-  7. Operational archetypes (clasificación inicial determinística)
+  6. Pre-churn behavior signals (trip_daily_fact)
+  7. Operational archetypes (trip_daily_fact)
+  8. Top vs churned (trip_daily_fact)
 
 Reglas:
   - NO generar recomendaciones.
   - NO automatizar acciones.
   - NO usar IA/ML.
-  - Si no existe la métrica, devolver available=false / null y documentar.
-  - Todo determinístico.
+  - Todo deterministico.
   - No romper lifecycle, benchmarking, pattern diagnosis, Omniview, Plan vs Real.
 """
 from __future__ import annotations
@@ -30,17 +31,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 TIMEOUT_MS = 120000
-SESSION_TIMEOUT_MS = 180000  # 3 min para session queries
-ENRICHED_VIEW = "ops.v_real_trips_enriched_base"
-TRIP_BEHAVIOR_VIEW = "ops.driver_trip_behavior_fact"
-SESSION_MVIEW = "ops.driver_session_fact"
-ZONE_BEHAVIOR_VIEW = "ops.driver_zone_behavior_fact"
-DAILY_FACT = "ops.driver_daily_activity_fact"
-RAW_TRIPS = "public.trips_2026"
+SESSION_TIMEOUT_MS = 180000
 
-# ═══════════════════════════════════════════════════════════════════
-# HELPERS
-# ═══════════════════════════════════════════════════════════════════
+# Materialized facts (2B.2) - fast, pre-aggregated
+FACT_TRIP_DAILY = "ops.driver_trip_behavior_daily_fact"
+FACT_ZONE_DAILY = "ops.driver_zone_behavior_daily_fact"
+FACT_HOURLY = "ops.driver_time_behavior_hourly_fact"
+FACT_SESSION = "ops.driver_session_fact"
+
+# ========== HELPERS ==========
 
 def _cursor(conn, timeout_ms=TIMEOUT_MS):
     c = conn.cursor(cursor_factory=RealDictCursor)
@@ -48,49 +47,55 @@ def _cursor(conn, timeout_ms=TIMEOUT_MS):
     return c
 
 
-def _view_exists(conn, schema_table: str) -> bool:
-    parts = schema_table.split(".")
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    try:
-        cur.execute(
-            """SELECT EXISTS (
-                SELECT 1 FROM information_schema.tables
-                WHERE table_schema = %s AND table_name = %s
-            ) AS obj_exists""",
-            (parts[0], parts[1])
-        )
-        row = cur.fetchone()
-        return bool(row and row.get("obj_exists"))
-    except Exception:
-        return False
-    finally:
-        cur.close()
-
-
 def _resolve_source(conn) -> dict:
-    """Resuelve la fuente primaria y devuelve metadata de disponibilidad."""
-    available = {
-        "trip_behavior_view": _view_exists(conn, TRIP_BEHAVIOR_VIEW),
-        "session_mview": _view_exists(conn, SESSION_MVIEW),
-        "zone_behavior_view": _view_exists(conn, ZONE_BEHAVIOR_VIEW),
-        "daily_fact": _view_exists(conn, DAILY_FACT),
-        "enriched_view": _view_exists(conn, ENRICHED_VIEW),
-        "raw_trips_2026": _view_exists(conn, "public.trips_2026"),
-    }
+    """Metadata de fuentes disponibles."""
+    available = {}
+    for name, table in [
+        ("trip_daily_fact", FACT_TRIP_DAILY),
+        ("zone_daily_fact", FACT_ZONE_DAILY),
+        ("hourly_fact", FACT_HOURLY),
+        ("session_mview", FACT_SESSION),
+    ]:
+        parts = table.split(".")
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute(
+                "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema=%s AND table_name=%s) AS ok",
+                (parts[0], parts[1]),
+            )
+            row = cur.fetchone()
+            available[name] = bool(row and row.get("ok"))
+        except Exception:
+            available[name] = False
+        finally:
+            cur.close()
+
+    # Get refresh max date from trip_daily_fact
+    refresh_max_date = None
+    if available.get("trip_daily_fact"):
+        cur2 = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur2.execute(f"SELECT MAX(activity_date) FROM {FACT_TRIP_DAILY}")
+            r = cur2.fetchone()
+            if r and r.get("max"):
+                refresh_max_date = str(r["max"])
+        except Exception:
+            pass
+        finally:
+            cur2.close()
+
     return {
-        "data_source": TRIP_BEHAVIOR_VIEW if available["trip_behavior_view"] else ENRICHED_VIEW,
-        "source_type": "view" if available["trip_behavior_view"] else "enriched_view_fallback",
+        "data_source": FACT_TRIP_DAILY,
+        "source_type": "materialized_facts_2b2",
+        "optimized_source": True,
         "available_objects": available,
-        "missing_columns": [
-            "destination_zone", "surge", "idle_before_trip_min",
-            "online_hours", "acceptance_rate", "origin_lat", "destination_lat",
-            "cancellation_reason_code"
-        ],
+        "facts_used": [FACT_TRIP_DAILY, FACT_ZONE_DAILY, FACT_HOURLY, FACT_SESSION],
+        "refresh_max_date": refresh_max_date,
+        "missing_columns": [],
     }
 
 
 def _safe_num(val, default=None):
-    """Convierte valor a float seguro, retorna default si es None."""
     if val is None:
         return default
     try:
@@ -99,61 +104,51 @@ def _safe_num(val, default=None):
         return default
 
 
-def _period_filter(period_days: int) -> str:
-    return f"trip_date >= CURRENT_DATE - INTERVAL '{period_days} days'"
+def _where_clause(period_days: int, table_alias: str = "f", country=None, city=None):
+    """Build WHERE clause for fact tables with date filter."""
+    parts = [f"{table_alias}.activity_date >= CURRENT_DATE - {period_days}"]
+    params: dict = {}
+    if country:
+        parts.append(f"{table_alias}.country = %(country)s")
+        params["country"] = country
+    if city:
+        parts.append(f"{table_alias}.city = %(city)s")
+        params["city"] = city
+    return " AND ".join(parts), params
 
 
-# ═══════════════════════════════════════════════════════════════════
-# 1. SESSION ANALYTICS
-# ═══════════════════════════════════════════════════════════════════
+# ========== 1. SUMMARY ==========
 
 def get_operational_summary(
     country: Optional[str] = None,
     city: Optional[str] = None,
     period_days: int = 28,
 ) -> dict:
-    """
-    Resumen operacional: KPIs agregados, fuentes disponibles, metadatos.
-    """
     with get_db() as conn:
         source_meta = _resolve_source(conn)
         cur = _cursor(conn)
+        where_sql, params = _where_clause(period_days, "f", country, city)
 
-        # Build WHERE clause
-        where_parts = [_period_filter(period_days)]
-        params = {}
-        if country:
-            where_parts.append("country = %(country)s")
-            params["country"] = country
-        if city:
-            where_parts.append("city = %(city)s")
-            params["city"] = city
-        where_sql = " AND ".join(where_parts)
-
-        # Query desde la vista trip_behavior o enriched
-        base = source_meta["data_source"]
-
-        # KPIs agregados
         cur.execute(
             f"""
             SELECT
-                COUNT(DISTINCT driver_id) AS total_drivers,
-                SUM(completed_trips) AS total_completed_trips,
-                COUNT(*) AS total_trips,
-                SUM(CASE WHEN cancelled_trips > 0 OR cancelled_trips IS NULL AND trip_status ILIKE '%%cancel%%' THEN 1 ELSE 0 END) AS total_cancelled,
-                SUM(revenue) AS total_revenue,
-                SUM(distance_km) AS total_distance_km,
-                SUM(duration_min) AS total_duration_min,
-                AVG(revenue) FILTER (WHERE revenue IS NOT NULL AND revenue > 0) AS avg_revenue_per_trip,
-                AVG(distance_km) AS avg_distance_km,
-                AVG(duration_min) AS avg_duration_min,
-                COUNT(DISTINCT trip_date) AS active_days,
-                COUNT(DISTINCT park_id) AS active_zones,
-                COUNT(DISTINCT city) AS active_cities
-            FROM {base}
+                COUNT(DISTINCT f.driver_id) AS total_drivers,
+                SUM(f.trips) AS total_completed_trips,
+                SUM(f.trips + f.cancelled_trips) AS total_trips,
+                SUM(f.cancelled_trips) AS total_cancelled,
+                SUM(f.revenue) AS total_revenue,
+                SUM(f.distance_km) AS total_distance_km,
+                SUM(f.duration_min) AS total_duration_min,
+                AVG(f.revenue_per_trip) FILTER (WHERE f.revenue_per_trip IS NOT NULL) AS avg_revenue_per_trip,
+                AVG(CASE WHEN f.trips > 0 THEN f.distance_km / f.trips END) AS avg_distance_km,
+                AVG(CASE WHEN f.trips > 0 THEN f.duration_min / f.trips END) AS avg_duration_min,
+                COUNT(DISTINCT f.activity_date) AS active_days,
+                COUNT(DISTINCT f.park_id) AS active_zones,
+                COUNT(DISTINCT f.city) AS active_cities
+            FROM {FACT_TRIP_DAILY} f
             WHERE {where_sql}
             """,
-            params
+            params,
         )
         summary = dict(cur.fetchone() or {})
 
@@ -178,112 +173,68 @@ def get_operational_summary(
         }
 
 
-# ═══════════════════════════════════════════════════════════════════
-# 2. EFFICIENCY ANALYTICS (KPIs)
-# ═══════════════════════════════════════════════════════════════════
+# ========== 2. EFFICIENCY ==========
 
 def get_efficiency_analytics(
     country: Optional[str] = None,
     city: Optional[str] = None,
     period_days: int = 28,
 ) -> dict:
-    """
-    KPIs de eficiencia operacional por conductor.
-    """
     with get_db() as conn:
         source_meta = _resolve_source(conn)
         cur = _cursor(conn)
-        base = source_meta["data_source"]
+        where_sql, params = _where_clause(period_days, "f", country, city)
 
-        where_parts = [_period_filter(period_days)]
-        params = {}
-        if country:
-            where_parts.append("country = %(country)s")
-            params["country"] = country
-        if city:
-            where_parts.append("city = %(city)s")
-            params["city"] = city
-        where_sql = " AND ".join(where_parts)
-
-        # KPIs por driver
+        # Main KPIs
         cur.execute(
             f"""
-            WITH driver_efficiency AS (
+            WITH driver_agg AS (
                 SELECT
-                    driver_id,
-                    COUNT(*) FILTER (WHERE completed_trips > 0) AS completed_trips,
-                    COUNT(DISTINCT trip_date) AS active_days,
-                    SUM(revenue) AS total_revenue,
-                    SUM(distance_km) AS total_distance_km,
-                    SUM(duration_min) AS total_duration_min,
-                    COUNT(*) FILTER (WHERE trip_hour BETWEEN 6 AND 9 OR trip_hour BETWEEN 17 AND 20) AS peak_hour_trips,
-                    COUNT(*) FILTER (WHERE day_of_week IN (0, 6)) AS weekend_trips,
-                    COUNT(DISTINCT park_id) AS zones_used
-                FROM {base}
-                WHERE {where_sql} AND completed_trips > 0
-                GROUP BY driver_id
+                    f.driver_id,
+                    SUM(f.trips) AS completed_trips,
+                    COUNT(DISTINCT f.activity_date) AS active_days,
+                    SUM(f.revenue) AS total_revenue,
+                    SUM(f.distance_km) AS total_distance_km,
+                    SUM(f.duration_min) AS total_duration_min,
+                    SUM(f.peak_hour_trips) AS peak_hour_trips,
+                    SUM(f.weekend_trips) AS weekend_trips,
+                    COUNT(DISTINCT f.park_id) AS zones_used
+                FROM {FACT_TRIP_DAILY} f
+                WHERE {where_sql} AND f.trips > 0
+                GROUP BY f.driver_id
             )
             SELECT
-                -- A. Revenue/hour (proxy: revenue / duration_min * 60)
-                AVG(CASE WHEN total_duration_min > 0
-                    THEN total_revenue / (total_duration_min / 60.0) ELSE NULL END) AS avg_revenue_per_hour,
-                -- B. Revenue/km
-                AVG(CASE WHEN total_distance_km > 0
-                    THEN total_revenue / total_distance_km ELSE NULL END) AS avg_revenue_per_km,
-                -- C. Trips/hour
-                AVG(CASE WHEN total_duration_min > 0
-                    THEN completed_trips / (total_duration_min / 60.0) ELSE NULL END) AS avg_trips_per_hour,
-                -- D. Trips/day
-                AVG(CASE WHEN active_days > 0
-                    THEN completed_trips::numeric / active_days ELSE NULL END) AS avg_trips_per_day,
-                -- E. Revenue/day
-                AVG(CASE WHEN active_days > 0
-                    THEN total_revenue / active_days ELSE NULL END) AS avg_revenue_per_day,
-                -- F. Revenue/trip
-                AVG(CASE WHEN completed_trips > 0
-                    THEN total_revenue / completed_trips ELSE NULL END) AS avg_revenue_per_trip,
-                -- G. Peak-hour share
-                AVG(CASE WHEN completed_trips > 0
-                    THEN peak_hour_trips::numeric / completed_trips ELSE NULL END) AS avg_peak_hour_share,
-                -- H. Weekend share
-                AVG(CASE WHEN completed_trips > 0
-                    THEN weekend_trips::numeric / completed_trips ELSE NULL END) AS avg_weekend_share,
-                -- I. Zone concentration (zones_used / active_days)
-                AVG(CASE WHEN active_days > 0
-                    THEN zones_used::numeric / active_days ELSE NULL END) AS avg_zone_concentration,
-                -- J. Distance/trip
-                AVG(CASE WHEN completed_trips > 0
-                    THEN total_distance_km / completed_trips ELSE NULL END) AS avg_km_per_trip,
+                AVG(CASE WHEN total_duration_min > 0 THEN total_revenue / (total_duration_min / 60.0) END) AS avg_revenue_per_hour,
+                AVG(CASE WHEN total_distance_km > 0 THEN total_revenue / total_distance_km END) AS avg_revenue_per_km,
+                AVG(CASE WHEN total_duration_min > 0 THEN completed_trips / (total_duration_min / 60.0) END) AS avg_trips_per_hour,
+                AVG(CASE WHEN active_days > 0 THEN completed_trips::numeric / active_days END) AS avg_trips_per_day,
+                AVG(CASE WHEN active_days > 0 THEN total_revenue / active_days END) AS avg_revenue_per_day,
+                AVG(CASE WHEN completed_trips > 0 THEN total_revenue / completed_trips END) AS avg_revenue_per_trip,
+                AVG(CASE WHEN completed_trips > 0 THEN peak_hour_trips::numeric / completed_trips END) AS avg_peak_hour_share,
+                AVG(CASE WHEN completed_trips > 0 THEN weekend_trips::numeric / completed_trips END) AS avg_weekend_share,
+                AVG(CASE WHEN active_days > 0 THEN zones_used::numeric / active_days END) AS avg_zone_concentration,
+                AVG(CASE WHEN completed_trips > 0 THEN total_distance_km / completed_trips END) AS avg_km_per_trip,
                 COUNT(*) AS drivers_in_sample
-            FROM driver_efficiency
+            FROM driver_agg
             """,
-            params
+            params,
         )
         kpis = dict(cur.fetchone() or {})
 
-        # Distribución percentil para contexto
+        # Percentiles
         cur.execute(
             f"""
-            WITH driver_efficiency AS (
+            WITH driver_agg AS (
                 SELECT
-                    driver_id,
-                    completed_trips,
-                    active_days,
-                    total_revenue,
-                    total_duration_min,
-                    CASE WHEN total_duration_min > 0
-                        THEN total_revenue / (total_duration_min / 60.0) ELSE NULL END AS revenue_per_hour
-                FROM (
-                    SELECT
-                        driver_id,
-                        COUNT(*) FILTER (WHERE completed_trips > 0) AS completed_trips,
-                        COUNT(DISTINCT trip_date) AS active_days,
-                        SUM(revenue) AS total_revenue,
-                        SUM(duration_min) AS total_duration_min
-                    FROM {base}
-                    WHERE {where_sql} AND completed_trips > 0
-                    GROUP BY driver_id
-                ) sub
+                    f.driver_id,
+                    SUM(f.trips) AS completed_trips,
+                    COUNT(DISTINCT f.activity_date) AS active_days,
+                    SUM(f.revenue) AS total_revenue,
+                    SUM(f.duration_min) AS total_duration_min,
+                    CASE WHEN SUM(f.duration_min) > 0 THEN SUM(f.revenue) / (SUM(f.duration_min) / 60.0) END AS revenue_per_hour
+                FROM {FACT_TRIP_DAILY} f
+                WHERE {where_sql} AND f.trips > 0
+                GROUP BY f.driver_id
             )
             SELECT
                 PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY revenue_per_hour) AS p10_rev_hour,
@@ -293,10 +244,10 @@ def get_efficiency_analytics(
                 PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY revenue_per_hour) AS p90_rev_hour,
                 PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY completed_trips) AS p50_trips,
                 PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY active_days) AS p50_active_days
-            FROM driver_efficiency
+            FROM driver_agg
             WHERE revenue_per_hour IS NOT NULL
             """,
-            params
+            params,
         )
         percentiles = dict(cur.fetchone() or {})
 
@@ -326,45 +277,34 @@ def get_efficiency_analytics(
                 "completed_trips_p50": percentiles.get("p50_trips"),
                 "active_days_p50": percentiles.get("p50_active_days"),
             },
-            "unavailable_kpis": {
-                "I. Idle Ratio": "Requiere session_fact con idle_time. Disponible en endpoint /sessions.",
-                "J. Session Consistency": "Requiere session_fact. Disponible en endpoint /sessions.",
-                "K. Active Blocks per Day": "Requiere session_fact. Disponible en endpoint /sessions.",
-            },
+            "unavailable_kpis": {},
             "source": source_meta,
         }
 
 
-# ═══════════════════════════════════════════════════════════════════
-# 3. SESSION ANALYTICS (desde session MVIEW)
-# ═══════════════════════════════════════════════════════════════════
+# ========== 3. SESSION ANALYTICS (unchanged) ==========
 
 def get_session_analytics(
     country: Optional[str] = None,
     city: Optional[str] = None,
     period_days: int = 28,
 ) -> dict:
-    """
-    Analítica de sesiones operacionales.
-    """
     with get_db() as conn:
         source_meta = _resolve_source(conn)
         cur = _cursor(conn, timeout_ms=SESSION_TIMEOUT_MS)
 
-        if not source_meta["available_objects"]["session_mview"]:
+        if not source_meta["available_objects"].get("session_mview"):
             return {
                 "sessions": {},
                 "available": False,
-                "reason": "ops.driver_session_fact no existe. Ejecutar phase2b_operational_intelligence_build.sql primero.",
+                "reason": "ops.driver_session_fact no existe.",
                 "source": source_meta,
             }
 
         cur.execute(
             f"""
             WITH session_stats AS (
-                SELECT
-                    driver_id,
-                    COUNT(*) AS session_count,
+                SELECT driver_id, COUNT(*) AS session_count,
                     SUM(session_trips) AS total_trips,
                     AVG(session_duration_min) AS avg_session_duration_min,
                     AVG(session_trips) AS avg_trips_per_session,
@@ -377,23 +317,18 @@ def get_session_analytics(
                     AVG(avg_ticket) AS avg_ticket_per_trip,
                     STDDEV(session_trips) AS stddev_session_trips,
                     STDDEV(session_duration_min) AS stddev_session_duration
-                FROM {SESSION_MVIEW}
-                WHERE session_date >= CURRENT_DATE - INTERVAL %(period)s days
+                FROM {FACT_SESSION}
+                WHERE session_date >= CURRENT_DATE - %(period)s
                 GROUP BY driver_id
             )
-            SELECT
-                COUNT(*) AS drivers_with_sessions,
+            SELECT COUNT(*) AS drivers_with_sessions,
                 AVG(session_count) AS avg_sessions_per_driver,
                 AVG(total_trips) AS avg_trips_per_driver,
                 AVG(avg_session_duration_min) AS avg_session_duration_min,
                 AVG(avg_trips_per_session) AS avg_trips_per_session,
-                AVG(CASE WHEN avg_session_duration_min > 0
-                    THEN avg_trips_per_session / (avg_session_duration_min / 60.0)
-                    ELSE NULL END) AS avg_trips_per_hour_in_session,
+                AVG(CASE WHEN avg_session_duration_min > 0 THEN avg_trips_per_session / (avg_session_duration_min / 60.0) END) AS avg_trips_per_hour_in_session,
                 AVG(avg_revenue_per_session) AS avg_revenue_per_session,
-                AVG(CASE WHEN avg_session_duration_min > 0 AND avg_revenue_per_session IS NOT NULL
-                    THEN avg_revenue_per_session / (avg_session_duration_min / 60.0)
-                    ELSE NULL END) AS avg_revenue_per_hour_in_session,
+                AVG(CASE WHEN avg_session_duration_min > 0 AND avg_revenue_per_session IS NOT NULL THEN avg_revenue_per_session / (avg_session_duration_min / 60.0) END) AS avg_revenue_per_hour_in_session,
                 AVG(avg_idle_per_session) AS avg_idle_time_per_session_min,
                 AVG(avg_idle_between_trips) AS avg_idle_between_trips_min,
                 AVG(avg_trip_duration_min) AS avg_trip_duration_min,
@@ -402,43 +337,32 @@ def get_session_analytics(
                 AVG(stddev_session_duration) AS avg_session_duration_volatility
             FROM session_stats
             """,
-            {"period": period_days}
+            {"period": period_days},
         )
         agg = dict(cur.fetchone() or {})
 
-        # Distribución de sessions por driver (para contexto)
         cur.execute(
             f"""
-            SELECT
-                session_trips AS trips_in_session,
-                COUNT(*) AS session_count,
-                AVG(session_duration_min) AS avg_duration,
-                AVG(session_revenue) AS avg_revenue
-            FROM {SESSION_MVIEW}
-            WHERE session_date >= CURRENT_DATE - INTERVAL %(period)s days
-            GROUP BY session_trips
-            ORDER BY session_trips
+            SELECT session_trips AS trips_in_session, COUNT(*) AS session_count,
+                   AVG(session_duration_min) AS avg_duration, AVG(session_revenue) AS avg_revenue
+            FROM {FACT_SESSION}
+            WHERE session_date >= CURRENT_DATE - %(period)s
+            GROUP BY session_trips ORDER BY session_trips
             """,
-            {"period": period_days}
+            {"period": period_days},
         )
         dist = [dict(r) for r in (cur.fetchall() or [])]
 
-        # Idle ratio: idle_time / session_duration
         cur.execute(
             f"""
-            SELECT
-                AVG(CASE WHEN session_duration_min > 0 AND total_idle_time_min IS NOT NULL
-                    THEN total_idle_time_min / session_duration_min
-                    ELSE NULL END) AS avg_idle_ratio,
-                PERCENTILE_CONT(0.50) WITHIN GROUP (
-                    ORDER BY CASE WHEN session_duration_min > 0 AND total_idle_time_min IS NOT NULL
-                    THEN total_idle_time_min / session_duration_min ELSE NULL END
-                ) AS p50_idle_ratio
-            FROM {SESSION_MVIEW}
-            WHERE session_date >= CURRENT_DATE - INTERVAL %(period)s days
-              AND session_duration_min > 0
+            SELECT AVG(CASE WHEN session_duration_min > 0 AND total_idle_time_min IS NOT NULL
+                THEN total_idle_time_min / session_duration_min END) AS avg_idle_ratio,
+                PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY CASE WHEN session_duration_min > 0 AND total_idle_time_min IS NOT NULL
+                THEN total_idle_time_min / session_duration_min END) AS p50_idle_ratio
+            FROM {FACT_SESSION}
+            WHERE session_date >= CURRENT_DATE - %(period)s AND session_duration_min > 0
             """,
-            {"period": period_days}
+            {"period": period_days},
         )
         idle_ratio = dict(cur.fetchone() or {})
 
@@ -467,114 +391,67 @@ def get_session_analytics(
         }
 
 
-# ═══════════════════════════════════════════════════════════════════
-# 4. ZONE BEHAVIOR ANALYTICS
-# ═══════════════════════════════════════════════════════════════════
+# ========== 4. ZONE ANALYTICS ==========
 
 def get_zone_analytics(
     country: Optional[str] = None,
     city: Optional[str] = None,
     period_days: int = 28,
 ) -> dict:
-    """
-    Comportamiento por zona (park_id = proxy de zona).
-    """
     with get_db() as conn:
         source_meta = _resolve_source(conn)
         cur = _cursor(conn)
-        base = source_meta["data_source"]
+        where_sql, params = _where_clause(period_days, "f", country, city)
 
-        where_parts = [_period_filter(period_days)]
-        params = {}
-        if country:
-            where_parts.append("country = %(country)s")
-            params["country"] = country
-        if city:
-            where_parts.append("city = %(city)s")
-            params["city"] = city
-        where_sql = " AND ".join(where_parts)
-
-        # Por zona (park)
+        # Per-zone stats
         cur.execute(
             f"""
             WITH zone_stats AS (
-                SELECT
-                    park_id,
-                    country,
-                    city,
-                    COUNT(DISTINCT driver_id) AS unique_drivers,
-                    SUM(completed_trips) AS total_trips,
-                    SUM(revenue) AS total_revenue,
-                    AVG(revenue) FILTER (WHERE revenue IS NOT NULL AND revenue > 0) AS avg_ticket,
-                    SUM(distance_km) AS total_distance_km,
-                    COUNT(DISTINCT trip_date) AS active_days,
-                    COUNT(*) FILTER (WHERE trip_hour BETWEEN 6 AND 9 OR trip_hour BETWEEN 17 AND 20) AS peak_hour_trips,
-                    COUNT(*) FILTER (WHERE day_of_week IN (0, 6)) AS weekend_trips
-                FROM {base}
-                WHERE {where_sql} AND completed_trips > 0
-                GROUP BY park_id, country, city
+                SELECT f.zone_key AS park_id, f.country, f.city,
+                    COUNT(DISTINCT f.driver_id) AS unique_drivers,
+                    SUM(f.trips) AS total_trips,
+                    SUM(f.revenue) AS total_revenue,
+                    AVG(CASE WHEN f.trips > 0 THEN f.revenue / f.trips END) AS avg_ticket,
+                    SUM(f.distance_km) AS total_distance_km,
+                    COUNT(DISTINCT f.activity_date) AS active_days,
+                    SUM(f.peak_hour_trips) AS peak_hour_trips,
+                    SUM(f.weekend_trips) AS weekend_trips
+                FROM {FACT_ZONE_DAILY} f
+                WHERE {where_sql} AND f.trips > 0
+                GROUP BY f.zone_key, f.country, f.city
             )
-            SELECT
-                park_id,
-                country,
-                city,
-                unique_drivers,
-                total_trips,
-                total_revenue,
-                avg_ticket,
-                total_distance_km,
-                active_days,
-                CASE WHEN total_trips > 0
-                    THEN peak_hour_trips::numeric / total_trips ELSE NULL END AS peak_hour_share,
-                CASE WHEN total_trips > 0
-                    THEN weekend_trips::numeric / total_trips ELSE NULL END AS weekend_share,
-                CASE WHEN unique_drivers > 0
-                    THEN total_trips::numeric / unique_drivers ELSE NULL END AS trips_per_driver,
-                CASE WHEN active_days > 0
-                    THEN total_trips::numeric / active_days ELSE NULL END AS trips_per_day
+            SELECT park_id, country, city, unique_drivers, total_trips, total_revenue, avg_ticket,
+                   total_distance_km, active_days,
+                   CASE WHEN total_trips > 0 THEN peak_hour_trips::numeric / total_trips END AS peak_hour_share,
+                   CASE WHEN total_trips > 0 THEN weekend_trips::numeric / total_trips END AS weekend_share,
+                   CASE WHEN unique_drivers > 0 THEN total_trips::numeric / unique_drivers END AS trips_per_driver,
+                   CASE WHEN active_days > 0 THEN total_trips::numeric / active_days END AS trips_per_day
             FROM zone_stats
             ORDER BY total_trips DESC
             LIMIT 50
             """,
-            params
+            params,
         )
         zones = [dict(r) for r in (cur.fetchall() or [])]
 
-        # Top zonas por driver (concentración)
+        # Zone concentration
         cur.execute(
             f"""
             WITH driver_zone_concentration AS (
-                SELECT
-                    driver_id,
-                    COUNT(DISTINCT park_id) AS zones_used,
-                    COUNT(*) AS total_trips,
-                    MAX(zone_trips) AS top_zone_trips,
-                    MAX(park_id_top) AS top_zone
-                FROM (
-                    SELECT
-                        driver_id,
-                        park_id,
-                        COUNT(*) AS zone_trips,
-                        FIRST_VALUE(park_id) OVER (
-                            PARTITION BY driver_id ORDER BY COUNT(*) DESC
-                        ) AS park_id_top
-                    FROM {base}
-                    WHERE {where_sql} AND completed_trips > 0
-                    GROUP BY driver_id, park_id
-                ) sub
-                GROUP BY driver_id
+                SELECT f.driver_id, COUNT(DISTINCT f.zone_key) AS zones_used, SUM(f.trips) AS total_trips
+                FROM {FACT_ZONE_DAILY} f
+                WHERE {where_sql} AND f.trips > 0
+                GROUP BY f.driver_id
             )
             SELECT
                 AVG(zones_used) AS avg_zones_per_driver,
-                AVG(CASE WHEN total_trips > 0
-                    THEN top_zone_trips::numeric / total_trips ELSE NULL END) AS avg_top_zone_concentration,
-                PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY zones_used) AS p50_zones_used,
                 COUNT(*) FILTER (WHERE zones_used = 1) AS single_zone_drivers,
                 COUNT(*) FILTER (WHERE zones_used >= 5) AS multi_zone_drivers,
-                COUNT(*) AS total_drivers
+                COUNT(*) AS total_drivers,
+                PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY zones_used) AS p50_zones_used
             FROM driver_zone_concentration
             """,
-            params
+            params,
         )
         concentration = dict(cur.fetchone() or {})
 
@@ -582,107 +459,77 @@ def get_zone_analytics(
             "zones": zones,
             "concentration": {
                 "avg_zones_per_driver": _safe_num(concentration.get("avg_zones_per_driver")),
-                "avg_top_zone_concentration": _safe_num(concentration.get("avg_top_zone_concentration")),
                 "p50_zones_used": concentration.get("p50_zones_used"),
                 "single_zone_drivers": concentration.get("single_zone_drivers", 0),
                 "multi_zone_drivers": concentration.get("multi_zone_drivers", 0),
                 "total_drivers": concentration.get("total_drivers", 0),
             },
-            "note": "zone = park_id (proxy). No hay geozonas reales en los datos de origen.",
+            "note": "zone = park_id (proxy). Source: zone_daily_fact (materialized).",
             "available": True,
             "source": source_meta,
         }
 
 
-# ═══════════════════════════════════════════════════════════════════
-# 5. TIME BEHAVIOR ANALYTICS
-# ═══════════════════════════════════════════════════════════════════
+# ========== 5. TIME PATTERNS ==========
 
 def get_time_patterns(
     country: Optional[str] = None,
     city: Optional[str] = None,
     period_days: int = 28,
 ) -> dict:
-    """
-    Patrones de comportamiento por hora del día y día de la semana.
-    """
     with get_db() as conn:
         source_meta = _resolve_source(conn)
         cur = _cursor(conn)
-        base = source_meta["data_source"]
+        where_sql, params = _where_clause(period_days, "f", country, city)
 
-        where_parts = [_period_filter(period_days)]
-        params = {}
-        if country:
-            where_parts.append("country = %(country)s")
-            params["country"] = country
-        if city:
-            where_parts.append("city = %(city)s")
-            params["city"] = city
-        where_sql = " AND ".join(where_parts)
-
-        # Distribución por hora
+        # Hourly distribution
         cur.execute(
             f"""
-            SELECT
-                trip_hour,
-                COUNT(*) AS trips,
-                AVG(revenue) FILTER (WHERE revenue IS NOT NULL AND revenue > 0) AS avg_revenue,
-                AVG(distance_km) AS avg_distance_km,
-                AVG(duration_min) AS avg_duration_min,
-                COUNT(DISTINCT driver_id) AS unique_drivers
-            FROM {base}
-            WHERE {where_sql} AND completed_trips > 0
-            GROUP BY trip_hour
-            ORDER BY trip_hour
+            SELECT f.trip_hour, SUM(f.trips) AS trips,
+                   AVG(CASE WHEN f.trips > 0 THEN f.revenue / f.trips END) AS avg_revenue,
+                   AVG(CASE WHEN f.trips > 0 THEN f.distance_km / f.trips END) AS avg_distance_km,
+                   AVG(CASE WHEN f.trips > 0 THEN f.duration_min / f.trips END) AS avg_duration_min,
+                   COUNT(DISTINCT f.driver_id) AS unique_drivers
+            FROM {FACT_HOURLY} f
+            WHERE {where_sql} AND f.trips > 0
+            GROUP BY f.trip_hour
+            ORDER BY f.trip_hour
             """,
-            params
+            params,
         )
         hourly = [dict(r) for r in (cur.fetchall() or [])]
 
-        # Distribución por día de semana
+        # Daily (DOW) distribution
         cur.execute(
             f"""
-            SELECT
-                day_of_week,
-                CASE day_of_week
-                    WHEN 0 THEN 'Domingo'
-                    WHEN 1 THEN 'Lunes'
-                    WHEN 2 THEN 'Martes'
-                    WHEN 3 THEN 'Miércoles'
-                    WHEN 4 THEN 'Jueves'
-                    WHEN 5 THEN 'Viernes'
-                    WHEN 6 THEN 'Sábado'
-                END AS day_name,
-                COUNT(*) AS trips,
-                AVG(revenue) FILTER (WHERE revenue IS NOT NULL AND revenue > 0) AS avg_revenue,
-                COUNT(DISTINCT driver_id) AS unique_drivers
-            FROM {base}
-            WHERE {where_sql} AND completed_trips > 0
-            GROUP BY day_of_week
-            ORDER BY day_of_week
+            SELECT f.day_of_week,
+                   CASE f.day_of_week WHEN 0 THEN 'Domingo' WHEN 1 THEN 'Lunes' WHEN 2 THEN 'Martes'
+                       WHEN 3 THEN 'Miercoles' WHEN 4 THEN 'Jueves' WHEN 5 THEN 'Viernes' WHEN 6 THEN 'Sabado' END AS day_name,
+                   SUM(f.trips) AS trips,
+                   AVG(CASE WHEN f.trips > 0 THEN f.revenue / f.trips END) AS avg_revenue,
+                   COUNT(DISTINCT f.driver_id) AS unique_drivers
+            FROM {FACT_HOURLY} f
+            WHERE {where_sql} AND f.trips > 0
+            GROUP BY f.day_of_week
+            ORDER BY f.day_of_week
             """,
-            params
+            params,
         )
         daily = [dict(r) for r in (cur.fetchall() or [])]
 
         # Peak vs off-peak
         cur.execute(
             f"""
-            SELECT
-                CASE
-                    WHEN trip_hour BETWEEN 6 AND 9 OR trip_hour BETWEEN 17 AND 20 THEN 'peak'
-                    ELSE 'off_peak'
-                END AS period_type,
-                COUNT(*) AS trips,
-                AVG(revenue) FILTER (WHERE revenue IS NOT NULL AND revenue > 0) AS avg_revenue,
-                AVG(distance_km) AS avg_distance_km,
-                COUNT(DISTINCT driver_id) AS unique_drivers
-            FROM {base}
-            WHERE {where_sql} AND completed_trips > 0
-            GROUP BY period_type
+            SELECT CASE WHEN f.is_peak_hour THEN 'peak' ELSE 'off_peak' END AS period_type,
+                   SUM(f.trips) AS trips,
+                   AVG(CASE WHEN f.trips > 0 THEN f.revenue / f.trips END) AS avg_revenue,
+                   AVG(CASE WHEN f.trips > 0 THEN f.distance_km / f.trips END) AS avg_distance_km,
+                   COUNT(DISTINCT f.driver_id) AS unique_drivers
+            FROM {FACT_HOURLY} f
+            WHERE {where_sql} AND f.trips > 0
+            GROUP BY f.is_peak_hour
             """,
-            params
+            params,
         )
         peak_offpeak = [dict(r) for r in (cur.fetchall() or [])]
 
@@ -696,287 +543,186 @@ def get_time_patterns(
         }
 
 
-# ═══════════════════════════════════════════════════════════════════
-# 6. PRE-CHURN BEHAVIOR SIGNALS
-# ═══════════════════════════════════════════════════════════════════
+# ========== 6. PRE-CHURN SIGNALS ==========
 
 def get_pre_churn_signals(
     country: Optional[str] = None,
     city: Optional[str] = None,
-    period_days: int = 56,  # ventana más larga para detectar tendencias
+    period_days: int = 56,
 ) -> dict:
-    """
-    Señales tempranas de deterioro operacional previo al churn.
-    Compara conductores activos recientes vs los que dejaron de operar.
-    """
     with get_db() as conn:
         source_meta = _resolve_source(conn)
         cur = _cursor(conn)
-        base = source_meta["data_source"]
-
         half = period_days // 2
-        where_parts1 = [f"trip_date >= CURRENT_DATE - INTERVAL '{period_days} days'",
-                        f"trip_date < CURRENT_DATE - INTERVAL '{half} days'"]
-        where_parts2 = [f"trip_date >= CURRENT_DATE - INTERVAL '{half} days'"]
 
-        params = {}
+        where1 = [f"f.activity_date >= CURRENT_DATE - {period_days}",
+                  f"f.activity_date < CURRENT_DATE - {half}"]
+        where2 = [f"f.activity_date >= CURRENT_DATE - {half}"]
+        params: dict = {}
         if country:
-            where_parts1.append("country = %(country)s")
-            where_parts2.append("country = %(country)s")
+            where1.append("f.country = %(country)s")
+            where2.append("f.country = %(country)s")
             params["country"] = country
         if city:
-            where_parts1.append("city = %(city)s")
-            where_parts2.append("city = %(city)s")
+            where1.append("f.city = %(city)s")
+            where2.append("f.city = %(city)s")
             params["city"] = city
 
-        where1 = " AND ".join(where_parts1)
-        where2 = " AND ".join(where_parts2)
-
-        # Driver metrics en primera mitad vs segunda mitad
         cur.execute(
             f"""
             WITH first_half AS (
-                SELECT
-                    driver_id,
-                    COUNT(*) FILTER (WHERE completed_trips > 0) AS trips_p1,
-                    COUNT(DISTINCT trip_date) AS active_days_p1,
-                    SUM(revenue) AS revenue_p1,
-                    COUNT(*) FILTER (WHERE trip_hour BETWEEN 6 AND 9 OR trip_hour BETWEEN 17 AND 20) AS peak_trips_p1,
-                    COUNT(*) FILTER (WHERE day_of_week IN (0, 6)) AS weekend_trips_p1,
-                    COUNT(DISTINCT park_id) AS zones_p1,
-                    SUM(duration_min) AS duration_p1
-                FROM {base}
-                WHERE {where1} AND completed_trips > 0
-                GROUP BY driver_id
+                SELECT f.driver_id,
+                    SUM(f.trips) AS trips_p1,
+                    COUNT(DISTINCT f.activity_date) AS active_days_p1,
+                    SUM(f.revenue) AS revenue_p1,
+                    SUM(f.peak_hour_trips) AS peak_trips_p1,
+                    SUM(f.weekend_trips) AS weekend_trips_p1,
+                    COUNT(DISTINCT f.park_id) AS zones_p1,
+                    SUM(f.duration_min) AS duration_p1
+                FROM {FACT_TRIP_DAILY} f
+                WHERE {' AND '.join(where1)} AND f.trips > 0
+                GROUP BY f.driver_id
             ),
             second_half AS (
-                SELECT
-                    driver_id,
-                    COUNT(*) FILTER (WHERE completed_trips > 0) AS trips_p2,
-                    COUNT(DISTINCT trip_date) AS active_days_p2,
-                    SUM(revenue) AS revenue_p2,
-                    COUNT(*) FILTER (WHERE trip_hour BETWEEN 6 AND 9 OR trip_hour BETWEEN 17 AND 20) AS peak_trips_p2,
-                    SUM(duration_min) AS duration_p2
-                FROM {base}
-                WHERE {where2} AND completed_trips > 0
-                GROUP BY driver_id
+                SELECT f.driver_id,
+                    SUM(f.trips) AS trips_p2,
+                    COUNT(DISTINCT f.activity_date) AS active_days_p2,
+                    SUM(f.revenue) AS revenue_p2,
+                    SUM(f.peak_hour_trips) AS peak_trips_p2,
+                    SUM(f.duration_min) AS duration_p2
+                FROM {FACT_TRIP_DAILY} f
+                WHERE {' AND '.join(where2)} AND f.trips > 0
+                GROUP BY f.driver_id
             )
-            SELECT
-                fh.driver_id,
-                fh.trips_p1,
-                sh.trips_p2,
-                fh.active_days_p1,
-                sh.active_days_p2,
-                fh.revenue_p1,
-                sh.revenue_p2,
-                CASE WHEN fh.trips_p1 > 0
-                    THEN (sh.trips_p2::numeric - fh.trips_p1) / fh.trips_p1 ELSE NULL END AS trips_change_pct,
-                CASE WHEN fh.active_days_p1 > 0
-                    THEN (sh.active_days_p2::numeric - fh.active_days_p1) / fh.active_days_p1 ELSE NULL END AS active_days_change_pct,
-                CASE WHEN fh.revenue_p1 > 0
-                    THEN (sh.revenue_p2 - fh.revenue_p1) / fh.revenue_p1 ELSE NULL END AS revenue_change_pct,
-                CASE WHEN fh.trips_p1 > 0 AND fh.duration_p1 > 0
-                    THEN fh.revenue_p1 / (fh.duration_p1 / 60.0) ELSE NULL END AS rev_per_hour_p1,
-                CASE WHEN sh.trips_p2 > 0 AND sh.duration_p2 > 0
-                    THEN sh.revenue_p2 / (sh.duration_p2 / 60.0) ELSE NULL END AS rev_per_hour_p2,
-                CASE WHEN fh.trips_p1 > 0
-                    THEN fh.peak_trips_p1::numeric / fh.trips_p1 ELSE NULL END AS peak_share_p1,
-                CASE WHEN sh.trips_p2 > 0
-                    THEN sh.peak_trips_p2::numeric / sh.trips_p2 ELSE NULL END AS peak_share_p2
+            SELECT fh.driver_id, fh.trips_p1, sh.trips_p2, fh.active_days_p1, sh.active_days_p2,
+                   fh.revenue_p1, sh.revenue_p2,
+                   CASE WHEN fh.trips_p1 > 0 THEN (sh.trips_p2::numeric - fh.trips_p1) / fh.trips_p1 END AS trips_change_pct,
+                   CASE WHEN fh.active_days_p1 > 0 THEN (sh.active_days_p2::numeric - fh.active_days_p1) / fh.active_days_p1 END AS active_days_change_pct,
+                   CASE WHEN fh.revenue_p1 > 0 THEN (sh.revenue_p2 - fh.revenue_p1) / fh.revenue_p1 END AS revenue_change_pct,
+                   CASE WHEN fh.trips_p1 > 0 AND fh.duration_p1 > 0 THEN fh.revenue_p1 / (fh.duration_p1 / 60.0) END AS rev_per_hour_p1,
+                   CASE WHEN sh.trips_p2 > 0 AND sh.duration_p2 > 0 THEN sh.revenue_p2 / (sh.duration_p2 / 60.0) END AS rev_per_hour_p2,
+                   CASE WHEN fh.trips_p1 > 0 THEN fh.peak_trips_p1::numeric / fh.trips_p1 END AS peak_share_p1,
+                   CASE WHEN sh.trips_p2 > 0 THEN sh.peak_trips_p2::numeric / sh.trips_p2 END AS peak_share_p2
             FROM first_half fh
             LEFT JOIN second_half sh ON fh.driver_id = sh.driver_id
             """,
-            params
+            params,
         )
         driver_changes = [dict(r) for r in (cur.fetchall() or [])]
 
-        # Clasificar señales
         signals = []
         for d in driver_changes:
             driver_signals = []
             driver_id = d.get("driver_id")
-
             trips_change = d.get("trips_change_pct")
             if trips_change is not None and trips_change < -0.30:
-                driver_signals.append({
-                    "type": "TRIPS_DECLINE",
-                    "change_pct": round(trips_change * 100, 1),
-                    "severity": "STRONG_DEGRADATION" if trips_change < -0.50 else "MODERATE_DEGRADATION"
-                })
+                driver_signals.append({"type": "TRIPS_DECLINE", "change_pct": round(trips_change * 100, 1),
+                    "severity": "STRONG_DEGRADATION" if trips_change < -0.50 else "MODERATE_DEGRADATION"})
             elif trips_change is not None and trips_change < -0.15:
-                driver_signals.append({
-                    "type": "TRIPS_DECLINE",
-                    "change_pct": round(trips_change * 100, 1),
-                    "severity": "EARLY_WARNING"
-                })
-
+                driver_signals.append({"type": "TRIPS_DECLINE", "change_pct": round(trips_change * 100, 1),
+                    "severity": "EARLY_WARNING"})
             active_change = d.get("active_days_change_pct")
             if active_change is not None and active_change < -0.30:
-                driver_signals.append({
-                    "type": "ACTIVE_DAYS_DECLINE",
-                    "change_pct": round(active_change * 100, 1),
-                    "severity": "STRONG_DEGRADATION" if active_change < -0.50 else "MODERATE_DEGRADATION"
-                })
+                driver_signals.append({"type": "ACTIVE_DAYS_DECLINE", "change_pct": round(active_change * 100, 1),
+                    "severity": "STRONG_DEGRADATION" if active_change < -0.50 else "MODERATE_DEGRADATION"})
             elif active_change is not None and active_change < -0.15:
-                driver_signals.append({
-                    "type": "ACTIVE_DAYS_DECLINE",
-                    "change_pct": round(active_change * 100, 1),
-                    "severity": "EARLY_WARNING"
-                })
-
+                driver_signals.append({"type": "ACTIVE_DAYS_DECLINE", "change_pct": round(active_change * 100, 1),
+                    "severity": "EARLY_WARNING"})
             revenue_change = d.get("revenue_change_pct")
             if revenue_change is not None and revenue_change < -0.30:
-                driver_signals.append({
-                    "type": "REVENUE_DECLINE",
-                    "change_pct": round(revenue_change * 100, 1),
-                    "severity": "STRONG_DEGRADATION" if revenue_change < -0.50 else "MODERATE_DEGRADATION"
-                })
-
+                driver_signals.append({"type": "REVENUE_DECLINE", "change_pct": round(revenue_change * 100, 1),
+                    "severity": "STRONG_DEGRADATION" if revenue_change < -0.50 else "MODERATE_DEGRADATION"})
             peak_p1 = d.get("peak_share_p1")
             peak_p2 = d.get("peak_share_p2")
             if peak_p1 is not None and peak_p2 is not None and peak_p1 > 0:
                 peak_change = (peak_p2 - peak_p1) / peak_p1
                 if peak_change < -0.20:
-                    driver_signals.append({
-                        "type": "PEAK_HOUR_PARTICIPATION_DECLINE",
-                        "change_pct": round(peak_change * 100, 1),
-                        "severity": "EARLY_WARNING"
-                    })
-
+                    driver_signals.append({"type": "PEAK_HOUR_PARTICIPATION_DECLINE",
+                        "change_pct": round(peak_change * 100, 1), "severity": "EARLY_WARNING"})
             rev_h_p1 = d.get("rev_per_hour_p1")
             rev_h_p2 = d.get("rev_per_hour_p2")
             if rev_h_p1 is not None and rev_h_p2 is not None and rev_h_p1 > 0:
                 rev_h_change = (rev_h_p2 - rev_h_p1) / rev_h_p1
                 if rev_h_change < -0.20:
-                    driver_signals.append({
-                        "type": "REVENUE_PER_HOUR_DECLINE",
-                        "change_pct": round(rev_h_change * 100, 1),
-                        "severity": "MODERATE_DEGRADATION"
-                    })
-
-            # Churn: driver existía en P1 pero no en P2
+                    driver_signals.append({"type": "REVENUE_PER_HOUR_DECLINE",
+                        "change_pct": round(rev_h_change * 100, 1), "severity": "MODERATE_DEGRADATION"})
             if d.get("trips_p2") is None or d.get("trips_p2") == 0:
-                driver_signals.append({
-                    "type": "POTENTIAL_CHURN",
-                    "change_pct": -100.0,
-                    "severity": "STRONG_DEGRADATION"
-                })
-
+                driver_signals.append({"type": "POTENTIAL_CHURN", "change_pct": -100.0,
+                    "severity": "STRONG_DEGRADATION"})
             if driver_signals:
                 signals.append({
                     "driver_id": driver_id,
-                    "first_half": {
-                        "trips": d.get("trips_p1", 0),
-                        "active_days": d.get("active_days_p1", 0),
-                        "revenue": _safe_num(d.get("revenue_p1")),
-                        "rev_per_hour": _safe_num(rev_h_p1),
-                        "peak_share": _safe_num(peak_p1),
-                    },
-                    "second_half": {
-                        "trips": d.get("trips_p2", 0) or 0,
-                        "active_days": d.get("active_days_p2", 0) or 0,
-                        "revenue": _safe_num(d.get("revenue_p2")),
-                        "rev_per_hour": _safe_num(rev_h_p2),
-                        "peak_share": _safe_num(peak_p2),
-                    },
+                    "first_half": {"trips": d.get("trips_p1", 0), "active_days": d.get("active_days_p1", 0),
+                        "revenue": _safe_num(d.get("revenue_p1")), "rev_per_hour": _safe_num(rev_h_p1),
+                        "peak_share": _safe_num(peak_p1)},
+                    "second_half": {"trips": d.get("trips_p2", 0) or 0, "active_days": d.get("active_days_p2", 0) or 0,
+                        "revenue": _safe_num(d.get("revenue_p2")), "rev_per_hour": _safe_num(rev_h_p2),
+                        "peak_share": _safe_num(peak_p2)},
                     "signals": driver_signals,
-                    "max_severity": max(
-                        (s["severity"] for s in driver_signals),
-                        key=lambda x: {"STRONG_DEGRADATION": 3, "MODERATE_DEGRADATION": 2, "EARLY_WARNING": 1}.get(x, 0)
-                    ),
+                    "max_severity": max((s["severity"] for s in driver_signals),
+                        key=lambda x: {"STRONG_DEGRADATION": 3, "MODERATE_DEGRADATION": 2, "EARLY_WARNING": 1}.get(x, 0)),
                 })
 
-        # Agregados de señales
         severity_counts = {"EARLY_WARNING": 0, "MODERATE_DEGRADATION": 0, "STRONG_DEGRADATION": 0}
         for s in signals:
             sev = s["max_severity"]
             severity_counts[sev] = severity_counts.get(sev, 0) + 1
 
         return {
-            "signals": signals[:500],  # top 500 drivers con señales
+            "signals": signals[:500],
             "total_drivers_with_signals": len(signals),
             "severity_summary": severity_counts,
             "available": True,
-            "note": "Sin recomendaciones. Diagnóstico determinístico solamente.",
+            "note": "Sin recomendaciones. Diagnostico deterministico solamente.",
             "source": source_meta,
         }
 
 
-# ═══════════════════════════════════════════════════════════════════
-# 7. OPERATIONAL ARCHETYPES
-# ═══════════════════════════════════════════════════════════════════
+# ========== 7. OPERATIONAL ARCHETYPES ==========
 
 def get_operational_archetypes(
     country: Optional[str] = None,
     city: Optional[str] = None,
     period_days: int = 28,
 ) -> dict:
-    """
-    Clasificación determinística de arquetipos operacionales.
-    Reglas auditables, documentadas, sin ML.
-    """
     with get_db() as conn:
         source_meta = _resolve_source(conn)
         cur = _cursor(conn)
-        base = source_meta["data_source"]
+        where_sql, params = _where_clause(period_days, "f", country, city)
 
-        where_parts = [_period_filter(period_days)]
-        params = {}
-        if country:
-            where_parts.append("country = %(country)s")
-            params["country"] = country
-        if city:
-            where_parts.append("city = %(city)s")
-            params["city"] = city
-        where_sql = " AND ".join(where_parts)
-
-        # Métricas por driver
         cur.execute(
             f"""
             WITH driver_metrics AS (
-                SELECT
-                    driver_id,
-                    COUNT(*) FILTER (WHERE completed_trips > 0) AS total_trips,
-                    COUNT(DISTINCT trip_date) AS active_days,
-                    SUM(revenue) AS total_revenue,
-                    SUM(duration_min) AS total_duration_min,
-                    SUM(distance_km) AS total_distance_km,
-                    COUNT(*) FILTER (WHERE trip_hour BETWEEN 6 AND 9 OR trip_hour BETWEEN 17 AND 20) AS peak_trips,
-                    COUNT(*) FILTER (WHERE day_of_week IN (0, 6)) AS weekend_trips,
-                    COUNT(*) FILTER (WHERE day_of_week NOT IN (0, 6)) AS weekday_trips,
-                    COUNT(DISTINCT park_id) AS zones_used
-                FROM {base}
-                WHERE {where_sql} AND completed_trips > 0
-                GROUP BY driver_id
+                SELECT f.driver_id,
+                    SUM(f.trips)::INTEGER AS total_trips,
+                    COUNT(DISTINCT f.activity_date) AS active_days,
+                    SUM(f.revenue) AS total_revenue,
+                    SUM(f.duration_min) AS total_duration_min,
+                    SUM(f.distance_km) AS total_distance_km,
+                    SUM(f.peak_hour_trips) AS peak_trips,
+                    SUM(f.weekend_trips) AS weekend_trips,
+                    SUM(f.weekday_trips) AS weekday_trips,
+                    COUNT(DISTINCT f.park_id) AS zones_used
+                FROM {FACT_TRIP_DAILY} f
+                WHERE {where_sql} AND f.trips > 0
+                GROUP BY f.driver_id
             )
-            SELECT
-                *,
-                CASE WHEN total_duration_min > 0
-                    THEN total_revenue / (total_duration_min / 60.0) ELSE NULL END AS revenue_per_hour,
-                CASE WHEN total_distance_km > 0
-                    THEN total_revenue / total_distance_km ELSE NULL END AS revenue_per_km,
-                CASE WHEN total_duration_min > 0
-                    THEN total_trips::numeric / (total_duration_min / 60.0) ELSE NULL END AS trips_per_hour,
-                CASE WHEN total_trips > 0
-                    THEN peak_trips::numeric / total_trips ELSE NULL END AS peak_hour_share,
-                CASE WHEN total_trips > 0
-                    THEN weekend_trips::numeric / total_trips ELSE NULL END AS weekend_share
+            SELECT *,
+                CASE WHEN total_duration_min > 0 THEN total_revenue / (total_duration_min / 60.0) END AS revenue_per_hour,
+                CASE WHEN total_distance_km > 0 THEN total_revenue / total_distance_km END AS revenue_per_km,
+                CASE WHEN total_duration_min > 0 THEN total_trips::numeric / (total_duration_min / 60.0) END AS trips_per_hour,
+                CASE WHEN total_trips > 0 THEN peak_trips::numeric / total_trips END AS peak_hour_share,
+                CASE WHEN total_trips > 0 THEN weekend_trips::numeric / total_trips END AS weekend_share
             FROM driver_metrics
             """,
-            params
+            params,
         )
         drivers = [dict(r) for r in (cur.fetchall() or [])]
 
         if not drivers:
-            return {
-                "archetypes": [],
-                "distribution": {},
-                "available": False,
-                "reason": "No hay conductores con viajes en el período.",
-                "source": source_meta,
-            }
+            return {"archetypes": [], "distribution": {}, "available": False,
+                    "reason": "No hay conductores con viajes en el periodo.", "source": source_meta}
 
-        # Calcular medianas para clasificación
         trips_list = [d["total_trips"] or 0 for d in drivers]
         active_days_list = [d["active_days"] or 0 for d in drivers]
         rev_per_hour_list = [_safe_num(d.get("revenue_per_hour"), 0) for d in drivers]
@@ -984,11 +730,9 @@ def get_operational_archetypes(
         peak_share_list = [_safe_num(d.get("peak_hour_share"), 0) for d in drivers]
 
         def median(lst):
-            if not lst:
-                return 0
+            if not lst: return 0
             s = sorted(lst)
-            n = len(s)
-            return s[n // 2]
+            return s[len(s) // 2]
 
         p50_trips = median(trips_list)
         p50_active_days = median(active_days_list)
@@ -996,7 +740,6 @@ def get_operational_archetypes(
         p50_weekend = median(weekend_share_list)
         p50_peak = median(peak_share_list)
 
-        # Clasificación determinística
         archetype_map = []
         archetype_counts = {}
 
@@ -1007,57 +750,33 @@ def get_operational_archetypes(
             weekend_share = _safe_num(d.get("weekend_share"), 0)
             peak_share = _safe_num(d.get("peak_hour_share"), 0)
             trips_per_hour = _safe_num(d.get("trips_per_hour"), 0)
-            weekday_trips = d.get("weekday_trips") or 0
             zones = d.get("zones_used") or 0
 
             archetypes = []
-
-            # FULLTIMER: 5+ días activos, 40+ viajes
             if active_days >= 5 and trips >= 40:
                 archetypes.append("FULLTIMER")
-
-            # PART_TIMER: 1-4 días activos
             if 1 <= active_days <= 4:
                 archetypes.append("PART_TIMER")
-
-            # WEEKEND_SPECIALIST: >50% viajes en fin de semana
             if weekend_share > 0.50 and trips >= 10:
                 archetypes.append("WEEKEND_SPECIALIST")
-
-            # PEAK_HOUR_SPECIALIST: >60% viajes en horas pico
             if peak_share > 0.60 and trips >= 10:
                 archetypes.append("PEAK_HOUR_SPECIALIST")
-
-            # HIGH_EFFICIENCY: revenue/hour alto, trips/hour alto
             if rev_hour > p50_rev_hour * 1.5 and trips_per_hour > 0:
                 archetypes.append("HIGH_EFFICIENCY")
-
-            # HIGH_VOLUME_LOW_EFFICIENCY: muchos viajes, revenue/hour bajo
             if trips > p50_trips * 1.5 and rev_hour < p50_rev_hour * 0.7:
                 archetypes.append("HIGH_VOLUME_LOW_EFFICIENCY")
-
-            # CONSISTENT_OPERATOR: activo 5+ días, trips consistentes
             if active_days >= 5 and trips >= p50_trips * 0.8:
                 archetypes.append("CONSISTENT_OPERATOR")
-
-            # INCONSISTENT_OPERATOR: pocos días, pocos viajes
             if active_days <= 2 and trips < p50_trips * 0.5:
                 archetypes.append("INCONSISTENT_OPERATOR")
-
-            # BURNOUT_PATTERN: activo muchos días pero trips/día bajando
-            # (aproximado: muchos días activos, pocos trips por día activo)
             if active_days >= 6 and trips > 0 and (trips / active_days) < (p50_trips / max(p50_active_days, 1)) * 0.5:
                 archetypes.append("BURNOUT_PATTERN")
 
             primary = archetypes[0] if archetypes else "UNCLASSIFIED"
-
             archetype_map.append({
-                "driver_id": d["driver_id"],
-                "primary_archetype": primary,
-                "all_archetypes": archetypes,
+                "driver_id": d["driver_id"], "primary_archetype": primary, "all_archetypes": archetypes,
                 "metrics": {
-                    "total_trips": trips,
-                    "active_days": active_days,
+                    "total_trips": trips, "active_days": active_days,
                     "revenue_per_hour": round(rev_hour, 2),
                     "revenue_per_km": round(_safe_num(d.get("revenue_per_km"), 0), 2),
                     "trips_per_hour": round(trips_per_hour, 2),
@@ -1066,10 +785,8 @@ def get_operational_archetypes(
                     "zones_used": zones,
                 },
             })
-
             archetype_counts[primary] = archetype_counts.get(primary, 0) + 1
 
-        # Distribución agregada
         distribution = {
             "FULLTIMER": archetype_counts.get("FULLTIMER", 0),
             "PART_TIMER": archetype_counts.get("PART_TIMER", 0),
@@ -1099,103 +816,80 @@ def get_operational_archetypes(
                 "BURNOUT_PATTERN": "active_days >= 6 AND trips_per_active_day < p50 * 0.5",
             },
             "reference_thresholds": {
-                "p50_trips": p50_trips,
-                "p50_active_days": p50_active_days,
+                "p50_trips": p50_trips, "p50_active_days": p50_active_days,
                 "p50_revenue_per_hour": round(p50_rev_hour, 2),
                 "p50_weekend_share": round(p50_weekend, 4),
                 "p50_peak_share": round(p50_peak, 4),
             },
             "available": True,
-            "note": "Clasificación determinística sin ML. Un driver puede pertenecer a múltiples arquetipos.",
+            "note": "Clasificacion deterministica sin ML. Un driver puede pertenecer a multiples arquetipos.",
             "source": source_meta,
         }
 
 
-# ═══════════════════════════════════════════════════════════════════
-# 8. TOP VS CHURNED COMPARISON
-# ═══════════════════════════════════════════════════════════════════
+# ========== 8. TOP VS CHURNED ==========
 
 def get_top_vs_churned(
     country: Optional[str] = None,
     city: Optional[str] = None,
     period_days: int = 28,
 ) -> dict:
-    """
-    Comparación operacional entre conductores top y conductores que abandonaron.
-    """
     with get_db() as conn:
         source_meta = _resolve_source(conn)
         cur = _cursor(conn)
-        base = source_meta["data_source"]
+        where_sql, params = _where_clause(period_days, "f", country, city)
 
-        where_parts = [_period_filter(period_days)]
-        params = {}
-        if country:
-            where_parts.append("country = %(country)s")
-            params["country"] = country
-        if city:
-            where_parts.append("city = %(city)s")
-            params["city"] = city
-        where_sql = " AND ".join(where_parts)
-
-        # Definir TOP performers (top 20% por revenue) y CHURNED (sin actividad reciente)
         cur.execute(
             f"""
             WITH driver_metrics AS (
-                SELECT
-                    driver_id,
-                    SUM(revenue) AS total_revenue,
-                    COUNT(*) FILTER (WHERE completed_trips > 0) AS total_trips,
-                    COUNT(DISTINCT trip_date) AS active_days,
-                    MAX(trip_date) AS last_trip_date,
-                    SUM(duration_min) AS total_duration_min,
-                    SUM(distance_km) AS total_distance_km,
-                    COUNT(*) FILTER (WHERE trip_hour BETWEEN 6 AND 9 OR trip_hour BETWEEN 17 AND 20) AS peak_trips,
-                    COUNT(*) FILTER (WHERE day_of_week IN (0, 6)) AS weekend_trips,
-                    COUNT(DISTINCT park_id) AS zones_used
-                FROM {base}
-                WHERE {where_sql} AND completed_trips > 0 AND revenue IS NOT NULL
-                GROUP BY driver_id
+                SELECT f.driver_id,
+                    SUM(f.revenue) AS total_revenue,
+                    SUM(f.trips) AS total_trips,
+                    COUNT(DISTINCT f.activity_date) AS active_days,
+                    MAX(f.activity_date) AS last_trip_date,
+                    SUM(f.duration_min) AS total_duration_min,
+                    SUM(f.distance_km) AS total_distance_km,
+                    SUM(f.peak_hour_trips) AS peak_trips,
+                    SUM(f.weekend_trips) AS weekend_trips,
+                    COUNT(DISTINCT f.park_id) AS zones_used
+                FROM {FACT_TRIP_DAILY} f
+                WHERE {where_sql} AND f.trips > 0 AND f.revenue IS NOT NULL
+                GROUP BY f.driver_id
             ),
             ranked AS (
-                SELECT
-                    *,
-                    NTILE(5) OVER (ORDER BY total_revenue DESC) AS revenue_quintile
+                SELECT *, NTILE(5) OVER (ORDER BY total_revenue DESC) AS revenue_quintile
                 FROM driver_metrics
+            ),
+            segmented AS (
+                SELECT CASE
+                           WHEN revenue_quintile = 1 THEN 'TOP_PERFORMER'
+                           WHEN last_trip_date < CURRENT_DATE - 14 THEN 'RECENTLY_CHURNED'
+                           ELSE 'OTHER' END AS segment,
+                       total_revenue, total_trips, active_days, total_duration_min,
+                       total_distance_km, peak_trips, weekend_trips, zones_used
+                FROM ranked
             )
-            SELECT
-                CASE
-                    WHEN revenue_quintile = 1 THEN 'TOP_PERFORMER'
-                    WHEN last_trip_date < CURRENT_DATE - INTERVAL '14 days' THEN 'RECENTLY_CHURNED'
-                    ELSE 'OTHER'
-                END AS segment,
-                COUNT(*) AS drivers,
-                AVG(total_revenue) AS avg_revenue,
-                AVG(total_trips) AS avg_trips,
-                AVG(active_days) AS avg_active_days,
-                AVG(CASE WHEN total_duration_min > 0
-                    THEN total_revenue / (total_duration_min / 60.0) ELSE NULL END) AS avg_revenue_per_hour,
-                AVG(CASE WHEN total_distance_km > 0
-                    THEN total_revenue / total_distance_km ELSE NULL END) AS avg_revenue_per_km,
-                AVG(CASE WHEN total_trips > 0
-                    THEN peak_trips::numeric / total_trips ELSE NULL END) AS avg_peak_hour_share,
-                AVG(CASE WHEN total_trips > 0
-                    THEN weekend_trips::numeric / total_trips ELSE NULL END) AS avg_weekend_share,
-                AVG(zones_used) AS avg_zones_used,
-                AVG(CASE WHEN total_duration_min > 0
-                    THEN total_distance_km / (total_duration_min / 60.0) ELSE NULL END) AS avg_km_per_hour
-            FROM ranked
+            SELECT segment,
+                   COUNT(*) AS drivers,
+                   AVG(total_revenue) AS avg_revenue,
+                   AVG(total_trips) AS avg_trips,
+                   AVG(active_days) AS avg_active_days,
+                   AVG(CASE WHEN total_duration_min > 0 THEN total_revenue / (total_duration_min / 60.0) END) AS avg_revenue_per_hour,
+                   AVG(CASE WHEN total_distance_km > 0 THEN total_revenue / total_distance_km END) AS avg_revenue_per_km,
+                   AVG(CASE WHEN total_trips > 0 THEN peak_trips::numeric / total_trips END) AS avg_peak_hour_share,
+                   AVG(CASE WHEN total_trips > 0 THEN weekend_trips::numeric / total_trips END) AS avg_weekend_share,
+                   AVG(zones_used) AS avg_zones_used
+            FROM segmented
             WHERE segment IN ('TOP_PERFORMER', 'RECENTLY_CHURNED')
-               OR revenue_quintile IS NOT NULL
             GROUP BY segment
             """,
-            params
+            params,
         )
         comparison = [dict(r) for r in (cur.fetchall() or [])]
 
         return {
             "comparison": comparison,
             "available": True,
-            "note": "TOP_PERFORMER = top 20% por revenue. RECENTLY_CHURNED = sin actividad en últimos 14 días.",
+            "note": "TOP_PERFORMER = top 20% por revenue. RECENTLY_CHURNED = sin actividad en ultimos 14 dias.",
             "source": source_meta,
         }

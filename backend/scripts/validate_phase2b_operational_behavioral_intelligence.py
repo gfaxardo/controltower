@@ -173,7 +173,7 @@ def main():
 
     # ═══ F. No rompe lifecycle ═══
     print("\n--- F. Lifecycle intacto ---")
-    lifecycle_code, lifecycle_body = get("/ops/driver-lifecycle/monthly", {"recent_weeks": 4}, timeout=60)
+    lifecycle_code, lifecycle_body = get("/ops/driver-lifecycle/monthly", {"from": "2026-04-22", "to": "2026-05-22"}, timeout=60)
     check("F.1 Lifecycle monthly responde", 200 <= lifecycle_code < 300 if isinstance(lifecycle_code, int) else False,
           f"HTTP {lifecycle_code}")
     if isinstance(lifecycle_body, dict):
@@ -194,13 +194,13 @@ def main():
 
     # ═══ I. No rompe Omniview ═══
     print("\n--- I. Omniview intacto ---")
-    omni_code, omni_body = get("/ops/business-slice/monthly", {"recent_months": 2}, timeout=60)
+    omni_code, omni_body = get("/ops/business-slice/monthly", {"month": 5, "year": 2026}, timeout=60)
     check("I.1 Omniview monthly responde", 200 <= omni_code < 300 if isinstance(omni_code, int) else False,
           f"HTTP {omni_code}")
 
     # ═══ J. No rompe Plan vs Real ═══
     print("\n--- J. Plan vs Real intacto ---")
-    pvr_code, pvr_body = get("/ops/plan-vs-real/monthly", {"recent_months": 2}, timeout=60)
+    pvr_code, pvr_body = get("/ops/plan-vs-real/monthly", {"month": "2026-05"}, timeout=60)
     check("J.1 Plan vs Real responde", 200 <= pvr_code < 300 if isinstance(pvr_code, int) else False,
           f"HTTP {pvr_code}")
 
@@ -271,6 +271,7 @@ def main():
     # ═══ O. No hay recomendaciones en ningún endpoint ═══
     print("\n--- O. No recommendations audit ---")
     recommendation_keywords = ["recomendación", "recomendacion", "sugerencia", "acción recomendada", "accion recomendada"]
+    negations = ["sin ", "no ", "without ", "ninguna", "ningún", "ningun"]
     found_recommendations = False
     for path, _ in endpoints_to_check:
         code, body = get(path, {"period_days": 28}, timeout=60)
@@ -278,8 +279,13 @@ def main():
             body_str = json.dumps(body).lower()
             for kw in recommendation_keywords:
                 if kw in body_str:
-                    check(f"O.1 NO '{kw}' en {path}", False, f"Encontrado en respuesta")
-                    found_recommendations = True
+                    # check if keyword appears in negation context (e.g., "Sin recomendaciones")
+                    idx = body_str.find(kw)
+                    prefix = body_str[max(0, idx - 15):idx]
+                    is_negated = any(neg in prefix for neg in negations)
+                    if not is_negated:
+                        check(f"O.1 NO '{kw}' en {path}", False, f"Encontrado en respuesta")
+                        found_recommendations = True
     if not found_recommendations:
         check("O.1 Ningún endpoint genera recomendaciones", True)
 
