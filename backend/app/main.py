@@ -5,7 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from app.settings import settings
 from app.startup_checks import run_startup_checks
 from app.startup_state import set_startup_report
-from app.routers import auth, plan, real, core, ops, health, ingestion, phase2b, phase2c, driver_lifecycle, controltower, observability, real_vs_projection, diagnostics, ops_refresh, fraud, driver_behavior_benchmarking, behavioral_pattern_diagnosis, operational_behavioral_intelligence
+from app.routers import auth, plan, real, core, ops, health, ingestion, phase2b, phase2c, driver_lifecycle, driver_lifecycle_diagnostic, driver_behavior_benchmarking, controltower, observability, real_vs_projection, diagnostics, ops_refresh, fraud, behavioral_pattern_diagnosis, operational_behavioral_intelligence
 import logging
 import time
 import uuid
@@ -86,13 +86,14 @@ app.include_router(phase2c.router)
 app.include_router(health.router)
 app.include_router(ingestion.router)
 app.include_router(driver_lifecycle.router)
+app.include_router(driver_lifecycle_diagnostic.router)
+app.include_router(driver_behavior_benchmarking.router)
 app.include_router(controltower.router)
 app.include_router(observability.router, prefix="/ops")
 app.include_router(real_vs_projection.router, prefix="/ops")
 app.include_router(diagnostics.router)
 app.include_router(ops_refresh.router, prefix="/ops")
 app.include_router(fraud.router)
-app.include_router(driver_behavior_benchmarking.router)
 app.include_router(behavioral_pattern_diagnosis.router)
 app.include_router(operational_behavioral_intelligence.router)
 

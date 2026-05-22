@@ -5,7 +5,7 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 import {
-  getDriverBehaviorSummary,
+  getDriverBehaviorBenchmarkSummary,
   getDriverBehaviorGroupBenchmarks,
   getDriverBehaviorTopVsRisk,
   getDriverBehaviorDistributions,
@@ -74,12 +74,12 @@ export default function DriverBehaviorBenchmarkingDashboard () {
       if (city) params.city = city
 
       const [sum, grp, cmp] = await Promise.all([
-        getDriverBehaviorSummary(params),
+        getDriverBehaviorBenchmarkSummary(params),
         getDriverBehaviorGroupBenchmarks(params),
         getDriverBehaviorTopVsRisk(params),
       ])
       setSummary(sum)
-      setGroups(grp.groups || [])
+      setGroups(grp?.groups || [])
       setTopVsRisk(cmp)
     } catch (e) {
       console.error('Driver Behavior Benchmarking:', e)
@@ -101,7 +101,7 @@ export default function DriverBehaviorBenchmarkingDashboard () {
       if (distGroup) params.group_name = distGroup
 
       const result = await getDriverBehaviorDistributions(params)
-      setDistributions(result)
+      setDistributions(result ?? { available: false, reason: 'No data' })
     } catch (e) {
       console.error('Distributions:', e)
     } finally {

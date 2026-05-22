@@ -407,8 +407,8 @@ export default function OperationalBehavioralIntelligenceDashboard () {
               {[
                 { label: 'Zonas/driver', value: formatNum(zones.concentration.avg_zones_per_driver) },
                 { label: 'Conc. zona top', value: formatPct(zones.concentration.avg_top_zone_concentration) },
-                { label: '1 sola zona', value: zones.concentration.single_zone_drivers + ' drivers' },
-                { label: '5+ zonas', value: zones.concentration.multi_zone_drivers + ' drivers' },
+                { label: '1 sola zona', value: (zones.concentration.single_zone_drivers ?? 0) + ' drivers' },
+                { label: '5+ zonas', value: (zones.concentration.multi_zone_drivers ?? 0) + ' drivers' },
                 { label: 'Total drivers', value: zones.concentration.total_drivers?.toLocaleString() },
               ].map((kpi, i) => (
                 <div key={i} className="bg-ct-card border border-ct-border rounded-lg p-3">

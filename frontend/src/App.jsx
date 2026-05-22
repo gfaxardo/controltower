@@ -24,10 +24,11 @@ import BusinessSliceOmniviewReports from './components/BusinessSliceOmniviewRepo
 import ControlLoopPlanVsRealView from './components/ControlLoopPlanVsRealView'
 import RealOperationalView from './components/RealOperationalView'
 import DriverLifecycleView from './components/DriverLifecycleView'
+import DriverLifecycleDashboard from './components/driverLifecycle/DriverLifecycleDashboard'
+import DriverBehaviorBenchmarkingDashboard from './components/driverBehavior/DriverBehaviorBenchmarkingDashboard'
 import SupplyView from './components/SupplyView'
 import BehavioralAlertsView from './components/BehavioralAlertsView'
 import FleetLeakageView from './components/FleetLeakageView'
-import DriverBehaviorBenchmarkingDashboard from './components/driverBehavior/DriverBehaviorBenchmarkingDashboard'
 import BehavioralPatternDiagnosisDashboard from './components/behavioralPatterns/BehavioralPatternDiagnosisDashboard'
 import OperationalBehavioralIntelligenceDashboard from './components/operationalIntelligence/OperationalBehavioralIntelligenceDashboard'
 import DriverBehaviorView from './components/DriverBehaviorView'
@@ -76,9 +77,10 @@ const ROUTE_MAP = [
   { path: '/drivers', tab: TAB_DRIVERS, sub: 'drivers_supply' },
   { path: '/drivers/supply', tab: TAB_DRIVERS, sub: 'drivers_supply' },
   { path: '/drivers/lifecycle', tab: TAB_DRIVERS, sub: 'drivers_lifecycle' },
+  { path: '/drivers/diagnostic', tab: TAB_DRIVERS, sub: 'drivers_diagnostic' },
+  { path: '/drivers/behavior-benchmarking', tab: TAB_DRIVERS, sub: 'drivers_behavior_benchmarking' },
   { path: '/drivers/behavioral-alerts', tab: TAB_DRIVERS, sub: 'drivers_behavioral_alerts' },
   { path: '/drivers/fleet-leakage', tab: TAB_DRIVERS, sub: 'drivers_fleet_leakage' },
-  { path: '/drivers/behavior-benchmarking', tab: TAB_DRIVERS, sub: 'drivers_behavior_benchmarking' },
   { path: '/drivers/behavioral-patterns', tab: TAB_DRIVERS, sub: 'drivers_behavioral_patterns' },
   { path: '/drivers/operational-intelligence', tab: TAB_DRIVERS, sub: 'drivers_operational_intelligence' },
   { path: '/riesgo', tab: TAB_RISK, sub: 'riesgo_driver_behavior' },
@@ -104,9 +106,10 @@ const SUB_URL = {
   performance_real: '/performance/real',
   drivers_supply: '/drivers/supply',
   drivers_lifecycle: '/drivers/lifecycle',
+  drivers_diagnostic: '/drivers/diagnostic',
+  drivers_behavior_benchmarking: '/drivers/behavior-benchmarking',
   drivers_behavioral_alerts: '/drivers/behavioral-alerts',
   drivers_fleet_leakage: '/drivers/fleet-leakage',
-  drivers_behavior_benchmarking: '/drivers/behavior-benchmarking',
   drivers_behavioral_patterns: '/drivers/behavioral-patterns',
   drivers_operational_intelligence: '/drivers/operational-intelligence',
   riesgo_driver_behavior: '/riesgo/driver-behavior',
@@ -307,9 +310,10 @@ function ControlTowerApp () {
               <section aria-label="Drivers">
                 {driversSubTab === 'drivers_supply' && <SupplyView key={`supply-${refreshKey}`} />}
                 {driversSubTab === 'drivers_lifecycle' && <DriverLifecycleView key={`driver-lifecycle-${refreshKey}`} />}
+                {driversSubTab === 'drivers_diagnostic' && <DriverLifecycleDashboard key={`driver-diagnostic-${refreshKey}`} />}
+                {driversSubTab === 'drivers_behavior_benchmarking' && <DriverBehaviorBenchmarkingDashboard key={`driver-behavior-bench-${refreshKey}`} />}
                 {driversSubTab === 'drivers_behavioral_alerts' && <BehavioralAlertsView key={`behavioral-alerts-${refreshKey}`} />}
                 {driversSubTab === 'drivers_fleet_leakage' && <FleetLeakageView key={`fleet-leakage-${refreshKey}`} />}
-                {driversSubTab === 'drivers_behavior_benchmarking' && <DriverBehaviorBenchmarkingDashboard key={`driver-bench-${refreshKey}`} />}
                 {driversSubTab === 'drivers_behavioral_patterns' && <BehavioralPatternDiagnosisDashboard key={`behavioral-patterns-${refreshKey}`} />}
                 {driversSubTab === 'drivers_operational_intelligence' && <OperationalBehavioralIntelligenceDashboard key={`operational-intel-${refreshKey}`} />}
               </section>

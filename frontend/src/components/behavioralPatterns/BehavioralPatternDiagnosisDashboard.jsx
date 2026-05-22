@@ -79,8 +79,8 @@ export default function BehavioralPatternDiagnosisDashboard () {
         getBehavioralDeclineSignals(params),
       ])
       setSummary(sum)
-      setPatterns(pats.patterns || [])
-      setDeclineSignals(sigs.signals || [])
+      setPatterns(pats?.patterns || [])
+      setDeclineSignals(sigs?.signals || [])
     } catch (e) {
       console.error('Behavioral Patterns:', e)
       setError(e.response?.data?.detail || e.message || 'Error')

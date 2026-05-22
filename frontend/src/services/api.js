@@ -623,6 +623,42 @@ export const getDriverLifecycleCohortDrilldown = async (params = {}) => {
   return response.data
 }
 
+// Driver Lifecycle Diagnostic — Fase 2A.1 (deterministic lifecycle + risk)
+export const getDriverLifecycleDiagnosticSummary = async (params = {}) => {
+  const response = await api.get('/driver-lifecycle/summary', { params, timeout: 60000 })
+  return response.data
+}
+export const getDriverLifecycleDiagnosticFunnel = async (params = {}) => {
+  const response = await api.get('/driver-lifecycle/funnel', { params, timeout: 60000 })
+  return response.data
+}
+export const getDriverLifecycleDiagnosticRiskList = async (params = {}) => {
+  const response = await api.get('/driver-lifecycle/risk-list', { params, timeout: 60000 })
+  return response.data
+}
+export const getDriverLifecycleDiagnosticCohortsBasic = async (params = {}) => {
+  const response = await api.get('/driver-lifecycle/cohorts-basic', { params, timeout: 60000 })
+  return response.data
+}
+
+// Driver Behavior Benchmarking — Fase 2A.2
+export const getDriverBehaviorBenchmarkSummary = async (params = {}) => {
+  const response = await api.get('/driver-behavior/summary', { params, timeout: 60000 })
+  return response.data
+}
+export const getDriverBehaviorGroupBenchmarks = async (params = {}) => {
+  const response = await api.get('/driver-behavior/group-benchmarks', { params, timeout: 60000 })
+  return response.data
+}
+export const getDriverBehaviorTopVsRisk = async (params = {}) => {
+  const response = await api.get('/driver-behavior/top-vs-risk', { params, timeout: 60000 })
+  return response.data
+}
+export const getDriverBehaviorDistributions = async (params = {}) => {
+  const response = await api.get('/driver-behavior/distributions', { params, timeout: 60000 })
+  return response.data
+}
+
 // Driver Supply Dynamics — radar: geo, overview, composition, migration, alerts, drilldown
 export const getSupplyGeo = async (params = {}) => {
   const response = await api.get('/ops/supply/geo', { params, timeout: 10000 })
@@ -1026,24 +1062,6 @@ export const logMatrixIssueAction = async (payload) => {
   const response = await api.post('/ops/business-slice/matrix-issue-action', payload, {
     timeout: BUSINESS_SLICE_HEAVY_TIMEOUT_MS,
   })
-  return response.data
-}
-
-// --- Driver Behavior Benchmarking (Fase 2A.2) ---
-export const getDriverBehaviorSummary = async (params = {}) => {
-  const response = await api.get('/driver-behavior/summary', { params, timeout: 60000 })
-  return response.data
-}
-export const getDriverBehaviorGroupBenchmarks = async (params = {}) => {
-  const response = await api.get('/driver-behavior/group-benchmarks', { params, timeout: 60000 })
-  return response.data
-}
-export const getDriverBehaviorTopVsRisk = async (params = {}) => {
-  const response = await api.get('/driver-behavior/top-vs-risk', { params, timeout: 60000 })
-  return response.data
-}
-export const getDriverBehaviorDistributions = async (params = {}) => {
-  const response = await api.get('/driver-behavior/distributions', { params, timeout: 60000 })
   return response.data
 }
 

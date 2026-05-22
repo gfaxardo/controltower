@@ -19,17 +19,33 @@ class LoginBody(BaseModel):
 
 @router.post("/login")
 async def login_proxy(body: LoginBody):
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        r = await client.post(
-            settings.INTEGRAL_AUTH_LOGIN_URL,
-            json=body.model_dump(),
-            headers={
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-            },
-        )
     try:
-        data = r.json()
-    except Exception:
-        data = {"detail": (r.text or "")[:500]}
-    return JSONResponse(content=data, status_code=r.status_code)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.post(
+                settings.INTEGRAL_AUTH_LOGIN_URL,
+                json=body.model_dump(),
+                headers={
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+            )
+        try:
+            data = r.json()
+        except Exception:
+            data = {"detail": (r.text or "")[:500]}
+        return JSONResponse(content=data, status_code=r.status_code)
+    except httpx.ConnectError:
+        return JSONResponse(
+            content={"detail": "Servicio de autenticación no disponible. Reintenta en unos minutos."},
+            status_code=503,
+        )
+    except httpx.TimeoutException:
+        return JSONResponse(
+            content={"detail": "El servicio de autenticación no respondió a tiempo. Reintenta."},
+            status_code=504,
+        )
+    except Exception as e:
+        return JSONResponse(
+            content={"detail": f"Error interno de autenticación: {str(e)}"},
+            status_code=502,
+        )
