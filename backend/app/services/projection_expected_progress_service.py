@@ -1586,7 +1586,8 @@ def _try_load_from_serving_fact(
                 SELECT * FROM serving.omniview_projection_daily_fact
                 WHERE {where}
                 ORDER BY year, month, period_key, business_slice_name
-                """
+                """,
+                params,
             )
             rows = cur.fetchall()
             cur.close()

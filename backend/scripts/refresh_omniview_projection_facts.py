@@ -60,15 +60,37 @@ def _safe_num(val):
 
 
 def _extract_row(r: dict, plan_version: str, grain: str, batch_id: str) -> tuple:
+    trip_date_raw = r.get("trip_date") or r.get("week_start")
+    period_key = trip_date_raw or r.get("month", "")
+
+    # Derivar year/month desde trip_date/period_key si no vienen explícitos
+    yr = r.get("year")
+    mo = r.get("month_number")
+    if yr is None and trip_date_raw:
+        try:
+            yr = int(str(trip_date_raw)[:4])
+        except (ValueError, IndexError):
+            pass
+    if mo is None and trip_date_raw:
+        try:
+            mo = int(str(trip_date_raw)[5:7])
+        except (ValueError, IndexError):
+            pass
+    if mo is None and r.get("month"):
+        try:
+            mo = int(str(r.get("month"))[5:7])
+        except (ValueError, IndexError):
+            pass
+
     return (
         plan_version,
         grain,
         r.get("country", ""),
         r.get("city", ""),
         r.get("business_slice_name", ""),
-        r.get("trip_date") or r.get("week_start") or r.get("month", ""),
-        r.get("year"),
-        r.get("month_number") or (int(str(r.get("month", "1970-01"))[5:7]) if r.get("month") else None),
+        period_key,
+        yr,
+        mo,
         r.get("trip_date"),
         r.get("week_start"),
         r.get("week_end"),
@@ -204,7 +226,8 @@ def main():
         sql = f"INSERT INTO {TABLE} ({col_names}) VALUES %s"
         execute_values(cur, sql, rows, template=f"({placeholders})", page_size=500)
         conn.commit()
-        inserted = cur.rowcount
+        cur.execute(f"SELECT COUNT(*) FROM {TABLE} WHERE plan_version = %s AND grain = %s", (args.plan_version, args.grain))
+        inserted = cur.fetchone()[0]
         cur.close()
 
     insert_s = round(time.perf_counter() - t1, 2)
