@@ -1,7 +1,7 @@
 /**
  * BusinessSliceOmniviewMatrix — vista BI premium con Insight & Action Engine.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react'
 import {
   getBusinessSliceFilters,
   getBusinessSliceMonthly,
@@ -16,6 +16,7 @@ import {
   getPlanVersions,
   uploadPlanRuta27UI,
   getPlanMappingAudit,
+  getServingPlanVersions,
 } from '../services/api.js'
 import { exportOmniviewFull } from '../utils/omniviewExport.js'
 import ProjectionVersionSelector from './projections/ProjectionVersionSelector.jsx'
@@ -161,6 +162,8 @@ export default function BusinessSliceOmniviewMatrix () {
   const [viewMode, setViewMode] = useState(saved?.viewMode || 'evolucion')
   const [planVersion, setPlanVersion] = useState(saved?.planVersion || '')
   const [planVersions, setPlanVersions] = useState([])
+  const [servingVersions, setServingVersions] = useState([])
+  const servingVersionKeys = useMemo(() => new Set(servingVersions.map((v) => v.plan_version)), [servingVersions])
   const [projectionRows, setProjectionRows] = useState([])
   const [projectionMeta, setProjectionMeta] = useState(null)
   const [projectionResolvedKey, setProjectionResolvedKey] = useState(null)
@@ -186,7 +189,8 @@ export default function BusinessSliceOmniviewMatrix () {
     Promise.allSettled([
       getPlanVersions(),
       getControlLoopPlanVersions(),
-    ]).then(([r1, r2]) => {
+      getServingPlanVersions(),
+    ]).then(([r1, r2, r3]) => {
       // Normalizar a { key, label, display_name, ... }
       const normalize = (item) => {
         if (typeof item === 'string') return { key: item, label: item, display_name: item }
@@ -206,14 +210,40 @@ export default function BusinessSliceOmniviewMatrix () {
             .map(normalize).filter(Boolean)
         : []
 
-      // Merge por key única
+      const servingList = r3.status === 'fulfilled'
+        ? (Array.isArray(r3.value?.versions) ? r3.value.versions : [])
+        : []
+      setServingVersions(servingList)
+      const servingKeys = new Set(servingList.map((v) => v.plan_version))
+
+      // Merge por key unica
       const seen = new Set()
       const merged = []
       for (const v of [...fromPlan, ...fromCL]) {
         if (seen.has(v.key)) continue
         seen.add(v.key)
+        v.hasServingFact = servingKeys.has(v.key)
         merged.push(v)
       }
+      for (const sv of servingList) {
+        if (seen.has(sv.plan_version)) continue
+        seen.add(sv.plan_version)
+        merged.push({
+          key: sv.plan_version, label: sv.plan_version, display_name: sv.plan_version,
+          hasServingFact: true, fact_generated_at: sv.fact_generated_at, fact_row_count: sv.row_count,
+        })
+      }
+
+      setPlanVersions(merged)
+      let selectedVersion = planVersion
+      if (autoSelect || !selectedVersion) {
+        const materialized = merged.find((v) => v.hasServingFact)
+        selectedVersion = materialized ? materialized.key : (merged.length > 0 ? merged[0].key : '')
+      } else if (servingKeys.size > 0 && !servingKeys.has(selectedVersion)) {
+        const materialized = merged.find((v) => v.hasServingFact)
+        if (materialized) selectedVersion = materialized.key
+      }
+      if (selectedVersion) setPlanVersion(selectedVersion)
       setPlanVersions(merged)
       if ((autoSelect || !planVersion) && merged.length > 0) {
         setPlanVersion(merged[0].key)
@@ -236,13 +266,17 @@ export default function BusinessSliceOmniviewMatrix () {
   /** En modo manual, false hasta que el usuario pulse «Cargar datos» (evita consultas pesadas al montar la vista). */
   const [heavyQueriesEnabled, setHeavyQueriesEnabled] = useState(!MANUAL_LOAD)
 
+  const timerRef = useRef(null)
+  const effectiveMonth = grain === 'weekly' ? '' : month
+  const filterRef = useRef({ grain, country, city, businessSlice, fleet, showSubfleets, year, effectiveMonth, blockedByCountry, isProjectionMode, planVersion })
+  filterRef.current = { grain, country, city, businessSlice, fleet, showSubfleets, year, effectiveMonth, blockedByCountry, isProjectionMode, planVersion }
+
   /**
    * Mapa de tareas activas: { taskKey: 'Etiqueta visible' }.
    * Una tarea aparece mientras su request está en vuelo; desaparece al completarse o cancelarse.
    */
   const [loadingTasks, setLoadingTasks] = useState({})
   const activeTasks = Object.values(loadingTasks).filter(Boolean)
-  const effectiveMonth = grain === 'weekly' ? '' : month
   const projectionRequestKey = useMemo(
     () => JSON.stringify({ grain, country, city, businessSlice, year, month: effectiveMonth, planVersion }),
     [grain, country, city, businessSlice, year, effectiveMonth, planVersion]
@@ -591,8 +625,6 @@ export default function BusinessSliceOmniviewMatrix () {
   useEffect(() => {
     if (!heavyQueriesEnabled || !isProjectionMode) return
     if (blockedByCountry || !planVersion) return
-    // Evita mostrar "sin datos" durante el debounce al cambiar filtros o grano.
-    setLoading(true)
     setErr(null)
   }, [heavyQueriesEnabled, isProjectionMode, blockedByCountry, planVersion, grain, country, city, businessSlice, year, effectiveMonth])
 
@@ -1071,6 +1103,7 @@ export default function BusinessSliceOmniviewMatrix () {
                     selectedVersionKey={planVersion}
                     onChange={(key) => setPlanVersion(key)}
                     onRenameSuccess={() => loadPlanVersions()}
+                    servingVersionKeys={servingVersionKeys}
                   />
                   <button
                     type="button"

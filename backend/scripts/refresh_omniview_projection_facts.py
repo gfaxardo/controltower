@@ -71,6 +71,11 @@ def _extract_row(r: dict, plan_version: str, grain: str, batch_id: str) -> tuple
             yr = int(str(trip_date_raw)[:4])
         except (ValueError, IndexError):
             pass
+    if yr is None and period_key and period_key != trip_date_raw:
+        try:
+            yr = int(str(period_key)[:4])
+        except (ValueError, IndexError):
+            pass
     if mo is None and trip_date_raw:
         try:
             mo = int(str(trip_date_raw)[5:7])
@@ -141,7 +146,7 @@ def _extract_row(r: dict, plan_version: str, grain: str, batch_id: str) -> tuple
 def main():
     parser = argparse.ArgumentParser(description="Refresh Omniview Projection Serving Facts")
     parser.add_argument("--plan-version", required=True, help="Plan version (ej: ruta27_2026_04_21)")
-    parser.add_argument("--grain", default="daily", choices=["daily", "weekly"],
+    parser.add_argument("--grain", default="daily", choices=["daily", "weekly", "monthly"],
                         help="Granularidad a pre-computar (default: daily)")
     parser.add_argument("--country", default=None, help="Filtro país opcional")
     parser.add_argument("--city", default=None, help="Filtro ciudad opcional")
@@ -169,6 +174,7 @@ def main():
         year=args.year,
         month=args.month,
         debug_distribution=False,
+        _allow_runtime_fallback=True,
     )
     compute_s = round(time.perf_counter() - t0, 2)
     print(f"Computed in {compute_s}s")

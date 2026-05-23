@@ -3,10 +3,11 @@
  *
  * Muestra display_name como texto principal y metadata secundaria.
  * Incluye botón compacto para abrir modal de rename.
+ * FASE 1G.3E — Muestra badge "materializada" / "sin fact".
  *
  * Motor: Control Foundation (ACTIVE)
  */
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import RenameProjectionVersionModal from './RenameProjectionVersionModal.jsx'
 
 const miniSelectCls =
@@ -19,6 +20,7 @@ export default function ProjectionVersionSelector ({
   onRenameSuccess,
   disabled = false,
   label = 'Plan',
+  servingVersionKeys = null,
 }) {
   const [renameOpen, setRenameOpen] = useState(false)
 
@@ -28,9 +30,20 @@ export default function ProjectionVersionSelector ({
 
   const display = selected?.display_name || selected?.label || selectedVersionKey || '—'
 
+  // FASE 1G.3E — Badge de materialización
+  const hasSelectedServing = servingVersionKeys ? servingVersionKeys.has(selectedVersionKey) : null
+  const hasAnyServing = servingVersionKeys ? servingVersionKeys.size > 0 : null
+  const servingBadge = useMemo(() => {
+    if (hasAnyServing === null) return null
+    if (hasSelectedServing) return { label: 'materializada', cls: 'text-emerald-700 bg-emerald-50 border-emerald-200' }
+    if (!hasSelectedServing && hasAnyServing) return { label: 'sin fact', cls: 'text-amber-700 bg-amber-50 border-amber-200' }
+    return null
+  }, [hasSelectedServing, hasAnyServing])
+
   const meta = []
   if (selected?.source_filename) meta.push(selected.source_filename)
   if (selected?.row_count != null) meta.push(`${selected.row_count} filas`)
+  if (selected?.fact_row_count != null) meta.push(`${selected.fact_row_count} facts`)
   if (selected?.uploaded_at) meta.push(String(selected.uploaded_at).slice(0, 10))
   if (selected?.status && selected.status !== 'active') meta.push(selected.status)
 
@@ -51,12 +64,23 @@ export default function ProjectionVersionSelector ({
               onChange={(e) => onChange(e.target.value)}
               disabled={disabled}
             >
-              {versions.map((v) => (
-                <option key={v.key} value={v.key}>
-                  {v.display_name || v.label || v.key}
-                </option>
-              ))}
+              {versions.map((v) => {
+                const isServing = servingVersionKeys ? servingVersionKeys.has(v.key) : null
+                let prefix = ''
+                if (isServing) prefix = '● '
+                else if (hasAnyServing) prefix = '○ '
+                return (
+                  <option key={v.key} value={v.key}>
+                    {prefix}{v.display_name || v.label || v.key}
+                  </option>
+                )
+              })}
             </select>
+            {servingBadge && (
+              <span className={`inline-flex items-center rounded px-1.5 py-px text-[9px] font-semibold border ${servingBadge.cls}`}>
+                {servingBadge.label}
+              </span>
+            )}
             <button
               type="button"
               onClick={() => setRenameOpen(true)}
@@ -70,7 +94,11 @@ export default function ProjectionVersionSelector ({
             </button>
           </>
         ) : (
-          <span className="text-[10px] text-amber-600 font-medium">Sin versiones</span>
+          <span className="text-[10px] text-amber-600 font-medium">
+            {hasAnyServing
+              ? `Serving facts disponibles (${servingVersionKeys.size} versiones) — recarga`
+              : 'Sin versiones'}
+          </span>
         )}
         {meta.length > 0 && (
           <span className="text-[9px] text-ct-text3 hidden sm:inline truncate max-w-[12rem]" title={meta.join(' · ')}>

@@ -145,6 +145,24 @@ async def startup_event():
 
                 _omniview_real_refresh_scheduler = BackgroundScheduler(daemon=True)
 
+                # FASE 1H.1 — Serving fact refresh diario (05:00 UTC)
+                try:
+                    from app.services.serving_refresh_scheduler import scheduled_daily_refresh
+                    _omniview_real_refresh_scheduler.add_job(
+                        scheduled_daily_refresh,
+                        "cron",
+                        hour=5,
+                        minute=0,
+                        id="serving_fact_daily_refresh",
+                        replace_existing=True,
+                        max_instances=1,
+                        coalesce=True,
+                        misfire_grace_time=1800,
+                    )
+                    logger.info("Serving fact refresh programado: 05:00 diario (daily+weekly+monthly).")
+                except Exception as e:
+                    logger.warning("No se pudo registrar serving refresh scheduler: %s", e)
+
                 if settings.OMNIVIEW_REAL_REFRESH_ENABLED:
                     _omniview_real_refresh_scheduler.add_job(
                         run_business_slice_real_refresh_job_safe,

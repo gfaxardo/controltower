@@ -985,8 +985,13 @@ def get_omniview_projection(
     year: Optional[int] = None,
     month: Optional[int] = None,
     debug_distribution: bool = False,
+    _allow_runtime_fallback: bool = False,
 ) -> Dict[str, Any]:
-    """Main entry point for the Omniview Projection mode."""
+    """Main entry point for the Omniview Projection mode.
+
+    FASE 1G.3 SAFE RECOVERY: _allow_runtime_fallback=True solo para refresh scripts.
+    La API pública NO ejecuta runtime fallback (devuelve 200 controlado).
+    """
     _t0 = time.perf_counter()
     today = date.today()
     requested_month = month
@@ -1003,8 +1008,8 @@ def get_omniview_projection(
             year,
         )
 
-    # FASE 1G.3 — Intento de serving fact para daily/weekly
-    if grain in ("daily", "weekly"):
+    # FASE 1G.5 — Intento de serving fact para todos los grains
+    if grain in ("daily", "weekly", "monthly"):
         served = _try_load_from_serving_fact(
             plan_version, grain, country, city, business_slice, year, month
         )
@@ -1018,6 +1023,38 @@ def get_omniview_projection(
             served["meta"]["query_duration_ms"] = round(total_s * 1000)
             served["meta"]["fact_generated_at"] = served["meta"].get("fact_generated_at")
             return served
+
+    # FASE 1G.3 SAFE RECOVERY — No runtime fallback desde API pública.
+    # Solo refresh scripts (_allow_runtime_fallback=True) pueden ejecutar el path pesado.
+    if not _allow_runtime_fallback:
+        serving_versions = _list_plan_versions_in_serving_fact()
+        df_empty = compute_matrix_data_freshness(
+            grain, country=country, city=city,
+            business_slice=business_slice, year=year, month=month,
+        )
+        return {
+            "granularity": grain,
+            "plan_version": plan_version,
+            "data": [],
+            "projection_exists": False,
+            "data_freshness": df_empty,
+            "meta": {
+                "plan_version": plan_version,
+                "served_from": None,
+                "fallback_reason": "serving_fact_missing",
+                "available_plan_versions_in_serving_fact": serving_versions,
+                "required_refresh_command": (
+                    f"python backend/scripts/refresh_omniview_projection_facts.py "
+                    f"--plan-version {plan_version} --grain {grain}"
+                ) if plan_version else None,
+                "message": (
+                    f"La plan_version '{plan_version}' no esta materializada para grain={grain}. "
+                    f"Ejecuta refresh_omniview_projection_facts.py --plan-version {plan_version} --grain {grain}"
+                ),
+                "data_freshness": df_empty,
+                "kpis_with_projection": list(PROJECTABLE_KPIS),
+            },
+        }
 
     _t1 = time.perf_counter()
     plan_rows = _load_plan_for_projection_scope(
@@ -1570,10 +1607,10 @@ def _try_load_from_serving_fact(
         clauses.append("business_slice_name = %s")
         params.append(canonicalize_business_slice_name(business_slice))
     if year is not None:
-        clauses.append("year = %s")
+        clauses.append("(year = %s OR year IS NULL)")
         params.append(year)
     if month is not None:
-        clauses.append("month = %s")
+        clauses.append("(month = %s OR month IS NULL)")
         params.append(month)
 
     where = " AND ".join(clauses)
@@ -1642,6 +1679,55 @@ def _try_load_from_serving_fact(
             "_try_load_from_serving_fact: fallback to runtime — %s", e
         )
         return None
+
+
+def _list_plan_versions_in_serving_fact() -> List[str]:
+    """Lista plan_versions con datos en serving.omniview_projection_daily_fact."""
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """SELECT DISTINCT plan_version
+                   FROM serving.omniview_projection_daily_fact
+                   ORDER BY plan_version DESC"""
+            )
+            rows = [r[0] for r in cur.fetchall()]
+            cur.close()
+        return rows
+    except Exception as e:
+        logger.warning("_list_plan_versions_in_serving_fact: %s", e)
+        return []
+
+
+def list_serving_plan_versions() -> List[Dict[str, Any]]:
+    """Lista plan_versions materializadas con metadata rica."""
+    try:
+        with get_db() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("""
+                SELECT plan_version,
+                       MAX(generated_at) AS fact_generated_at,
+                       COUNT(*) AS row_count,
+                       MIN(period_key) AS min_period,
+                       MAX(period_key) AS max_period,
+                       ARRAY_AGG(DISTINCT country ORDER BY country) AS countries,
+                       ARRAY_AGG(DISTINCT grain ORDER BY grain) AS grains_available
+                FROM serving.omniview_projection_daily_fact
+                GROUP BY plan_version
+                ORDER BY MAX(generated_at) DESC
+            """)
+            rows = cur.fetchall()
+            cur.close()
+        result = []
+        for r in rows:
+            item = dict(r)
+            if item.get("fact_generated_at") and hasattr(item["fact_generated_at"], "isoformat"):
+                item["fact_generated_at"] = item["fact_generated_at"].isoformat()
+            result.append(item)
+        return result
+    except Exception as e:
+        logger.warning("list_serving_plan_versions: %s", e)
+        return []
 
 
 def _serving_fact_row_to_display(r: dict) -> Dict[str, Any]:

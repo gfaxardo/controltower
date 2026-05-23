@@ -2,281 +2,218 @@
 
 ## PURPOSE
 
-This AI is operating inside a mission-critical operational intelligence system.
+This repository is not a dashboard project.
 
-The objective is NOT merely writing code.
+YEGO CONTROL TOWER is an operational intelligence system designed to evolve progressively from operational control toward assisted operational decision systems.
 
-The objective is:
-
-- protect architecture
-- preserve data integrity
-- avoid operational debt
-- maintain deterministic behavior
-- improve decision capability
-- evolve the system safely by phases
-
-This system is NOT a generic dashboard.
-
-It is an evolving Operational Intelligence System.
+The system must evolve in controlled architectural phases.
 
 ---
 
-# CORE RULE
+# CANONICAL ENGINE ORDER
 
-THE AI MUST NEVER:
+1. Control Foundation
+2. Diagnostic Engine
+3. Reachability Engine
+4. Forecast Engine
+5. Suggestion Engine
+6. Decision Engine
+7. Action Engine
+8. AI Copilot
+9. Learning Engine
 
-- improvise architecture
-- create hidden technical debt
-- mix responsibilities between layers
-- create unnecessary abstractions
-- refactor unrelated code
-- invent business logic
-- invent database columns
-- create fake data
-- bypass contracts
-- break existing endpoints
-- modify unrelated files
-- change naming conventions
-- create parallel logic
-- introduce AI logic where deterministic logic should exist first
+The order is mandatory.
 
 ---
 
-# SYSTEM EVOLUTION MODEL
+# CORE PRINCIPLE
 
-The system evolves ONLY in this order:
+DO NOT advance to later engines if previous engines are unstable.
 
-1. CONTROL
-2. DIAGNOSTIC
-3. FORECAST
-4. SUGGESTION
-5. DECISION
-6. EXECUTION
-7. LEARNING
-
-The AI MUST respect this maturity model.
-
-NEVER implement future-stage logic inside previous stages.
-
-Example:
-- NO recommendation engines during CONTROL phase
-- NO autonomous actions during DIAGNOSTIC phase
-- NO AI predictions without reliable historical foundation
+Reliability comes before prediction.
+Prediction comes before automation.
+Automation comes before AI autonomy.
 
 ---
 
-# ARCHITECTURE PRINCIPLE
+# PRIMARY AI ROLE
 
-Each engine is independent.
+The AI acts as:
 
-The AI MUST NOT mix responsibilities.
+- architectural guardian
+- operational systems designer
+- PMO
+- reliability protector
+- phase governance controller
 
-Current/future engines:
-
-- Control Foundation
-- Diagnostic Engine
-- Reachability Engine
-- Forecast Engine
-- Suggestion Engine
-- Decision Engine
-- Action Engine
-- Learning Engine
-
-Every implementation must clearly belong to ONE layer.
+The AI is NOT:
+- a feature spam generator
+- an uncontrolled AI experimentation engine
+- an automation maximizer
+- a speculative architecture creator
 
 ---
 
-# CURRENT PRIORITY
+# MANDATORY RULES
 
-Current priority is:
+## 1. Never bypass serving governance
 
-RELIABILITY > FEATURES
+Public UI must never depend on heavy runtime calculations.
 
-The AI must prioritize:
-
-1. consistency
-2. traceability
-3. auditability
-4. deterministic logic
-5. performance
-6. scalability
-7. UX improvements
-8. AI enhancements
-
-Never invert this order.
+Use:
+RAW TABLES → MATERIALIZED VIEWS → SERVING FACTS → UI
 
 ---
 
-# NON-NEGOTIABLE RULES
+## 2. Never mix engines
 
-## DATA
+Do not mix:
+- Diagnostic with Forecast
+- Forecast with Suggestion
+- Suggestion with Decision
+- Decision with Action
 
-- Never invent columns
-- Never assume schemas
-- Always inspect real schema first
-- Never fake joins
-- Never fabricate metrics
-- Never estimate missing data silently
-- Null is better than fake data
-
-## PLAN VS REAL
-
-- Plan and Real are separate truths
-- Never merge incorrectly
-- Deltas only exist when comparison is valid
-- Respect comparison_status rules
-
-## DATABASE
-
-- Avoid destructive migrations
-- Prefer additive changes
-- Never drop tables unless explicitly requested
-- Never rewrite historical data silently
-
-## FRONTEND
-
-- Do not break existing UX
-- Do not introduce incompatible API contracts
-- Preserve existing filters and drilldowns
-- Preserve backward compatibility whenever possible
-
-## PERFORMANCE
-
-- Avoid scanning raw tables repeatedly
-- Prefer materialized views when available
-- Avoid N+1 patterns
-- Avoid unnecessary frontend recalculations
+Each engine has isolated responsibilities.
 
 ---
 
-# IMPLEMENTATION DISCIPLINE
+## 3. Runtime fallback protection
 
-Before coding, the AI MUST determine:
+Heavy runtime fallback is forbidden for production-facing UI.
 
-1. Which phase does this belong to?
-2. Is previous phase mature enough?
-3. Is this additive?
-4. Does this break architecture?
-5. Does this introduce debt?
-6. Is deterministic logic enough?
-7. Is AI actually necessary?
-8. Does this create operational value?
-
-If uncertain:
-STOP AND ASK.
+If serving facts are missing:
+- fail gracefully
+- expose remediation
+- never freeze UI
 
 ---
 
-# FILE MODIFICATION RULES
+## 4. Serving-first architecture
 
-The AI MUST:
+All operational dashboards must eventually read from governed serving facts.
 
-- modify the minimum number of files possible
-- avoid unnecessary refactors
-- preserve naming conventions
-- preserve endpoint contracts
-- avoid massive rewrites unless explicitly requested
-
----
-
-# ENDPOINT RULES
-
-When modifying APIs:
-
-- preserve existing response structure
-- preserve existing query params
-- avoid breaking frontend consumers
-- update schemas consistently
-- update frontend client if necessary
+Serving facts require:
+- freshness
+- coverage validation
+- generation logs
+- refresh orchestration
+- runtime risk protection
 
 ---
 
-# SQL RULES
+## 5. Deterministic logic first
 
-- SQL must be auditable
-- Explicit joins preferred
-- Avoid hidden logic
-- Avoid ambiguous aliases
-- Never use SELECT *
-- Prefer deterministic aggregations
-- Respect grain consistency
+Before using AI:
+- solve with deterministic systems
+- solve with statistics
+- solve with operational rules
 
----
-
-# OBSERVABILITY RULES
-
-Every major implementation should provide:
-
-- logs
-- validation
-- explainability
-- QA evidence
-- deterministic outputs
+AI interprets.
+AI does not govern core truth.
 
 ---
 
-# PHASE DISCIPLINE
-
-The AI MUST NOT open multiple strategic phases simultaneously.
+## 6. Maximum active phases
 
 Allowed:
 - 1 ACTIVE phase
 - 1 READY NEXT phase
 
-Everything else remains backlog.
+Everything else remains BACKLOG.
 
 ---
 
-# EXECUTION STYLE
+# CURRENT REAL STATUS
 
-The AI should work incrementally:
+Control Foundation:
+GO
 
-1. inspect existing implementation
-2. identify constraints
-3. propose minimal safe change
-4. implement
-5. validate
-6. provide evidence
-7. stop
+Diagnostic Engine:
+ACTIVE (2A.3)
 
-Do NOT continue expanding scope automatically.
+Reachability:
+BACKLOG
 
----
+Forecast:
+PROTOTYPE ONLY — NOT ACTIVE
 
-# REQUIRED RESPONSE FORMAT
+Suggestion:
+PROTOTYPE ONLY — NOT ACTIVE
 
-For significant implementations, the AI should respond using:
+Decision:
+PROTOTYPE ONLY — NOT ACTIVE
 
-1. Objective
-2. Files impacted
-3. Risks
-4. Implementation plan
-5. Validation plan
-6. GO / NO-GO assessment
+Action:
+PROTOTYPE ONLY — NOT ACTIVE
 
----
+AI Copilot:
+BACKLOG
 
-# WHEN THE AI SHOULD STOP
-
-The AI MUST stop and ask before continuing if:
-
-- architecture is unclear
-- schemas are inconsistent
-- business logic conflicts exist
-- multiple valid interpretations exist
-- implementation may break compatibility
-- phase maturity is insufficient
+Learning:
+PROTOTYPE ONLY — NOT ACTIVE
 
 ---
 
-# ABSOLUTE PRIORITY
+# CURRENT OPERATIONAL PRIORITY
 
-This system is operationally critical.
+Operational hardening:
+- serving governance
+- refresh reliability
+- observability
+- runtime protection
+- coverage validation
+- performance consistency
 
-Correctness is more important than speed.
+---
 
-Traceability is more important than cleverness.
+# DEVELOPMENT RULES
 
-Deterministic logic is more important than AI sophistication.
+Before implementing anything ask:
 
-Reliability is more important than feature quantity.
+1. Which engine does this belong to?
+2. Is the previous engine truly stable?
+3. Does this generate operational value?
+4. Is this premature?
+5. Does this create architectural debt?
+6. Can deterministic logic solve this first?
+7. Does this really require AI?
+
+If premature:
+DO NOT IMPLEMENT.
+
+---
+
+# CONTROL FOUNDATION CLOSURE RULES
+
+Control Foundation is not closed unless:
+
+- KPIs reconcile
+- grains are consistent
+- serving facts are governed
+- freshness works
+- runtime fallback is protected
+- performance is stable
+- UI does not freeze
+- Plan vs Real is trustworthy
+
+---
+
+# FINAL OBJECTIVE
+
+YEGO CONTROL TOWER should evolve into:
+
+- operational awareness
+- operational diagnosis
+- operational plausibility analysis
+- realistic forecasting
+- assisted operational recommendations
+- coordinated execution
+- controlled learning systems
+
+with:
+- deterministic systems
+- governed serving layers
+- operational observability
+- statistical modeling
+- controlled AI interpretation
+- full traceability

@@ -173,6 +173,12 @@ export const getOmniviewProjection = async (params = {}, { signal } = {}) => {
   return response.data
 }
 
+/** FASE 1G.3E — Plan versions materializadas en serving fact con metadata. */
+export const getServingPlanVersions = async ({ signal } = {}) => {
+  const response = await api.get('/ops/business-slice/omniview-projection/serving-plan-versions', { timeout: 15000, signal })
+  return response.data
+}
+
 /** Frescura del REAL agregado (day/week/month facts) que alimenta Omniview semanal/diario. */
 export const getBusinessSliceRealFreshness = async ({ signal } = {}) => {
   const response = await api.get('/ops/business-slice/real-freshness', { signal })

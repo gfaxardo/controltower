@@ -32,6 +32,15 @@ from app.services.control_loop_plan_vs_real_service import (
 )
 from app.services.projection_expected_progress_service import (
     get_omniview_projection,
+    list_serving_plan_versions,
+)
+from app.services.serving_governance_service import (
+    get_serving_health,
+    validate_serving_coverage,
+    detect_missing_grains,
+    detect_stale_facts,
+    detect_runtime_risk,
+    compute_serving_integrity,
 )
 from app.services.business_slice_real_freshness_service import (
     get_omniview_business_slice_real_freshness,
@@ -456,6 +465,84 @@ async def control_loop_plan_vs_real_endpoint(
         return sanitize_for_json({"data": data, "total_records": len(data)})
     except Exception as e:
         logger.exception("control-loop/plan-vs-real")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/business-slice/omniview-projection/serving-plan-versions")
+async def business_slice_serving_plan_versions():
+    """
+    FASE 1G.3E — Lista plan_versions materializadas en serving.omniview_projection_daily_fact
+    con metadata rica para el selector UI: plan_version, fact_generated_at, row_count,
+    min_period, max_period, countries, grains_available.
+
+    Ordenado por fact_generated_at DESC (más reciente primero).
+    Usado por el frontend para:
+      - Auto-seleccionar la versión materializada más reciente en modo Vs Proyección.
+      - Mostrar badge "materializada" vs "sin fact" en el selector.
+      - Evitar pedir projection con plan_versions no materializadas.
+    """
+    try:
+        versions = list_serving_plan_versions()
+        return {
+            "versions": versions,
+            "total": len(versions),
+            "from_table": "serving.omniview_projection_daily_fact",
+        }
+    except Exception as e:
+        logger.exception("business-slice/serving-plan-versions")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─── FASE 1H.1 — Serving Governance Endpoints ────────────────────────────────
+
+@router.get("/serving/health")
+async def serving_health():
+    """Estado de salud de la serving layer."""
+    try:
+        return sanitize_for_json(get_serving_health())
+    except Exception as e:
+        logger.exception("serving/health")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/serving/coverage")
+async def serving_coverage():
+    """Cobertura de serving facts por grain."""
+    try:
+        return sanitize_for_json(validate_serving_coverage())
+    except Exception as e:
+        logger.exception("serving/coverage")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/serving/failures")
+async def serving_failures():
+    """Fallos recientes de refresh."""
+    try:
+        cov = validate_serving_coverage()
+        return sanitize_for_json(cov['recent_failures'])
+    except Exception as e:
+        logger.exception("serving/failures")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/serving/runtime-risks")
+async def serving_runtime_risks():
+    """Facts con riesgo de runtime fallback."""
+    try:
+        return sanitize_for_json(detect_runtime_risk())
+    except Exception as e:
+        logger.exception("serving/runtime-risks")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/serving/integrity")
+async def serving_integrity():
+    """Integridad de serving layer."""
+    try:
+        return sanitize_for_json(compute_serving_integrity())
+    except Exception as e:
+        logger.exception("serving/integrity")
         raise HTTPException(status_code=500, detail=str(e))
 
 
