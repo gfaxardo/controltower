@@ -75,9 +75,9 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
     )
   }
 
-  const py = compact ? 'py-px' : 'py-0.5'
-  const valSize = compact ? 'text-[11px]' : 'text-xs'
-  const deltaSize = compact ? 'text-[9px]' : 'text-[10px]'
+  const py = compact ? 'py-px' : 'py-1'
+  const valSize = compact ? 'text-[11px]' : 'text-[14px]'
+  const deltaSize = compact ? 'text-[9px]' : 'text-[11px]'
   const zebra = periodIdx % 2 === 1
   const trustOverlay = trustPeriodCellOverlayClass(periodTrustVisual)
   const tipTrust = periodTrustVisual ? trustLine : null
@@ -182,12 +182,12 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
   const isProjectable = PROJECTION_KPIS.includes(kpiKey)
 
   // Tamaños tipográficos adaptados al modo compact
-  const szProy   = compact ? 'text-[7px]' : 'text-[8px]'
-  const szReal   = compact ? 'text-[9px]' : 'text-[9px]'
-  const szAv     = compact ? 'text-[8px]' : 'text-[8px]'
-  const szGap    = compact ? 'text-[7px]' : 'text-[7px]'
-  const szStatus = compact ? 'text-[7px]' : 'text-[7px]'
-  const py       = compact ? 'py-px' : 'py-1'
+  const szProy   = compact ? 'text-[7px]' : 'text-[10px]'
+  const szReal   = compact ? 'text-[9px]' : 'text-[13px]'
+  const szAv     = compact ? 'text-[8px]' : 'text-[11px]'
+  const szGap    = compact ? 'text-[7px]' : 'text-[10px]'
+  const szStatus = compact ? 'text-[7px]' : 'text-[9px]'
+  const py       = compact ? 'py-px' : 'py-1.5'
 
   // Extraer comparison_status de cualquier delta disponible (todos los KPIs del período tienen el mismo)
   const comparisonStatus = delta?.comparison_status

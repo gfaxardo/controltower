@@ -214,6 +214,7 @@ def aggregate_business_slice_rows(
             row["commission_pct"] = revenue / total_fare
         row["trips_per_driver"] = (trips_completed / active_drivers) if active_drivers > 0 else None
         den = trips_completed + trips_cancelled
-        row["cancel_rate_pct"] = (100.0 * trips_cancelled / den) if den > 0 else None
+        # FASE 1H.2B — ratio 0-1 (no 0-100) consistente con _metrics_dict_from_fact_aggregates y fmtValue(frontend)
+        row["cancel_rate_pct"] = (trips_cancelled / den) if den > 0 else None
         out.append(row)
     return out

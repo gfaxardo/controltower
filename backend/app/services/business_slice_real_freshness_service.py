@@ -10,6 +10,8 @@ Incluye chequeo upstream (trips base) y payload unificado para /real-freshness.
 from __future__ import annotations
 
 import logging
+import threading
+import time as _time
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
@@ -23,6 +25,11 @@ from app.services.upstream_real_status_service import get_upstream_real_status
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
+
+# FASE 1H.2 — Cache SWR para real-freshness (TTL 30s, evita consultas repetidas en el mismo segundo)
+_REAL_FRESHNESS_CACHE_TTL_SEC = 30.0
+_real_freshness_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_real_freshness_cache_lock = threading.Lock()
 
 # Peor al final: fresh < stale < unknown < critical < empty
 _STATUS_RANK = {
@@ -319,9 +326,22 @@ def build_omniview_real_freshness_payload(conn=None) -> Dict[str, Any]:
         }
 
 
-def get_omniview_business_slice_real_freshness() -> Dict[str, Any]:
+def get_omniview_business_slice_real_freshness(use_cache: bool = True) -> Dict[str, Any]:
     """
     Alias del payload completo (GET /ops/business-slice/real-freshness, CLI check_real_freshness).
     Mantiene claves en raíz compatibles con clientes existentes.
+
+    FASE 1H.2: cache SWR (30s TTL) para evitar consultas repetidas multi-fact en carga de UI.
     """
-    return build_omniview_real_freshness_payload()
+    cache_key = "real_freshness_v1"
+    if use_cache:
+        now = _time.monotonic()
+        with _real_freshness_cache_lock:
+            if cache_key in _real_freshness_cache:
+                ts, cached = _real_freshness_cache[cache_key]
+                if now - ts < _REAL_FRESHNESS_CACHE_TTL_SEC:
+                    return cached
+    payload = build_omniview_real_freshness_payload()
+    with _real_freshness_cache_lock:
+        _real_freshness_cache[cache_key] = (_time.monotonic(), payload)
+    return payload

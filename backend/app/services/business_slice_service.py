@@ -2723,11 +2723,17 @@ def _fact_table_has_data(conn, table: str, date_col: str = "trip_date",
         has = cur.fetchone() is not None
         cur.close()
         return has
-    except Exception:
+    except Exception as e:
+        # FASE 1H.2B — no tragar errores de conexión: propagar para que el caller devuelva 200 controlado
+        err_msg = str(e).lower()
+        if "connection" in err_msg or "already closed" in err_msg or "closed" in err_msg:
+            raise
         try:
             conn.rollback()
         except Exception:
             pass
+        # Errores de query (tabla no existe, etc.) → False
+        logger.warning("_fact_table_has_data(%s): %s", table, str(e)[:200])
         return False
 
 
@@ -2738,7 +2744,12 @@ def get_business_slice_weekly(
     year: Optional[int] = None,
     limit: int = 1500,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Agregado semanal desde ops.real_business_slice_week_fact; sin datos en fact → vacío (sin escanear V_RESOLVED)."""
+    """Agregado semanal desde ops.real_business_slice_week_fact; sin datos en fact → vacío (sin escanear V_RESOLVED).
+
+    FASE 1H.2 HARDENING: connection error / runtime fallback protection.
+    """
+    import psycopg2 as _psycopg2
+
     eff_limit = min(max(limit, 1), 10000)
     if year is not None:
         eff_limit = min(10000, max(eff_limit, 7500))
@@ -2753,28 +2764,46 @@ def get_business_slice_weekly(
             "Materializá FACT o ejecutá el backfill; la vista resolved no se usa por rendimiento."
         ),
     }
-    with get_db() as conn:
-        if _fact_table_has_data(
-            conn, FACT_WEEKLY, date_col="week_start", year=year, month=None
-        ):
-            data = _weekly_from_fact(conn, country, city, business_slice, year, eff_limit)
-            if not data:
-                return [], empty_meta
-            meta_ok: dict[str, Any] = {
-                "grain": "weekly",
-                "source_table": FACT_WEEKLY,
-                "status": "ok",
-                "source": "week_fact",
-            }
-            return (
-                _attach_weekly_partial_equivalent_context(
-                    data,
-                    country=country,
-                    city=city,
-                    business_slice=business_slice,
-                ),
-                meta_ok,
-            )
+    try:
+        with get_db() as conn:
+            if _fact_table_has_data(
+                conn, FACT_WEEKLY, date_col="week_start", year=year, month=None
+            ):
+                data = _weekly_from_fact(conn, country, city, business_slice, year, eff_limit)
+                if not data:
+                    return [], empty_meta
+                meta_ok: dict[str, Any] = {
+                    "grain": "weekly",
+                    "source_table": FACT_WEEKLY,
+                    "status": "ok",
+                    "source": "week_fact",
+                }
+                return (
+                    _attach_weekly_partial_equivalent_context(
+                        data,
+                        country=country,
+                        city=city,
+                        business_slice=business_slice,
+                    ),
+                    meta_ok,
+                )
+    except (_psycopg2.Error, _psycopg2.OperationalError) as e:
+        err_msg = str(e)
+        logger.error(
+            "weekly: connection error para country=%s city=%s — %s",
+            country, city, err_msg[:200],
+        )
+        connection_error_meta: dict[str, Any] = {
+            "grain": "weekly",
+            "source_table": FACT_WEEKLY,
+            "status": "error",
+            "source": None,
+            "code": "FACT_CONNECTION_ERROR",
+            "fallback_reason": "db_connection_error",
+            "remediation": "Reintentar en breve; si persiste, verificar conexión DB y refresh de week_fact.",
+            "message": f"Error de conexión al leer week_fact: {err_msg[:200]}",
+        }
+        return [], connection_error_meta
     return [], empty_meta
 
 
@@ -2880,7 +2909,13 @@ def get_business_slice_daily(
     month: Optional[int] = None,
     limit: int = 2000,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Agregado diario solo desde ops.real_business_slice_day_fact (sin agregación runtime sobre resolved)."""
+    """Agregado diario solo desde ops.real_business_slice_day_fact (sin agregación runtime sobre resolved).
+
+    FASE 1H.2 HARDENING: connection errors / runtime fallback protection.
+    Nunca ejecuta agregación en caliente sobre V_RESOLVED; si la FACT falla, devuelve 200 controlado.
+    """
+    import psycopg2 as _psycopg2
+
     eff_limit = min(max(limit, 1), 10000)
     if year is not None and month is None:
         eff_limit = min(10000, max(eff_limit, 8000))
@@ -2895,28 +2930,52 @@ def get_business_slice_daily(
             "Cargar day_fact / ETL; la agregación en caliente sobre la vista resolved está desactivada."
         ),
     }
-    with get_db() as conn:
-        if _fact_table_has_data(conn, FACT_DAILY, date_col="trip_date",
-                                year=year, month=month):
-            logger.info("daily: usando day_fact (year=%s month=%s)", year, month)
-            data = _daily_from_fact(conn, country, city, business_slice, year, month, eff_limit)
-            meta_ok: dict[str, Any] = {
-                "grain": "daily",
-                "source_table": FACT_DAILY,
-                "status": "ok",
-                "source": "day_fact",
-            }
-            return (
-                enrich_daily_matrix_rows(
-                    _attach_daily_same_weekday_context(
-                        data,
-                        country=country,
-                        city=city,
-                        business_slice=business_slice,
-                    )
-                ),
-                meta_ok,
+    try:
+        with get_db() as conn:
+            if _fact_table_has_data(conn, FACT_DAILY, date_col="trip_date",
+                                    year=year, month=month):
+                logger.info("daily: usando day_fact (year=%s month=%s)", year, month)
+                data = _daily_from_fact(conn, country, city, business_slice, year, month, eff_limit)
+                meta_ok: dict[str, Any] = {
+                    "grain": "daily",
+                    "source_table": FACT_DAILY,
+                    "status": "ok",
+                    "source": "day_fact",
+                }
+                return (
+                    enrich_daily_matrix_rows(
+                        _attach_daily_same_weekday_context(
+                            data,
+                            country=country,
+                            city=city,
+                            business_slice=business_slice,
+                        )
+                    ),
+                    meta_ok,
+                )
+    except (_psycopg2.Error, _psycopg2.OperationalError) as e:
+        err_msg = str(e)
+        if "already closed" in err_msg.lower() or "connection" in err_msg.lower():
+            logger.error(
+                "daily: connection error para country=%s city=%s — %s",
+                country, city, err_msg[:200],
             )
+        else:
+            logger.error(
+                "daily: error DB inesperado para country=%s city=%s — %s",
+                country, city, err_msg[:200],
+            )
+        connection_error_meta: dict[str, Any] = {
+            "grain": "daily",
+            "source_table": FACT_DAILY,
+            "status": "error",
+            "source": None,
+            "code": "FACT_CONNECTION_ERROR",
+            "fallback_reason": "db_connection_error",
+            "remediation": "Reintentar en breve; si persiste, verificar conexión DB y refresh de day_fact.",
+            "message": f"Error de conexión al leer day_fact: {err_msg[:200]}",
+        }
+        return [], connection_error_meta
     logger.error(
         "FACT_LAYER_EMPTY daily: %s sin filas en ventana operativa (year=%s month=%s country=%s city=%s slice=%s). "
         "Fallback a vista resolved deshabilitado por política de rendimiento.",

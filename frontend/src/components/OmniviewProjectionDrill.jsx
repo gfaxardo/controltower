@@ -20,25 +20,44 @@ import { buildDrillAlertPayload, buildActionHandoff } from './omniview/alertingE
 import { getControlLoopPlanVsReal } from '../services/api.js'
 
 export default function OmniviewProjectionDrill ({ selection, grain, compact, onClose, projectionMeta, planVersion }) {
-  const w = compact ? 'w-80' : 'w-[25rem]'
+  const [fullscreen, setFullscreen] = useState(false)
+
+  useEffect(() => {
+    if (!fullscreen) return
+    const onKey = (e) => { if (e.key === 'Escape') setFullscreen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [fullscreen])
 
   if (!selection) return null
 
+  const content = (
+    <DrillContent
+      selection={selection} grain={grain} compact={compact}
+      onClose={() => { onClose(); setFullscreen(false) }}
+      projectionMeta={projectionMeta} planVersion={planVersion}
+      fullscreen={fullscreen}
+      onToggleFullscreen={() => setFullscreen((f) => !f)}
+    />
+  )
+
+  if (fullscreen) {
+    return (
+      <div className="fixed inset-0 z-[100] bg-white overflow-y-auto" role="dialog" aria-modal="true" aria-label="Drill de proyección — pantalla completa">
+        {content}
+      </div>
+    )
+  }
+
+  const w = compact ? 'w-80' : 'w-[25rem]'
   return (
     <aside className={`${w} shrink-0 rounded-lg border border-gray-200 bg-white shadow-sm self-start sticky top-2 overflow-hidden`}>
-      <DrillContent
-        selection={selection}
-        grain={grain}
-        compact={compact}
-        onClose={onClose}
-        projectionMeta={projectionMeta}
-        planVersion={planVersion}
-      />
+      {content}
     </aside>
   )
 }
 
-function DrillContent ({ selection, grain, compact, onClose, projectionMeta, planVersion }) {
+function DrillContent ({ selection, grain, compact, onClose, projectionMeta, planVersion, fullscreen, onToggleFullscreen }) {
   const [clData, setClData] = useState(null)
   const [clLoading, setClLoading] = useState(false)
 
@@ -97,17 +116,29 @@ function DrillContent ({ selection, grain, compact, onClose, projectionMeta, pla
   const valueCls = `${fontSize} text-gray-800 font-semibold`
 
   return (
+    <div className={fullscreen ? 'max-w-5xl mx-auto p-6' : ''}>
     <>
       <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-slate-50/60">
         <div className="min-w-0">
           <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide truncate">{cityName} · {sliceName}</h3>
           <p className="text-[10px] text-gray-400 mt-0.5">{countryName} · {period} · {selectedKpi.label}</p>
         </div>
-        <button type="button" onClick={onClose} className="p-1 rounded hover:bg-gray-200 transition-colors flex-shrink-0" title="Cerrar">
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          <button type="button" onClick={onToggleFullscreen} className="p-1 rounded hover:bg-gray-200 transition-colors" title={fullscreen ? 'Salir de pantalla completa (Esc)' : 'Pantalla completa'}>
+            <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              {fullscreen ? (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 0v12" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+              )}
+            </svg>
+          </button>
+          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-gray-200 transition-colors flex-shrink-0" title="Cerrar">
           <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
+        </div>
       </div>
 
       <div className="divide-y divide-gray-100 max-h-[calc(100vh-200px)] overflow-y-auto">
@@ -294,6 +325,7 @@ function DrillContent ({ selection, grain, compact, onClose, projectionMeta, pla
         </div>
       </div>
     </>
+    </div>
   )
 }
 

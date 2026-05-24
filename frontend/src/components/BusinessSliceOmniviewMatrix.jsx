@@ -124,6 +124,22 @@ export default function BusinessSliceOmniviewMatrix () {
 
   const [grain, setGrain] = useState(saved?.grain || 'monthly')
   const [compact, setCompact] = useState(saved?.compact ?? false)
+  // FASE 1H.2C — zoom de matriz + focus mode
+  const [matrixZoom, setMatrixZoom] = useState(() => {
+    try { return Number(localStorage.getItem('ct_matrix_zoom')) || 100 } catch { return 100 }
+  })
+  const ZOOM_LEVELS = [80, 90, 100, 115, 130]
+  const persistZoom = (level) => {
+    setMatrixZoom(level)
+    try { localStorage.setItem('ct_matrix_zoom', String(level)) } catch {}
+  }
+  const [focusMode, setFocusMode] = useState(false)
+  useEffect(() => {
+    if (!focusMode) return
+    const onKey = (e) => { if (e.key === 'Escape') setFocusMode(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [focusMode])
   const [insightMode, setInsightMode] = useState(false)
   const [filtersMeta, setFiltersMeta] = useState(null)
   const [country, setCountry] = useState(saved?.country || '')
@@ -1080,7 +1096,7 @@ export default function BusinessSliceOmniviewMatrix () {
           </div>
 
           <div className="px-4 py-2 border-t border-ct-border bg-ct-surface/40">
-            <OmniviewDataHelp />
+            {!focusMode && <OmniviewDataHelp />}
           </div>
 
           {/* Fila 2: Controles de visualización */}
@@ -1159,7 +1175,40 @@ export default function BusinessSliceOmniviewMatrix () {
               </div>
             </div>
 
+            <div className="w-px h-4 bg-gray-200 hidden sm:block" />
+
+            {/* Zoom de matriz — FASE 1H.2C */}
+            <div className="flex items-center gap-1">
+              <span className="text-[11px] font-medium text-ct-text3 mr-1">Zoom</span>
+              <div className="flex gap-0.5">
+                <button type="button" onClick={() => { const idx = ZOOM_LEVELS.indexOf(matrixZoom); if (idx > 0) persistZoom(ZOOM_LEVELS[idx - 1]) }}
+                  className="px-1.5 py-1 rounded-l-md text-xs font-medium text-ct-text2 bg-ct-card border border-ct-border hover:border-gray-300 hover:bg-ct-bg transition-colors"
+                  title="Reducir zoom" disabled={matrixZoom <= ZOOM_LEVELS[0]}>−</button>
+                <button type="button" onClick={() => persistZoom(100)}
+                  className="px-2 py-1 text-[11px] font-semibold text-ct-text2 bg-ct-card border-y border-ct-border hover:bg-ct-bg transition-colors"
+                  title="Reset zoom 100%">{matrixZoom}%</button>
+                <button type="button" onClick={() => { const idx = ZOOM_LEVELS.indexOf(matrixZoom); if (idx < ZOOM_LEVELS.length - 1) persistZoom(ZOOM_LEVELS[idx + 1]) }}
+                  className="px-1.5 py-1 rounded-r-md text-xs font-medium text-ct-text2 bg-ct-card border border-ct-border hover:border-gray-300 hover:bg-ct-bg transition-colors"
+                  title="Aumentar zoom" disabled={matrixZoom >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}>+</button>
+              </div>
+            </div>
+
+            <div className="w-px h-4 bg-gray-200 hidden sm:block" />
+
+            {/* Focus Mode — FASE 1H.2C */}
+            <button type="button" onClick={() => setFocusMode((f) => !f)}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                focusMode ? 'bg-blue-600 text-white shadow-sm' : 'text-ct-text2 bg-ct-card border border-ct-border hover:border-blue-300 hover:text-blue-600'
+              }`}
+              title={focusMode ? 'Salir de modo foco (Esc)' : 'Enfocar matriz — oculta elementos no esenciales'}>
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12c1.293 4.338 5.31 7.68 10.066 7.68.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.32c4.756 0 8.773 3.342 10.065 7.68a10.462 10.462 0 01-1.8 3.064M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              {focusMode ? 'Salir foco' : 'Enfocar'}
+            </button>
+
             <div className="ml-auto flex items-center gap-2">
+              {!focusMode && (
               <button type="button"
                 onClick={() => setFactStatusOpen((o) => !o)}
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all border ${factStatusOpen ? 'bg-slate-800 text-white border-slate-800' : 'text-ct-text2 bg-ct-card border-ct-border hover:border-gray-300 hover:bg-ct-bg'}`}
@@ -1169,6 +1218,7 @@ export default function BusinessSliceOmniviewMatrix () {
                 </svg>
                 FACT tables
               </button>
+              )}
               {(rows.length > 0 || (isProjectionMode && projectionRows.length > 0)) && (
                 <>
                   <div className="w-px h-4 bg-gray-200" />
@@ -1265,7 +1315,7 @@ export default function BusinessSliceOmniviewMatrix () {
         {sliceRealFreshnessBanner}
 
         {/* ── Context bar (Evolución) ──────────────────────────── */}
-        {heavyQueriesEnabled && !blockedByCountry && !isProjectionMode && (
+        {!focusMode && heavyQueriesEnabled && !blockedByCountry && !isProjectionMode && (
           <OperationalContextBar
             grain={grain} periodStates={periodStates} allPeriods={matrix.allPeriods}
             comparisonMeta={matrix.comparisonMeta}
@@ -1277,12 +1327,12 @@ export default function BusinessSliceOmniviewMatrix () {
         )}
 
         {/* ── Capa de integridad (Vs Proyección) — FASE 3.7 ───── */}
-        {heavyQueriesEnabled && isProjectionMode && projectionReady && projectionMeta?.integrity_status && (
+        {!focusMode && heavyQueriesEnabled && isProjectionMode && projectionReady && projectionMeta?.integrity_status && (
           <ProjectionIntegrityBanner integrity={projectionMeta.integrity_status} compact={compact} />
         )}
 
         {/* ── YTD resumido (Vs Proyección) — FASE 3.5 ─────────── */}
-        {heavyQueriesEnabled && isProjectionMode && projectionReady && !projectionContractReport.ok && (
+        {!focusMode && heavyQueriesEnabled && isProjectionMode && projectionReady && !projectionContractReport.ok && (
           <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs text-amber-950 shadow-sm">
             <span className="font-semibold">Datos de proyección incompletos. </span>
             <span>{projectionContractReport.issues.map((it) => it.message).join(' · ')}</span>
@@ -1290,20 +1340,20 @@ export default function BusinessSliceOmniviewMatrix () {
           </div>
         )}
 
-        {heavyQueriesEnabled && isProjectionMode && projectionMeta?.ytd_summary && !projectionMeta.ytd_summary.error && (
+        {!focusMode && heavyQueriesEnabled && isProjectionMode && projectionMeta?.ytd_summary && !projectionMeta.ytd_summary.error && (
           <ProjectionYtdSummaryBar ytd={projectionMeta.ytd_summary} grain={grain} compact={compact} />
         )}
 
-        {heavyQueriesEnabled && isProjectionMode && Array.isArray(projectionMeta?.ytd_alerts) && projectionMeta.ytd_alerts.length > 0 && !projectionIntegrityBroken && (
+        {!focusMode && heavyQueriesEnabled && isProjectionMode && Array.isArray(projectionMeta?.ytd_alerts) && projectionMeta.ytd_alerts.length > 0 && !projectionIntegrityBroken && (
           <ProjectionYtdAlertsBlock alerts={projectionMeta.ytd_alerts} compact={compact} />
         )}
 
-        {heavyQueriesEnabled && isProjectionMode && projectionReady && projectionMeta && (
+        {!focusMode && heavyQueriesEnabled && isProjectionMode && projectionReady && projectionMeta && (
           <OperationalOpportunitiesSummary projectionMeta={projectionMeta} compact={compact} />
         )}
 
         {/* ── Context bar (Vs Proyección) ─────────────────────── */}
-        {heavyQueriesEnabled && isProjectionMode && (
+        {!focusMode && heavyQueriesEnabled && isProjectionMode && (
           <ProjectionContextBar
             grain={grain} projMatrix={projMatrix} projectionMeta={projectionMeta}
             planVersion={planVersion} compact={compact}
@@ -1311,7 +1361,7 @@ export default function BusinessSliceOmniviewMatrix () {
         )}
 
         {/* ── Badge de filas no mapeadas (interactivo) ───────────────────── */}
-        {heavyQueriesEnabled && projectionReady && isProjectionMode && projectionMeta?.unresolved?.count > 0 && (
+        {!focusMode && heavyQueriesEnabled && projectionReady && isProjectionMode && projectionMeta?.unresolved?.count > 0 && (
           <UnmappedBadge
             count={projectionMeta.unresolved.count}
             rows={projectionMeta.unresolved.rows}
@@ -1320,7 +1370,7 @@ export default function BusinessSliceOmniviewMatrix () {
         )}
 
         {/* ── KPI focus mode ────────────────────────────────────── */}
-        {heavyQueriesEnabled && !blockedByCountry && ((!isProjectionMode && rows.length > 0) || (isProjectionMode && projectionRows.length > 0)) && (
+        {!focusMode && heavyQueriesEnabled && !blockedByCountry && ((!isProjectionMode && rows.length > 0) || (isProjectionMode && projectionRows.length > 0)) && (
           <div className="rounded-lg border border-ct-border bg-ct-card px-4 py-3 shadow-sm">
             <div className="flex flex-wrap items-center gap-3">
               <div>
@@ -1344,7 +1394,7 @@ export default function BusinessSliceOmniviewMatrix () {
         )}
 
         {/* ── Insights Panel (additive, between focus and Matrix) ── */}
-        {heavyQueriesEnabled && !blockedByCountry && !isProjectionMode && insights.length > 0 && (
+        {!focusMode && heavyQueriesEnabled && !blockedByCountry && !isProjectionMode && insights.length > 0 && (
           <BusinessSliceInsightsPanel
             insights={insights}
             onInsightClick={handleInsightClick}
@@ -1396,7 +1446,7 @@ export default function BusinessSliceOmniviewMatrix () {
         {/* ── Matrix + Inspector (Evolución) ─────────────────────── */}
         {heavyQueriesEnabled && !loading && !blockedByCountry && !isProjectionMode && rows.length > 0 && (
           <div className="flex gap-3 items-start">
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0" style={matrixZoom !== 100 ? { transform: `scale(${matrixZoom / 100})`, transformOrigin: 'top left', width: `${(100 / matrixZoom) * 100}%` } : undefined}>
               <BusinessSliceOmniviewMatrixTable
                 matrix={matrix} grain={grain} compact={compact} sortKey={sortKey}
                 onCellClick={handleCellClick} selectedCell={selectedCell}
@@ -1424,7 +1474,7 @@ export default function BusinessSliceOmniviewMatrix () {
         )}
 
         {/* ── Prioridades del periodo (Vs Proyección) — FASE 3.3 ───── */}
-        {heavyQueriesEnabled && projectionReady && isProjectionMode && projMatrix && projectionRows.length > 0 && !projectionIntegrityBroken && (
+        {!focusMode && heavyQueriesEnabled && projectionReady && isProjectionMode && projMatrix && projectionRows.length > 0 && !projectionIntegrityBroken && (
           <OmniviewPriorityPanel
             projMatrix={projMatrix}
             focusedKpi={focusedKpi}
@@ -1437,7 +1487,7 @@ export default function BusinessSliceOmniviewMatrix () {
         {/* ── Matrix + Drill (Vs Proyección) ─────────────────────── */}
         {heavyQueriesEnabled && projectionReady && isProjectionMode && projMatrix && projectionRows.length > 0 && (
           <div className="flex gap-3 items-start">
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0" style={matrixZoom !== 100 ? { transform: `scale(${matrixZoom / 100})`, transformOrigin: 'top left', width: `${(100 / matrixZoom) * 100}%` } : undefined}>
               {projectionIntegrityBroken && (
                 <div className="mb-2 rounded-md border border-red-200 bg-red-50/80 px-3 py-2 text-[11px] text-red-900" role="note">
                   <strong>Integridad rota:</strong> puedes revisar la tabla como referencia, pero no tomes decisiones con alertas o prioridades automáticas hasta que el estado vuelva a confiable.
@@ -1465,7 +1515,7 @@ export default function BusinessSliceOmniviewMatrix () {
         )}
 
         {/* ── Plan sin ejecución real (sección QA) ───────────────── */}
-        {heavyQueriesEnabled && projectionReady && isProjectionMode && projectionMeta?.plan_without_real?.count > 0 && (
+        {!focusMode && heavyQueriesEnabled && projectionReady && isProjectionMode && projectionMeta?.plan_without_real?.count > 0 && (
           <PlanWithoutRealSection
             rows={projectionMeta.plan_without_real.rows}
             count={projectionMeta.plan_without_real.count}
@@ -1475,7 +1525,7 @@ export default function BusinessSliceOmniviewMatrix () {
         )}
 
         {/* ── Estadísticas de reconciliación ─────────────────────── */}
-        {heavyQueriesEnabled && projectionReady && isProjectionMode && projectionMeta?.reconciliation && (
+        {!focusMode && heavyQueriesEnabled && projectionReady && isProjectionMode && projectionMeta?.reconciliation && (
           <ReconciliationSummaryBar reconciliation={projectionMeta.reconciliation} />
         )}
 

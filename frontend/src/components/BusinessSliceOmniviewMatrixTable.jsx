@@ -107,7 +107,20 @@ export default function BusinessSliceOmniviewMatrixTable ({
 }) {
   const isProjection = mode === 'projection'
   const { cities, allPeriods, totals, comparisonTotals, comparisonMeta, cityVolumeMap, lineVolumeMap, periodMeta, periodDayLabels } = matrix
-  const [collapsed, setCollapsed] = useState(new Set())
+
+  // FASE 1H.2 — Daily grain: collapse all cities by default (thousands of cells → DOM overload)
+  const dailyDefaultCollapsed = useMemo(() => {
+    if (grain !== 'daily') return new Set()
+    return new Set([...cities.keys()])
+  }, [grain, cities])
+  const [collapsed, setCollapsed] = useState(dailyDefaultCollapsed)
+  useEffect(() => {
+    if (grain === 'daily') {
+      setCollapsed(new Set([...cities.keys()]))
+    } else {
+      setCollapsed(new Set())
+    }
+  }, [grain, cities])
   const headerH = compact ? HEADER_H_COMPACT : HEADER_H_COMFORTABLE
   const trustLine = useMemo(() => isProjection ? null : trustIssueSummaryForTooltip(matrixTrust), [matrixTrust, isProjection])
   const activeKpi = useMemo(
@@ -162,8 +175,8 @@ export default function BusinessSliceOmniviewMatrixTable ({
 
   // Proyección usa columnas más anchas para acomodar el formato Proy/Real/Av/Gap
   const colW = isProjection
-    ? (compact ? 78 : 90)
-    : (compact ? 58 : 66)
+    ? (compact ? 78 : 100)
+    : (compact ? 58 : 78)
 
   // Column visibility tracking for position indicator
   const [visibleColRange, setVisibleColRange] = useState({ start: 0, end: allPeriods.length })
@@ -329,9 +342,9 @@ export default function BusinessSliceOmniviewMatrixTable ({
 }
 
 const TotalsRow = memo(function TotalsRow ({ allPeriods, totalsDeltas, compact, headerH, grain, matrixTrust, trustLine, focusedKpi }) {
-  const py = compact ? 'py-px' : 'py-0.5'
-  const valSize = compact ? 'text-[10px]' : 'text-[11px]'
-  const deltaSize = compact ? 'text-[8px]' : 'text-[9px]'
+  const py = compact ? 'py-px' : 'py-1'
+  const valSize = compact ? 'text-[10px]' : 'text-[14px]'
+  const deltaSize = compact ? 'text-[8px]' : 'text-[11px]'
 
   return (
     <tr
@@ -373,9 +386,9 @@ const TotalsRow = memo(function TotalsRow ({ allPeriods, totalsDeltas, compact, 
 })
 
 const ProjectionTotalsRow = memo(function ProjectionTotalsRow ({ allPeriods, totalsDeltas, compact, headerH, focusedKpi, projectionIntegrityBroken = false, totalYtdSlice = null }) {
-  const py = compact ? 'py-0.5' : 'py-1'
-  const valSize = compact ? 'text-[9px]' : 'text-[9px]'
-  const lblSize = compact ? 'text-[7px]' : 'text-[8px]'
+  const py = compact ? 'py-0.5' : 'py-1.5'
+  const valSize = compact ? 'text-[9px]' : 'text-[13px]'
+  const lblSize = compact ? 'text-[7px]' : 'text-[10px]'
   const isProjectable = PROJECTION_KPIS.includes(focusedKpi.key)
   const ytdVis = (!projectionIntegrityBroken && totalYtdSlice) ? ytdSliceBadgeVisual(totalYtdSlice) : null
 
@@ -487,8 +500,8 @@ const ProjectionTotalsRow = memo(function ProjectionTotalsRow ({ allPeriods, tot
 
 function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, onToggle, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode, periodMeta = null, periodDayLabels = null, projectionIntegrityBroken = false, projectionAuthoritativeYtd = null, currentPeriodKey = null }) {
   const totalCols = allPeriods.length
-  const py = compact ? 'py-1' : 'py-1.5'
-  const fontSize = compact ? 'text-[11px]' : 'text-xs'
+  const py = compact ? 'py-1' : 'py-2'
+  const fontSize = compact ? 'text-[11px]' : 'text-[14px]'
   const isProjection = mode === 'projection'
 
   const cityYtdSlice = (!isProjection || projectionIntegrityBroken)
@@ -536,8 +549,8 @@ function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClic
     [lineData.periods, allPeriods, periodStates, isProjection]
   )
   const isSubfleet = lineData.is_subfleet
-  const py = compact ? 'py-px' : 'py-1'
-  const fontSize = compact ? 'text-[11px]' : 'text-xs'
+  const py = compact ? 'py-px' : 'py-1.5'
+  const fontSize = compact ? 'text-[11px]' : 'text-[13px]'
 
   const lineYtdSlice = useMemo(() => {
     if (!isProjection || projectionIntegrityBroken) return null

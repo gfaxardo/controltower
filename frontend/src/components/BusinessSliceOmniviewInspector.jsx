@@ -18,6 +18,53 @@ export default function BusinessSliceOmniviewInspector ({
   selectionHistory = [],
   onGoBack = null,
 }) {
+  const [fullscreen, setFullscreen] = useState(false)
+
+  useEffect(() => {
+    if (!fullscreen) return
+    const onKey = (e) => { if (e.key === 'Escape') setFullscreen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [fullscreen])
+
+  if (!selection) return null
+
+  const content = (
+    <InspectorContent
+      selection={selection} grain={grain} compact={compact}
+      onClose={() => { onClose(); setFullscreen(false) }}
+      insightForSelection={insightForSelection}
+      insightTransparency={insightTransparency}
+      periodStates={periodStates} coverageSummary={coverageSummary}
+      matrixTrust={matrixTrust} matrixMeta={matrixMeta}
+      onTrustStateRefresh={onTrustStateRefresh}
+      selectionHistory={selectionHistory} onGoBack={onGoBack}
+      fullscreen={fullscreen}
+      onToggleFullscreen={() => setFullscreen((f) => !f)}
+    />
+  )
+
+  if (fullscreen) {
+    return (
+      <div className="fixed inset-0 z-[100] bg-white overflow-y-auto" role="dialog" aria-modal="true" aria-label="Inspector de celda — pantalla completa">
+        {content}
+      </div>
+    )
+  }
+
+  const w = compact ? 'w-80' : 'w-[25rem]'
+  return (
+    <aside className={`${w} shrink-0 rounded-lg border border-gray-200 bg-white shadow-sm self-start sticky top-2 overflow-hidden`}>
+      {content}
+    </aside>
+  )
+}
+
+function InspectorContent ({
+  selection, grain, compact, onClose, insightForSelection, insightTransparency,
+  periodStates, coverageSummary, matrixTrust, matrixMeta, onTrustStateRefresh,
+  selectionHistory, onGoBack, fullscreen, onToggleFullscreen,
+}) {
   const w = compact ? 'w-80' : 'w-[25rem]'
   const trustIssue = useMemo(
     () => resolveTrustIssueForSelection(matrixTrust, selection, grain),
@@ -94,7 +141,8 @@ export default function BusinessSliceOmniviewInspector ({
       : 'bg-emerald-700 text-white'
 
   return (
-    <aside className={`${w} shrink-0 rounded-lg border ${trustIssue ? 'border-slate-300' : ins ? 'border-red-200' : 'border-blue-200'} bg-white shadow-md self-start sticky top-2 overflow-hidden`}>
+    <div className={fullscreen ? 'max-w-5xl mx-auto p-6' : ''}>
+      <aside className={`${w} shrink-0 rounded-lg border ${trustIssue ? 'border-slate-300' : ins ? 'border-red-200' : 'border-blue-200'} bg-white shadow-md self-start sticky top-2 overflow-hidden ${fullscreen ? 'w-full !max-w-none' : ''}`}>
       <div className="bg-slate-900 text-white px-3 py-2 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -131,7 +179,21 @@ export default function BusinessSliceOmniviewInspector ({
             </div>
           )}
         </div>
-        <button type="button" onClick={onClose} className="text-slate-400 hover:text-white text-sm leading-none shrink-0" title="Cerrar">×</button>
+        <div className="flex items-center gap-1 shrink-0">
+          <button type="button" onClick={onToggleFullscreen}
+            className="text-slate-400 hover:text-white text-xs leading-none px-0.5" title={fullscreen ? 'Salir de pantalla completa (Esc)' : 'Pantalla completa'}>
+            {fullscreen ? (
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 0v12" />
+              </svg>
+            ) : (
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+              </svg>
+            )}
+          </button>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-white text-sm leading-none shrink-0" title="Cerrar">×</button>
+        </div>
       </div>
 
       <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 space-y-2">
@@ -472,6 +534,7 @@ export default function BusinessSliceOmniviewInspector ({
         </>
       )}
     </aside>
+    </div>
   )
 }
 

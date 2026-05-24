@@ -2,9 +2,9 @@ import { Fragment } from 'react'
 import { periodLabel, periodSecondaryLabel, periodStateLabel, PERIOD_STATES, resolvePeriodTrustVisual, trustIssueSummaryForTooltip, periodHeaderPrimary, periodHeaderSecondary, isCurrentPeriod, getCurrentPeriodBadge } from './omniview/omniviewMatrixUtils.js'
 import { projectionPeriodLabel, projectionPeriodSecondaryLabel } from './omniview/projectionMatrixUtils.js'
 
-export const COL1_W = 90
-export const COL2_W = 130
-export const HEADER_H_COMFORTABLE = 52
+export const COL1_W = 100
+export const COL2_W = 140
+export const HEADER_H_COMFORTABLE = 64
 export const HEADER_H_COMPACT = 40
 
 const STATE_BADGE_STYLES = {
@@ -18,10 +18,10 @@ const STATE_BADGE_STYLES = {
 const CURRENT_PERIOD_BG = 'bg-blue-950/90'
 
 export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, compact, periodStates, matrixTrust = null, focusedKpi, periodMeta = null, periodDayLabels = null, isProjection = false }) {
-  const py1 = compact ? 'py-1' : 'py-1.5'
-  const py2 = compact ? 'py-0.5' : 'py-1'
-  const fontSize1 = compact ? 'text-[10px]' : 'text-xs'
-  const fontSize2 = compact ? 'text-[9px]' : 'text-[10px]'
+  const py1 = compact ? 'py-1' : 'py-2'
+  const py2 = compact ? 'py-0.5' : 'py-1.5'
+  const fontSize1 = compact ? 'text-[10px]' : 'text-[13px]'
+  const fontSize2 = compact ? 'text-[9px]' : 'text-[11px]'
   const trustTip = trustIssueSummaryForTooltip(matrixTrust)
   const renderPeriodLabel = (pk) => (isProjection ? projectionPeriodLabel(pk, grain, periodMeta) : periodHeaderPrimary(pk, grain, periodDayLabels))
   const renderPeriodSecondary = (pk) => (isProjection ? projectionPeriodSecondaryLabel(pk, grain, periodMeta) : periodHeaderSecondary(pk, grain))
