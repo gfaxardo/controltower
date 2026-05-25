@@ -276,8 +276,9 @@ export default function BusinessSliceOmniviewMatrixTable ({
               ? <ProjectionTotalsRow allPeriods={allPeriods} totalsDeltas={totalsDeltas} compact={compact} headerH={headerH} focusedKpi={activeKpi}
                 projectionIntegrityBroken={projectionIntegrityBroken}
                 totalYtdSlice={projectionAuthoritativeYtd?.total?.ytd_slice ?? null}
+                currentPeriodKey={currentPeriodKey}
               />
-              : <TotalsRow allPeriods={allPeriods} totalsDeltas={totalsDeltas} compact={compact} headerH={headerH} grain={grain} matrixTrust={matrixTrust} trustLine={trustLine} focusedKpi={activeKpi} />
+              : <TotalsRow allPeriods={allPeriods} totalsDeltas={totalsDeltas} compact={compact} headerH={headerH} grain={grain} matrixTrust={matrixTrust} trustLine={trustLine} focusedKpi={activeKpi} currentPeriodKey={currentPeriodKey} />
             }
 
             {cityEntries.map(([cityKey, cityData]) => {
@@ -341,7 +342,7 @@ export default function BusinessSliceOmniviewMatrixTable ({
   )
 }
 
-const TotalsRow = memo(function TotalsRow ({ allPeriods, totalsDeltas, compact, headerH, grain, matrixTrust, trustLine, focusedKpi }) {
+const TotalsRow = memo(function TotalsRow ({ allPeriods, totalsDeltas, compact, headerH, grain, matrixTrust, trustLine, focusedKpi, currentPeriodKey }) {
   const py = compact ? 'py-px' : 'py-1'
   const valSize = compact ? 'text-[10px]' : 'text-[14px]'
   const deltaSize = compact ? 'text-[8px]' : 'text-[11px]'
@@ -361,20 +362,33 @@ const TotalsRow = memo(function TotalsRow ({ allPeriods, totalsDeltas, compact, 
         const periodTrust = resolveTotalsTrustVisual(matrixTrust, grain, pk, focusedKpi.key)
         const trustOv = trustPeriodCellOverlayClass(periodTrust)
         const d = pDeltas?.[focusedKpi.key]
-        const bgStyle = zebra ? { backgroundColor: 'rgb(238,240,245)' } : { backgroundColor: 'rgb(243,244,248)' }
+        const isCurrent = currentPeriodKey && pk === currentPeriodKey
+        const currentValSize = isCurrent ? (compact ? 'text-[13px]' : 'text-[18px]') : valSize
+        const currentDeltaSize = isCurrent ? (compact ? 'text-[10px]' : 'text-[13px]') : deltaSize
+        const bgStyle = isCurrent
+          ? { backgroundColor: 'rgb(219,234,254)', boxShadow: 'inset 0 0 16px rgba(59,130,246,0.1)' }
+          : zebra
+            ? { backgroundColor: 'rgb(238,240,245)' }
+            : { backgroundColor: 'rgb(243,244,248)' }
         const trustTitle = periodTrust && trustLine ? trustLine : undefined
-        if (!d) return <td key={`t-${pk}-${focusedKpi.key}`} className={`px-1 ${py} text-center ${valSize} text-gray-300 border-r border-gray-200/60 ${trustOv}`} style={bgStyle} title={trustTitle}>—</td>
+        if (!d) return (
+          <td key={`t-${pk}-${focusedKpi.key}`}
+            className={`px-1 ${py} text-center ${currentValSize} text-gray-300 border-r border-gray-200/60 ${trustOv} ${isCurrent ? 'ring-1 ring-inset ring-blue-400/30' : ''}`}
+            style={bgStyle} title={trustTitle}>—</td>
+        )
         const val = fmtValue(d.value, focusedKpi.key)
         const dt = fmtDelta(d)
         const color = signalColorForKpi(d.signal, focusedKpi.key)
         const isPC = d.isPartialComparison
         const title = [isPC ? 'Comparativo parcial vs cerrado' : null, trustTitle].filter(Boolean).join(' — ') || undefined
         return (
-          <td key={`t-${pk}-${focusedKpi.key}`} className={`px-1 ${py} text-center whitespace-nowrap border-r border-gray-200/60 ${trustOv}`} style={bgStyle}
+          <td key={`t-${pk}-${focusedKpi.key}`}
+            className={`px-1 ${py} text-center whitespace-nowrap border-r border-gray-200/60 ${trustOv} ${isCurrent ? 'ring-1 ring-inset ring-blue-400/30' : ''}`}
+            style={bgStyle}
             title={title}>
-            <div className={`${valSize} font-bold text-slate-700 leading-none`}>{val}</div>
+            <div className={`${currentValSize} font-bold ${isCurrent ? 'text-blue-900' : 'text-slate-700'} leading-none`}>{val}</div>
             {dt && (
-              <div className={`${deltaSize} leading-none font-semibold mt-px`} style={{ color, opacity: isPC ? 0.55 : 1 }}>
+              <div className={`${currentDeltaSize} leading-none font-semibold mt-px`} style={{ color, opacity: isPC ? 0.55 : 1 }}>
                 {signalArrow(d.signal)}{dt}{isPC ? '~' : ''}
               </div>
             )}

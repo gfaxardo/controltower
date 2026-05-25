@@ -76,8 +76,8 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
   }
 
   const py = compact ? 'py-px' : 'py-1'
-  const valSize = compact ? 'text-[11px]' : 'text-[14px]'
-  const deltaSize = compact ? 'text-[9px]' : 'text-[11px]'
+  const valSize = compact ? 'text-[11px]' : isCurrentPeriod ? 'text-[16px]' : 'text-[14px]'
+  const deltaSize = compact ? 'text-[9px]' : isCurrentPeriod ? 'text-[12px]' : 'text-[11px]'
   const zebra = periodIdx % 2 === 1
   const trustOverlay = trustPeriodCellOverlayClass(periodTrustVisual)
   const tipTrust = periodTrustVisual ? trustLine : null
@@ -116,7 +116,7 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
       <>
         <td
           data-matrix-cell-id={matrixCellId || undefined}
-          className={`px-1 ${py} text-center ${valSize} text-gray-400 cursor-default select-none ${trustOverlay} ${isSelected ? 'bg-blue-50' : isCurrentPeriod ? 'bg-blue-50/25' : zebra ? 'bg-slate-50/50' : ''} ${dimmed ? 'opacity-30' : ''} border-r border-gray-200/60`}
+          className={`px-1 ${py} text-center ${valSize} text-gray-400 cursor-default select-none ${trustOverlay} ${isSelected ? 'bg-blue-50' : isCurrentPeriod ? 'bg-blue-50/50 ring-1 ring-inset ring-blue-300/30 shadow-[inset_0_0_20px_rgba(59,130,246,0.06)]' : zebra ? 'bg-slate-50/50' : ''} ${dimmed ? 'opacity-30' : ''} border-r border-gray-200/60`}
           title={emptyTooltip || undefined}
           onContextMenu={handleContextMenu}
         >
@@ -145,7 +145,7 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
         className={`px-1 ${py} text-center whitespace-nowrap cursor-pointer select-none border-r border-gray-200/60 transition-colors ${trustOverlay}
           ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-300'
             : hasInsight ? insightBorder
-            : isCurrentPeriod ? 'bg-blue-50/20'
+            : isCurrentPeriod ? `bg-blue-50/40 ring-1 ring-inset ring-blue-400/30 shadow-[inset_0_0_20px_rgba(59,130,246,0.08)]`
             : zebra ? 'bg-slate-50/50 hover:bg-blue-50/40'
             : 'hover:bg-blue-50/40'}
           ${dimmed ? 'opacity-30' : ''}`}
@@ -153,12 +153,12 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
         title={tooltip}
         onContextMenu={handleContextMenu}
       >
-        <div className={`${valSize} font-semibold text-gray-900 leading-none`}>{val}</div>
+        <div className={`${valSize} font-semibold ${isCurrentPeriod ? 'font-extrabold text-gray-900' : 'text-gray-900'} leading-none`}>{val}</div>
         {deltaTxt && (() => {
           const momLabel = getComparisonLabel(delta, grain)
           return (
             <div
-              className={`${deltaSize} leading-none ${isMomentum ? 'font-semibold' : 'font-normal'} mt-px`}
+              className={`${deltaSize} leading-none ${isMomentum ? 'font-semibold' : 'font-normal'} ${isCurrentPeriod && isMomentum ? 'font-bold' : ''} mt-px`}
               style={{
                 color,
                 opacity: isPC ? 0.6 : isMomentum ? 1 : 0.55,

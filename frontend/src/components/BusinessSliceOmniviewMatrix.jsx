@@ -42,6 +42,7 @@ import {
   findCurrentPeriodIndex,
   getCurrentPeriodKey,
 } from './omniview/omniviewMatrixUtils.js'
+import { resolveCurrentPeriodIndex, calculateScrollTarget } from '../utils/currentPeriodFocusEngine.js'
 import BusinessSliceOmniviewMatrixTable from './BusinessSliceOmniviewMatrixTable.jsx'
 import BusinessSliceOmniviewMatrixHeader, { COL1_W, COL2_W } from './BusinessSliceOmniviewMatrixHeader.jsx'
 import { buildProjectionMatrix, PROJECTION_KPIS, fmtAttainment, projectionSignalColor, SIGNAL_DOT } from './omniview/projectionMatrixUtils.js'
@@ -1045,35 +1046,45 @@ export default function BusinessSliceOmniviewMatrix () {
   )
 
   const autoScrollAppliedRef = useRef(false)
+  const scrollRafRef = useRef(null)
 
   const scrollToCurrentPeriod = useCallback(() => {
     const container = scrollContainerRef.current
     if (!container) return
     const allPeriods = matrix.allPeriods || []
     if (!allPeriods.length) return
-    const colW = compact ? 58 : 66
-    const idx = findCurrentPeriodIndex(allPeriods, grain)
+    const evColW = compact ? 58 : 78
+    const projColW = compact ? 78 : 100
+    const colW = isProjectionMode ? projColW : evColW
+    const idx = resolveCurrentPeriodIndex(allPeriods, grain)
     if (idx < 0) return
-    const targetLeft = COL1_W + COL2_W + (idx * colW)
     const viewportWidth = container.clientWidth
-    const scrollTo = Math.max(0, targetLeft - (viewportWidth / 2) + (colW / 2))
+    const fixedW = COL1_W + COL2_W
+    const scrollTo = calculateScrollTarget(idx, colW, fixedW, viewportWidth)
     container.scrollTo({ left: scrollTo, behavior: 'smooth' })
-  }, [matrix.allPeriods, grain, compact])
+  }, [matrix.allPeriods, grain, compact, isProjectionMode])
 
   useEffect(() => {
     if (loading || blockedByCountry || rows.length === 0) return
     if (!autoScrollAppliedRef.current) {
-      const timer = setTimeout(() => {
-        scrollToCurrentPeriod()
-        autoScrollAppliedRef.current = true
-      }, 300)
-      return () => clearTimeout(timer)
+      scrollRafRef.current = requestAnimationFrame(() => {
+        scrollRafRef.current = requestAnimationFrame(() => {
+          scrollToCurrentPeriod()
+          autoScrollAppliedRef.current = true
+        })
+      })
+      return () => {
+        if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current)
+      }
+    }
+    return () => {
+      if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current)
     }
   }, [loading, blockedByCountry, rows.length, scrollToCurrentPeriod])
 
   useEffect(() => {
     autoScrollAppliedRef.current = false
-  }, [grain, year, viewMode, country, city, businessSlice, focusedKpi])
+  }, [grain, viewMode])
 
   const executiveForBanner = useMemo(() => {
     if (!matrixTrust) return null
@@ -1534,16 +1545,14 @@ export default function BusinessSliceOmniviewMatrix () {
                     </svg>
                     Descargar
                   </button>
-                  {!isProjectionMode && (
-                    <button type="button" onClick={scrollToCurrentPeriod}
-                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 hover:border-blue-300 transition-all"
-                      title={grain === 'daily' ? 'Ir a hoy' : grain === 'weekly' ? 'Ir a semana actual' : 'Ir a mes actual'}>
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      {grain === 'daily' ? 'Ir a hoy' : grain === 'weekly' ? 'Ir a sem. actual' : 'Ir a mes actual'}
-                    </button>
-                  )}
+                  <button type="button" onClick={scrollToCurrentPeriod}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 hover:border-blue-300 transition-all"
+                    title={grain === 'daily' ? 'Ir a hoy' : grain === 'weekly' ? 'Ir a semana actual' : 'Ir a mes actual'}>
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    {grain === 'daily' ? 'Ir a hoy' : grain === 'weekly' ? 'Ir a sem. actual' : 'Ir a mes actual'}
+                  </button>
                 </>
               )}
             </div>
