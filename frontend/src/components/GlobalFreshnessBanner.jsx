@@ -46,8 +46,8 @@ export default function GlobalFreshnessBanner ({ activeTab } = {}) {
     return () => { cancelled = true }
   }, [expanded])
 
-  if (loading) return <div className="px-3 py-1.5 text-2xs text-ct-text2">Estado de datos: cargando…</div>
-  if (error) return <div className="px-3 py-1.5 text-2xs text-ct-warn bg-ct-warn-lo/50 rounded-md border border-ct-warn/20 mb-2">Estado de datos: no disponible ({error})</div>
+  if (loading) return <div className="px-3 py-1 text-xs text-ct-text2">Estado de datos: cargando…</div>
+  if (error) return <div className="px-3 py-1 text-xs text-ct-warn bg-ct-warn-lo/50 rounded-md border border-ct-warn/20 mb-1.5">Estado de datos: no disponible ({error})</div>
   if (!data) return null
 
   const style = STATUS_STYLES[data.status] || STATUS_STYLES.sin_datos
@@ -56,7 +56,7 @@ export default function GlobalFreshnessBanner ({ activeTab } = {}) {
   const lagStr = data.lag_days != null && data.lag_days > 0 ? `Lag: ${data.lag_days}d` : null
 
   return (
-    <div className={`px-3 py-1.5 rounded-md border ${style.bg} ${style.text} text-2xs mb-2`} role="status">
+    <div className={`px-3 py-1 rounded-md border ${style.bg} ${style.text} text-xs mb-1.5`} role="status">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
         <span className="font-semibold">Salud: {data.label || style.label}</span>
         {isOk ? <span>{derivedStr}</span> : <><span>{derivedStr}</span>{lagStr && <span className="font-medium">{lagStr}</span>}</>}
@@ -65,7 +65,7 @@ export default function GlobalFreshnessBanner ({ activeTab } = {}) {
         </button>
       </div>
       {expanded && (
-        <div className="mt-1.5 pt-1.5 border-t border-current/20 text-2xs overflow-x-auto">
+        <div className="mt-1 pt-1 border-t border-current/20 text-xs overflow-x-auto">
           {health?.datasets?.length ? (
             <table className="w-full border-collapse">
               <thead><tr className="text-left"><th className="pr-2 py-0.5">Dataset</th><th className="pr-2 py-0.5">Fuente</th><th className="pr-2 py-0.5">Derivado</th><th className="pr-2 py-0.5">Lag</th><th className="pr-2 py-0.5">Estado</th><th className="py-0.5">Motivo</th></tr></thead>

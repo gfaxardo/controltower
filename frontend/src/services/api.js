@@ -173,6 +173,18 @@ export const getOmniviewProjection = async (params = {}, { signal } = {}) => {
   return response.data
 }
 
+/** Momentum drill series: DoD same-weekday, WoW, MoM. Usado en gráficos de drill de Omniview. */
+export const getOmniviewMomentumDrill = async (params = {}) => {
+  const response = await api.get('/ops/business-slice/omniview-momentum-drill', { params })
+  return response.data
+}
+
+/** Behavioral Diagnosis MVP — diagnostico conductual individual (Fase 2A.3). */
+export const getBehavioralDiagnosisMvp = async (params = {}) => {
+  const response = await api.get('/ops/diagnostics/behavioral/mvp', { params, timeout: 15000 })
+  return response.data
+}
+
 /** FASE 1G.3E — Plan versions materializadas en serving fact con metadata. */
 export const getServingPlanVersions = async ({ signal } = {}) => {
   const response = await api.get('/ops/business-slice/omniview-projection/serving-plan-versions', { timeout: 15000, signal })
@@ -240,38 +252,9 @@ export const fetchDecisionReadiness = async ({ signal } = {}) => {
   return response.data
 }
 
-/** Resumen de filas del plan no mapeadas a tajada canónica. */
-export const getPlanUnmappedSummary = async (planVersion, { signal } = {}) => {
-  const response = await api.get('/plan/unmapped-summary', { params: { plan_version: planVersion }, signal })
-  return response.data
-}
-
 /** Auditoría completa de cobertura de mapeo del plan. */
 export const getPlanMappingAudit = async (planVersion, { signal } = {}) => {
   const response = await api.get('/plan/mapping-audit', { params: { plan_version: planVersion }, signal })
-  return response.data
-}
-
-/** Projection Integrity / Control: auditoría de derivación semanal-diaria */
-export const getProjectionIntegrityAudit = async (planVersion, { year, month, signal } = {}) => {
-  const params = { plan_version: planVersion }
-  if (year != null) params.year = year
-  if (month != null) params.month = month
-  const response = await api.get('/plan/projection-integrity-audit', { params, signal })
-  return response.data
-}
-
-/** Catálogo de aliases LOB conocidos. */
-export const getLobAliasCatalog = async () => {
-  const response = await api.get('/plan/lob-alias-catalog')
-  return response.data
-}
-
-/** Auditoría de reconciliación Plan vs Real (matched, missing_plan, plan_without_real, unresolved). */
-export const getPlanReconciliationAudit = async (planVersion, { lobFilter, signal } = {}) => {
-  const params = { plan_version: planVersion }
-  if (lobFilter) params.lob_filter = lobFilter
-  const response = await api.get('/plan/reconciliation-audit', { params, signal })
   return response.data
 }
 
@@ -780,36 +763,6 @@ export const getObservabilityLineage = async () => {
 }
 export const getObservabilityFreshness = async () => {
   const response = await api.get('/ops/observability/freshness', { timeout: 10000 })
-  return response.data
-}
-
-// Fase 2A — Real vs Proyección
-export const getRealVsProjectionOverview = async () => {
-  const response = await api.get('/ops/real-vs-projection/overview', { timeout: 10000 })
-  return response.data
-}
-export const getRealVsProjectionDimensions = async () => {
-  const response = await api.get('/ops/real-vs-projection/dimensions', { timeout: 5000 })
-  return response.data
-}
-export const getRealVsProjectionMappingCoverage = async () => {
-  const response = await api.get('/ops/real-vs-projection/mapping-coverage', { timeout: 5000 })
-  return response.data
-}
-export const getRealVsProjectionRealMetrics = async (params = {}) => {
-  const response = await api.get('/ops/real-vs-projection/real-metrics', { params, timeout: 15000 })
-  return response.data
-}
-export const getRealVsProjectionTemplateContract = async () => {
-  const response = await api.get('/ops/real-vs-projection/projection-template-contract', { timeout: 5000 })
-  return response.data
-}
-export const getRealVsProjectionSystemSegmentation = async (params = {}) => {
-  const response = await api.get('/ops/real-vs-projection/system-segmentation-view', { params, timeout: 15000 })
-  return response.data
-}
-export const getRealVsProjectionProjectionSegmentation = async (params = {}) => {
-  const response = await api.get('/ops/real-vs-projection/projection-segmentation-view', { params, timeout: 15000 })
   return response.data
 }
 

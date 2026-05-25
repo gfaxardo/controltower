@@ -55,7 +55,7 @@ export default function ProjectionVersionSelector ({
   return (
     <>
       <div className="flex items-center gap-1.5">
-        <span className="text-[11px] font-medium text-ct-text3">{label}</span>
+        <span className="text-xs font-medium text-ct-text3">{label}</span>
         {versions.length > 0 ? (
           <>
             <select
@@ -77,7 +77,7 @@ export default function ProjectionVersionSelector ({
               })}
             </select>
             {servingBadge && (
-              <span className={`inline-flex items-center rounded px-1.5 py-px text-[9px] font-semibold border ${servingBadge.cls}`}>
+              <span className={`inline-flex items-center rounded px-1.5 py-px text-xs font-semibold border ${servingBadge.cls}`}>
                 {servingBadge.label}
               </span>
             )}
@@ -94,14 +94,14 @@ export default function ProjectionVersionSelector ({
             </button>
           </>
         ) : (
-          <span className="text-[10px] text-amber-600 font-medium">
+          <span className="text-xs text-amber-600 font-medium">
             {hasAnyServing
               ? `Serving facts disponibles (${servingVersionKeys.size} versiones) — recarga`
               : 'Sin versiones'}
           </span>
         )}
         {meta.length > 0 && (
-          <span className="text-[9px] text-ct-text3 hidden sm:inline truncate max-w-[12rem]" title={meta.join(' · ')}>
+          <span className="text-xs text-ct-text3 hidden sm:inline truncate max-w-[12rem]" title={meta.join(' · ')}>
             {meta.join(' · ')}
           </span>
         )}

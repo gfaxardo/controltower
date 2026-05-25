@@ -68,6 +68,7 @@ import { OmniviewMatrixSkeleton } from './operational/SkeletonLoader.jsx'
 import OperationalStatusBar from './operational/OperationalStatusBar.jsx'
 import ActionContext from './operational/ActionContext.jsx'
 import OmniviewCommandHeader from './omniview/command/OmniviewCommandHeader.jsx'
+import OmniviewMomentumPriorityStrip from './omniview/momentum/OmniviewMomentumPriorityStrip.jsx'
 
 const GRAINS = [
   { id: 'monthly', label: 'Mensual' },
@@ -151,8 +152,80 @@ function filterWeeklyFocus (matrix, grain, weekFocusOnly) {
     ...matrix,
     allPeriods: filteredPeriods,
     totals: filteredTotals,
-    ...(filteredComparisonTotals ? { comparisonTotals: filteredComparisonTotals } : {}),
-    ...(filteredPeriodMeta ? { periodMeta: filteredPeriodMeta } : {}),
+    comparisonTotals: filteredComparisonTotals,
+    periodMeta: filteredPeriodMeta,
+  }
+}
+
+/** Extrae un objeto Date desde una period key. Soportes: YYYY-MM-DD, YYYYMMDD, YYYY-MM-DDT*, ISO string, timestamp numérico. Retorna null si no es parseable. */
+function parseDateFromPeriodKey (pk) {
+  if (!pk || typeof pk !== 'string') return null
+  const cleaned = pk.trim()
+  // ISO 8601 date-only: YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) {
+    const [y, m, d] = cleaned.split('-').map(Number)
+    const dt = new Date(y, m - 1, d)
+    if (!isNaN(dt)) return dt
+  }
+  // ISO 8601 con hora: YYYY-MM-DDT... o YYYY-MM-DD ...
+  if (/^\d{4}-\d{2}-\d{2}[T ]/.test(cleaned)) {
+    const dt = new Date(cleaned)
+    if (!isNaN(dt)) return dt
+  }
+  // Compact: YYYYMMDD
+  if (/^\d{8}$/.test(cleaned)) {
+    const y = Number(cleaned.slice(0, 4))
+    const m = Number(cleaned.slice(4, 6))
+    const d = Number(cleaned.slice(6, 8))
+    const dt = new Date(y, m - 1, d)
+    if (!isNaN(dt)) return dt
+  }
+  return null
+}
+
+/** Filtra periodos por día de semana (solo grain=daily). weekdayFocus: 0=DOM, 1=LUN, ..., 6=SÁB, null=todos */
+function filterWeekdayFocus (matrix, grain, weekdayFocus) {
+  if (weekdayFocus == null || grain !== 'daily' || !matrix?.allPeriods?.length) return matrix
+  const filteredPeriods = matrix.allPeriods.filter(pk => {
+    const d = parseDateFromPeriodKey(pk)
+    if (d == null) return true // keep unknown formats
+    return d.getDay() === weekdayFocus
+  })
+  // DEBUG: log first call this render
+  if (typeof window !== 'undefined' && import.meta.env.DEV) {
+    const p0 = matrix.allPeriods[0] || ''
+    const dp0 = parseDateFromPeriodKey(p0)
+    window.__omniviewWeekdayDebug = {
+      weekdayFocus,
+      totalPeriods: matrix.allPeriods.length,
+      filteredCount: filteredPeriods.length,
+      firstKey: p0,
+      firstKeyDay: dp0 ? ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'][dp0.getDay()] : 'unknown',
+    }
+  }
+  if (filteredPeriods.length === 0) return matrix // never show empty
+  const filteredTotals = new Map()
+  for (const pk of filteredPeriods) {
+    if (matrix.totals?.has(pk)) filteredTotals.set(pk, matrix.totals.get(pk))
+  }
+  const filteredComparisonTotals = matrix.comparisonTotals ? new Map() : undefined
+  if (filteredComparisonTotals) {
+    for (const pk of filteredPeriods) {
+      if (matrix.comparisonTotals.has(pk)) filteredComparisonTotals.set(pk, matrix.comparisonTotals.get(pk))
+    }
+  }
+  const filteredPeriodMeta = matrix.periodMeta ? new Map() : undefined
+  if (filteredPeriodMeta) {
+    for (const pk of filteredPeriods) {
+      if (matrix.periodMeta.has(pk)) filteredPeriodMeta.set(pk, matrix.periodMeta.get(pk))
+    }
+  }
+  return {
+    ...matrix,
+    allPeriods: filteredPeriods,
+    totals: filteredTotals,
+    comparisonTotals: filteredComparisonTotals,
+    periodMeta: filteredPeriodMeta,
   }
 }
 
@@ -224,6 +297,7 @@ export default function BusinessSliceOmniviewMatrix () {
 
   const [viewMode, setViewMode] = useState(saved?.viewMode || 'evolucion')
   const [operationalMode, setOperationalMode] = useState('operational')
+  const [weekdayFocus, setWeekdayFocus] = useState(null) // null=todos, 0=DOM, 1=LUN, ..., 6=SÁB
   const [planVersion, setPlanVersion] = useState(saved?.planVersion || '')
   const [planVersions, setPlanVersions] = useState([])
   const [servingVersions, setServingVersions] = useState([])
@@ -838,8 +912,14 @@ export default function BusinessSliceOmniviewMatrix () {
     comparisonTotals: backendComparisonTotals.size > 0 ? backendComparisonTotals : baseMatrix.comparisonTotals,
   }), [baseMatrix, backendTotals, backendComparisonTotals])
 
-  const displayMatrix = useMemo(() => filterWeeklyFocus(matrix, grain, weekFocusOnly), [matrix, grain, weekFocusOnly])
-  const displayProjMatrix = useMemo(() => filterWeeklyFocus(projMatrix, grain, weekFocusOnly), [projMatrix, grain, weekFocusOnly])
+  const displayMatrix = useMemo(() => {
+    const m = filterWeeklyFocus(matrix, grain, weekFocusOnly)
+    return filterWeekdayFocus(m, grain, weekdayFocus)
+  }, [matrix, grain, weekFocusOnly, weekdayFocus])
+  const displayProjMatrix = useMemo(() => {
+    const m = filterWeeklyFocus(projMatrix, grain, weekFocusOnly)
+    return filterWeekdayFocus(m, grain, weekdayFocus)
+  }, [projMatrix, grain, weekFocusOnly, weekdayFocus])
 
   // EXPOSE runtime state for browser debugging: window.__omniviewDebug (DEV only)
   useEffect(() => {
@@ -1216,6 +1296,9 @@ export default function BusinessSliceOmniviewMatrix () {
           )}
         </OmniviewCommandHeader>
 
+        {/* Momentum Priority Strip — surfaces deteriorations (both modes) */}
+        <OmniviewMomentumPriorityStrip cities={isProjectionMode ? projMatrix?.cities ?? null : baseMatrix?.cities ?? null} allPeriods={isProjectionMode ? projMatrix?.allPeriods ?? [] : baseMatrix?.allPeriods ?? []} grain={grain} maxItems={5} />
+
         {/* Controls */}
         <div className="overflow-hidden" style={{
           border: '1px solid var(--tw-bg-ct-border)',
@@ -1285,6 +1368,35 @@ export default function BusinessSliceOmniviewMatrix () {
               title="Restablecer filtros">
               Reset
             </button>
+
+            {/* Weekday Focus — solo visible en grain daily */}
+            {grain === 'daily' && (
+              <div className="flex flex-col gap-1 self-end">
+                <span className="text-2xs font-semibold text-ct-text3 uppercase tracking-wider">
+                  Día {weekdayFocus != null ? `· ${displayMatrix?.allPeriods?.length || 0} cols de ${matrix?.allPeriods?.length || 0}` : ''}
+                </span>
+                <div className="flex gap-0.5">
+                  {['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'].map((label, idx) => {
+                    const isActive = weekdayFocus === idx
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => setWeekdayFocus(isActive ? null : idx)}
+                        className={`px-1.5 py-0.5 rounded text-[11px] font-medium transition-all ${
+                          isActive
+                            ? 'bg-ct-accent text-white shadow-sm'
+                            : 'text-ct-text3 hover:text-ct-text hover:bg-ct-border/30'
+                        }`}
+                        title={isActive ? `Mostrar todos los días` : `Ver solo ${label}`}
+                      >
+                        {label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="px-4 py-2 border-t border-ct-border bg-ct-surface/40">

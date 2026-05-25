@@ -73,7 +73,7 @@ export default function SmartEmptyState ({
       <div>
         <p className="text-sm font-semibold text-gray-700">{displayTitle}</p>
         <p className="mt-1 text-xs text-gray-500 max-w-sm mx-auto">{displayMsg}</p>
-        {displayHint && <p className="mt-1.5 text-[11px] text-gray-400 max-w-sm mx-auto">{displayHint}</p>}
+        {displayHint && <p className="mt-1.5 text-xs text-gray-400 max-w-sm mx-auto">{displayHint}</p>}
       </div>
       {actionLabel && onAction && (
         <button

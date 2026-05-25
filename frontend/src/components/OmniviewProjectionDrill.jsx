@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { MATRIX_KPIS, periodHeaderPrimary } from './omniview/omniviewMatrixUtils.js'
+import OmniviewMomentumDrillChart from './omniview/momentum/OmniviewMomentumDrillChart.jsx'
 import {
   PROJECTION_KPIS,
   fmtAttainment,
@@ -60,6 +61,7 @@ export default function OmniviewProjectionDrill ({ selection, grain, compact, on
 function DrillContent ({ selection, grain, compact, onClose, projectionMeta, planVersion, fullscreen, onToggleFullscreen }) {
   const [clData, setClData] = useState(null)
   const [clLoading, setClLoading] = useState(false)
+  const [drillMode, setDrillMode] = useState('plan_vs_real') // 'plan_vs_real' | 'momentum'
 
   const { cityKey, lineKey, period, kpiKey, lineData, periodDeltas, raw } = selection
   const cityParts = cityKey.split('::')
@@ -142,8 +144,25 @@ function DrillContent ({ selection, grain, compact, onClose, projectionMeta, pla
       </div>
 
       <div className="divide-y divide-gray-100 max-h-[calc(100vh-200px)] overflow-y-auto">
-        {/* Evolution Chart — Real vs Proyección + tendencia */}
-        <ProjectionEvolutionChart selection={selection} grain={grain} compact={compact} />
+        {/* Drill mode toggle: Plan vs Real ↔ Momentum */}
+        <div className="px-4 py-2 bg-white border-b border-gray-100 flex items-center gap-1">
+          <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mr-1">Vista</span>
+          <button type="button" onClick={() => setDrillMode('plan_vs_real')}
+            className={`px-2.5 py-1 rounded text-[10px] font-semibold transition-all ${drillMode === 'plan_vs_real' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-500 border border-gray-200 hover:border-gray-300'}`}>
+            Plan vs Real
+          </button>
+          <button type="button" onClick={() => setDrillMode('momentum')}
+            className={`px-2.5 py-1 rounded text-[10px] font-semibold transition-all ${drillMode === 'momentum' ? 'bg-amber-600 text-white shadow-sm' : 'text-gray-500 border border-gray-200 hover:border-gray-300'}`}>
+            Momentum
+          </button>
+        </div>
+
+        {/* Evolution Chart — Plan vs Real o Momentum */}
+        {drillMode === 'momentum' ? (
+          <OmniviewMomentumDrillChart selection={selection} grain={grain} year={null} compact={compact} />
+        ) : (
+          <ProjectionEvolutionChart selection={selection} grain={grain} compact={compact} />
+        )}
 
         {/* FASE_KPI_CONSISTENCY: Tipo de KPI y comparabilidad cross-grain */}
         <KpiContractSection kpiKey={kpiKey} kpiContract={projectionMeta?.kpi_contract} labelCls={labelCls} valueCls={valueCls} />

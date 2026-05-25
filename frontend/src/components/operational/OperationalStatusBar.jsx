@@ -98,7 +98,7 @@ export default function OperationalStatusBar ({
         </svg>
       </button>
       {expanded && (
-        <div className={`px-3 pb-2 flex flex-wrap gap-1.5 ${compact ? 'text-[10px]' : 'text-xs'}`}>
+        <div className={`px-3 pb-2 flex flex-wrap gap-1.5 text-xs`}>
           {items.map((item, idx) => (
             <span key={idx} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border ${itemCls(item.type)} font-medium`}>
               {item.label}: <strong>{item.value}</strong>

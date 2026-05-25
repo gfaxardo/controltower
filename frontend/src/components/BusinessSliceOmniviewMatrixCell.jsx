@@ -13,8 +13,8 @@ import {
   getProjectionStatusColors,
   isKpiComparableAcrossGrains,
   getKpiComparabilityBadge,
-  fmtPeriodPop,
 } from './omniview/projectionMatrixUtils.js'
+import { getComparisonLabel, isMomentumComparison } from '../utils/operationalMomentumEmphasis.js'
 
 export default memo(function BusinessSliceOmniviewMatrixCell ({
   kpiKey,
@@ -129,7 +129,12 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
 
   const val = fmtValue(delta.value, kpiKey)
   const deltaTxt = fmtDelta(delta)
-  const color = signalColorForKpi(delta.signal, kpiKey)
+  const isMomentum = isMomentumComparison(delta, grain)
+  const baseColor = signalColorForKpi(delta.signal, kpiKey)
+  // Momentum comparisons get full color authority; sequential get subdued
+  const color = isMomentum ? baseColor
+    : delta?.isProjection ? baseColor + '99' // subdued projection color
+    : baseColor + '66' // very subtle for simple sequential
   const arrow = signalArrow(delta.signal)
   const tooltip = [buildCellTooltip(kpi, delta, cityName, lineName, periodLbl, periodState, grain, tipTrust), segDetail].filter(Boolean).join('\n\n')
 
@@ -149,11 +154,23 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
         onContextMenu={handleContextMenu}
       >
         <div className={`${valSize} font-semibold text-gray-900 leading-none`}>{val}</div>
-        {deltaTxt && (
-          <div className={`${deltaSize} leading-none font-medium mt-px`} style={{ color, opacity: isPC ? 0.7 : 1 }}>
-            {arrow}{deltaTxt}{isPC ? '~' : ''}
-          </div>
-        )}
+        {deltaTxt && (() => {
+          const momLabel = getComparisonLabel(delta, grain)
+          return (
+            <div
+              className={`${deltaSize} leading-none ${isMomentum ? 'font-semibold' : 'font-normal'} mt-px`}
+              style={{
+                color,
+                opacity: isPC ? 0.6 : isMomentum ? 1 : 0.55,
+              }}
+            >
+              {isMomentum && momLabel !== 'Δ' && (
+                <span className="text-[0.7em] opacity-70 mr-0.5">{momLabel}</span>
+              )}
+              {arrow}{deltaTxt}{isPC ? '~' : ''}
+            </div>
+          )
+        })()}
       </td>
       {renderCtxMenu()}
     </>
@@ -285,6 +302,20 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
 
   const gapStr = gap != null ? fmtGap(gap, kpiKey) : null
 
+  // ── MOMENTUM (DoD/WoW/MoM) — COLOR AUTHORITY ──
+  const hasMomentum = delta.periodPopComparable && delta.periodPopLabel && delta.periodPop != null
+  const momLabel = hasMomentum ? delta.periodPopLabel : null
+  const momValue = hasMomentum ? delta.periodPop : 0
+  const momUp = momValue > 0
+  const momDown = momValue < 0
+  const momSignal = momDown ? 'down' : momUp ? 'up' : 'neutral'
+  // Momentum usa el mismo sistema de colores que Evolution (green up, red down)
+  const momColor = momSignal === 'up' ? '#22c55e' : momSignal === 'down' ? '#ef4444' : '#9ca3af'
+  const momArrow = momUp ? '▲' : momDown ? '▼' : ''
+  const momPctStr = hasMomentum ? `${momUp ? '+' : ''}${Number(momValue).toFixed(0)}%` : ''
+  // Momentum severity: >10% change is notable
+  const momBold = Math.abs(momValue) > 5
+
   // Señal: si sin real forzamos no_data para coloración neutra
   // Si actual < 0 → danger (problema real, aunque avance no aplique)
   const signal = hasNegActual
@@ -372,8 +403,20 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
         {realStr}
       </div>
 
-      {/* Fila 3: Avance % con señal (o gap% si actual negativo) */}
-      <div className={`${szAv} leading-none font-semibold mt-px flex items-center justify-center gap-0.5`}>
+      {/* Fila 2.5: Momentum (DoD/WoW/MoM) — COLOR AUTHORITY DOMINANT */}
+      {hasMomentum && (
+        <div
+          className={`${szAv} leading-none mt-px flex items-center justify-center gap-0.5 ${momBold ? 'font-bold' : 'font-semibold'}`}
+          title={`${momLabel} vs período anterior — ${kpiKey}: ${momPctStr}`}
+          style={{ color: momColor }}
+        >
+          <span className="text-[0.7em] opacity-70">{momLabel}</span>
+          <span>{momArrow}{momPctStr}</span>
+        </div>
+      )}
+
+      {/* Fila 3: Avance % con señal (o gap% si actual negativo) — secundario si hay momentum */}
+      <div className={`${szAv} leading-none ${hasMomentum ? 'font-normal opacity-60' : 'font-semibold'} mt-px flex items-center justify-center gap-0.5`}>
         <span className={`inline-block w-1.5 h-1.5 rounded-full ${dotClass} flex-shrink-0`} />
         {showGapPctFallback
           ? <span style={{ color: attColor }} title="Gap% (avance no aplica con valor negativo)">{gapPctStr}</span>
@@ -386,17 +429,7 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
 
       {/* Fila 4: Gap absoluto (solo si disponible y no es caso negativo) */}
       {gapStr && !showGapPctFallback && (
-        <div className={`${szGap} leading-none mt-px text-gray-400`}>{gapStr}</div>
-      )}
-
-      {delta.periodPopComparable && delta.periodPopLabel && fmtPeriodPop(delta.periodPop) && (
-        <div
-          className={`${szGap} leading-none mt-px text-slate-500 tabular-nums`}
-          title={`${delta.periodPopLabel} vs período anterior — ${kpiKey}`}
-        >
-          <span className="opacity-80">{delta.periodPopLabel}</span>{' '}
-          <span className="font-semibold text-slate-600">{fmtPeriodPop(delta.periodPop)}</span>
-        </div>
+        <div className={`${szGap} leading-none mt-px ${hasMomentum ? 'text-gray-300' : 'text-gray-400'}`}>{gapStr}</div>
       )}
 
       {/* Etiqueta de estado "Sin ejecución" (solo cuando no hay real) */}

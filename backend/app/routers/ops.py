@@ -46,6 +46,7 @@ from app.services.business_slice_real_freshness_service import (
     get_omniview_business_slice_real_freshness,
 )
 from app.services.business_slice_real_refresh_job import run_business_slice_real_refresh_job
+from app.services.omniview_momentum_drill_service import get_omniview_momentum_drill
 from app.utils.json_sanitizer import sanitize_for_json
 from app.settings import settings
 from app.services.plan_real_split_service import (
@@ -605,6 +606,41 @@ async def business_slice_real_refresh_omniview_endpoint(
         return sanitize_for_json(result)
     except Exception as e:
         logger.exception("business-slice/real-refresh-omniview")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/business-slice/omniview-momentum-drill")
+async def omniview_momentum_drill_endpoint(
+    grain: str = Query("daily", description="Grano: daily, weekly, monthly"),
+    metric_code: str = Query("trips_completed", description="Métrica: trips_completed, revenue_yego_net, active_drivers, avg_ticket"),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    business_slice: Optional[str] = Query(None),
+    fleet: Optional[str] = Query(None),
+    year: Optional[int] = Query(None),
+    weekday: Optional[int] = Query(None, description="0=DOM..6=SÁB. Solo para grain=daily"),
+    limit: int = Query(8, ge=1, le=30, description="Máximo de periodos"),
+):
+    """
+    Momentum drill series: devuelve series históricas comparables para
+    DoD same-weekday, WoW o MoM según grain.
+    Usado en el drill de Omniview para gráficos de momentum.
+    """
+    try:
+        result = get_omniview_momentum_drill(
+            grain=grain,
+            metric_code=metric_code,
+            country=country,
+            city=city,
+            business_slice=business_slice,
+            fleet=fleet,
+            year=year,
+            weekday=weekday,
+            limit=limit,
+        )
+        return sanitize_for_json(result)
+    except Exception as e:
+        logger.exception("business-slice/omniview-momentum-drill")
         raise HTTPException(status_code=500, detail=str(e))
 
 

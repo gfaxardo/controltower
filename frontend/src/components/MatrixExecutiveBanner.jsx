@@ -15,9 +15,9 @@ export default function MatrixExecutiveBanner ({
 }) {
   if (loading || !executive) {
     return (
-      <div className="rounded-md border border-ct-border bg-ct-surface px-3 py-1.5 min-h-[36px] flex items-center gap-2">
+      <div className="rounded-md border border-ct-border bg-ct-surface px-3 py-1 min-h-[32px] flex items-center gap-2">
         <span className="inline-block w-3 h-3 border-[1.5px] border-slate-300 border-t-slate-500 rounded-full animate-spin flex-shrink-0" />
-        <span className="text-[11px] text-ct-text3">Data Trust ejecutivo…</span>
+        <span className="text-xs text-ct-text3">Data Trust ejecutivo…</span>
       </div>
     )
   }
@@ -93,12 +93,12 @@ export default function MatrixExecutiveBanner ({
   const inner = (
     <>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className={`shrink-0 rounded px-1.5 py-px text-[10px] font-bold uppercase tracking-wide ${badge}`}>
+        <span className={`shrink-0 rounded px-1.5 py-px text-xs font-bold uppercase tracking-wide ${badge}`}>
           {st}
         </span>
         {decisionBadge && dm && (
           <span
-            className={`shrink-0 rounded px-1.5 py-px text-[10px] font-bold uppercase tracking-wide ${decisionBadge}`}
+            className={`shrink-0 rounded px-1.5 py-px text-xs font-bold uppercase tracking-wide ${decisionBadge}`}
             title={`Modo decisión: ${decisionLabel || dm}`}
           >
             {decisionLabel || dm}
@@ -106,7 +106,7 @@ export default function MatrixExecutiveBanner ({
         )}
         {confScore != null && !Number.isNaN(confScore) && (
           <span
-            className="text-[11px] tabular-nums shrink-0 text-ct-text"
+            className="text-xs tabular-nums shrink-0 text-ct-text"
             title={pillarBits || 'Confianza integrada (coverage, freshness, consistency)'}
           >
             Conf. <strong>{confScore}</strong>
@@ -114,13 +114,13 @@ export default function MatrixExecutiveBanner ({
         )}
         {penaltyCode && (
           <span
-            className="text-[10px] shrink-0 text-ct-text hidden md:inline"
+            className="text-xs shrink-0 text-ct-text hidden md:inline"
             title={hardCap?.reason || `Cap aplicado por ${penaltyCode}`}
           >
             Penalizado por {penaltyCode}
           </span>
         )}
-        <span className="text-[11px] tabular-nums shrink-0">
+        <span className="text-xs tabular-nums shrink-0">
           Impacto <strong>{impact.toFixed(1)}%</strong>
           {pri != null && pri > 0 && (
             <span className={`font-normal ml-1 ${isOk ? 'text-emerald-800/80' : isBlocked ? 'text-red-800/80' : 'text-amber-900/80'}`}>
@@ -128,7 +128,7 @@ export default function MatrixExecutiveBanner ({
             </span>
           )}
         </span>
-        <span className="text-[11px] flex-1 min-w-0 leading-snug">
+        <span className="text-xs flex-1 min-w-0 leading-snug">
           {isOk ? (
             <span className="font-medium">{executive.action || 'Sin acción ejecutiva requerida.'}</span>
           ) : (
@@ -139,28 +139,28 @@ export default function MatrixExecutiveBanner ({
           )}
         </span>
         {!isOk && executive.action && mainBits && (
-          <span className="text-[10px] opacity-90 max-w-[42%] sm:max-w-md truncate hidden sm:inline">
+          <span className="text-xs opacity-90 max-w-[42%] sm:max-w-md truncate hidden sm:inline">
             Acción: {executive.action}
           </span>
         )}
         {clickable && (
-          <span className="text-[10px] font-semibold underline shrink-0 ml-auto sm:ml-0">
+          <span className="text-xs font-semibold underline shrink-0 ml-auto sm:ml-0">
             Ver en Matrix →
           </span>
         )}
       </div>
       {!isOk && traceBits && (
-        <p className={`text-[10px] mt-0.5 leading-tight ${isBlocked ? 'text-red-900/80' : 'text-amber-900/85'}`}>
+        <p className={`text-xs mt-0.5 leading-tight ${isBlocked ? 'text-red-900/80' : 'text-amber-900/85'}`}>
           Trazas: {traceBits}
         </p>
       )}
       {!isOk && executive.action && (mainBits || !mi) && (
-        <p className={`text-[10px] mt-0.5 leading-tight sm:hidden ${isBlocked ? 'text-red-900/85' : 'text-amber-900/85'}`}>
+        <p className={`text-xs mt-0.5 leading-tight sm:hidden ${isBlocked ? 'text-red-900/85' : 'text-amber-900/85'}`}>
           {executive.action}
         </p>
       )}
       {playbook && (playbook.recommended_action || playbook.operational_meaning) && (
-        <p className="text-[10px] mt-0.5 leading-tight text-ct-text border-t border-ct-border/80 pt-1">
+        <p className="text-xs mt-0.5 leading-tight text-ct-text border-t border-ct-border/80 pt-1">
           <span className="font-semibold text-ct-text">Acción estándar: </span>
           {playbook.recommended_action || playbook.operational_meaning}
           {playbook.owner_hint && (
@@ -169,13 +169,13 @@ export default function MatrixExecutiveBanner ({
         </p>
       )}
       {recPreview.length > 0 && (
-        <p className="text-[10px] mt-0.5 leading-tight text-ct-text border-t border-ct-border/80 pt-1">
+        <p className="text-xs mt-0.5 leading-tight text-ct-text border-t border-ct-border/80 pt-1">
           <span className="font-semibold text-ct-text">Sugerencias: </span>
           {recPreview.join(' · ')}
         </p>
       )}
       {Array.isArray(contextHints) && contextHints.length > 0 && (
-        <p className="text-[10px] mt-0.5 leading-tight text-ct-text border-t border-ct-border/80 pt-1">
+        <p className="text-xs mt-0.5 leading-tight text-ct-text border-t border-ct-border/80 pt-1">
           <span className="font-semibold text-ct-text">Contexto operativo: </span>
           {contextHints.join(' · ')}
         </p>
@@ -183,7 +183,7 @@ export default function MatrixExecutiveBanner ({
     </>
   )
 
-  const wrapCls = `w-full rounded-md border ${shell} px-3 py-1.5 text-left transition-shadow ${
+  const wrapCls = `w-full rounded-md border ${shell} px-3 py-1 text-left transition-shadow ${
     clickable ? 'cursor-pointer hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-slate-400' : 'cursor-default'
   }`
 

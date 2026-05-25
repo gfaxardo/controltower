@@ -16,7 +16,7 @@ export function MaturityBadge ({ moduleKey, className = '' }) {
 
   return (
     <span
-      className={`inline-flex items-center px-1.5 py-px rounded-full text-[9px] font-medium border ${info.color} ${className}`}
+      className={`inline-flex items-center px-1.5 py-px rounded-full text-[11px] font-medium border ${info.color} ${className}`}
       title={`Madurez: ${info.label}`}
     >
       {info.label}
@@ -33,7 +33,7 @@ export function PhaseIndicator ({ phase, className = '' }) {
 
   return (
     <span
-      className={`inline-flex items-center px-1 py-px rounded text-[9px] font-mono font-medium text-gray-400 bg-gray-50 border border-gray-150 ${className}`}
+      className={`inline-flex items-center px-1 py-px rounded text-[11px] font-mono font-medium text-gray-400 bg-gray-50 border border-gray-150 ${className}`}
       title={`Fase actual: ${phase}`}
     >
       {phase}
@@ -50,7 +50,7 @@ export function EngineIndicator ({ engine, className = '' }) {
   const isControlFoundation = engine === ENGINE_OWNER.CONTROL_FOUNDATION
   const isDiagnostic = engine === ENGINE_OWNER.DIAGNOSTIC
 
-  const baseCls = 'inline-flex items-center px-1 py-px rounded text-[9px] font-medium border'
+  const baseCls = 'inline-flex items-center px-1 py-px rounded text-[11px] font-medium border'
   const colorCls = isControlFoundation
     ? 'text-emerald-600 bg-emerald-50 border-emerald-100'
     : isDiagnostic

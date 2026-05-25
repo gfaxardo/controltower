@@ -155,15 +155,15 @@ function KPICards({ filters = {}, compact = false }) {
     }
   }
 
-  const cardGridCls = compact ? 'grid grid-cols-2 md:grid-cols-4 gap-3 mb-4' : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6'
-  const cardCls = compact ? 'p-4 rounded-lg shadow border-l-4' : 'p-6 rounded-lg shadow-md border-l-4'
-  const titleCls = compact ? 'text-sm font-semibold text-gray-700 mb-1' : 'text-lg font-semibold text-gray-700 mb-2'
-  const valueCls = compact ? 'text-xl font-bold' : 'text-3xl font-bold'
-  const hintCls = compact ? 'text-xs text-gray-600 mt-1' : 'text-sm text-gray-600 mt-2'
-  const revenueGridCls = compact ? 'grid grid-cols-1 md:grid-cols-2 gap-3 mb-4' : 'grid grid-cols-1 md:grid-cols-2 gap-6 mb-6'
-  const revenueCardCls = compact ? 'bg-white p-4 rounded-lg shadow border-2' : 'bg-white p-6 rounded-lg shadow-md border-2'
-  const revenueTitleCls = compact ? 'text-base font-bold' : 'text-xl font-bold'
-  const revenueValueCls = compact ? 'text-lg font-bold' : 'text-2xl font-bold'
+  const cardGridCls = compact ? 'grid grid-cols-2 md:grid-cols-4 gap-2 mb-3' : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4'
+  const cardCls = compact ? 'p-3 rounded-lg shadow border-l-4' : 'p-4 rounded-lg shadow border-l-4'
+  const titleCls = compact ? 'text-xs font-semibold text-gray-700 mb-0.5' : 'text-sm font-semibold text-gray-700 mb-1'
+  const valueCls = compact ? 'text-lg font-bold' : 'text-2xl font-bold'
+  const hintCls = compact ? 'text-xs text-gray-600 mt-0.5' : 'text-xs text-gray-600 mt-1'
+  const revenueGridCls = compact ? 'grid grid-cols-1 md:grid-cols-2 gap-2 mb-3' : 'grid grid-cols-1 md:grid-cols-2 gap-3 mb-4'
+  const revenueCardCls = compact ? 'bg-white p-3 rounded-lg shadow border-2' : 'bg-white p-4 rounded-lg shadow-sm border-2'
+  const revenueTitleCls = compact ? 'text-sm font-bold' : 'text-base font-bold'
+  const revenueValueCls = compact ? 'text-base font-bold' : 'text-lg font-bold'
 
   if (loading) {
     return (
@@ -232,11 +232,11 @@ function KPICards({ filters = {}, compact = false }) {
         {/* BLOQUES MONETARIOS POR PAÍS */}
         <div className={revenueGridCls}>
           <div className={`${revenueCardCls} border-red-200`}>
-            <div className={`flex items-center ${compact ? 'mb-2' : 'mb-4'}`}>
-              <span className={compact ? 'text-lg mr-1' : 'text-2xl mr-2'}>🇵🇪</span>
+            <div className={`flex items-center ${compact ? 'mb-1' : 'mb-2'}`}>
+              <span className={compact ? 'text-base mr-1' : 'text-lg mr-2'}>🇵🇪</span>
               <h3 className={`${revenueTitleCls} text-gray-800`}>PERÚ — PEN</h3>
             </div>
-            <div className={compact ? 'space-y-2' : 'space-y-4'}>
+            <div className={compact ? 'space-y-1' : 'space-y-2'}>
               {kpis.revenuePlanYTD_PE !== null && (
                 <div>
                   <h4 className="text-sm font-medium text-gray-600 mb-1 flex items-center">
@@ -259,11 +259,11 @@ function KPICards({ filters = {}, compact = false }) {
             </div>
           </div>
           <div className={`${revenueCardCls} border-yellow-200`}>
-            <div className={`flex items-center ${compact ? 'mb-2' : 'mb-4'}`}>
-              <span className={compact ? 'text-lg mr-1' : 'text-2xl mr-2'}>🇨🇴</span>
+            <div className={`flex items-center ${compact ? 'mb-1' : 'mb-2'}`}>
+              <span className={compact ? 'text-base mr-1' : 'text-lg mr-2'}>🇨🇴</span>
               <h3 className={`${revenueTitleCls} text-gray-800`}>COLOMBIA — COP</h3>
             </div>
-            <div className={compact ? 'space-y-2' : 'space-y-4'}>
+            <div className={compact ? 'space-y-1' : 'space-y-2'}>
               {kpis.revenuePlanYTD_CO !== null && (
                 <div>
                   <h4 className="text-sm font-medium text-gray-600 mb-1 flex items-center">
@@ -288,10 +288,8 @@ function KPICards({ filters = {}, compact = false }) {
         </div>
 
         {!compact && (
-          <div className="mb-6 p-3 bg-gray-50 border-l-4 border-gray-400 rounded">
-            <p className="text-sm text-gray-700">
-              Vista ALL: las métricas monetarias se presentan por país para evitar mezcla de monedas.
-            </p>
+          <div className="mb-3 p-2 bg-gray-50 border-l-4 border-gray-400 rounded text-xs text-gray-600">
+            Vista ALL: las métricas monetarias se presentan por país para evitar mezcla de monedas.
           </div>
         )}
       </div>

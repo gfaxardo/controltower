@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { MATRIX_KPIS, fmtValue, fmtRaw, fmtDelta, signalColorForKpi, signalArrow, periodLabel, periodStateLabel, PERIOD_STATES, describeComparison, periodHeaderPrimary, periodHeaderSecondary } from './omniview/omniviewMatrixUtils.js'
 import { resolveTrustIssueForSelection } from './omniview/trustInspectorDiagnostics.js'
 import { logMatrixIssueAction } from '../services/api.js'
+import OmniviewMomentumDrillChart from './omniview/momentum/OmniviewMomentumDrillChart.jsx'
 
 export default function BusinessSliceOmniviewInspector ({
   selection,
@@ -19,6 +20,7 @@ export default function BusinessSliceOmniviewInspector ({
   onGoBack = null,
 }) {
   const [fullscreen, setFullscreen] = useState(false)
+  const [drillMode, setDrillMode] = useState('evolution') // evolution | momentum
 
   useEffect(() => {
     if (!fullscreen) return
@@ -474,7 +476,29 @@ function InspectorContent ({
         <>
           {ins && <InsightBanner insight={ins} transparency={insightTransparency} />}
 
-          <EvolutionChart lineData={lineData} grain={grain} kpiKey={selectedKpiKey} allKpis={MATRIX_KPIS} compact={compact} />
+          {/* Drill mode toggle + chart */}
+          <div className="border-b border-gray-100">
+            <div className="flex items-center gap-2 px-3 pt-2 pb-1">
+              <span className="text-xs font-semibold text-ct-text">
+                {drillMode === 'momentum' ? 'Momentum' : 'Evolution'}
+              </span>
+              <div className="flex gap-0.5 ml-auto">
+                <button type="button" onClick={() => setDrillMode('evolution')}
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-all ${drillMode === 'evolution' ? 'bg-ct-accent text-white' : 'text-ct-text3 hover:text-ct-text hover:bg-ct-border/30'}`}>
+                  Evolution
+                </button>
+                <button type="button" onClick={() => setDrillMode('momentum')}
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-all ${drillMode === 'momentum' ? 'bg-ct-accent text-white' : 'text-ct-text3 hover:text-ct-text hover:bg-ct-border/30'}`}>
+                  Momentum
+                </button>
+              </div>
+            </div>
+            {drillMode === 'momentum' ? (
+              <OmniviewMomentumDrillChart selection={selection} grain={grain} compact={compact} />
+            ) : (
+              <EvolutionChart lineData={lineData} grain={grain} kpiKey={selectedKpiKey} allKpis={MATRIX_KPIS} compact={compact} />
+            )}
+          </div>
 
           <div className={`${compact ? 'p-2 space-y-1' : 'p-3 space-y-1.5'} max-h-[50vh] overflow-y-auto`}>
             {MATRIX_KPIS.map((kpi) => {

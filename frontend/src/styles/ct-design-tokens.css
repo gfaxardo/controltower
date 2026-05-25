@@ -1,0 +1,1166 @@
+/**
+ * CT DESIGN TOKENS — Operational Foundation
+ * 
+ * PROPÓSITO: Gobernar tipografía, espaciado, alturas y comportamiento
+ * visual en YEGO Control Tower. NO tokens cosméticos — tokens operacionales.
+ * 
+ * REGLAS:
+ * - Ningún componente debe usar px arbitrarios
+ * - Ningún texto por debajo de --ct-font-2xs (10px, solo matrix interna)
+ * - Todo layout debe usar --ct-page-max-width
+ * - Banners limitados por --ct-banner-max-height
+ */
+
+:root {
+  /* ============================================
+     TYPOGRAPHY SCALE — Operational Minimums
+     ============================================
+     WCAG-observant. Mínimo operacional: 12px excepto matrix cells. */
+
+  --ct-font-micro:   0.625rem;  /* 10px — SOLO matrix cell data interna */
+  --ct-font-2xs:     0.6875rem; /* 11px — badges, hints secundarios */
+  --ct-font-xs:      0.75rem;   /* 12px — UI chrome, labels, botones */
+  --ct-font-sm:      0.8125rem; /* 13px — texto secundario, tooltips */
+  --ct-font-md:      0.875rem;  /* 14px — texto de lectura, tablas */
+  --ct-font-lg:      1rem;      /* 16px — headers de sección */
+  --ct-font-xl:      1.125rem;  /* 18px — títulos de vista */
+  --ct-font-2xl:     1.25rem;   /* 20px — KPIs primarios */
+  --ct-font-3xl:     1.5rem;    /* 24px — KPIs destacados */
+
+  --ct-font-weight-normal: 400;
+  --ct-font-weight-medium: 500;
+  --ct-font-weight-semibold: 600;
+  --ct-font-weight-bold: 700;
+
+  --ct-line-height-tight:  1.2;
+  --ct-line-height-normal: 1.4;
+  --ct-line-height-relaxed: 1.6;
+
+  /* ============================================
+     SPACING SCALE — Operacional
+     ============================================ */
+
+  --ct-space-0:  0;
+  --ct-space-1:  0.25rem;  /* 4px  — íconos, gap mínimo */
+  --ct-space-1_5: 0.375rem; /* 6px  — badge interno */
+  --ct-space-2:  0.5rem;   /* 8px  — gap entre chips, label-input */
+  --ct-space-2_5: 0.625rem; /* 10px — toolbar interno */
+  --ct-space-3:  0.75rem;   /* 12px — gap entre secciones */
+  --ct-space-4:  1rem;     /* 16px — padding de panel */
+  --ct-space-5:  1.25rem;  /* 20px — gap entre paneles */
+  --ct-space-6:  1.5rem;   /* 24px — separación mayor */
+  --ct-space-8:  2rem;     /* 32px — separación de vista */
+
+  /* ============================================
+     HEIGHTS — Componentes operacionales
+     ============================================ */
+
+  --ct-toolbar-height:     2.25rem;  /* 36px — toolbar estándar */
+  --ct-toolbar-compact:    1.75rem;  /* 28px — toolbar comprimido */
+  --ct-banner-max-height:  2.5rem;   /* 40px — banner colapsado */
+  --ct-banner-expanded:    auto;     /* auto  — banner expandido (no límite) */
+  --ct-input-height:       2.25rem;  /* 36px — input/select estándar */
+  --ct-input-compact:      1.75rem;  /* 28px — input compacto */
+  --ct-btn-height:         2rem;     /* 32px — botón estándar */
+  --ct-btn-compact:        1.5rem;   /* 24px — botón pequeño */
+  --ct-table-header:       2.25rem;  /* 36px — header de tabla */
+  --ct-table-row:          2rem;     /* 32px — fila de tabla */
+  --ct-table-row-compact:  1.5rem;   /* 24px — fila compacta (matrix) */
+  --ct-kpi-card-min:       5rem;     /* 80px — KPI card mínimo */
+
+  /* ============================================
+     CONTAINER WIDTHS — Viewport Governance
+     ============================================ */
+
+  --ct-page-max-width:     90rem;   /* 1440px — contenido operacional máximo */
+  --ct-page-narrow:        48rem;   /* 768px  — formularios, config */
+  --ct-panel-max-width:    28rem;   /* 448px  — panel lateral */
+  --ct-modal-max-width:    40rem;   /* 640px  — modales */
+  --ct-form-field-max:     24rem;   /* 384px  — ancho máximo de campo */
+
+  /* ============================================
+     GUTTERS — Consistencia espacial
+     ============================================ */
+
+  --ct-gutter-page:        1rem;    /* 16px  — padding de página */
+  --ct-gutter-section:     0.75rem; /* 12px  — gap entre secciones */
+  --ct-gutter-card:        0.5rem;  /* 8px   — gap entre cards */
+
+  /* ============================================
+     BORDER RADIUS
+     ============================================ */
+
+  --ct-radius-sm:  0.25rem;  /* 4px  — badges, chips */
+  --ct-radius-md:  0.375rem; /* 6px  — inputs, botones, cards */
+  --ct-radius-lg:  0.5rem;   /* 8px  — paneles, modales */
+  --ct-radius-xl:  0.75rem;  /* 12px — modales grandes */
+
+  /* ============================================
+     Z-INDEX GOVERNANCE
+     ============================================ */
+
+  --ct-z-content:    1;
+  --ct-z-sticky-col: 10;
+  --ct-z-sticky-row: 18;
+  --ct-z-sticky-head: 20;
+  --ct-z-overlay:    30;
+  --ct-z-header:     40;
+  --ct-z-panel:      50;
+  --ct-z-modal:      80;
+  --ct-z-fullscreen: 100;
+  --ct-z-max:        999;
+
+  /* ============================================
+     DENSITY SCALE
+     ============================================ */
+
+  --ct-density-normal:  1;      /* espaciado estándar */
+  --ct-density-compact: 0.75;   /* 25% más denso (matrix mode) */
+  --ct-density-sparse:  1.25;   /* 25% más espaciado */
+
+  /* ============================================
+     SHADOWS — Jerarquía visual
+     ============================================ */
+
+  --ct-shadow-card:  0 1px 3px rgba(0,0,0,0.08);
+  --ct-shadow-panel: 0 4px 12px rgba(0,0,0,0.1);
+  --ct-shadow-modal: 0 8px 24px rgba(0,0,0,0.15);
+}
+
+
+/* ============================================
+   LAYOUT PRIMITIVES — Reutilizables operacionales
+   ============================================ */
+
+/* ct-page: contenedor máximo de contenido */
+.ct-page {
+  max-width: var(--ct-page-max-width);
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+}
+
+/* ct-page-section: agrupación semántica vertical */
+.ct-page-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ct-gutter-section);
+}
+
+/* ct-toolbar: barra de herramientas horizontal */
+.ct-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ct-space-2_5);
+  min-height: var(--ct-toolbar-height);
+  padding: var(--ct-space-1_5) var(--ct-space-3);
+  background: var(--tw-bg-ct-surface);
+  border: 1px solid var(--tw-bg-ct-border);
+  border-radius: var(--ct-radius-md);
+}
+
+/* ct-panel: panel contenedor con borde */
+.ct-panel {
+  background: var(--tw-bg-ct-card);
+  border: 1px solid var(--tw-bg-ct-border);
+  border-radius: var(--ct-radius-lg);
+  overflow: hidden;
+}
+
+.ct-panel-header {
+  padding: var(--ct-space-3) var(--ct-space-4);
+  border-bottom: 1px solid var(--tw-bg-ct-border);
+  font-size: var(--ct-font-sm);
+  font-weight: var(--ct-font-weight-semibold);
+}
+
+.ct-panel-body {
+  padding: var(--ct-space-4);
+}
+
+/* ct-form-grid: grid para formularios operacionales */
+.ct-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--ct-space-3);
+  max-width: var(--ct-page-narrow);
+}
+
+.ct-form-grid--dense {
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--ct-space-2);
+}
+
+/* ct-form-field: wrapper de campo de formulario */
+.ct-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ct-space-1);
+  min-width: 0;
+}
+
+.ct-form-field label,
+.ct-form-label {
+  font-size: var(--ct-font-xs);
+  font-weight: var(--ct-font-weight-medium);
+  color: var(--tw-text-ct-text2);
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+/* ct-scroll-region: región scrolleable con altura dinámica */
+.ct-scroll-region {
+  overflow-x: auto;
+  overflow-y: auto;
+  /* La altura se define inline o con var(--scroll-height) */
+  height: var(--scroll-height, auto);
+}
+
+/* ct-section-header: header de sección consistente */
+.ct-section-header {
+  font-size: var(--ct-font-md);
+  font-weight: var(--ct-font-weight-semibold);
+  color: var(--tw-text-ct-text);
+  padding-bottom: var(--ct-space-2);
+  border-bottom: 1px solid var(--tw-bg-ct-border);
+  margin-bottom: var(--ct-space-3);
+}
+
+/* ct-kpi-strip: tira horizontal de KPIs */
+.ct-kpi-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ct-gutter-card);
+  align-items: stretch;
+}
+
+.ct-kpi-strip > * {
+  flex: 1 1 160px;
+  min-width: 160px;
+}
+
+/* ct-action-zone: zona de acciones/CTAs */
+.ct-action-zone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ct-space-2);
+  padding-top: var(--ct-space-3);
+  border-top: 1px solid var(--tw-bg-ct-border);
+}
+
+
+/* ============================================
+   WORKBENCH LAYOUT PRIMITIVES — Phase 2
+   ============================================ */
+
+/* ct-workbench: layout operacional completo */
+.ct-workbench {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  min-height: calc(100vh - var(--header-offset, 64px));
+  gap: var(--ct-space-2);
+}
+
+/* ct-workbench-header: header de vista con título + controles */
+.ct-workbench-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ct-space-3);
+  padding: var(--ct-space-2) var(--ct-space-4);
+  background: var(--tw-bg-ct-card);
+  border: 1px solid var(--tw-bg-ct-border);
+  border-radius: var(--ct-radius-lg);
+}
+
+.ct-workbench-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ct-workbench-header h2,
+.ct-workbench-title {
+  font-size: var(--ct-font-lg);
+  font-weight: var(--ct-font-weight-bold);
+  color: var(--tw-text-ct-text);
+  margin: 0;
+}
+
+.ct-workbench-subtitle {
+  font-size: var(--ct-font-xs);
+  color: var(--tw-text-ct-text3);
+}
+
+/* ct-workbench-toolbar: barra de controles */
+.ct-workbench-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ct-space-2);
+  padding: var(--ct-space-1_5) var(--ct-space-3);
+  background: var(--tw-bg-ct-surface);
+  border: 1px solid var(--tw-bg-ct-border);
+  border-radius: var(--ct-radius-md);
+  position: sticky;
+  top: var(--header-offset, 0);
+  z-index: var(--ct-z-sticky-head);
+}
+
+/* ct-workbench-sidebar: panel lateral derecho */
+.ct-workbench-sidebar {
+  background: var(--tw-bg-ct-card);
+  border: 1px solid var(--tw-bg-ct-border);
+  border-radius: var(--ct-radius-lg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - var(--header-offset, 64px) - var(--ct-space-4));
+}
+
+/* ct-workbench-main: zona de trabajo principal */
+.ct-workbench-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ct-space-3);
+  min-width: 0;
+}
+
+/* ct-workbench-layout: grid maestro (main + sidebar) */
+.ct-workbench-layout {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--ct-space-3);
+  align-items: start;
+}
+
+.ct-workbench-layout--stacked {
+  grid-template-columns: 1fr;
+}
+
+
+/* ============================================
+   COLLAPSIBLE GOVERNANCE — Phase 2
+   ============================================ */
+
+/* ct-collapsible: panel expandible gobernado */
+.ct-collapsible {
+  border: 1px solid var(--tw-bg-ct-border);
+  border-radius: var(--ct-radius-md);
+  overflow: hidden;
+  background: var(--tw-bg-ct-card);
+}
+
+/* ct-collapsible-header: botón toggle con título */
+.ct-collapsible-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: var(--ct-space-2) var(--ct-space-3);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: var(--ct-font-xs);
+  font-weight: var(--ct-font-weight-semibold);
+  color: var(--tw-text-ct-text);
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.ct-collapsible-header:hover {
+  background: var(--tw-bg-ct-border);
+}
+
+.ct-collapsible-header-icon {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+  color: var(--tw-text-ct-text3);
+}
+
+.ct-collapsible[open] .ct-collapsible-header-icon,
+.ct-collapsible--open .ct-collapsible-header-icon {
+  transform: rotate(180deg);
+}
+
+/* ct-collapsible-content: cuerpo expandible */
+.ct-collapsible-content {
+  padding: 0 var(--ct-space-3) var(--ct-space-3) var(--ct-space-3);
+  border-top: 1px solid var(--tw-bg-ct-border);
+  max-height: 18rem; /* ~288px — evita viewport destruction */
+  overflow-y: auto;
+}
+
+.ct-collapsible-content--auto {
+  max-height: none;
+}
+
+
+/* ============================================
+   FORM ERGONOMICS PRIMITIVES — Phase 2
+   ============================================ */
+
+/* ct-form-section: agrupación semántica de campos */
+.ct-form-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ct-space-3);
+}
+
+.ct-form-section-title {
+  font-size: var(--ct-font-xs);
+  font-weight: var(--ct-font-weight-semibold);
+  color: var(--tw-text-ct-text);
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  padding-bottom: var(--ct-space-1);
+  border-bottom: 1px solid var(--tw-bg-ct-border);
+}
+
+/* ct-form-row: fila horizontal de campos */
+.ct-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ct-space-2);
+  align-items: flex-end;
+}
+
+/* ct-form-group: grupo de campos relacionado (compacto) */
+.ct-form-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ct-space-1_5);
+  align-items: flex-start;
+  padding: var(--ct-space-2);
+  background: var(--tw-bg-ct-surface);
+  border-radius: var(--ct-radius-md);
+  border: 1px solid var(--tw-bg-ct-border);
+}
+
+/* ct-inline-actions: acciones inline dentro de formulario */
+.ct-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ct-space-2);
+  margin-top: var(--ct-space-1);
+}
+
+/* ct-compact-config-panel: panel de configuración compacto */
+.ct-compact-config-panel {
+  background: var(--tw-bg-ct-card);
+  border: 1px solid var(--tw-bg-ct-border);
+  border-radius: var(--ct-radius-lg);
+  overflow: hidden;
+}
+
+.ct-compact-config-panel > .ct-panel-header {
+  padding: var(--ct-space-2) var(--ct-space-4);
+}
+
+.ct-compact-config-panel > .ct-panel-body {
+  padding: var(--ct-space-3) var(--ct-space-4);
+}
+
+/* Operational input styling */
+.ct-input {
+  padding: var(--ct-space-1_5) var(--ct-space-2_5);
+  font-size: var(--ct-font-xs);
+  line-height: 1.4;
+  border: 1px solid var(--tw-bg-ct-border);
+  border-radius: var(--ct-radius-md);
+  background: var(--tw-bg-ct-surface);
+  color: var(--tw-text-ct-text);
+  outline: none;
+  transition: border-color 0.15s;
+  min-width: 0;
+}
+
+.ct-input:focus {
+  border-color: var(--tw-bg-ct-accent);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.ct-input--sm {
+  padding: var(--ct-space-1) var(--ct-space-2);
+  font-size: var(--ct-font-2xs);
+}
+
+.ct-select {
+  padding: var(--ct-space-1_5) var(--ct-space-2_5);
+  font-size: var(--ct-font-xs);
+  line-height: 1.4;
+  border: 1px solid var(--tw-bg-ct-border);
+  border-radius: var(--ct-radius-md);
+  background: var(--tw-bg-ct-surface);
+  color: var(--tw-text-ct-text);
+  outline: none;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.ct-select:focus {
+  border-color: var(--tw-bg-ct-accent);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+/* ct-actions-sticky: franja de acciones pegada al fondo */
+.ct-actions-sticky {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ct-space-2);
+  padding: var(--ct-space-2) var(--ct-space-3);
+  background: var(--tw-bg-ct-card);
+  border-top: 1px solid var(--tw-bg-ct-border);
+  z-index: var(--ct-z-sticky-row);
+}
+
+/* ct-kpi-grid: grid de KPI cards compactos */
+.ct-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--ct-gutter-card);
+}
+
+.ct-kpi-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ct-space-1);
+  padding: var(--ct-space-2) var(--ct-space-3);
+  background: var(--tw-bg-ct-card);
+  border: 1px solid var(--tw-bg-ct-border);
+  border-radius: var(--ct-radius-lg);
+  min-width: 0;
+}
+
+.ct-kpi-card-label {
+  font-size: var(--ct-font-2xs);
+  color: var(--tw-text-ct-text2);
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.ct-kpi-card-value {
+  font-size: var(--ct-font-xl);
+  font-weight: var(--ct-font-weight-bold);
+  color: var(--tw-text-ct-text);
+  tabular-nums: true;
+}
+
+.ct-kpi-card-delta {
+  font-size: var(--ct-font-2xs);
+  font-weight: var(--ct-font-weight-medium);
+}
+
+
+/* ============================================
+   SCROLL GOVERNANCE PRIMITIVES — Phase 2
+   ============================================ */
+
+/* ct-scroll-y: scroll vertical gobernado */
+.ct-scroll-y {
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: var(--scroll-max-h, 60vh);
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.ct-scroll-y::-webkit-scrollbar {
+  width: 5px;
+}
+.ct-scroll-y::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+.ct-scroll-y::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ct-scroll-x: scroll horizontal gobernado (tablas anchas) */
+.ct-scroll-x {
+  overflow-x: auto;
+  overflow-y: visible;
+  max-width: 100%;
+}
+
+/* ct-sticky-toolbar: toolbar que se queda pegada al scroll */
+.ct-sticky-toolbar {
+  position: sticky;
+  top: var(--sticky-offset, 0);
+  z-index: var(--ct-z-sticky-head);
+  background: inherit;
+}
+
+/* ct-sticky-actions: acciones que se quedan visibles */
+.ct-sticky-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--ct-z-sticky-row);
+  margin-top: auto;
+}
+
+
+/* ============================================
+   ACTION HIERARCHY PRIMITIVES — Phase 2
+   ============================================ */
+
+/* ct-primary-action: CTA principal (máximo peso visual) */
+.ct-primary-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ct-space-1_5);
+  padding: var(--ct-space-1_5) var(--ct-space-4);
+  font-size: var(--ct-font-sm);
+  font-weight: var(--ct-font-weight-semibold);
+  background: var(--tw-bg-ct-accent);
+  color: white;
+  border: none;
+  border-radius: var(--ct-radius-md);
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.ct-primary-action:hover {
+  background: var(--tw-bg-ct-accent-hi);
+}
+
+.ct-primary-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ct-secondary-action: acción secundaria (peso medio) */
+.ct-secondary-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ct-space-1);
+  padding: var(--ct-space-1) var(--ct-space-2_5);
+  font-size: var(--ct-font-xs);
+  font-weight: var(--ct-font-weight-medium);
+  background: var(--tw-bg-ct-surface);
+  color: var(--tw-text-ct-text);
+  border: 1px solid var(--tw-bg-ct-border);
+  border-radius: var(--ct-radius-md);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.ct-secondary-action:hover {
+  background: var(--tw-bg-ct-border);
+  border-color: var(--tw-bg-ct-border-hi);
+}
+
+.ct-secondary-action--active {
+  background: var(--tw-bg-ct-accent);
+  color: white;
+  border-color: var(--tw-bg-ct-accent);
+}
+
+
+/* ============================================
+   VIEWPORT GOVERNANCE — Phase 2
+   ============================================ */
+
+/* ct-fill-height: ocupa el viewport disponible */
+.ct-fill-height {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ct-content-grid: grid contenido + sidebar */
+.ct-content-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--ct-space-3);
+  align-items: start;
+}
+
+@media (max-width: 1023px) {
+  .ct-content-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ct-table-card: tabla dentro de panel operacional */
+.ct-table-card {
+  background: var(--tw-bg-ct-card);
+  border: 1px solid var(--tw-bg-ct-border);
+  border-radius: var(--ct-radius-lg);
+  overflow: hidden;
+}
+
+.ct-table-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ct-space-2);
+  padding: var(--ct-space-2) var(--ct-space-3);
+  background: var(--tw-bg-ct-surface);
+  border-bottom: 1px solid var(--tw-bg-ct-border);
+  font-size: var(--ct-font-sm);
+  font-weight: var(--ct-font-weight-semibold);
+  color: var(--tw-text-ct-text);
+}
+
+/* ct-empty-fill: estado vacío o placeholder */
+.ct-empty-fill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--ct-space-8);
+  gap: var(--ct-space-2);
+  color: var(--tw-text-ct-text3);
+  font-size: var(--ct-font-xs);
+  text-align: center;
+}
+
+/* ct-badge: chip de metadata (generalizado) */
+.ct-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px var(--ct-space-1_5);
+  font-size: var(--ct-font-2xs);
+  font-weight: var(--ct-font-weight-semibold);
+  border-radius: var(--ct-radius-sm);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.ct-badge--ok      { background: #d1fae5; color: #065f46; border-color: #a7f3d0; }
+.ct-badge--warn    { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+.ct-badge--bad     { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+.ct-badge--info    { background: #e0e7ff; color: #3730a3; border-color: #c7d2fe; }
+.ct-badge--neutral { background: #f5f3f0; color: #78716c; border-color: #e7e5e2; }
+
+
+/* ============================================
+   DENSITY SCALE SYSTEM — Phase 3
+   ============================================ */
+
+/* Density modes: aplicables vía atributo data-density o clase */
+[data-density="comfortable"],
+.ct-density-comfortable {
+  --density-pad:     1;
+  --density-gap:     1;
+  --density-row-h:   1;
+  --density-font-kpi: var(--ct-font-2xl);
+}
+
+[data-density="compact"],
+.ct-density-compact {
+  --density-pad:     0.625;
+  --density-gap:     0.625;
+  --density-row-h:   0.75;
+  --density-font-kpi: var(--ct-font-lg);
+}
+
+[data-density="operational"],
+.ct-density-operational {
+  --density-pad:     0.5;
+  --density-gap:     0.5;
+  --density-row-h:   0.625;
+  --density-font-kpi: var(--ct-font-lg);
+}
+
+/* Density-aware section gap */
+.ct-density-gap {
+  gap: calc(var(--ct-space-3) * var(--density-gap, 1));
+}
+
+.ct-density-gap--section {
+  gap: calc(var(--ct-space-4) * var(--density-gap, 1));
+}
+
+/* Density-aware padding */
+.ct-density-pad {
+  padding: calc(var(--ct-space-3) * var(--density-pad, 1));
+}
+
+.ct-density-pad--card {
+  padding: calc(var(--ct-space-4) * var(--density-pad, 1));
+}
+
+
+/* ============================================
+   KPI COMPRESSION PRIMITIVES — Phase 3
+   ============================================ */
+
+/* ct-kpi-inline: KPI horizontal (label + value en una línea) */
+.ct-kpi-inline {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--ct-space-1_5);
+  padding: var(--ct-space-1_5) var(--ct-space-2_5);
+  background: var(--tw-bg-ct-surface);
+  border: 1px solid var(--tw-bg-ct-border);
+  border-radius: var(--ct-radius-sm);
+  white-space: nowrap;
+}
+
+.ct-kpi-inline-label {
+  font-size: var(--ct-font-2xs);
+  color: var(--tw-text-ct-text2);
+  text-transform: uppercase;
+}
+
+.ct-kpi-inline-value {
+  font-size: var(--ct-font-md);
+  font-weight: var(--ct-font-weight-bold);
+  color: var(--tw-text-ct-text);
+}
+
+/* ct-kpi-strip: tira horizontal de KPIs (ya existe, aquí extendemos) */
+.ct-kpi-strip--dense {
+  gap: calc(var(--ct-gutter-card) * 0.5);
+}
+
+.ct-kpi-strip--dense > * {
+  flex: 1 1 100px;
+  min-width: 100px;
+}
+
+/* ct-kpi-cluster: grupo de KPIs relacionados sin cards individuales */
+.ct-kpi-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ct-space-2);
+  padding: var(--ct-space-2) var(--ct-space-3);
+  background: var(--tw-bg-ct-card);
+  border: 1px solid var(--tw-bg-ct-border);
+  border-radius: var(--ct-radius-md);
+}
+
+.ct-kpi-cluster-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--ct-space-1_5);
+  min-width: 0;
+  flex: 1 1 100px;
+}
+
+.ct-kpi-cluster-label {
+  font-size: var(--ct-font-2xs);
+  color: var(--tw-text-ct-text2);
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.ct-kpi-cluster-value {
+  font-size: var(--ct-font-md);
+  font-weight: var(--ct-font-weight-bold);
+  color: var(--tw-text-ct-text);
+  tabular-nums: true;
+}
+
+.ct-kpi-cluster-delta {
+  font-size: var(--ct-font-2xs);
+  color: var(--tw-text-ct-text3);
+}
+
+/* ct-kpi-mini: KPI ultra-compacto para contextos densos */
+.ct-kpi-mini {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ct-space-1);
+  padding: 1px var(--ct-space-2);
+}
+
+.ct-kpi-mini-label {
+  font-size: var(--ct-font-2xs);
+  color: var(--tw-text-ct-text3);
+}
+
+.ct-kpi-mini-value {
+  font-size: var(--ct-font-sm);
+  font-weight: var(--ct-font-weight-bold);
+  color: var(--tw-text-ct-text);
+}
+
+
+/* ============================================
+   TABLE DENSITY — Phase 3
+   ============================================ */
+
+/* ct-table--compact: override de densidad para tablas */
+.ct-table--compact thead th {
+  padding-top: var(--ct-space-1);
+  padding-bottom: var(--ct-space-1);
+  font-size: var(--ct-font-2xs);
+}
+
+.ct-table--compact tbody td {
+  padding-top: var(--ct-space-1);
+  padding-bottom: var(--ct-space-1);
+  font-size: var(--ct-font-xs);
+}
+
+/* ct-table--dense: densidad operacional máxima */
+.ct-table--dense tbody td {
+  padding-top: 1px;
+  padding-bottom: 1px;
+  line-height: 1.3;
+}
+
+/* ct-table-header--compact: header de tabla comprimido */
+.ct-table-header--compact {
+  font-size: var(--ct-font-2xs);
+  padding: var(--ct-space-1) var(--ct-space-2_5);
+  line-height: 1.2;
+}
+
+
+/* ============================================
+   FILTER BAR COMPRESSION — Phase 3
+   ============================================ */
+
+/* ct-filter-inline: filtros en línea horizontal compacta */
+.ct-filter-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ct-space-1_5);
+  padding: var(--ct-space-1_5) var(--ct-space-3);
+  background: var(--tw-bg-ct-surface);
+  border: 1px solid var(--tw-bg-ct-border);
+  border-radius: var(--ct-radius-md);
+}
+
+.ct-filter-inline-label {
+  font-size: var(--ct-font-2xs);
+  font-weight: var(--ct-font-weight-semibold);
+  color: var(--tw-text-ct-text2);
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  white-space: nowrap;
+}
+
+/* ct-filter-cluster: grupo de filtros con label */
+.ct-filter-cluster {
+  display: flex;
+  align-items: center;
+  gap: var(--ct-space-1);
+}
+
+/* ct-filter-cluster + .ct-select */
+.ct-filter-cluster .ct-select,
+.ct-filter-inline .ct-select,
+.ct-filter-inline .ct-input {
+  font-size: var(--ct-font-2xs);
+  padding-top: var(--ct-space-1);
+  padding-bottom: var(--ct-space-1);
+}
+
+/* ct-toolbar-compact: toolbar ultra-compacta */
+.ct-toolbar-compact {
+  padding: var(--ct-space-1) var(--ct-space-2);
+  min-height: var(--ct-toolbar-compact);
+  gap: var(--ct-space-1_5);
+}
+
+
+/* ============================================
+   ALERT DENSITY COMPRESSION — Phase 3
+   ============================================ */
+
+/* ct-alert-inline: alerta en línea (1 línea, sin card) */
+.ct-alert-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--ct-space-1_5);
+  padding: var(--ct-space-1) var(--ct-space-2_5);
+  font-size: var(--ct-font-2xs);
+  border: 1px solid transparent;
+  border-radius: var(--ct-radius-sm);
+  color: var(--tw-text-ct-text2);
+}
+
+.ct-alert-inline--ok    { background: #f0fdf4; border-color: #bbf7d0; }
+.ct-alert-inline--warn  { background: #fffbeb; border-color: #fde68a; }
+.ct-alert-inline--bad   { background: #fef2f2; border-color: #fecaca; }
+.ct-alert-inline--info  { background: #eef2ff; border-color: #c7d2fe; }
+
+/* ct-alert-compact: alerta compacta (mínima altura operacional) */
+.ct-alert-compact {
+  padding: var(--ct-space-1_5) var(--ct-space-3);
+  font-size: var(--ct-font-xs);
+  border: 1px solid transparent;
+  border-radius: var(--ct-radius-md);
+}
+
+.ct-alert-compact--ok    { background: #f0fdf4; border-color: #bbf7d0; color: #065f46; }
+.ct-alert-compact--warn  { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+.ct-alert-compact--bad   { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.ct-alert-compact--info  { background: #eef2ff; border-color: #c7d2fe; color: #3730a3; }
+
+/* Severity visual system: solo el severity icon/badge */
+.ct-severity-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ct-severity-dot--ok    { background: #059669; }
+.ct-severity-dot--warn  { background: #d97706; }
+.ct-severity-dot--bad   { background: #dc2626; }
+
+
+/* ============================================
+   VISUAL SCAN OPTIMIZATION — Phase 3
+   ============================================ */
+
+/* ct-anomaly-flag: flag visual de anomalía (máximo peso) */
+.ct-anomaly-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ct-space-1);
+  padding: 1px var(--ct-space-1_5);
+  font-size: var(--ct-font-2xs);
+  font-weight: var(--ct-font-weight-bold);
+  border-radius: var(--ct-radius-sm);
+  white-space: nowrap;
+}
+
+.ct-anomaly-flag--critical { background: #fee2e2; color: #dc2626; border: 1px solid #fecaca; }
+.ct-anomaly-flag--warning  { background: #fef3c7; color: #d97706; border: 1px solid #fde68a; }
+.ct-anomaly-flag--positive { background: #d1fae5; color: #059669; border: 1px solid #a7f3d0; }
+
+/* ct-trend-indicator: indicador de tendencia compacto */
+.ct-trend-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--ct-font-2xs);
+  font-weight: var(--ct-font-weight-semibold);
+}
+
+.ct-trend-indicator--up   { color: #059669; }
+.ct-trend-indicator--down { color: #dc2626; }
+.ct-trend-indicator--flat { color: #78716c; }
+
+/* ct-visual-divider: divisor visual ligero (en vez de card completo) */
+.ct-visual-divider {
+  border: none;
+  border-top: 1px solid var(--tw-bg-ct-border);
+  margin: var(--ct-space-2) 0;
+}
+
+/* ct-info-row: fila de info sin chrome de card */
+.ct-info-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ct-space-3);
+  padding: var(--ct-space-1_5) 0;
+  font-size: var(--ct-font-xs);
+  color: var(--tw-text-ct-text2);
+}
+
+/* ct-section-label: label de sección ultra-compacto */
+.ct-section-label {
+  font-size: var(--ct-font-2xs);
+  font-weight: var(--ct-font-weight-semibold);
+  color: var(--tw-text-ct-text2);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+
+/* ============================================
+   INFORMATION LAYERS (Progressive Disclosure) — Phase 3
+   ============================================ */
+
+/* Nivel 1: overview rápido (mínimo chrome) */
+.ct-layer-overview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ct-space-3);
+  padding: var(--ct-space-2) var(--ct-space-3);
+  background: var(--tw-bg-ct-card);
+  border: 1px solid var(--tw-bg-ct-border);
+  border-radius: var(--ct-radius-md);
+}
+
+/* Nivel 2: detalle operacional (panel con headers y scroll) */
+.ct-layer-detail {
+  padding: var(--ct-space-3);
+  background: var(--tw-bg-ct-card);
+  border: 1px solid var(--tw-bg-ct-border);
+  border-radius: var(--ct-radius-md);
+  overflow: hidden;
+}
+
+/* Nivel 3: drill profundo (panel lateral o modal) */
+.ct-layer-drill {
+  background: var(--tw-bg-ct-card);
+  border-left: 1px solid var(--tw-bg-ct-border);
+  overflow-y: auto;
+}
+
+/* ct-detail-toggle: botón para expandir/contraer detalle */
+.ct-detail-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ct-space-1);
+  padding: var(--ct-space-1) var(--ct-space-2);
+  font-size: var(--ct-font-2xs);
+  font-weight: var(--ct-font-weight-medium);
+  color: var(--tw-text-ct-accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.ct-detail-toggle:hover {
+  opacity: 0.8;
+}
+
+/* ct-detail-section: sección expandible para información Nivel 2 */
+.ct-detail-section {
+  margin-top: var(--ct-space-2);
+  padding-top: var(--ct-space-2);
+  border-top: 1px solid var(--tw-bg-ct-border);
+}
+
+/* ct-meta-bar: barra de metadatos ultra-compacta (tipo terminal) */
+.ct-meta-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ct-space-2_5);
+  padding: 0 var(--ct-space-3);
+  font-size: var(--ct-font-2xs);
+  color: var(--tw-text-ct-text3);
+  background: var(--tw-bg-ct-surface);
+  border-bottom: 1px solid var(--tw-bg-ct-border);
+  min-height: 22px;
+}
+
+.ct-meta-bar-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ct-space-1);
+  white-space: nowrap;
+}
+
+.ct-meta-bar-separator {
+  color: var(--tw-bg-ct-border);
+}

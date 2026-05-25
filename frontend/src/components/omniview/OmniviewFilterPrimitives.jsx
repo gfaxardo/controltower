@@ -26,7 +26,7 @@ const selectUpperCls =
 export function FilterSelect ({ label, value, onChange, options, placeholder, required }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
         {label}{required && <span className="text-red-500 ml-0.5">*</span>}
       </span>
       <select
@@ -49,7 +49,7 @@ export function YearSelect ({ value, onChange, className = '' }) {
   const y = normalizeOmniviewYear(value)
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Año</span>
+      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Año</span>
       <select
         className={`${selectUpperCls} w-24 ${className}`}
         value={y}
@@ -66,7 +66,7 @@ export function YearSelect ({ value, onChange, className = '' }) {
 export function MonthSelect ({ value, onChange, className = '' }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Mes</span>
+      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Mes</span>
       <select
         className={`${selectUpperCls} w-28 ${className}`}
         value={value === '' || value == null ? '' : String(value)}

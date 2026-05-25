@@ -1633,6 +1633,7 @@ def _try_load_from_serving_fact(
             return None
 
         display_rows = [_serving_fact_row_to_display(r) for r in rows]
+        apply_period_over_period_inplace(display_rows, grain)
         fact_gen_at = max(
             (r.get("generated_at") for r in rows if r.get("generated_at")),
             default=None,
@@ -1670,6 +1671,14 @@ def _try_load_from_serving_fact(
                     "total_display_rows": len(display_rows),
                 },
                 "data_freshness": df_fresh,
+                "period_over_period": {
+                    "kind": meta_period_over_period_kind(grain),
+                    "per_row_key": "period_over_period",
+                },
+                "metric_variations": {
+                    "per_row_key": "period_over_period",
+                    "kpis": ["trips_completed", "revenue_yego_net", "active_drivers", "avg_ticket"],
+                },
             },
             "available": True,
             "shadow_mode": False,

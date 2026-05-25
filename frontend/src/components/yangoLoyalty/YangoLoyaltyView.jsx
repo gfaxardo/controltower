@@ -1,5 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import api from '../../services/api'
+import DecisionPriorityStrip from '../operational/DecisionPriorityStrip'
+import { getDecisionSeverity } from '../../utils/operationalDecisionSeverity'
+import DiagnosticDominantFactor from '../diagnostics/DiagnosticDominantFactor'
 
 /* ── Color system ── */
 const RC = {
@@ -64,17 +67,17 @@ function ProgressBar({ pct, color = 'bg-ct-accent', height = 3, showLabel }) {
 }
 
 function Badge({ label, color }) {
-  return <span className={`px-1.5 py-0.5 rounded text-2xs font-medium ${color?.bg || ''} ${color?.text || ''}`}>{label}</span>
+  return <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${color?.bg || ''} ${color?.text || ''}`}>{label}</span>
 }
 
 /* ── KPI Status badge ── */
 function KpiStatusBadge({ hasReal, hasTarget, meetsOro, meetsPlata, source }) {
-  if (source === 'manual' && !hasReal) return <span className="text-2xs text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">Pendiente</span>
-  if (hasReal && !hasTarget) return <span className="text-2xs text-ct-text3 bg-ct-surface px-1.5 py-0.5 rounded border border-ct-border">Sin meta</span>
+  if (source === 'manual' && !hasReal) return <span className="text-xs text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">Pendiente</span>
+  if (hasReal && !hasTarget) return <span className="text-xs text-ct-text3 bg-ct-surface px-1.5 py-0.5 rounded border border-ct-border">Sin meta</span>
   if (meetsOro) return <Badge label="Oro" color={CAT.ORO} />
   if (meetsPlata) return <Badge label="Plata" color={CAT.PLATA} />
   if (hasTarget) return <Badge label="Bronce" color={CAT.BRONCE} />
-  return <span className="text-2xs text-ct-text3">—</span>
+  return <span className="text-xs text-ct-text3">—</span>
 }
 
 /* ── Executive Summary Hero ── */
@@ -104,7 +107,7 @@ function ExecutiveSummary({ cityRanking, kpiGaps, data_complete, manual_kpis_pen
     <div className="space-y-3 mb-4">
       <div className="bg-ct-card border border-ct-border rounded-xl p-4">
         <p className="text-sm font-semibold text-ct-text mb-2">{narrative}</p>
-        <div className="space-y-1 text-2xs text-ct-text3">
+        <div className="space-y-1 text-xs text-ct-text2">
           {worstGapKpis.length > 0 && (
             <p>Los blockers principales son: {worstGapKpis.map((k, i) => <span key={k.key}>{i > 0 ? ', ' : ''}<span className="text-red-400 font-medium">{k.label}</span></span>)}</p>
           )}
@@ -120,33 +123,33 @@ function ExecutiveSummary({ cityRanking, kpiGaps, data_complete, manual_kpis_pen
       <div className={`rounded-2xl border-2 p-5 ${domCat.border} bg-gradient-to-br ${dominant === 'ORO' ? 'from-amber-500/15 via-amber-500/5 to-transparent' : dominant === 'PLATA' ? 'from-slate-400/10 via-slate-400/5 to-transparent' : 'from-orange-700/10 via-orange-700/5 to-transparent'}`}>
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           <div className="text-center">
-            <p className="text-2xs text-ct-text3 mb-1">Vamos a Oro?</p>
+            <p className="text-xs text-ct-text3 mb-1">Vamos a Oro?</p>
             <p className={`text-3xl font-black ${domCat.text}`}>{dominant === 'ORO' ? 'SI' : dominant === 'PLATA' ? 'CASI' : dominant === 'SIN_METAS' ? '—' : 'NO'}</p>
-            <p className="text-2xs text-ct-text3 mt-0.5">{has_any_targets ? `${oroPct}% ciudades en Oro` : 'Sin metas'}</p>
+            <p className="text-xs text-ct-text3 mt-0.5">{has_any_targets ? `${oroPct}% ciudades en Oro` : 'Sin metas'}</p>
           </div>
           <div className="text-center">
-            <p className="text-2xs text-ct-text3 mb-1">KPI Bloqueador</p>
+            <p className="text-xs text-ct-text3 mb-1">KPI Bloqueador</p>
             <p className="text-lg font-bold text-red-400">{worstKpi?.label || '—'}</p>
-            <p className="text-2xs text-ct-text3">{worstKpi && safeNum(worstKpi.avgGap) > 0 ? `${safeNum(worstKpi.avgGap).toFixed(0)}% de gap` : 'Sin bloqueos'}</p>
+            <p className="text-xs text-ct-text3">{worstKpi && safeNum(worstKpi.avgGap) > 0 ? `${safeNum(worstKpi.avgGap).toFixed(0)}% de gap` : 'Sin bloqueos'}</p>
           </div>
           <div className="text-center">
-            <p className="text-2xs text-ct-text3 mb-1">Ciudad Critica</p>
+            <p className="text-xs text-ct-text3 mb-1">Ciudad Critica</p>
             <p className="text-lg font-bold text-ct-text">{worstCity?.city || '—'}</p>
-            <p className="text-2xs text-ct-text3">{worstCity ? `${worstCity.cat?.category || '—'} · ${safeNum(worstCity.oroCount)} KPIs Oro` : ''}</p>
+            <p className="text-xs text-ct-text3">{worstCity ? `${worstCity.cat?.category || '—'} · ${safeNum(worstCity.oroCount)} KPIs Oro` : ''}</p>
           </div>
           <div className="text-center">
-            <p className="text-2xs text-ct-text3 mb-1">Avance vs Esperado</p>
+            <p className="text-xs text-ct-text3 mb-1">Avance vs Esperado</p>
             <p className="text-lg font-bold text-ct-text">{safeNum(expected_progress_pct).toFixed(0)}%</p>
             <div className="mt-1 bg-ct-border/20 rounded-full h-1.5 mx-auto w-24">
               <div className="bg-ct-accent h-full rounded-full" style={{ width: `${Math.min(safeNum(expected_progress_pct), 100)}%` }} />
             </div>
           </div>
           <div className="text-center">
-            <p className="text-2xs text-ct-text3 mb-1">Estado de Datos</p>
+            <p className="text-xs text-ct-text3 mb-1">Estado de Datos</p>
             <p className={`text-lg font-bold ${data_complete ? 'text-emerald-400' : 'text-amber-400'}`}>
               {data_complete ? 'Completo' : 'Incompleto'}
             </p>
-            <p className="text-2xs text-ct-text3">{manual_kpis_pending > 0 ? `${manual_kpis_pending} KPIs pendientes` : has_any_targets ? 'Todo cargado' : 'Sin metas'}</p>
+            <p className="text-xs text-ct-text3">{manual_kpis_pending > 0 ? `${manual_kpis_pending} KPIs pendientes` : has_any_targets ? 'Todo cargado' : 'Sin metas'}</p>
           </div>
         </div>
       </div>
@@ -296,21 +299,21 @@ export default function YangoLoyaltyView() {
   }).sort((a, b) => safeNum(b.avgGap) - safeNum(a.avgGap))
 
   return (
-    <div className="w-full space-y-4">
+    <div className="w-full ct-page-section" style={{gap: 'var(--ct-space-3)'}}>
       {/* ═══ HEADER ═══ */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h2 className="text-lg font-bold text-ct-text">Yango Loyalty Tracker</h2>
-          <p className="text-xs text-ct-text3">Mes {month} &middot; Dia {safeNum(day_of_month)}/{safeNum(total_days)} &middot; Avance esperado {safeNum(expected_progress_pct).toFixed(0)}%</p>
+      <div className="ct-workbench-header">
+        <div className="ct-workbench-header-left">
+          <h2 className="ct-workbench-title">Yango Loyalty Tracker</h2>
+          <p className="ct-workbench-subtitle">Mes {month} &middot; Dia {safeNum(day_of_month)}/{safeNum(total_days)} &middot; Avance esperado {safeNum(expected_progress_pct).toFixed(0)}%</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-2xs text-ct-text3">Actualizado: {new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}</span>
-          <button onClick={() => setShowRubric(!showRubric)} className={`px-2 py-1 rounded text-2xs transition-colors ${showRubric ? 'bg-ct-accent/20 text-ct-accent' : 'text-ct-text3 hover:text-ct-text2'}`}>
+          <span className="text-xs text-ct-text3">Actualizado: {new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}</span>
+          <button onClick={() => setShowRubric(!showRubric)} className={`ct-secondary-action ${showRubric ? 'ct-secondary-action--active' : ''}`}>
             Reglas
           </button>
           {['overview','by_kpi','config'].map(t => (
             <button key={t} onClick={() => setActiveTab(t)}
-              className={`px-2.5 py-1 rounded text-2xs font-medium transition-all ${activeTab === t ? 'bg-ct-accent text-white' : 'text-ct-text3 hover:text-ct-text2 hover:bg-ct-border/50'}`}>
+              className={`ct-secondary-action ${activeTab === t ? 'ct-secondary-action--active' : ''}`}>
               {t === 'overview' ? 'Resumen' : t === 'by_kpi' ? 'Detalle KPI' : 'Configurar Metas'}
             </button>
           ))}
@@ -318,24 +321,15 @@ export default function YangoLoyaltyView() {
       </div>
 
       {/* ═══ NON-BLOCKING BANNERS ═══ */}
-      {!has_any_targets && (
-        <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg px-3 py-2 flex items-center gap-2 text-xs">
-          <span className="text-blue-400"></span>
-          <span className="text-blue-300/80">
-            Sin metas configuradas. Los KPIs automaticos (AD, N+R) se muestran con sus valores reales.
-            <button onClick={() => setActiveTab('config')} className="underline text-blue-400 hover:text-blue-300 ml-1">Configurar metas</button>
-          </span>
-        </div>
-      )}
-      {(!data_complete || manual_kpis_pending > 0) && (
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 flex items-center gap-2 text-xs">
-          <span className="text-amber-400"></span>
-          <span className="text-amber-300/80">
-            {!data_complete && 'KPIs automaticos sin datos. '}
-            {manual_kpis_pending > 0 && `${manual_kpis_pending} KPIs manuales requieren carga. `}
-            <button onClick={() => setActiveTab('config')} className="underline text-amber-400 hover:text-amber-300">Ir a configuracion</button>
-          </span>
-        </div>
+      {(!has_any_targets || !data_complete || manual_kpis_pending > 0) && (
+        <DiagnosticDominantFactor
+          signals={{
+            has_any_targets,
+            data_complete,
+            manual_kpis_pending,
+          }}
+          className="px-3 py-1.5"
+        />
       )}
 
       {/* ═══ TAB: RUBRIC ═══ */}
@@ -355,72 +349,86 @@ export default function YangoLoyaltyView() {
         <>
           <ExecutiveSummary {...{ cityRanking, kpiGaps, data_complete, manual_kpis_pending, expected_progress_pct, cities, has_any_targets }} />
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="ct-kpi-grid">
             {['ORO','PLATA','BRONCE'].map(cat => {
               const cs = CAT[cat]
               const count = cat === 'ORO' ? totalOroCities : cat === 'PLATA' ? totalPlataCities : Math.max(0, cities.length - totalOroCities - totalPlataCities)
               return (
-                <div key={cat} className={`rounded-xl p-4 border ${cs.border} ${cs.bg}`}>
-                  <p className={`text-3xl font-bold ${cs.text}`}>{count}</p>
-                  <p className="text-xs text-ct-text3 mt-1">Ciudades {cat === 'ORO' ? 'Oro' : cat === 'PLATA' ? 'Plata' : 'Bronce'}</p>
+                <div key={cat} className={`ct-kpi-card ${cs.border} ${cs.bg}`}>
+                  <span className="ct-kpi-card-label">Ciudades {cat === 'ORO' ? 'Oro' : cat === 'PLATA' ? 'Plata' : 'Bronce'}</span>
+                  <span className={`ct-kpi-card-value ${cs.text}`}>{count}</span>
                 </div>
               )
             })}
           </div>
 
           {/* ── City ranking (worst → best, collapsible) ── */}
-          <div className="space-y-1.5">
-            <h3 className="text-sm font-semibold text-ct-text mb-2">Ranking por ciudad (peor → mejor)</h3>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-ct-text">Ranking por ciudad (peor → mejor)</h3>
+              <DecisionPriorityStrip
+                items={cityRanking}
+                signalExtractor={(city) => ({
+                  meets_oro: city.cat?.category === 'ORO',
+                  data_complete,
+                  has_any_targets,
+                  attainment_pct: city.avgScore,
+                  __signals: { city: city.city, category: city.cat?.category },
+                })}
+              />
+            </div>
             {cityRanking.map((city, idx) => {
               const cs = CAT[city.cat.category] || CAT.BRONCE
               const isOpen = expandedCities[city.city] !== undefined ? expandedCities[city.city] : idx === 0
               return (
-                <div key={city.city} className={`bg-ct-card border rounded-lg overflow-hidden ${cs.border}`}>
+                <div key={city.city} className={`ct-collapsible ${isOpen ? 'ct-collapsible--open' : ''}`}>
                   <button onClick={() => setExpandedCities(p => ({ ...p, [city.city]: !isOpen }))}
-                    className="w-full flex items-center justify-between px-3 py-2 hover:bg-ct-border/10 transition-colors text-left">
-                    <div className="flex items-center gap-2">
+                    className="ct-collapsible-header">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
                       <span className="text-xs font-semibold text-ct-text">{city.city}</span>
                       {has_any_targets ? (
-                        <span className={`px-1.5 py-0.5 rounded text-2xs font-bold ${cs.bg} ${cs.text}`}>
+                        <span className={`ct-badge ${city.cat.category === 'ORO' ? 'ct-badge--ok' : city.cat.category === 'PLATA' ? 'ct-badge--neutral' : 'ct-badge--warn'}`}>
                           {city.cat.category} ({safeNum(city.oroCount)}O/{safeNum(city.cat.plata_kpis)}P)
                         </span>
                       ) : (
-                        <span className="text-2xs text-ct-text3">Sin metas</span>
+                        <span className="text-xs text-ct-text3">Sin metas</span>
                       )}
                       {city.blockers.length > 0 && city.cat.category !== 'ORO' && (
-                        <span className="text-2xs text-red-400/80 truncate max-w-[200px] hidden sm:inline">
+                        <span className="text-xs text-ct-text2 truncate max-w-[200px] hidden sm:inline">
                           {city.blockers[0]?.kpiLabel} ({safeNum(city.blockers[0]?.gap_pct).toFixed(0)}%)
                         </span>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-2xs text-ct-text3">{safeNum(city.avgScore).toFixed(0)}%</span>
-                      <span className="text-2xs text-ct-text3">{isOpen ? '▲' : '▼'}</span>
+                      <span className="text-xs text-ct-text3">{safeNum(city.avgScore).toFixed(0)}%</span>
+                      <svg className="ct-collapsible-header-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
                     </div>
                   </button>
                   {isOpen && (
-                    <div className="px-3 pb-3 pt-1 space-y-1.5 border-t border-ct-border/20">
+                    <div className="ct-collapsible-content">
                       {city.cityKpis.filter(k => k.group === 'performance').map(kpi => {
                         const pct = safeNum(kpi.attainment_pct)
                         const barColor = kpi.meets_oro ? 'bg-amber-500' : kpi.meets_plata ? 'bg-slate-400' : pct > 0 ? 'bg-orange-700' : 'bg-ct-border/40'
                         return (
                           <div key={kpi.kpiKey} className="flex items-center gap-2">
-                            <span className="text-2xs text-ct-text3 w-20 truncate">{kpi.kpiLabel}</span>
+                            <span className="text-xs text-ct-text3 w-20 truncate">{kpi.kpiLabel}</span>
                             <ProgressBar pct={pct} color={barColor} height={2} showLabel />
-                            <span className="text-2xs text-ct-text3 w-10 text-right">{fmtNum(kpi.real)}</span>
-                            <span className={`text-2xs w-14 text-right ${kpi.meets_oro ? 'text-amber-400' : kpi.meets_plata ? 'text-slate-400' : kpi.target ? 'text-orange-400' : 'text-ct-text3'}`}>
+                            <span className="text-xs text-ct-text3 w-10 text-right">{fmtNum(kpi.real)}</span>
+                            <span className={`text-xs w-14 text-right ${kpi.meets_oro ? 'text-amber-400' : kpi.meets_plata ? 'text-slate-400' : kpi.target ? 'text-orange-400' : 'text-ct-text3'}`}>
                               {kpi.target ? fmtPct(kpi.attainment_pct) : '—'}
                             </span>
                           </div>
                         )
                       })}
                       {city.blockers.length > 0 && city.cat.category !== 'ORO' && (
-                        <p className="text-2xs text-red-400/70 pt-1">
+                        <p className="text-xs text-ct-text2 pt-1">
                           Impide Oro: {city.blockers.map(b => `${b.kpiLabel} (${safeNum(b.gap_pct).toFixed(0)}%)`).join(', ')}
                         </p>
                       )}
                       {!has_any_targets && (
-                        <p className="text-2xs text-ct-text3 pt-1">Configura metas para ver scoring de categoria.</p>
+                        <p className="text-xs text-ct-text3 pt-1">Configura metas para ver scoring de categoria.</p>
                       )}
                     </div>
                   )}
@@ -557,39 +565,50 @@ export default function YangoLoyaltyView() {
 
       {/* ═══ TAB: CONFIG ═══ */}
       {activeTab === 'config' && (
-        <div className="space-y-4">
-          <div className="bg-ct-card border border-ct-border rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-ct-text mb-1">Configurar metas del mes — {month}</h3>
-            <p className="text-2xs text-ct-text3 mb-4">Define los targets mensuales por ciudad. No es necesario cargar todos los KPIs — podes cargar solo los que tengas definidos.</p>
+        <div className="ct-compact-config-panel">
+          <div className="ct-panel-header">
+            <div>
+              <h3 className="text-sm font-semibold text-ct-text">Configurar metas del mes — {month}</h3>
+              <p className="text-2xs text-ct-text3 mt-0.5">Define los targets mensuales por ciudad. No es necesario cargar todos los KPIs.</p>
+            </div>
+          </div>
+          <div className="ct-panel-body">
             {saveMsg && (
               <div className={`rounded p-2 mb-3 text-xs flex items-center gap-2 ${saveMsg.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/10 text-red-400 border border-red-500/30'}`}>
                 <span>{saveMsg.type === 'success' ? '✓' : '✗'}</span>
                 <span>{saveMsg.text}</span>
-                <button onClick={() => setSaveMsg(null)} className="ml-auto text-ct-text3 hover:text-ct-text">&times;</button>
+                <button type="button" onClick={() => setSaveMsg(null)} className="ml-auto text-ct-text3 hover:text-ct-text">&times;</button>
               </div>
             )}
-            <form onSubmit={handleBatchConfig} className="space-y-3">
-              <select value={configCity} onChange={e => { setConfigCity(e.target.value); setSaveMsg(null) }}
-                className="w-full bg-ct-surface border border-ct-border rounded px-2 py-1.5 text-xs text-ct-text" required>
-                <option value="">Seleccionar ciudad...</option>
-                {safeArr(cities).map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+            <form onSubmit={handleBatchConfig}>
+              <div className="flex flex-wrap gap-2 items-end mb-3">
+                <div className="ct-form-field" style={{minWidth: 200}}>
+                  <span className="ct-form-label">Ciudad</span>
+                  <select value={configCity} onChange={e => { setConfigCity(e.target.value); setSaveMsg(null) }}
+                    className="ct-select w-full" required>
+                    <option value="">Seleccionar ciudad...</option>
+                    {safeArr(cities).map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="ct-form-grid--dense">
                 {LOYALTY_KPIS_LIST.map(kpi => (
-                  <div key={kpi.key}>
-                    <label className="text-2xs text-ct-text3 block mb-0.5" title={kpi.tooltip}>
+                  <div key={kpi.key} className="ct-form-field">
+                    <label className="ct-form-label" title={kpi.tooltip}>
                       {kpi.label} {kpi.source === 'auto' ? '(auto)' : ''}
                     </label>
                     <input type="number" min="0" step="any" placeholder="Meta" value={configTargets[kpi.key] || ''}
                       onChange={e => setConfigTargets(p => ({ ...p, [kpi.key]: e.target.value }))}
-                      className="w-full bg-ct-surface border border-ct-border rounded px-2 py-1 text-xs text-ct-text" />
+                      className="ct-input" />
                   </div>
                 ))}
               </div>
-              <button type="submit" disabled={saving || !configCity}
-                className="px-4 py-2 bg-ct-accent text-white rounded text-sm font-medium hover:bg-ct-accent/80 disabled:opacity-50 transition-colors">
-                {saving ? 'Guardando...' : configCity ? `Guardar metas para ${configCity}` : 'Selecciona una ciudad'}
-              </button>
+              <div className="ct-action-zone">
+                <button type="submit" disabled={saving || !configCity}
+                  className="ct-primary-action">
+                  {saving ? 'Guardando...' : configCity ? `Guardar metas para ${configCity}` : 'Selecciona una ciudad'}
+                </button>
+              </div>
             </form>
           </div>
         </div>
