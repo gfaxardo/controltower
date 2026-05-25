@@ -67,6 +67,7 @@ import SmartEmptyState from './operational/SmartEmptyState.jsx'
 import { OmniviewMatrixSkeleton } from './operational/SkeletonLoader.jsx'
 import OperationalStatusBar from './operational/OperationalStatusBar.jsx'
 import ActionContext from './operational/ActionContext.jsx'
+import OmniviewCommandHeader from './omniview/command/OmniviewCommandHeader.jsx'
 
 const GRAINS = [
   { id: 'monthly', label: 'Mensual' },
@@ -222,6 +223,7 @@ export default function BusinessSliceOmniviewMatrix () {
   }, [selection])
 
   const [viewMode, setViewMode] = useState(saved?.viewMode || 'evolucion')
+  const [operationalMode, setOperationalMode] = useState('operational')
   const [planVersion, setPlanVersion] = useState(saved?.planVersion || '')
   const [planVersions, setPlanVersions] = useState([])
   const [servingVersions, setServingVersions] = useState([])
@@ -229,6 +231,7 @@ export default function BusinessSliceOmniviewMatrix () {
   const [projectionRows, setProjectionRows] = useState([])
   const [projectionMeta, setProjectionMeta] = useState(null)
   const [projectionResolvedKey, setProjectionResolvedKey] = useState(null)
+  const projectionRequestIdRef = useRef(0)
   /** Contrato meta.ytd_summary + filas.period_over_period (anti-regresión). */
   const [projectionContractReport, setProjectionContractReport] = useState(() => ({ ok: true, issues: [] }))
 
@@ -241,7 +244,7 @@ export default function BusinessSliceOmniviewMatrix () {
 
   const isProjectionMode = viewMode === 'proyeccion'
 
-  const needsCountry = grain === 'weekly' || grain === 'daily'
+  const needsCountry = (grain === 'weekly' || grain === 'daily') && !isProjectionMode
   const blockedByCountry = needsCountry && !country
   useEffect(() => {
     persistState({ grain, compact, country, city, businessSlice, fleet, showSubfleets, year, month, sortKey, focusedKpi, viewMode, planVersion, weekFocusOnly })
@@ -559,6 +562,8 @@ export default function BusinessSliceOmniviewMatrix () {
       setLoading(false)
       return
     }
+    // Request race protection: discard stale responses
+    const thisRequestId = ++projectionRequestIdRef.current
     setLoading(true); setErr(null)
     setLoadingTasks((t) => ({ ...t, matrix: 'Proyección vs Real' }))
     try {
@@ -569,6 +574,8 @@ export default function BusinessSliceOmniviewMatrix () {
       if (year != null && year !== '') params.year = Number(year)
       if (effectiveMonth) params.month = Number(effectiveMonth)
       const res = await getOmniviewProjection(params, { signal })
+      // Discard if a newer request was fired
+      if (projectionRequestIdRef.current !== thisRequestId) return
       let data = Array.isArray(res?.data) ? res.data : []
       const pwrRows = res?.meta?.plan_without_real?.rows
       if (
@@ -580,6 +587,34 @@ export default function BusinessSliceOmniviewMatrix () {
           console.warn('[omniview projection] data vacío; usando meta.plan_without_real.rows como fallback')
         }
         data = [...pwrRows]
+      }
+      if (import.meta.env.DEV) {
+        const resCountries = [...new Set(data.map(r => r.country).filter(Boolean))]
+        const debugOn = typeof window !== 'undefined' && window.location?.search?.includes('debugOmniview=1')
+        const peRows = data.filter(r => r.country === 'peru').length
+        const coRows = data.filter(r => r.country === 'colombia').length
+        console.log('[omniview projection] loaded', {
+          requestCountry: country || '(all)',
+          responseRows: data.length,
+          responseCountries: resCountries,
+          peruRows: peRows,
+          colombiaRows: coRows,
+          grain,
+          requestKey,
+        })
+        if (debugOn) {
+          console.group('%c[PIPELINE 1/4] doLoadProjection — request & response', 'color:#6366f1;font-weight:bold')
+          console.table({
+            selectedCountry: country || '(empty = ALL)',
+            blockedByCountry,
+            needsCountry,
+            grain,
+            isProjectionMode,
+          })
+          console.log('request params:', params)
+          console.log('response:', { rows: data.length, countries: resCountries, peru: peRows, colombia: coRows, served_from: res?.meta?.served_from })
+          console.groupEnd()
+        }
       }
       setProjectionRows(data)
       const pm = { ...(res?.meta ?? {}) }
@@ -595,9 +630,11 @@ export default function BusinessSliceOmniviewMatrix () {
       }
       logProjectionYtdPopDebug(pm, data)
       if (pm.integrity_status) {
-        console.log('[projection integrity]', pm.integrity_status)
-        if (Array.isArray(pm.integrity_status.issues) && pm.integrity_status.issues.length > 0) {
-          console.log('[projection integrity] issues:', pm.integrity_status.issues)
+        if (import.meta.env.DEV) {
+          console.log('[projection integrity]', pm.integrity_status)
+          if (Array.isArray(pm.integrity_status.issues) && pm.integrity_status.issues.length > 0) {
+            console.log('[projection integrity] issues:', pm.integrity_status.issues)
+          }
         }
       }
     } catch (e) {
@@ -740,6 +777,37 @@ export default function BusinessSliceOmniviewMatrix () {
 
   const projMatrix = useMemo(() => isProjectionMode ? buildProjectionMatrix(projectionRows, grain) : null, [projectionRows, grain, isProjectionMode])
 
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    const debugOn = typeof window !== 'undefined' && window.location?.search?.includes('debugOmniview=1')
+    if (!debugOn || !projMatrix?.cities?.size) return
+    const citiesByCountry = new Map()
+    for (const [, cityData] of projMatrix.cities) {
+      const c = cityData.country || '—'
+      citiesByCountry.set(c, (citiesByCountry.get(c) || 0) + 1)
+    }
+    console.group('%c[PIPELINE 2+3/4] projMatrix → displayProjMatrix', 'color:#10b981;font-weight:bold')
+    console.log('stage 2 - buildProjectionMatrix:', {
+      totalCities: projMatrix.cities.size,
+      citiesByCountry: Object.fromEntries(citiesByCountry),
+      allPeriods: projMatrix.allPeriods?.length,
+      inputRows: projectionRows?.length,
+    })
+    const display = filterWeeklyFocus(projMatrix, grain, weekFocusOnly)
+    const displayByCountry = new Map()
+    for (const [, cityData] of display.cities) {
+      const c = cityData.country || '—'
+      displayByCountry.set(c, (displayByCountry.get(c) || 0) + 1)
+    }
+    console.log('stage 3 - displayProjMatrix (after weekFocusOnly):', {
+      totalCities: display.cities.size,
+      citiesByCountry: Object.fromEntries(displayByCountry),
+      allPeriods: display.allPeriods?.length,
+      weekFocusOnly,
+    })
+    console.groupEnd()
+  }, [projMatrix, grain, weekFocusOnly, projectionRows])
+
   /** Vs Proyección: estado vacío tras cargar (país obligatorio W/D, plan sin real, o sin datos). */
   const projectionEmptyKind = useMemo(() => {
     if (!heavyQueriesEnabled || loading || projectionPending || !isProjectionMode || !planVersion || projectionRows.length > 0 || err) {
@@ -772,6 +840,54 @@ export default function BusinessSliceOmniviewMatrix () {
 
   const displayMatrix = useMemo(() => filterWeeklyFocus(matrix, grain, weekFocusOnly), [matrix, grain, weekFocusOnly])
   const displayProjMatrix = useMemo(() => filterWeeklyFocus(projMatrix, grain, weekFocusOnly), [projMatrix, grain, weekFocusOnly])
+
+  // EXPOSE runtime state for browser debugging: window.__omniviewDebug (DEV only)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!import.meta.env.DEV) return
+    const citiesByCountry = new Map()
+    if (projMatrix?.cities) {
+      for (const [, cd] of projMatrix.cities) {
+        const c = cd.country || '—'
+        citiesByCountry.set(c, (citiesByCountry.get(c) || 0) + 1)
+      }
+    }
+    const dispByCountry = new Map()
+    if (displayProjMatrix?.cities) {
+      for (const [, cd] of displayProjMatrix.cities) {
+        const c = cd.country || '—'
+        dispByCountry.set(c, (dispByCountry.get(c) || 0) + 1)
+      }
+    }
+    window.__omniviewDebug = {
+      grain,
+      countryFilter: country || '(ALL)',
+      blockedByCountry,
+      needsCountry,
+      isProjectionMode,
+      projectionRows: projectionRows?.length || 0,
+      matrixCountryKeys: Object.fromEntries(citiesByCountry),
+      displayCountryKeys: Object.fromEntries(dispByCountry),
+      weekFocusOnly,
+      allPeriods: projMatrix?.allPeriods?.length || 0,
+      displayPeriods: displayProjMatrix?.allPeriods?.length || 0,
+      servedFrom: projectionMeta?.served_from,
+      factGeneratedAt: projectionMeta?.fact_generated_at,
+    }
+    const debugOn = typeof window !== 'undefined' && window.location?.search?.includes('debugOmniview=1')
+    if (debugOn) {
+      const hasBoth = citiesByCountry.has('peru') && citiesByCountry.has('colombia')
+      console.group('%c[PIPELINE 4/4] window.__omniviewDebug — RENDER', 'color:#f59e0b;font-weight:bold')
+      console.table(window.__omniviewDebug)
+      if (hasBoth) {
+        console.log('%c✓ Peru + Colombia presentes en matrix', 'color:#10b981')
+      } else {
+        console.warn('%c✗ SOLO ' + [...citiesByCountry.keys()].join(', ') + ' — falta el otro país', 'color:#ef4444;font-weight:bold')
+        console.warn('  posibles causas: bloqueo por blockedByCountry, frontend no recompilado, o request con country=')
+      }
+      console.groupEnd()
+    }
+  }, [projMatrix, displayProjMatrix, grain, country, blockedByCountry, needsCountry, isProjectionMode, projectionRows, weekFocusOnly, projectionMeta])
   const execKpis = useMemo(() => {
     const periods = matrix.allPeriods || []
     const currPk = periods.length > 0 ? periods[periods.length - 1] : null
@@ -1071,22 +1187,42 @@ export default function BusinessSliceOmniviewMatrix () {
   return (
     <div className="relative overflow-x-hidden" data-omniview-matrix-root style={{ width: '100vw', left: '50%', right: '50%', marginLeft: '-50vw', marginRight: '-50vw' }}>
       <div className="px-3 sm:px-4 space-y-2">
-        {heavyQueriesEnabled && (
-          <MatrixExecutiveBanner
-            executive={executiveForBanner}
-            decisionMode={matrixTrust?.operational_decision?.decision_mode}
-            confidence={matrixTrust?.operational_decision?.confidence}
-            recommendations={matrixTrust?.trust_recommendations}
-            loading={!matrixTrust || matrixTrust?.trust_status === 'loading'}
-            actionable={!blockedByCountry && rows.length > 0 && !loading}
-            onActivate={handleExecutiveBannerActivate}
-            contextHints={bannerContextHints}
-          />
-        )}
+        {/* ═══ COMMAND HEADER ═══ */}
+        <OmniviewCommandHeader
+          viewMode={viewMode}
+          grain={grain}
+          year={year}
+          month={month}
+          freshnessInfo={freshnessInfo}
+          coverageSummary={coverageSummary}
+          matrixTrust={matrixTrust}
+          matrixMeta={matrixMeta}
+          rows={rows}
+          compact={compact}
+          operationalMode={operationalMode}
+          onOperationalModeChange={setOperationalMode}
+        >
+          {heavyQueriesEnabled && (
+            <MatrixExecutiveBanner
+              executive={executiveForBanner}
+              decisionMode={matrixTrust?.operational_decision?.decision_mode}
+              confidence={matrixTrust?.operational_decision?.confidence}
+              recommendations={matrixTrust?.trust_recommendations}
+              loading={!matrixTrust || matrixTrust?.trust_status === 'loading'}
+              actionable={!blockedByCountry && rows.length > 0 && !loading}
+              onActivate={handleExecutiveBannerActivate}
+              contextHints={bannerContextHints}
+            />
+          )}
+        </OmniviewCommandHeader>
 
         {/* Controls */}
-        <div className="rounded-lg border border-ct-border bg-ct-card overflow-hidden">
-          <div className="px-3 py-2 flex flex-wrap items-end gap-x-3 gap-y-2">
+        <div className="overflow-hidden" style={{
+          border: '1px solid var(--tw-bg-ct-border)',
+          borderRadius: 'var(--ct-radius-md)',
+          background: 'var(--tw-bg-ct-surface)',
+        }}>
+          <div className="flex flex-wrap items-end gap-x-3 gap-y-1.5 px-3 py-1.5">
             {/* Grano temporal */}
             <div className="flex flex-col gap-1">
               <span className="text-2xs font-semibold text-ct-text3 uppercase tracking-wider">Grano</span>

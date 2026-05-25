@@ -128,7 +128,7 @@ def _extract_row(r: dict, plan_version: str, grain: str, batch_id: str) -> tuple
         _safe_num(r.get("active_drivers_completion_pct")),
         r.get("trips_completed_signal"), r.get("revenue_yego_net_signal"),
         r.get("active_drivers_signal"),
-        r.get("comparison_status"), r.get("comparison_basis"),
+        r.get("comparison_status"), r.get("comparison_basis") or r.get("trips_completed_comparison_basis"),
         r.get("curve_method", r.get("trips_completed_curve_method")),
         r.get("curve_confidence", r.get("trips_completed_curve_confidence")),
         r.get("fallback_level", r.get("trips_completed_fallback_level")),

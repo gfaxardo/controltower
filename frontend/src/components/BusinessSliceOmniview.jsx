@@ -76,7 +76,7 @@ export default function BusinessSliceOmniview () {
     return periodDay
   }, [granularity, periodMonth, periodWeekDate, periodDay])
 
-  const needsCountry = granularity === 'weekly' || granularity === 'daily'
+  const needsCountry = false
   const countryOk = Boolean(country && String(country).trim())
 
   const loadFilters = useCallback(async () => {

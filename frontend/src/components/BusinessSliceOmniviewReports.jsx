@@ -225,7 +225,8 @@ export default function BusinessSliceOmniviewReports () {
   const [heatmapKpi, setHeatmapKpi] = useState('trips_completed')
   const [selectedKeys, setSelectedKeys] = useState([])
 
-  const needsCountry = grain === 'weekly' || grain === 'daily'
+  // weekly/daily puede cargarse sin país: el backend sirve todas las ciudades
+  const needsCountry = false
   const blocked = needsCountry && !country
 
   const countries = filtersMeta?.countries || []
