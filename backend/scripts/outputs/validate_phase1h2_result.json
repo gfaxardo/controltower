@@ -1,0 +1,17 @@
+{
+  "phase": "1H.2",
+  "verdict": "NO-GO",
+  "runtime_ms": 10012,
+  "checks": [
+    {
+      "check": "A.1 Backend health OK",
+      "status": "FAIL",
+      "detail": "HTTP 0 10012ms"
+    }
+  ],
+  "total": 1,
+  "passed": 0,
+  "warned": 0,
+  "failed": 1,
+  "critical_failures": 1
+}

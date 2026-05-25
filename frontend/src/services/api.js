@@ -1123,4 +1123,22 @@ export const getRecoverabilityRiskDistribution = async (params = {}) => {
   return response.data
 }
 
+// --- Yango Loyalty / Oro Tracker ---
+export const getYangoLoyaltySummary = async () => {
+  const response = await api.get('/yango-loyalty/summary', { timeout: 60000 })
+  return response.data
+}
+export const getYangoLoyaltyKpis = async (params = {}) => {
+  const response = await api.get('/yango-loyalty/kpis', { params, timeout: 60000 })
+  return response.data
+}
+export const postYangoLoyaltyManualKpi = async (payload) => {
+  const response = await api.post('/yango-loyalty/manual-kpi', payload)
+  return response.data
+}
+export const postYangoLoyaltyTarget = async (payload) => {
+  const response = await api.post('/yango-loyalty/target', payload)
+  return response.data
+}
+
 export default api

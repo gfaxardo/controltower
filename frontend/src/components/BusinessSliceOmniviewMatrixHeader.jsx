@@ -50,7 +50,7 @@ export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, 
           const periodTrust = resolvePeriodTrustVisual(pk, grain, matrixTrust)
           const trustTop =
             periodTrust === 'blocked' ? 'border-t-[3px] border-t-red-500' : periodTrust === 'warning' ? 'border-t-[3px] border-t-amber-500' : ''
-          const isCurrent = !isProjection && isCurrentPeriod(pk, grain)
+          const isCurrent = isCurrentPeriod(pk, grain)
           const currentBadge = isCurrent ? getCurrentPeriodBadge(pk, grain) : null
           return (
             <th
@@ -88,7 +88,7 @@ export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, 
           const periodTrust = resolvePeriodTrustVisual(pk, grain, matrixTrust)
           const trustTop =
             periodTrust === 'blocked' ? 'border-t-[2px] border-t-red-500/90' : periodTrust === 'warning' ? 'border-t-[2px] border-t-amber-500/90' : ''
-          const isCurrent = !isProjection && isCurrentPeriod(pk, grain)
+          const isCurrent = isCurrentPeriod(pk, grain)
           return (
             <Fragment key={`hdr-${pk}`}>
               <th

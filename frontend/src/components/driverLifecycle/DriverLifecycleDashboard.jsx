@@ -51,6 +51,7 @@ export default function DriverLifecycleDashboard() {
   const [city, setCity] = useState('')
   const [riskFilter, setRiskFilter] = useState('')
   const [stateFilter, setStateFilter] = useState('')
+  const [search, setSearch] = useState('')
 
   const [summary, setSummary] = useState(null)
   const [funnel, setFunnel] = useState(null)
@@ -58,6 +59,18 @@ export default function DriverLifecycleDashboard() {
   const [cohorts, setCohorts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [page, setPage] = useState(0)
+  const PAGE_SIZE = 50
+
+  const filteredRiskList = (riskList || []).filter(d => {
+    if (!search.trim()) return true
+    const q = search.toLowerCase()
+    return (d.display_name || '').toLowerCase().includes(q) ||
+           (d.driver_id || '').toLowerCase().includes(q)
+  })
+
+  const paginatedList = filteredRiskList.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+  const totalPages = Math.ceil(filteredRiskList.length / PAGE_SIZE)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -95,7 +108,21 @@ export default function DriverLifecycleDashboard() {
   const fmtPct = (n) => n != null ? `${n}%` : '—'
 
   if (loading && !summary) {
-    return <div className="p-6 text-ct-text2 text-sm">Cargando Driver Lifecycle Diagnostic Engine...</div>
+    return (
+      <div className="p-4 space-y-4 max-w-full">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="animate-pulse bg-ct-border/30 rounded h-6 w-48" />
+          <div className="animate-pulse bg-ct-border/30 rounded h-4 w-32" />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {Array.from({length:5}).map((_,i) => <div key={i} className="animate-pulse bg-ct-border/30 rounded h-8 w-28" />)}
+        </div>
+        <div className="grid grid-cols-4 gap-3">
+          {Array.from({length:8}).map((_,i) => <div key={i} className="animate-pulse bg-ct-border/20 rounded-lg h-20 border border-ct-border" />)}
+        </div>
+        <div className="animate-pulse bg-ct-border/20 rounded-lg h-64 border border-ct-border" />
+      </div>
+    )
   }
 
   return (
@@ -151,6 +178,10 @@ export default function DriverLifecycleDashboard() {
             <option key={k} value={k}>{v}</option>
           ))}
         </select>
+        <input type="text" placeholder="Buscar nombre/driver_id..."
+          value={search} onChange={(e) => setSearch(e.target.value)}
+          className="border border-ct-border rounded-md text-xs px-2.5 py-1.5 bg-ct-card text-ct-text w-48" />
+        {search && <span className="text-2xs text-ct-text3 self-center">{filteredRiskList.length} resultados</span>}
       </div>
 
       {/* KPI Cards */}
@@ -219,14 +250,15 @@ export default function DriverLifecycleDashboard() {
       {/* Risk List (actionable) */}
       <div>
         <h3 className="text-sm font-semibold text-ct-text mb-2">
-          Lista accionable ({riskList.length} conductores)
+          Lista accionable ({filteredRiskList.length} conductores)
         </h3>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
           <table className="w-full text-xs border-collapse">
-            <thead>
-              <tr className="text-left text-ct-text2 border-b border-ct-border">
-                <th className="py-1.5 pr-2">Driver ID</th>
+            <thead className="sticky top-0 z-10">
+              <tr className="text-left text-ct-text2 border-b border-ct-border bg-ct-card">
+                <th className="py-1.5 pr-2">Driver</th>
                 <th className="py-1.5 pr-2">City</th>
+                <th className="py-1.5 pr-2">Tags</th>
                 <th className="py-1.5 pr-2">State</th>
                 <th className="py-1.5 pr-2">Risk</th>
                 <th className="py-1.5 pr-2">Rule Reason</th>
@@ -238,13 +270,21 @@ export default function DriverLifecycleDashboard() {
               </tr>
             </thead>
             <tbody>
-              {riskList.map((d, i) => {
+              {paginatedList.map((d, i) => {
                 const riskStyle = RISK_STYLES[d.risk_level] || RISK_STYLES.LOW
                 const stateColor = STATE_COLORS[d.lifecycle_state] || ''
+                const zebra = i % 2 === 0 ? 'bg-transparent' : 'bg-ct-border/5'
                 return (
-                  <tr key={d.driver_id || i} className={`border-b border-ct-border/50 ${riskStyle.bg}`}>
-                    <td className="py-1 pr-2 font-mono text-2xs">{String(d.driver_id || '').slice(0, 12)}...</td>
-                    <td className="py-1 pr-2">{d.city}</td>
+                  <tr key={d.driver_id || i} className={`border-b border-ct-border/30 ${zebra} ${riskStyle.bg}`}>
+                    <td className="py-1 pr-2 text-xs text-ct-text">{d.display_name || String(d.driver_id || '').slice(0, 12) + '...'}</td>
+                    <td className="py-1 pr-2 text-ct-text2">{d.city}</td>
+                    <td className="py-1 pr-2">
+                      <div className="flex gap-1 flex-wrap">
+                        {d.tags?.slice(0, 3).map(tag => (
+                          <span key={tag} className="px-1 py-0.5 rounded text-2xs bg-ct-surface text-ct-text2 border border-ct-border">{tag}</span>
+                        ))}
+                      </div>
+                    </td>
                     <td className="py-1 pr-2">
                       <span className={`px-1.5 py-0.5 rounded text-2xs border ${stateColor}`}>
                         {STATE_LABELS[d.lifecycle_state] || d.lifecycle_state}
@@ -256,20 +296,32 @@ export default function DriverLifecycleDashboard() {
                       </span>
                     </td>
                     <td className="py-1 pr-2 text-2xs text-ct-text2 max-w-[200px] truncate">{d.rule_reason}</td>
-                    <td className="py-1 pr-2">{d.last_trip_date || '—'}</td>
-                    <td className="py-1 pr-2 font-semibold">{d.days_since_last_trip ?? '—'}</td>
-                    <td className="py-1 pr-2">{fmtNum(d.rolling_7d_trips)}</td>
-                    <td className="py-1 pr-2">{fmtNum(d.baseline_trips_28d)}</td>
-                    <td className="py-1 pr-2">{d.decline_pct != null ? `${d.decline_pct}%` : '—'}</td>
+                    <td className="py-1 pr-2 text-ct-text2">{d.last_trip_date || '—'}</td>
+                    <td className="py-1 pr-2 font-semibold text-ct-text">{d.days_since_last_trip ?? '—'}</td>
+                    <td className="py-1 pr-2 text-ct-text2">{fmtNum(d.rolling_7d_trips)}</td>
+                    <td className="py-1 pr-2 text-ct-text2">{fmtNum(d.baseline_trips_28d)}</td>
+                    <td className="py-1 pr-2 text-ct-text2">{d.decline_pct != null ? `${d.decline_pct}%` : '—'}</td>
                   </tr>
                 )
               })}
-              {riskList.length === 0 && (
-                <tr><td colSpan={10} className="py-4 text-center text-ct-text2">No hay conductores con los filtros seleccionados.</td></tr>
+              {paginatedList.length === 0 && (
+                <tr><td colSpan={11} className="py-4 text-center text-ct-text3">No hay conductores con los filtros seleccionados.</td></tr>
               )}
             </tbody>
           </table>
         </div>
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-2 px-1">
+            <span className="text-2xs text-ct-text3">Pagina {page + 1} de {totalPages}</span>
+            <div className="flex gap-1">
+              <button disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}
+                className="px-2 py-0.5 rounded text-2xs bg-ct-surface text-ct-text2 hover:text-ct-text disabled:opacity-30">Anterior</button>
+              <button disabled={page >= totalPages - 1} onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                className="px-2 py-0.5 rounded text-2xs bg-ct-surface text-ct-text2 hover:text-ct-text disabled:opacity-30">Siguiente</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Cohorts Basic */}

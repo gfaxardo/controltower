@@ -19,10 +19,16 @@ from __future__ import annotations
 from typing import Any, Optional
 from datetime import date, datetime, timedelta
 from app.db.connection import get_db
+from app.services.driver_identity_resolver_service import resolve_driver_batch
 from psycopg2.extras import RealDictCursor
 import logging
+import time
 
 logger = logging.getLogger(__name__)
+
+_drv_cache: dict = {}
+_prior_cache: dict = {}
+_CACHE_SEC = 60
 
 TIMEOUT_MS = 120000
 
@@ -250,6 +256,26 @@ def _get_prior_data(period_days: int, half: int, country=None, city=None) -> dic
         )
         rows = cur.fetchall() or []
         return {r["driver_id"]: dict(r) for r in rows}
+
+
+# ── TTL cache wrappers (avoid duplicate DB hits from parallel endpoint calls) ──
+def _cached_driver_data(period_days: int, country=None, city=None) -> list[dict]:
+    key = f"d:{period_days}:{country}:{city}"
+    e = _drv_cache.get(key)
+    if e and (time.time() - e[0]) < _CACHE_SEC:
+        return e[1]
+    d = _get_driver_data(period_days, country, city)
+    _drv_cache[key] = (time.time(), d)
+    return d
+
+def _cached_prior_data(period_days: int, half: int, country=None, city=None) -> dict:
+    key = f"p:{period_days}:{half}:{country}:{city}"
+    e = _prior_cache.get(key)
+    if e and (time.time() - e[0]) < _CACHE_SEC:
+        return e[1]
+    d = _get_prior_data(period_days, half, country, city)
+    _prior_cache[key] = (time.time(), d)
+    return d
 
 
 def compute_recoverability_score(driver: dict, period_days: int, prior_data: dict,
@@ -613,12 +639,12 @@ def get_recoverability_summary(
     period_days: int = 28,
 ) -> dict:
     """Aggregate recoverability summary across all drivers in scope."""
-    drivers = _get_driver_data(period_days, country, city)
+    drivers = _cached_driver_data(period_days, country, city)
     if not drivers:
         return {"summary": {}, "distribution": {}, "available": False, "reason": "No drivers in scope"}
 
     half = period_days // 2
-    prior = _get_prior_data(period_days, half, country, city)
+    prior = _cached_prior_data(period_days, half, country, city)
 
     pop_p50_rev_hour, pop_p75_rev_hour = _get_population_percentiles(drivers)
 
@@ -671,12 +697,12 @@ def get_top_recoverable(
     limit: int = 20,
 ) -> dict:
     """Top recoverable drivers, ranked by score descending."""
-    drivers = _get_driver_data(period_days, country, city)
+    drivers = _cached_driver_data(period_days, country, city)
     if not drivers:
         return {"drivers": [], "available": False}
 
     half = period_days // 2
-    prior = _get_prior_data(period_days, half, country, city)
+    prior = _cached_prior_data(period_days, half, country, city)
 
     pop_p50, pop_p75 = _get_population_percentiles(drivers)
 
@@ -706,12 +732,12 @@ def get_recoverability_distribution(
     period_days: int = 28,
 ) -> dict:
     """Distribution of recoverability states + per-state stats."""
-    drivers = _get_driver_data(period_days, country, city)
+    drivers = _cached_driver_data(period_days, country, city)
     if not drivers:
         return {"distribution": [], "available": False}
 
     half = period_days // 2
-    prior = _get_prior_data(period_days, half, country, city)
+    prior = _cached_prior_data(period_days, half, country, city)
 
     pop_p50, pop_p75 = _get_population_percentiles(drivers)
 
@@ -785,7 +811,7 @@ def get_driver_recoverability(
             return {"driver_id": driver_id, "available": False, "reason": "Driver not found or no trips in period"}
 
     half = period_days // 2
-    prior = _get_prior_data(period_days, half)
+    prior = _cached_prior_data(period_days, half)
 
     pop_p50 = _safe_num(driver.get("revenue_per_hour"), 10)
     pop_p75 = pop_p50 * 1.5
@@ -803,12 +829,12 @@ def get_shadow_priority(
     limit: int = 50,
 ) -> dict:
     """Shadow priority ranking - visual only, no queue/automation."""
-    drivers = _get_driver_data(period_days, country, city)
+    drivers = _cached_driver_data(period_days, country, city)
     if not drivers:
         return {"priority": [], "available": False}
 
     half = period_days // 2
-    prior = _get_prior_data(period_days, half, country, city)
+    prior = _cached_prior_data(period_days, half, country, city)
 
     pop_p50, pop_p75 = _get_population_percentiles(drivers)
 
@@ -850,11 +876,11 @@ def get_recoverability_segments(
     period_days: int = 28,
 ) -> dict:
     """Recoverability distribution segmented by lifecycle state and archetype."""
-    drivers = _get_driver_data(period_days, country, city)
+    drivers = _cached_driver_data(period_days, country, city)
     if not drivers:
         return {"segments": [], "available": False}
     half = period_days // 2
-    prior = _get_prior_data(period_days, half, country, city)
+    prior = _cached_prior_data(period_days, half, country, city)
     pop_p50, pop_p75 = _get_population_percentiles(drivers)
 
     results = []
@@ -947,7 +973,7 @@ def get_recoverability_explainability(
             return {"driver_id": driver_id, "available": False, "reason": "Driver not found or no trips in period"}
 
     half = period_days // 2
-    prior = _get_prior_data(period_days, half)
+    prior = _cached_prior_data(period_days, half)
     pop_p50 = _safe_num(driver.get("revenue_per_hour"), 10)
     pop_p75 = pop_p50 * 1.5
 
@@ -963,11 +989,11 @@ def get_recoverability_risk_distribution(
     period_days: int = 28,
 ) -> dict:
     """Risk distribution: counts and percentages by risk severity."""
-    drivers = _get_driver_data(period_days, country, city)
+    drivers = _cached_driver_data(period_days, country, city)
     if not drivers:
         return {"risk_distribution": [], "available": False}
     half = period_days // 2
-    prior = _get_prior_data(period_days, half, country, city)
+    prior = _cached_prior_data(period_days, half, country, city)
     pop_p50, pop_p75 = _get_population_percentiles(drivers)
 
     risk_buckets = {"critical": 0, "high": 0, "elevated": 0, "moderate": 0, "low": 0}

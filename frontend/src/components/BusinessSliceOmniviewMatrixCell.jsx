@@ -313,12 +313,16 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
   const criticalAlert = signal === 'danger' && (hasNegActual || (att != null && att < 75))
 
   // Estado semántico
+  const week_state = delta.week_state || null
   const attPctForStatus = hasReal && !hasNegActual ? att : (hasPlan ? 0 : null)
-  const statusLabel = getProjectionStatusLabel(attPctForStatus, hasPlan, hasReal)
+  const statusLabel = getProjectionStatusLabel(attPctForStatus, hasPlan, hasReal, week_state)
   const statusColors = getProjectionStatusColors(statusLabel)
 
-  // Solo mostrar el estado si sin real (con real lo indica el color/señal)
-  const showStatusLabel = statusLabel && !hasReal
+  // Mostrar etiqueta: siempre para plan sin real (future/current/closed),
+  // o cuando tiene real pero queremos el badge
+  const showStatusLabel = statusLabel && (!hasReal || week_state === 'current')
+
+  const futureDim = week_state === 'future' && !hasReal ? 'opacity-60' : ''
 
   return (
     <td
@@ -327,6 +331,7 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
         ${isSelected
           ? 'bg-blue-50 ring-1 ring-inset ring-blue-300'
           : `${signalBg} ${zebra && !signalBg ? 'bg-slate-50/50' : ''} hover:bg-blue-50/40`}
+        ${futureDim}
         ${!isSelected ? confBorder : ''}`}
       onClick={onClick}
       title={tooltip}

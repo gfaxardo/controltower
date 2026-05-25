@@ -17,6 +17,7 @@ from typing import Any, Optional
 from psycopg2.extras import RealDictCursor
 
 from app.db.connection import get_db
+from app.services.driver_identity_resolver_service import resolve_driver_batch
 
 logger = logging.getLogger(__name__)
 
@@ -400,6 +401,32 @@ def _enrich_driver(driver: dict[str, Any]) -> dict[str, Any]:
     return enriched
 
 
+def _build_lifecycle_tags(driver: dict[str, Any]) -> list[str]:
+    """Build visible tags for a driver based on lifecycle state."""
+    tags = []
+    state = driver.get("lifecycle_state", "")
+    risk = driver.get("risk_level", "")
+
+    if state == "AT_RISK" or risk == "HIGH":
+        tags.append("AT_RISK")
+    if state == "CHURNED":
+        tags.append("CHURNED")
+    if state == "DORMANT":
+        tags.append("DORMANT")
+    if state == "DECLINING":
+        tags.append("DECLINING")
+    if state == "GROWING":
+        tags.append("GROWING")
+    if state == "STABLE":
+        tags.append("STABLE")
+    if state == "NEW":
+        tags.append("NEW")
+    if state == "REACTIVATED":
+        tags.append("REACTIVATED")
+
+    return tags[:4]
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -530,9 +557,13 @@ def get_diagnostic_risk_list(
     enriched.sort(key=lambda d: (d.get("days_since_last_trip") or 0), reverse=True)
     result = enriched[:limit]
 
+    driver_ids = [d["driver_id"] for d in result]
+    identities = resolve_driver_batch(driver_ids)
+
     return [
         {
             "driver_id": d["driver_id"],
+            "display_name": identities.get(d["driver_id"], {}).get("display_name", d["driver_id"]),
             "country": d["country"],
             "city": d["city"],
             "lifecycle_state": d["lifecycle_state"],
@@ -544,6 +575,7 @@ def get_diagnostic_risk_list(
             "rolling_7d_trips": d["rolling_7d_trips"],
             "baseline_trips_28d": d["baseline_trips_28d"],
             "decline_pct": d["decline_pct"],
+            "tags": _build_lifecycle_tags(d),
         }
         for d in result
     ]

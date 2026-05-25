@@ -246,10 +246,15 @@ export function countryRank (country) {
  * hasPlan: projected_total > 0
  * hasReal: actual > 0 (o actual !== null con valor)
  * attainment_pct: % cumplimiento (puede ser null si sin real)
+ * week_state: "future" | "current" | "closed" | null (para grain=weekly)
  */
-export function getProjectionStatusLabel (attainment_pct, hasPlan, hasReal) {
+export function getProjectionStatusLabel (attainment_pct, hasPlan, hasReal, week_state = null) {
   if (!hasPlan) return null
-  if (!hasReal) return 'Sin ejecución'
+  if (!hasReal) {
+    if (week_state === 'future') return 'Plan pendiente'
+    if (week_state === 'current') return 'Parcial'
+    return 'Sin ejecución'
+  }
   if (attainment_pct == null) return null
   if (attainment_pct >= 105) return 'Sobre plan'
   if (attainment_pct >= 95) return 'En línea'
@@ -259,11 +264,13 @@ export function getProjectionStatusLabel (attainment_pct, hasPlan, hasReal) {
 
 export function getProjectionStatusColors (statusLabel) {
   switch (statusLabel) {
-    case 'Sobre plan':    return { text: 'text-emerald-700', bg: 'bg-emerald-50' }
-    case 'En línea':     return { text: 'text-blue-600',    bg: 'bg-blue-50'    }
-    case 'Bajo plan':    return { text: 'text-amber-700',   bg: 'bg-amber-50'   }
-    case 'Sin ejecución': return { text: 'text-slate-500',  bg: 'bg-slate-50'   }
-    default:             return { text: 'text-gray-400',    bg: ''              }
+    case 'Sobre plan':      return { text: 'text-emerald-700', bg: 'bg-emerald-50' }
+    case 'En línea':        return { text: 'text-blue-600',    bg: 'bg-blue-50'    }
+    case 'Bajo plan':       return { text: 'text-amber-700',   bg: 'bg-amber-50'   }
+    case 'Plan pendiente':  return { text: 'text-slate-400',   bg: 'bg-slate-50'   }
+    case 'Parcial':         return { text: 'text-indigo-500',  bg: 'bg-indigo-50'  }
+    case 'Sin ejecución':   return { text: 'text-slate-500',   bg: 'bg-slate-50'   }
+    default:                return { text: 'text-gray-400',    bg: ''              }
   }
 }
 
@@ -400,6 +407,7 @@ export function buildProjectionMatrix (rows, grain) {
       projection,
       raw,
       comparison_status: raw.comparison_status || null,
+      week_state: raw.week_state || null,
       projection_confidence: raw.projection_confidence ?? null,
       projection_anomaly: !!raw.projection_anomaly
     })
@@ -601,6 +609,7 @@ export function computeProjectionDeltas (linePeriods, allPeriods) {
           projection_anomaly: cell.projection_anomaly ?? false,
           isProjection: true,
           comparison_status: cell.comparison_status,
+          week_state: cell.week_state || null,
           periodPop: popm[key] ?? null,
           periodPopKind: popRoot?.kind ?? null,
           periodPopLabel: popRoot?.label ?? null,
@@ -612,6 +621,7 @@ export function computeProjectionDeltas (linePeriods, allPeriods) {
           signal: 'no_data',
           isProjection: false,
           comparison_status: cell.comparison_status,
+          week_state: cell.week_state || null,
           periodPop: key === 'avg_ticket' ? (popm.avg_ticket ?? null) : null,
           periodPopKind: popRoot?.kind ?? null,
           periodPopLabel: popRoot?.label ?? null,

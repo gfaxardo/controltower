@@ -476,7 +476,7 @@ export default function OperationalBehavioralIntelligenceDashboard () {
               {preChurn.signals.slice(0, 50).map((s, i) => (
                 <div key={i} className="border-b border-ct-border/30 py-2 text-2xs">
                   <div className="flex items-center gap-2">
-                    <span className="text-ct-text font-mono text-2xs">{s.driver_id?.slice(0, 12)}</span>
+                    <span className="text-ct-text text-2xs">{s.display_name || s.driver_id?.slice(0, 12)}</span>
                     <span className={`px-1.5 py-0.5 rounded border text-2xs ${SEVERITY_COLORS[s.max_severity] || ''}`}>
                       {s.max_severity?.replace(/_/g, ' ') || '—'}
                     </span>

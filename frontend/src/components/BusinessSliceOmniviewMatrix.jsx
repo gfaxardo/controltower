@@ -123,6 +123,38 @@ function toMetricMap (raw) {
   return out
 }
 
+function filterWeeklyFocus (matrix, grain, weekFocusOnly) {
+  if (!weekFocusOnly || grain !== 'weekly' || !matrix?.allPeriods?.length) return matrix
+  const currentIdx = findCurrentPeriodIndex(matrix.allPeriods, grain)
+  if (currentIdx < 0) return matrix
+  const start = Math.max(0, currentIdx - 6)
+  const end = Math.min(matrix.allPeriods.length, currentIdx + 7)
+  const filteredPeriods = matrix.allPeriods.slice(start, end)
+  const filteredTotals = new Map()
+  for (const pk of filteredPeriods) {
+    if (matrix.totals?.has(pk)) filteredTotals.set(pk, matrix.totals.get(pk))
+  }
+  const filteredComparisonTotals = matrix.comparisonTotals ? new Map() : undefined
+  if (filteredComparisonTotals) {
+    for (const pk of filteredPeriods) {
+      if (matrix.comparisonTotals.has(pk)) filteredComparisonTotals.set(pk, matrix.comparisonTotals.get(pk))
+    }
+  }
+  const filteredPeriodMeta = matrix.periodMeta ? new Map() : undefined
+  if (filteredPeriodMeta) {
+    for (const pk of filteredPeriods) {
+      if (matrix.periodMeta.has(pk)) filteredPeriodMeta.set(pk, matrix.periodMeta.get(pk))
+    }
+  }
+  return {
+    ...matrix,
+    allPeriods: filteredPeriods,
+    totals: filteredTotals,
+    ...(filteredComparisonTotals ? { comparisonTotals: filteredComparisonTotals } : {}),
+    ...(filteredPeriodMeta ? { periodMeta: filteredPeriodMeta } : {}),
+  }
+}
+
 export default function BusinessSliceOmniviewMatrix () {
   const saved = useMemo(() => loadPersistedState(), [])
 
@@ -139,6 +171,8 @@ export default function BusinessSliceOmniviewMatrix () {
   }
   const [focusMode, setFocusMode] = useState(false)
   const [focusTarget, setFocusTarget] = useState(null)
+  // FASE 1H.2E — weekly week focus: default ±6 weeks around current
+  const [weekFocusOnly, setWeekFocusOnly] = useState(saved?.weekFocusOnly ?? true)
   // FASE 1H.3 — fullscreen de matriz drill
   const [matrixFullscreen, setMatrixFullscreen] = useState(false)
   useEffect(() => {
@@ -210,8 +244,8 @@ export default function BusinessSliceOmniviewMatrix () {
   const needsCountry = grain === 'weekly' || grain === 'daily'
   const blockedByCountry = needsCountry && !country
   useEffect(() => {
-    persistState({ grain, compact, country, city, businessSlice, fleet, showSubfleets, year, month, sortKey, focusedKpi, viewMode, planVersion })
-  }, [grain, compact, country, city, businessSlice, fleet, showSubfleets, year, month, sortKey, focusedKpi, viewMode, planVersion])
+    persistState({ grain, compact, country, city, businessSlice, fleet, showSubfleets, year, month, sortKey, focusedKpi, viewMode, planVersion, weekFocusOnly })
+  }, [grain, compact, country, city, businessSlice, fleet, showSubfleets, year, month, sortKey, focusedKpi, viewMode, planVersion, weekFocusOnly])
 
   const loadPlanVersions = useCallback((autoSelect = false) => {
     Promise.allSettled([
@@ -735,6 +769,9 @@ export default function BusinessSliceOmniviewMatrix () {
     totals: backendTotals.size > 0 ? backendTotals : baseMatrix.totals,
     comparisonTotals: backendComparisonTotals.size > 0 ? backendComparisonTotals : baseMatrix.comparisonTotals,
   }), [baseMatrix, backendTotals, backendComparisonTotals])
+
+  const displayMatrix = useMemo(() => filterWeeklyFocus(matrix, grain, weekFocusOnly), [matrix, grain, weekFocusOnly])
+  const displayProjMatrix = useMemo(() => filterWeeklyFocus(projMatrix, grain, weekFocusOnly), [projMatrix, grain, weekFocusOnly])
   const execKpis = useMemo(() => {
     const periods = matrix.allPeriods || []
     const currPk = periods.length > 0 ? periods[periods.length - 1] : null
@@ -1088,6 +1125,13 @@ export default function BusinessSliceOmniviewMatrix () {
                   Semanas ISO (pueden cruzar meses)
                 </span>
               </div>
+            )}
+            {grain === 'weekly' && (
+              <label className="flex items-center gap-1.5 text-xs text-ct-text2 cursor-pointer select-none self-end pb-1.5 uppercase tracking-wide">
+                <input type="checkbox" checked={!weekFocusOnly} onChange={(e) => setWeekFocusOnly(!e.target.checked)}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5" />
+                Año completo
+              </label>
             )}
 
             <label className="flex items-center gap-1.5 text-xs text-ct-text2 cursor-pointer select-none self-end pb-1.5 uppercase tracking-wide">
@@ -1470,7 +1514,7 @@ export default function BusinessSliceOmniviewMatrix () {
                 <div className="flex gap-3 items-start">
                   <div className="flex-1 min-w-0">
                     <BusinessSliceOmniviewMatrixTable
-                      matrix={matrix} grain={grain} compact={compact} sortKey={sortKey}
+                      matrix={displayMatrix} grain={grain} compact={compact} sortKey={sortKey}
                       onCellClick={handleCellClick} selectedCell={selectedCell}
                       insightCellMap={insightCellMap} insightMode={insightMode}
                       lineImpactMap={lineImpactMap} periodStates={periodStates}
@@ -1511,7 +1555,7 @@ export default function BusinessSliceOmniviewMatrix () {
                   </div>
                 )}
                 <BusinessSliceOmniviewMatrixTable
-                  matrix={matrix} grain={grain} compact={compact} sortKey={sortKey}
+                  matrix={displayMatrix} grain={grain} compact={compact} sortKey={sortKey}
                   onCellClick={handleCellClick} selectedCell={selectedCell}
                   insightCellMap={insightCellMap} insightMode={insightMode}
                   lineImpactMap={lineImpactMap} periodStates={periodStates}
@@ -1586,7 +1630,7 @@ export default function BusinessSliceOmniviewMatrix () {
                       </div>
                     )}
                     <BusinessSliceOmniviewMatrixTable
-                      matrix={projMatrix} grain={grain} compact={compact} sortKey={sortKey}
+                      matrix={displayProjMatrix} grain={grain} compact={compact} sortKey={sortKey}
                       onCellClick={handleCellClick} selectedCell={selectedCell}
                       periodStates={periodStates}
                       focusedKpi={focusedKpi}

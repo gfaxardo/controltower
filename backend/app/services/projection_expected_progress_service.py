@@ -1752,6 +1752,7 @@ def _serving_fact_row_to_display(r: dict) -> Dict[str, Any]:
         "distribution_model": r.get("distribution_model", ""),
         "comparison_status": r.get("comparison_status", ""),
         "comparison_basis": r.get("comparison_basis", ""),
+        "week_state": r.get("week_state") or _compute_week_state_from_row(r),
         "year": r.get("year"),
         "month_number": r.get("month"),
         "projection_confidence": r.get("projection_confidence", "medium"),
@@ -1794,6 +1795,30 @@ def _serving_fact_row_to_display(r: dict) -> Dict[str, Any]:
         "cancel_rate_pct": _safe_float(r.get("cancel_rate_pct")),
         "trips_cancelled": _safe_float(r.get("trips_cancelled")),
     }
+
+
+def _compute_week_state_from_row(r: dict) -> str:
+    ws_raw = r.get("week_start")
+    we_raw = r.get("week_end")
+    if ws_raw and we_raw:
+        ws = date.fromisoformat(str(ws_raw)[:10]) if not isinstance(ws_raw, date) else ws_raw
+        we = date.fromisoformat(str(we_raw)[:10]) if not isinstance(we_raw, date) else we_raw
+        today = date.today()
+        if today > we:
+            return "closed"
+        if today < ws:
+            return "future"
+        return "current"
+    td = r.get("trip_date")
+    if td:
+        td_d = date.fromisoformat(str(td)[:10]) if not isinstance(td, date) else td
+        today = date.today()
+        if today > td_d:
+            return "closed"
+        if today < td_d:
+            return "future"
+        return "current"
+    return "unknown"
 
 
 def _load_plan(
@@ -2343,6 +2368,17 @@ def _build_weekly_row_from_iso_plan(
     ws_raw = weekly_plan_data["week_start"]
     week_start_d = ws_raw if isinstance(ws_raw, date) else date.fromisoformat(str(ws_raw)[:10])
     week_end_d = week_start_d + timedelta(days=6)
+
+    if today is not None:
+        if today > week_end_d:
+            row["week_state"] = "closed"
+        elif today < week_start_d:
+            row["week_state"] = "future"
+        else:
+            row["week_state"] = "current"
+    else:
+        row["week_state"] = "unknown"
+
     if slot_co_ci_bsn:
         co_norm, ci_norm, bsn_lower = slot_co_ci_bsn
     else:
@@ -2718,7 +2754,11 @@ def _load_real_weekly(conn, country, city, business_slice, year, month):
 
     result = {}
     for r in rows:
-        mk = _month_key(r["week_start"])
+        mk = (
+            r["week_start"].isoformat()[:10]
+            if hasattr(r["week_start"], "isoformat")
+            else str(r["week_start"])[:10]
+        )
         key = _projection_join_key(
             mk,
             r.get("country"),
@@ -2823,6 +2863,27 @@ def _build_no_plan_row(real_data: Dict, period_key: str, grain: str) -> Dict[str
         row["week_label"] = iso_ctx["week_label"]
         row["week_range_label"] = iso_ctx["week_range_label"]
         row["week_full_label"] = iso_ctx["week_full_label"]
+
+    _today = date.today()
+    if grain == "weekly" and row.get("week_start") and row.get("week_end"):
+        ws = date.fromisoformat(str(row["week_start"])[:10])
+        we = date.fromisoformat(str(row["week_end"])[:10])
+        if _today > we:
+            row["week_state"] = "closed"
+        elif _today < ws:
+            row["week_state"] = "future"
+        else:
+            row["week_state"] = "current"
+    elif grain == "daily" and row.get("trip_date"):
+        td = date.fromisoformat(str(row["trip_date"])[:10])
+        if _today > td:
+            row["week_state"] = "closed"
+        elif _today < td:
+            row["week_state"] = "future"
+        else:
+            row["week_state"] = "current"
+    else:
+        row["week_state"] = "unknown"
 
     for kpi in PROJECTABLE_KPIS:
         real_kpi = _real_column(kpi)
