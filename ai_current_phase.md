@@ -1,6 +1,6 @@
 # CURRENT ACTIVE PHASE — YEGO CONTROL TOWER
 
-Last Updated: YYYY-MM-DD
+Last Updated: 2026-05-24
 
 ---
 
@@ -10,13 +10,13 @@ Motor:
 Control Foundation
 
 Phase:
-1H.1 — Serving Governance Foundation
+1H.4 — Operational Maturity Governance Layer
 
 Status:
 ACTIVE
 
 Goal:
-Harden serving layer governance, refresh orchestration, coverage validation, runtime protection, and operational observability.
+Implementar capa estructural de madurez operacional para controlar visibilidad, exposición UX, navegación, estado real de cada módulo, y governance de fases. Reducir ruido, eliminar falsas expectativas, evitar features zombie.
 
 ---
 
@@ -24,36 +24,42 @@ Harden serving layer governance, refresh orchestration, coverage validation, run
 
 Current operational focus:
 
-- serving governance
-- refresh reliability
-- serving coverage validation
-- runtime protection
-- operational stability
-- frontend/backend serving consistency
+- madurez operacional (clasificación de módulos)
+- governance de visibilidad
+- navegación confiable (sin features zombie)
+- reducción de falsas expectativas
+- feature flag hardening
+- eliminación de deuda visual
+- registry-driven navigation
 
 NOT building:
-- Forecast Engine
-- Suggestion Engine
-- Decision Engine
-- Action Engine
+- nuevos motores
 - AI Copilot
-- Learning Engine
+- Suggestion Engine
+- runtime pesado
 
 ---
 
 # CURRENT PROBLEMS BEING SOLVED
 
-1. Serving fact completeness
-2. Runtime fallback protection
-3. Refresh orchestration
-4. Coverage mismatch between UI and facts
-5. Operational observability
-6. Preventing UI freezes/timeouts
+1. Features sin clasificación de madurez (zombie modules)
+2. Usuarios expuestos a módulos parcialmente implementados
+3. Navegación inflada con rutas legacy
+4. Falta de visibilidad sobre el estado real de cada módulo
+5. Feature flags inexistentes para módulos experimentales
+6. Sin governance formal de fases en la UI
 
 ---
 
 # ALLOWED CHANGES
 
+- UX operacional (navegación, focus mode, fullscreen)
+- workflow-first operation (action context)
+- performance perceptual (memoization, skeleton)
+- eliminación de redundancias (rutas, tabs, filtros)
+- mejora de empty states y loading UX
+- claridad visual, reducción de ruido
+- Omniview hardening (focus mode, fullscreen drill)
 - serving layer
 - refresh scripts
 - coverage validators
@@ -61,7 +67,6 @@ NOT building:
 - governance dashboards
 - freshness validation
 - runtime protection
-- performance hardening
 
 ---
 
@@ -145,3 +150,10 @@ Resolution:
 - stale fact detection
 - runtime risk detection
 - operational observability active
+- navegación operacional con single path
+- Omniview focus mode funcional (dimming + reversible)
+- fullscreen drill funcional (ESC cierre)
+- estados vacíos con remediation
+- skeleton loading sin layout jumps
+- sin redundancias de navegación activas
+- performance perceptual estable (sin renders innecesarios)

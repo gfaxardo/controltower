@@ -2,11 +2,13 @@
  * YEGO Control Tower — App principal.
  * Navegación fusionada en barra única. Paleta gris armónica.
  * Solo se muestran vistas KEEP_VISIBLE + productionReady del motor ACTIVE o READY NEXT.
+ * FASE 1H.4 — Operational Maturity Governance: badges de madurez en navegación.
  */
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate, useLocation, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext.jsx'
 import { CONTROL_TOWER_NAVIGATION_REGISTRY, VISIBILITY, getVisibleTabs } from './config/controlTowerNavigationRegistry'
+import { getMaturityBadgeInfo, OPERATIONAL_MATURITY_REGISTRY } from './config/operationalMaturityRegistry.js'
 import LoginView from './components/LoginView.jsx'
 import CollapsibleFilters from './components/CollapsibleFilters'
 import ExecutiveSnapshotView from './components/ExecutiveSnapshotView'
@@ -42,6 +44,8 @@ import PlanTabs from './components/PlanTabs'
 import RealVsProjectionView from './components/RealVsProjectionView'
 import BacklogPlaceholder from './components/BacklogPlaceholder'
 import OperationalOpportunitiesView from './components/operacion/OperationalOpportunitiesView'
+import YangoLoyaltyView from './components/yangoLoyalty/YangoLoyaltyView'
+import { MaturityStatusBar } from './components/operational/MaturityIndicators.jsx'
 
 const TAB_PERFORMANCE = 'Performance'
 const TAB_DRIVERS = 'Drivers'
@@ -75,6 +79,7 @@ const ROUTE_MAP = [
   { path: '/performance/resumen', tab: TAB_PERFORMANCE, sub: 'performance_resumen' },
   { path: '/performance/plan-vs-real', tab: TAB_PERFORMANCE, sub: 'performance_plan_vs_real' },
   { path: '/performance/real', tab: TAB_PERFORMANCE, sub: 'performance_real' },
+  { path: '/performance/yango-loyalty', tab: TAB_PERFORMANCE, sub: 'performance_yango_loyalty' },
   { path: '/drivers', tab: TAB_DRIVERS, sub: 'drivers_supply' },
   { path: '/drivers/supply', tab: TAB_DRIVERS, sub: 'drivers_supply' },
   { path: '/drivers/lifecycle', tab: TAB_DRIVERS, sub: 'drivers_lifecycle' },
@@ -106,6 +111,7 @@ const SUB_URL = {
   performance_resumen: '/performance/resumen',
   performance_plan_vs_real: '/performance/plan-vs-real',
   performance_real: '/performance/real',
+  performance_yango_loyalty: '/performance/yango-loyalty',
   drivers_supply: '/drivers/supply',
   drivers_lifecycle: '/drivers/lifecycle',
   drivers_diagnostic: '/drivers/diagnostic',
@@ -202,20 +208,26 @@ function ControlTowerApp () {
     </button>
   )
 
-  const subPill = (id, label) => (
-    <button
-      key={id}
-      type="button"
-      onClick={() => setSubTab(id)}
-      className={`px-2.5 py-1 rounded text-2xs font-medium transition-all ${
-        activeSub === id
-          ? 'bg-ct-accent text-white shadow-sm'
-          : 'text-ct-text2 hover:text-ct-text hover:bg-ct-border'
-      }`}
-    >
-      {label}
-    </button>
-  )
+  const subPill = (id, label) => {
+    const maturityInfo = getMaturityBadgeInfo(id)
+    return (
+      <button
+        key={id}
+        type="button"
+        onClick={() => setSubTab(id)}
+        className={`px-2.5 py-1 rounded text-2xs font-medium transition-all inline-flex items-center gap-1.5 ${
+          activeSub === id
+            ? 'bg-ct-accent text-white shadow-sm'
+            : 'text-ct-text2 hover:text-ct-text hover:bg-ct-border'
+        }`}
+      >
+        {label}
+        {maturityInfo && !(activeSub === id) && (
+          <span className={`inline-block w-1 h-1 rounded-full ${maturityInfo.label.includes('construcción') ? 'bg-blue-400' : maturityInfo.label === 'Hardening' ? 'bg-amber-400' : 'bg-gray-400'}`} />
+        )}
+      </button>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-ct-bg">
@@ -273,6 +285,17 @@ function ControlTowerApp () {
             {activeSubtabs.map(({ id, label }) => subPill(id, label))}
           </div>
         )}
+
+        {/* ── Maturity status bar (FASE 1H.4) — visible para vistas no-STABLE ── */}
+        {activeSub && OPERATIONAL_MATURITY_REGISTRY[activeSub] && OPERATIONAL_MATURITY_REGISTRY[activeSub].maturity !== 'stable' && (
+          <div className="bg-ct-bg/80 border-b border-ct-border px-4 py-1 flex items-center gap-2 flex-wrap">
+            <MaturityStatusBar
+              moduleKey={activeSub}
+              phase={OPERATIONAL_MATURITY_REGISTRY[activeSub].phase}
+              engine={OPERATIONAL_MATURITY_REGISTRY[activeSub].engine}
+            />
+          </div>
+        )}
       </header>
 
       {/* ========== CONTENIDO ========== */}
@@ -299,13 +322,17 @@ function ControlTowerApp () {
             )}
             {(activeTab === TAB_PERFORMANCE && performanceSubTab === 'performance_real') && <RealMarginQualityCard />}
             {(activeTab === TAB_OPERACION && operacionSubTab !== 'operacion_omniview_matrix' && operacionSubTab !== 'operacion_control_loop_pvr' && operacionSubTab !== 'operacion_reportes') && <RealMarginQualityCard />}
-            <CollapsibleFilters onFilterChange={handleFilterChange} />
+            {/* FASE 1H.3 — Omniview tiene sus propios filtros; omitir globales */}
+            {!(activeTab === TAB_OPERACION && (operacionSubTab === 'operacion_omniview_matrix' || operacionSubTab === 'operacion_omniview' || operacionSubTab === 'operacion_business_slice')) && (
+              <CollapsibleFilters onFilterChange={handleFilterChange} />
+            )}
 
             {activeTab === TAB_PERFORMANCE && (
               <section aria-label="Performance">
                 {performanceSubTab === 'performance_resumen' && <ExecutiveSnapshotView key={`snapshot-${refreshKey}`} filters={filters} refreshKey={refreshKey} />}
                 {performanceSubTab === 'performance_plan_vs_real' && <><MonthlySplitView key={`monthly-${refreshKey}`} filters={filters} /><WeeklyPlanVsRealView key={`weekly-${refreshKey}`} filters={filters} /></>}
                 {performanceSubTab === 'performance_real' && <RealOperationalView key={`real-operational-${refreshKey}`} country={filters.country} city={filters.city} />}
+                {performanceSubTab === 'performance_yango_loyalty' && <YangoLoyaltyView key={`yango-loyalty-${refreshKey}`} />}
               </section>
             )}
 

@@ -18,3 +18,39 @@ body {
   50%  { transform: translateX(150%); }
   100% { transform: translateX(150%); }
 }
+
+/* ── FASE 1H.3: Operational UX Hardening ── */
+
+/* Focus mode dimming */
+.ct-focus-dim {
+  transition: opacity 0.25s ease, filter 0.25s ease;
+}
+.ct-focus-active .ct-focus-dim {
+  opacity: 0.25;
+  filter: grayscale(0.3);
+  pointer-events: none;
+}
+
+/* Smart scroll container for matrix */
+.ct-matrix-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+.ct-matrix-scroll::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+.ct-matrix-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+.ct-matrix-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Skeleton pulse optimization — reduce GPU overhead */
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse {
+    animation: none;
+  }
+}

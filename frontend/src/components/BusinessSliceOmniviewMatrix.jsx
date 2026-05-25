@@ -63,6 +63,10 @@ import {
   MonthSelect,
   normalizeOmniviewYear,
 } from './omniview/OmniviewFilterPrimitives.jsx'
+import SmartEmptyState from './operational/SmartEmptyState.jsx'
+import { OmniviewMatrixSkeleton } from './operational/SkeletonLoader.jsx'
+import OperationalStatusBar from './operational/OperationalStatusBar.jsx'
+import ActionContext from './operational/ActionContext.jsx'
 
 const GRAINS = [
   { id: 'monthly', label: 'Mensual' },
@@ -134,12 +138,20 @@ export default function BusinessSliceOmniviewMatrix () {
     try { localStorage.setItem('ct_matrix_zoom', String(level)) } catch {}
   }
   const [focusMode, setFocusMode] = useState(false)
+  const [focusTarget, setFocusTarget] = useState(null)
+  // FASE 1H.3 — fullscreen de matriz drill
+  const [matrixFullscreen, setMatrixFullscreen] = useState(false)
   useEffect(() => {
-    if (!focusMode) return
-    const onKey = (e) => { if (e.key === 'Escape') setFocusMode(false) }
+    if (!focusMode && !matrixFullscreen) return
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        if (matrixFullscreen) setMatrixFullscreen(false)
+        else if (focusMode) { setFocusMode(false); setFocusTarget(null) }
+      }
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [focusMode])
+  }, [focusMode, matrixFullscreen])
   const [insightMode, setInsightMode] = useState(false)
   const [filtersMeta, setFiltersMeta] = useState(null)
   const [country, setCountry] = useState(saved?.country || '')
@@ -1312,19 +1324,16 @@ export default function BusinessSliceOmniviewMatrix () {
           </div>
         )}
 
-        {sliceRealFreshnessBanner}
-
-        {/* ── Context bar (Evolución) ──────────────────────────── */}
         {!focusMode && heavyQueriesEnabled && !blockedByCountry && !isProjectionMode && (
-          <OperationalContextBar
+          <OperationalStatusBar
             grain={grain} periodStates={periodStates} allPeriods={matrix.allPeriods}
-            comparisonMeta={matrix.comparisonMeta}
             freshnessInfo={freshnessInfo} sliceMaxTripDate={sliceMaxTripDate}
-            coverageSummary={coverageSummary} compact={compact}
-            matrixMeta={matrixMeta}
-            execKpis={execKpis}
+            coverageSummary={coverageSummary} matrixMeta={matrixMeta}
+            matrixTrust={matrixTrust} execKpis={execKpis}
+            compact={compact}
           />
         )}
+        {sliceRealFreshnessBanner}
 
         {/* ── Capa de integridad (Vs Proyección) — FASE 3.7 ───── */}
         {!focusMode && heavyQueriesEnabled && isProjectionMode && projectionReady && projectionMeta?.integrity_status && (
@@ -1414,63 +1423,130 @@ export default function BusinessSliceOmniviewMatrix () {
         />
 
         {err && heavyQueriesEnabled && !blockedByCountry && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-800">{String(err)}</div>
+          <SmartEmptyState
+            kind="loading_failed"
+            title="Error al cargar datos"
+            message={String(err)}
+            actionLabel="Reintentar"
+            onAction={loadData}
+          />
         )}
 
         {loading && heavyQueriesEnabled && (
-          <div className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
-            <div className="px-4 py-3 bg-slate-800 flex gap-3">
-              <div className="h-3 w-16 bg-slate-600 rounded animate-pulse" />
-              <div className="h-3 w-20 bg-slate-600 rounded animate-pulse" />
-              <div className="h-3 w-14 bg-slate-600 rounded animate-pulse ml-auto" />
-              <div className="h-3 w-12 bg-slate-600 rounded animate-pulse" />
-              <div className="h-3 w-12 bg-slate-600 rounded animate-pulse" />
-            </div>
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="flex gap-2 px-4 py-2 border-b border-gray-100">
-                <div className={`h-3 rounded animate-pulse bg-gray-200 ${i === 0 ? 'w-24' : 'w-20'}`} />
-                <div className="h-3 w-12 rounded animate-pulse bg-gray-100 ml-auto" />
-                <div className="h-3 w-10 rounded animate-pulse bg-gray-100" />
-                <div className="h-3 w-10 rounded animate-pulse bg-gray-100" />
-                <div className="h-3 w-10 rounded animate-pulse bg-gray-100" />
-                <div className="h-3 w-10 rounded animate-pulse bg-gray-100" />
-              </div>
-            ))}
-            <div className="flex items-center gap-2 px-4 py-2 text-xs text-ct-text2">
-              <span className="inline-block w-3 h-3 border-[1.5px] border-gray-300 border-t-blue-500 rounded-full animate-spin" />
-              Cargando datos…
-            </div>
-          </div>
+          <OmniviewMatrixSkeleton rows={compact ? 12 : 8} />
         )}
 
-        {/* ── Matrix + Inspector (Evolución) ─────────────────────── */}
+        {/* ── Action Context (contexto operacional al seleccionar) — FASE 1H.3 ── */}
+        {!focusMode && selection && heavyQueriesEnabled && !loading && !blockedByCountry && (
+          <ActionContext
+            selection={selection}
+            grain={grain}
+            onFilter={(type, value) => {
+              if (type === 'city') setCity(value)
+              else if (type === 'country') setCountry(value)
+              else if (type === 'slice') setBusinessSlice(value)
+            }}
+          />
+        )}
+
+        {/* ── Matrix + Inspector (Evolución) — FASE 1H.3 fullscreen ── */}
         {heavyQueriesEnabled && !loading && !blockedByCountry && !isProjectionMode && rows.length > 0 && (
-          <div className="flex gap-3 items-start">
-            <div className="flex-1 min-w-0" style={matrixZoom !== 100 ? { transform: `scale(${matrixZoom / 100})`, transformOrigin: 'top left', width: `${(100 / matrixZoom) * 100}%` } : undefined}>
-              <BusinessSliceOmniviewMatrixTable
-                matrix={matrix} grain={grain} compact={compact} sortKey={sortKey}
-                onCellClick={handleCellClick} selectedCell={selectedCell}
-                insightCellMap={insightCellMap} insightMode={insightMode}
-                lineImpactMap={lineImpactMap} periodStates={periodStates}
-                matrixTrust={matrixTrust}
-                focusedKpi={focusedKpi}
-                currentPeriodKey={currentPeriodKey}
-                scrollContainerRef={scrollContainerRef}
-              />
+          matrixFullscreen ? (
+            <div className="fixed inset-0 z-[100] bg-white overflow-y-auto" role="dialog" aria-modal="true" aria-label="Omniview Matrix — pantalla completa">
+              <div className="max-w-full mx-auto p-3 sm:p-4">
+                <div className="flex items-center justify-between mb-2 px-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Omniview Matrix · {grain === 'monthly' ? 'Mensual' : grain === 'weekly' ? 'Semanal' : 'Diario'}</span>
+                    {selection && <span className="text-[10px] text-blue-600">· Celda seleccionada</span>}
+                  </div>
+                  <button type="button" onClick={() => setMatrixFullscreen(false)}
+                    className="text-gray-400 hover:text-gray-700 text-sm font-medium flex items-center gap-1">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 0v12" />
+                    </svg>
+                    Salir (Esc)
+                  </button>
+                </div>
+                <div className="flex gap-3 items-start">
+                  <div className="flex-1 min-w-0">
+                    <BusinessSliceOmniviewMatrixTable
+                      matrix={matrix} grain={grain} compact={compact} sortKey={sortKey}
+                      onCellClick={handleCellClick} selectedCell={selectedCell}
+                      insightCellMap={insightCellMap} insightMode={insightMode}
+                      lineImpactMap={lineImpactMap} periodStates={periodStates}
+                      matrixTrust={matrixTrust}
+                      focusedKpi={focusedKpi}
+                      currentPeriodKey={currentPeriodKey}
+                      scrollContainerRef={scrollContainerRef}
+                    />
+                  </div>
+                  <BusinessSliceOmniviewInspector
+                    selection={selection} grain={grain} compact={compact}
+                    onClose={() => { setSelection(null); setSelectedCell(null); setSelectionHistory([]) }}
+                    insightForSelection={insightForSelection}
+                    insightTransparency={engineConfig.transparency}
+                    periodStates={periodStates} coverageSummary={coverageSummary}
+                    matrixTrust={matrixTrust}
+                    matrixMeta={matrixMeta}
+                    onTrustStateRefresh={refreshMatrixTrust}
+                    selectionHistory={selectionHistory}
+                    onGoBack={(prev) => { setSelection(prev); setSelectedCell(prev.id); setSelectionHistory(h => h.filter(s => s.id !== prev.id)) }}
+                  />
+                </div>
+              </div>
             </div>
-            <BusinessSliceOmniviewInspector
-              selection={selection} grain={grain} compact={compact}
-              onClose={() => { setSelection(null); setSelectedCell(null); setSelectionHistory([]) }}
-              insightForSelection={insightForSelection}
-              insightTransparency={engineConfig.transparency}
-              periodStates={periodStates} coverageSummary={coverageSummary}
-              matrixTrust={matrixTrust}
-              matrixMeta={matrixMeta}
-              onTrustStateRefresh={refreshMatrixTrust}
-              selectionHistory={selectionHistory}
-              onGoBack={(prev) => { setSelection(prev); setSelectedCell(prev.id); setSelectionHistory(h => h.filter(s => s.id !== prev.id)) }}
-            />
-          </div>
+          ) : (
+            <div className={`flex gap-3 items-start transition-opacity duration-200 ${focusMode ? 'opacity-95' : ''}`}>
+              <div className="flex-1 min-w-0" style={matrixZoom !== 100 ? { transform: `scale(${matrixZoom / 100})`, transformOrigin: 'top left', width: `${(100 / matrixZoom) * 100}%` } : undefined}>
+                {!focusMode && (
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <button type="button" onClick={() => setMatrixFullscreen(true)}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                      title="Pantalla completa (Esc para salir)">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                      </svg>
+                      Pantalla completa
+                    </button>
+                  </div>
+                )}
+                <BusinessSliceOmniviewMatrixTable
+                  matrix={matrix} grain={grain} compact={compact} sortKey={sortKey}
+                  onCellClick={handleCellClick} selectedCell={selectedCell}
+                  insightCellMap={insightCellMap} insightMode={insightMode}
+                  lineImpactMap={lineImpactMap} periodStates={periodStates}
+                  matrixTrust={matrixTrust}
+                  focusedKpi={focusedKpi}
+                  currentPeriodKey={currentPeriodKey}
+                  scrollContainerRef={scrollContainerRef}
+                />
+              </div>
+              {!focusMode && (
+                <BusinessSliceOmniviewInspector
+                  selection={selection} grain={grain} compact={compact}
+                  onClose={() => { setSelection(null); setSelectedCell(null); setSelectionHistory([]) }}
+                  insightForSelection={insightForSelection}
+                  insightTransparency={engineConfig.transparency}
+                  periodStates={periodStates} coverageSummary={coverageSummary}
+                  matrixTrust={matrixTrust}
+                  matrixMeta={matrixMeta}
+                  onTrustStateRefresh={refreshMatrixTrust}
+                  selectionHistory={selectionHistory}
+                  onGoBack={(prev) => { setSelection(prev); setSelectedCell(prev.id); setSelectionHistory(h => h.filter(s => s.id !== prev.id)) }}
+                />
+              )}
+            </div>
+          )
+        )}
+
+        {/* ── Empty state Evolution — FASE 1H.3 ── */}
+        {heavyQueriesEnabled && !loading && !blockedByCountry && !isProjectionMode && rows.length === 0 && !err && (
+          <SmartEmptyState
+            kind="empty_result"
+            title="Sin datos disponibles"
+            message="No se encontraron datos para los filtros y grano seleccionados."
+            actionHint="Prueba cambiando el grano a mensual, o ajusta los filtros de país/ciudad/tajada."
+          />
         )}
 
         {/* ── Prioridades del periodo (Vs Proyección) — FASE 3.3 ───── */}
@@ -1484,34 +1560,94 @@ export default function BusinessSliceOmniviewMatrix () {
           />
         )}
 
-        {/* ── Matrix + Drill (Vs Proyección) ─────────────────────── */}
+        {/* ── Matrix + Drill (Vs Proyección) — FASE 1H.3 fullscreen ── */}
         {heavyQueriesEnabled && projectionReady && isProjectionMode && projMatrix && projectionRows.length > 0 && (
-          <div className="flex gap-3 items-start">
-            <div className="flex-1 min-w-0" style={matrixZoom !== 100 ? { transform: `scale(${matrixZoom / 100})`, transformOrigin: 'top left', width: `${(100 / matrixZoom) * 100}%` } : undefined}>
-              {projectionIntegrityBroken && (
-                <div className="mb-2 rounded-md border border-red-200 bg-red-50/80 px-3 py-2 text-[11px] text-red-900" role="note">
-                  <strong>Integridad rota:</strong> puedes revisar la tabla como referencia, pero no tomes decisiones con alertas o prioridades automáticas hasta que el estado vuelva a confiable.
+          matrixFullscreen ? (
+            <div className="fixed inset-0 z-[100] bg-white overflow-y-auto" role="dialog" aria-modal="true" aria-label="Omniview Proyección — pantalla completa">
+              <div className="max-w-full mx-auto p-3 sm:p-4">
+                <div className="flex items-center justify-between mb-2 px-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Vs Proyección · {grain === 'monthly' ? 'Mensual' : grain === 'weekly' ? 'Semanal' : 'Diario'}</span>
+                    {selection && <span className="text-[10px] text-blue-600">· Celda seleccionada</span>}
+                  </div>
+                  <button type="button" onClick={() => setMatrixFullscreen(false)}
+                    className="text-gray-400 hover:text-gray-700 text-sm font-medium flex items-center gap-1">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 0v12" />
+                    </svg>
+                    Salir (Esc)
+                  </button>
                 </div>
-              )}
-              <BusinessSliceOmniviewMatrixTable
-                matrix={projMatrix} grain={grain} compact={compact} sortKey={sortKey}
-                onCellClick={handleCellClick} selectedCell={selectedCell}
-                periodStates={periodStates}
-                focusedKpi={focusedKpi}
-                mode="projection"
-                projectionAuthoritativeYtd={projectionMeta?.authoritative_ytd}
-                projectionIntegrityBroken={projectionIntegrityBroken}
-                currentPeriodKey={currentPeriodKey}
-                scrollContainerRef={scrollContainerRef}
-              />
+                <div className="flex gap-3 items-start">
+                  <div className="flex-1 min-w-0">
+                    {projectionIntegrityBroken && (
+                      <div className="mb-2 rounded-md border border-red-200 bg-red-50/80 px-3 py-2 text-[11px] text-red-900" role="note">
+                        <strong>Integridad rota:</strong> puedes revisar la tabla como referencia, pero no tomes decisiones con alertas o prioridades automáticas hasta que el estado vuelva a confiable.
+                      </div>
+                    )}
+                    <BusinessSliceOmniviewMatrixTable
+                      matrix={projMatrix} grain={grain} compact={compact} sortKey={sortKey}
+                      onCellClick={handleCellClick} selectedCell={selectedCell}
+                      periodStates={periodStates}
+                      focusedKpi={focusedKpi}
+                      mode="projection"
+                      projectionAuthoritativeYtd={projectionMeta?.authoritative_ytd}
+                      projectionIntegrityBroken={projectionIntegrityBroken}
+                      currentPeriodKey={currentPeriodKey}
+                      scrollContainerRef={scrollContainerRef}
+                    />
+                  </div>
+                  <OmniviewProjectionDrill
+                    selection={selection} grain={grain} compact={compact}
+                    onClose={() => { setSelection(null); setSelectedCell(null) }}
+                    projectionMeta={projectionMeta}
+                    planVersion={planVersion}
+                  />
+                </div>
+              </div>
             </div>
-            <OmniviewProjectionDrill
-              selection={selection} grain={grain} compact={compact}
-              onClose={() => { setSelection(null); setSelectedCell(null) }}
-              projectionMeta={projectionMeta}
-              planVersion={planVersion}
-            />
-          </div>
+          ) : (
+            <div className={`flex gap-3 items-start transition-opacity duration-200 ${focusMode ? 'opacity-95' : ''}`}>
+              <div className="flex-1 min-w-0" style={matrixZoom !== 100 ? { transform: `scale(${matrixZoom / 100})`, transformOrigin: 'top left', width: `${(100 / matrixZoom) * 100}%` } : undefined}>
+                {!focusMode && (
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <button type="button" onClick={() => setMatrixFullscreen(true)}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                      title="Pantalla completa (Esc para salir)">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                      </svg>
+                      Pantalla completa
+                    </button>
+                  </div>
+                )}
+                {projectionIntegrityBroken && (
+                  <div className="mb-2 rounded-md border border-red-200 bg-red-50/80 px-3 py-2 text-[11px] text-red-900" role="note">
+                    <strong>Integridad rota:</strong> puedes revisar la tabla como referencia, pero no tomes decisiones con alertas o prioridades automáticas hasta que el estado vuelva a confiable.
+                  </div>
+                )}
+                <BusinessSliceOmniviewMatrixTable
+                  matrix={projMatrix} grain={grain} compact={compact} sortKey={sortKey}
+                  onCellClick={handleCellClick} selectedCell={selectedCell}
+                  periodStates={periodStates}
+                  focusedKpi={focusedKpi}
+                  mode="projection"
+                  projectionAuthoritativeYtd={projectionMeta?.authoritative_ytd}
+                  projectionIntegrityBroken={projectionIntegrityBroken}
+                  currentPeriodKey={currentPeriodKey}
+                  scrollContainerRef={scrollContainerRef}
+                />
+              </div>
+              {!focusMode && (
+                <OmniviewProjectionDrill
+                  selection={selection} grain={grain} compact={compact}
+                  onClose={() => { setSelection(null); setSelectedCell(null) }}
+                  projectionMeta={projectionMeta}
+                  planVersion={planVersion}
+                />
+              )}
+            </div>
+          )
         )}
 
         {/* ── Plan sin ejecución real (sección QA) ───────────────── */}
@@ -1529,20 +1665,13 @@ export default function BusinessSliceOmniviewMatrix () {
           <ReconciliationSummaryBar reconciliation={projectionMeta.reconciliation} />
         )}
 
-        {/* ── Sin proyección cargada ──────────────────────────────── */}
+        {/* ── Sin proyección cargada — FASE 1H.3 SmartEmptyState ── */}
         {heavyQueriesEnabled && projectionReady && isProjectionMode && planVersions.length === 0 && (
-          <div className="rounded-lg border border-dashed border-amber-300 bg-amber-50/60 px-6 py-10 text-center flex flex-col items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
-              <svg className="w-6 h-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-amber-800">No hay proyección cargada</p>
-              <p className="mt-1 text-xs text-amber-600 max-w-sm mx-auto">
-                Para activar la comparación Plan vs Real, sube un archivo de proyección en formato Ruta 27 (CSV o Excel).
-              </p>
-            </div>
+          <SmartEmptyState
+            kind="not_configured"
+            title="No hay proyección cargada"
+            message="Para activar la comparación Plan vs Real, sube un archivo de proyección en formato Ruta 27 (CSV o Excel)."
+          >
             <button
               type="button"
               onClick={() => { setUploadModalOpen(true); setUploadError(null); setUploadSuccess(null) }}
@@ -1553,37 +1682,37 @@ export default function BusinessSliceOmniviewMatrix () {
               </svg>
               Subir archivo de proyección
             </button>
-          </div>
+          </SmartEmptyState>
         )}
         {heavyQueriesEnabled && projectionReady && isProjectionMode && planVersions.length > 0 && !planVersion && (
-          <div className="rounded-lg border border-dashed border-amber-300 bg-amber-50/60 px-6 py-8 text-center">
-            <p className="text-sm font-semibold text-amber-800">Selecciona una versión de plan</p>
-            <p className="mt-1 text-xs text-amber-600">Para ver la comparación Plan vs Real, selecciona una versión de proyección en el selector de arriba.</p>
-          </div>
+          <SmartEmptyState
+            kind="needs_filter"
+            title="Selecciona una versión de plan"
+            message="Para ver la comparación Plan vs Real, selecciona una versión de proyección en el selector de arriba."
+          />
         )}
         {projectionEmptyKind === 'needs_country' && (
-          <div className="rounded-lg border border-dashed border-amber-200 bg-amber-50/70 px-6 py-8 text-center">
-            <p className="text-sm font-semibold text-amber-900">Selecciona un país</p>
-            <p className="mt-1 text-xs text-amber-800 max-w-md mx-auto">
-              Para semanal o diario en Vs Proyección hace falta país: la meta se deriva del plan mensual y el real se filtra por país.
-            </p>
-          </div>
+          <SmartEmptyState
+            kind="needs_filter"
+            title="Selecciona un país"
+            message="Para semanal o diario en Vs Proyección hace falta país: la meta se deriva del plan mensual y el real se filtra por país."
+          />
         )}
         {projectionEmptyKind === 'plan_without_real' && (
-          <div className="rounded-lg border border-dashed border-amber-200 bg-amber-50/70 px-6 py-8 text-center">
-            <p className="text-sm font-semibold text-amber-900">Hay proyección cargada pero no hay ejecución asociada</p>
-            <p className="mt-1 text-xs text-amber-800 max-w-md mx-auto">
-              {(grain === 'weekly' || grain === 'daily')
-                ? 'Proyección derivada desde el plan mensual, sin ejecución real aún para estos filtros. Revisa reconciliación y el panel «Plan sin ejecución».'
-                : 'El backend reporta plan sin filas reales coincidentes para estos filtros. Revisa reconciliación y el panel «Plan sin ejecución» abajo, o los logs del servidor (counts plan_rows / real_rows).'}
-            </p>
-          </div>
+          <SmartEmptyState
+            kind="empty_result"
+            title="Hay proyección cargada pero no hay ejecución asociada"
+            message={(grain === 'weekly' || grain === 'daily')
+              ? 'Proyección derivada desde el plan mensual, sin ejecución real aún para estos filtros. Revisa reconciliación y el panel "Plan sin ejecución".'
+              : 'El backend reporta plan sin filas reales coincidentes para estos filtros. Revisa reconciliación y el panel "Plan sin ejecución" abajo, o los logs del servidor.'}
+          />
         )}
         {projectionEmptyKind === 'no_data' && (
-          <div className="rounded-lg border border-dashed border-gray-300 bg-ct-bg/80 px-6 py-8 text-center">
-            <p className="text-sm font-semibold text-ct-text">Sin datos de proyección</p>
-            <p className="mt-1 text-xs text-ct-text2">No hay datos de proyección para la versión seleccionada con los filtros actuales.</p>
-          </div>
+          <SmartEmptyState
+            kind="no_data"
+            title="Sin datos de proyección"
+            message="No hay datos de proyección para la versión seleccionada con los filtros actuales."
+          />
         )}
       </div>
 
