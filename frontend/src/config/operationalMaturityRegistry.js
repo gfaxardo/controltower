@@ -569,7 +569,7 @@ export function getCapabilityMeta (moduleKey) {
     visible: entry.visible,
     legacy: entry.legacy || false,
     experimental: entry.experimental || false,
-    productionReady: isProductionReady(moduleKey),
+    productionReady: entry.maturity === MATURITY.STABLE || entry.maturity === MATURITY.ACTIVE || (entry.maturity === MATURITY.HARDENING && entry.engine === ENGINE_OWNER.CONTROL_FOUNDATION),
     statusLabel: entry.statusLabel || entry.maturity,
     statusTone: entry.statusTone || 'gray',
     governanceReason: entry.governanceReason || entry.description || '',
