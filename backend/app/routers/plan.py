@@ -832,3 +832,33 @@ async def get_lob_alias_catalog():
         logger.exception("plan/lob-alias-catalog")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FASE 0.1 — Ownership Governance Endpoint (solo lectura, técnico)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/ownership/summary")
+async def get_ownership_summary(
+    plan_version_key: str = Query(..., description="Versión de plan a consultar"),
+):
+    """
+    Fase 0.1 — Resumen técnico de ownership para una versión de plan.
+
+    Retorna:
+    - total_ownership_rows: registros en ops.projection_ownership
+    - owners_detected: lista de jefes de producto únicos
+    - conflicts_count: conflictos detectados (mismo key, distinto jefe)
+    - missing_owner_count: registros sin jefe_producto
+    - rows_by_owner: distribución por responsable
+    - conflicts_sample: muestra de conflictos (máx 20)
+
+    Endpoint técnico de verificación. NO es UI de producción todavía.
+    """
+    try:
+        from app.adapters.projection_ownership_repo import get_ownership_summary as _get_summary
+        result = _get_summary(plan_version_key)
+        return result
+    except Exception as e:
+        logger.exception("plan/ownership/summary")
+        raise HTTPException(status_code=500, detail=str(e))
+

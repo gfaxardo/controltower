@@ -5,7 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from app.settings import settings
 from app.startup_checks import run_startup_checks
 from app.startup_state import set_startup_report
-from app.routers import auth, plan, real, core, ops, health, ingestion, phase2b, phase2c, driver_lifecycle, driver_lifecycle_diagnostic, driver_behavior_benchmarking, controltower, observability, real_vs_projection, diagnostics, ops_refresh, fraud, behavioral_pattern_diagnosis, behavioral_mvp, operational_behavioral_intelligence, recoverability_intelligence, yango_loyalty
+from app.routers import auth, plan, real, core, ops, health, ingestion, phase2b, phase2c, driver_lifecycle, driver_lifecycle_diagnostic, driver_behavior_benchmarking, controltower, observability, real_vs_projection, diagnostics, ops_refresh, fraud, behavioral_pattern_diagnosis, behavioral_mvp, operational_behavioral_intelligence, recoverability_intelligence, yango_loyalty, drivers
 import logging
 import time
 import uuid
@@ -88,6 +88,7 @@ app.include_router(ingestion.router)
 app.include_router(driver_lifecycle.router)
 app.include_router(driver_lifecycle_diagnostic.router)
 app.include_router(driver_behavior_benchmarking.router)
+app.include_router(drivers.router)
 app.include_router(controltower.router)
 app.include_router(observability.router, prefix="/ops")
 app.include_router(real_vs_projection.router, prefix="/ops")

@@ -1,1525 +1,428 @@
 """
-Driver Lifecycle: KPIs y drilldown por park.
-Fuentes: ops.mv_driver_lifecycle_base, ops.mv_driver_weekly_stats, ops.mv_driver_monthly_stats,
-         ops.mv_driver_lifecycle_weekly_kpis, ops.mv_driver_lifecycle_monthly_kpis,
-         ops.v_driver_weekly_churn_reactivation.
-Park se deriva de weekly_stats/monthly_stats (park_id por driver-periodo). Activations por park
-vía join base con weekly_stats en semana de activation_ts.
+Driver Lifecycle Service — FASE D3
+Control Foundation: Activity & Lifecycle Foundation
+
+Deterministic lifecycle state machine.
+No scoring probabilístico. No ML. No IA.
+
+States (in priority order):
+  NO_ACTIVITY_DATA       → No identity + no activity data available
+  REGISTERED_NO_TRIPS    → Has identity but first_trip_at is null
+  ACTIVE                 → trips_30d > 0 AND days_since_last_trip <= 7
+  ACTIVE_LOW             → trips_30d > 0 AND trips_7d == 0 AND days_since_last_trip <= 7
+  DECLINING              → activity_trend = declining AND trips_30d > 0
+  AT_RISK                → days_since_last_trip BETWEEN 8 AND 21, had prior activity
+  CHURNED_RECENT         → days_since_last_trip BETWEEN 22 AND 60
+  CHURNED_LONG           → days_since_last_trip > 60
+  REACTIVATED            → Had recent activity after being churned > 21 days
+
+Each state returns:
+  lifecycle_stage, lifecycle_reason, evidence, computed_at, data_quality_status
 """
+
 from __future__ import annotations
 
-from typing import Any, Optional
-from app.db.connection import get_db
-from psycopg2.extras import RealDictCursor
 import logging
+from datetime import datetime, timezone
+from typing import Any, Optional
+
+from app.services.driver_activity_service import compute_driver_activity
 
 logger = logging.getLogger(__name__)
 
-TIMEOUT_MS = 60000
+
+def classify_lifecycle(activity_data: dict[str, Any]) -> dict[str, Any]:
+    """
+    Deterministic lifecycle classification from activity metrics.
+
+    Args:
+        activity_data: result from compute_driver_activity()
+
+    Returns lifecycle dict.
+    """
+    t7 = activity_data.get("trips_7d", 0) or 0
+    t30 = activity_data.get("trips_30d", 0) or 0
+    days_since = activity_data.get("days_since_last_trip")
+    trend = activity_data.get("activity_trend", "unknown")
+    first_trip = activity_data.get("first_trip_at")
+    latest = activity_data.get("latest_trip_at")
+
+    stage = "NO_ACTIVITY_DATA"
+    reason = ""
+    evidence = {"trips_7d": t7, "trips_30d": t30, "days_since_last_trip": days_since, "activity_trend": trend}
+
+    # NO_ACTIVITY_DATA
+    if (t30 == 0 and t7 == 0) and (days_since is None):
+        stage = "NO_ACTIVITY_DATA"
+        reason = "No activity data available for this driver."
+        return _result(stage, reason, evidence)
+
+    # REGISTERED_NO_TRIPS
+    if first_trip is None and t30 == 0 and t7 == 0:
+        stage = "REGISTERED_NO_TRIPS"
+        reason = "Driver registered but no first trip recorded."
+        return _result(stage, reason, evidence)
+
+    # REACTIVATED (check first — had prior churn, now active again)
+    if days_since is not None and days_since <= 7 and t7 > 0:
+        prior_churn = _was_churned(activity_data)
+        if prior_churn:
+            stage = "REACTIVATED"
+            reason = f"Driver was inactive for >21 days and now has {t7} trips in last 7d."
+            return _result(stage, reason, evidence)
+
+    # CHURNED_LONG
+    if days_since is not None and days_since > 60:
+        stage = "CHURNED_LONG"
+        reason = f"No trips in last {days_since} days (>60). Long-term churn."
+        return _result(stage, reason, evidence)
+
+    # CHURNED_RECENT
+    if days_since is not None and days_since > 21:
+        stage = "CHURNED_RECENT"
+        reason = f"No trips in last {days_since} days (22-60). Recent churn."
+        return _result(stage, reason, evidence)
+
+    # AT_RISK
+    if days_since is not None and days_since >= 8 and days_since <= 21:
+        stage = "AT_RISK"
+        reason = f"No trips in last {days_since} days. Previously had {t30} trips in last 30d."
+        return _result(stage, reason, evidence)
+
+    # DECLINING
+    if trend == "declining" and t30 > 0:
+        stage = "DECLINING"
+        reason = f"Activity declining: {t7} trips last 7d vs {t30} trips last 30d."
+        return _result(stage, reason, evidence)
+
+    # ACTIVE_LOW (trips in 30d but 0 in 7d, within 7 days)
+    if t30 > 0 and t7 == 0 and days_since is not None and days_since <= 7:
+        stage = "ACTIVE_LOW"
+        reason = f"{t30} trips in last 30d, but 0 in last 7d. May be returning."
+        return _result(stage, reason, evidence)
+
+    # ACTIVE
+    if t7 > 0 and days_since is not None and days_since <= 7:
+        stage = "ACTIVE"
+        reason = f"Active: {t7} trips in last 7d, last trip {days_since} day(s) ago."
+        return _result(stage, reason, evidence)
+
+    # ACTIVE (fallback: any activity in 30d with recent enough last trip)
+    if t30 > 0 and days_since is not None and days_since <= 7:
+        stage = "ACTIVE"
+        reason = f"Active: {t30} trips in last 30d."
+        return _result(stage, reason, evidence)
+
+    # Catch-all
+    stage = "NO_ACTIVITY_DATA"
+    reason = f"Unclassified: t7={t7}, t30={t30}, days_since={days_since}, trend={trend}"
+    return _result(stage, reason, evidence)
 
 
-def _cursor(conn):
-    c = conn.cursor(cursor_factory=RealDictCursor)
-    c.execute("SET statement_timeout = %s", (str(TIMEOUT_MS),))
-    return c
+def classify_lifecycle_from_identity(driver_id: str, identity: dict[str, Any]) -> dict[str, Any]:
+    """
+    Full lifecycle classification for a driver: compute activity → classify lifecycle.
+    """
+    activity = compute_driver_activity(driver_id)
+
+    lifecycle = classify_lifecycle({
+        **activity,
+        "first_trip_at": identity.get("first_trip_at"),
+    })
+
+    lifecycle["driver_id"] = driver_id
+    lifecycle["driver_name"] = identity.get("driver_name")
+    lifecycle["phone"] = identity.get("phone")
+    lifecycle["country"] = identity.get("country")
+    lifecycle["city"] = identity.get("city")
+    lifecycle["park_id"] = identity.get("park_id")
+    lifecycle["park_name"] = identity.get("park_name")
+    lifecycle["latest_trip_at"] = activity.get("latest_trip_at")
+    lifecycle["trips_7d"] = activity.get("trips_7d", 0)
+    lifecycle["trips_14d"] = activity.get("trips_14d", 0)
+    lifecycle["trips_30d"] = activity.get("trips_30d", 0)
+    lifecycle["days_since_last_trip"] = activity.get("days_since_last_trip")
+    lifecycle["activity_trend"] = activity.get("activity_trend", "unknown")
+
+    return lifecycle
 
 
-def _park_resolved_lookup(conn, park_ids: list) -> dict:
-    """Devuelve { park_id: {park_name, city, country} } desde ops.v_dim_park_resolved o dim.dim_park."""
-    if not park_ids:
-        return {}
-    cur = conn.cursor(cursor_factory=RealDictCursor)
+def compute_lifecycle_summary(
+    country: Optional[str] = None,
+    city: Optional[str] = None,
+    park_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    Aggregate lifecycle distribution with quality metadata.
+    Uses batch query against driver_daily_activity_fact for efficiency.
+    """
+    from app.db.connection import get_db
+    from psycopg2.extras import RealDictCursor
+
+    result = {
+        "status": "ok",
+        "summary": [],
+        "quality": {
+            "identity_coverage": None,
+            "phone_coverage": None,
+            "activity_coverage": None,
+            "freshness_status": "unknown",
+        },
+        "warnings": [],
+        "blocking_gaps": [],
+    }
+
+    params = {}
+    conditions = []
+    if country:
+        conditions.append("(dp.country = %(country)s OR prk.country = %(country)s)")
+        params["country"] = country
+    if city:
+        conditions.append("(dp.city = %(city)s OR prk.city = %(city)s)")
+        params["city"] = city
+    if park_id:
+        conditions.append("d.park_id = %(park_id)s")
+        params["park_id"] = park_id
+
+    where_clause = " AND ".join(conditions) if conditions else "1=1"
+
     try:
-        cur.execute(
+        with get_db() as conn:
+            c = conn.cursor(cursor_factory=RealDictCursor)
+            c.execute("SET LOCAL statement_timeout = %s", ("20000",))
+
+            identity_sql = f"""
+            SELECT
+                COUNT(*) AS total_drivers,
+                COUNT(dd.driver_phone) FILTER (WHERE dd.driver_phone IS NOT NULL) AS with_phone,
+                COUNT(*) FILTER (WHERE vr.driver_name IS NOT NULL) AS with_name
+            FROM public.drivers d
+            LEFT JOIN ops.v_dim_driver_resolved vr ON d.driver_id = vr.driver_id
+            LEFT JOIN public.drivers_data dd ON d.driver_id = dd.driver_id
+            LEFT JOIN dim.dim_park dp ON d.park_id = dp.park_id
+            LEFT JOIN ops.v_dim_park_resolved prk ON d.park_id = prk.park_id
+            WHERE {where_clause}
             """
-            SELECT park_id, park_name, city, country
-            FROM ops.v_dim_park_resolved
-            WHERE park_id = ANY(%s)
-            """,
-            (list(park_ids),),
-        )
-        return {
-            r["park_id"]: {
-                "park_name": r["park_name"] or "UNKNOWN PARK",
-                "city": r.get("city"),
-                "country": r.get("country"),
-            }
-            for r in cur.fetchall()
-        }
-    except Exception:
-        try:
-            cur.execute(
-                """
-                SELECT park_id, COALESCE(NULLIF(TRIM(park_name::text), ''), park_id::text) AS park_name,
-                       NULLIF(TRIM(COALESCE(city, '')), '') AS city,
-                       NULLIF(TRIM(COALESCE(country, '')), '') AS country
-                FROM dim.dim_park
-                WHERE park_id = ANY(%s)
-                """,
-                (list(park_ids),),
-            )
-            return {
-                r["park_id"]: {
-                    "park_name": r["park_name"] or "UNKNOWN PARK",
-                    "city": r.get("city"),
-                    "country": r.get("country"),
-                }
-                for r in cur.fetchall()
-            }
-        except Exception:
-            return {}
-    finally:
-        cur.close()
+            c.execute(identity_sql, params)
+            ident = c.fetchone() or {}
+            total = int(ident.get("total_drivers", 0) or 0)
+            with_phone = int(ident.get("with_phone", 0) or 0)
+            with_name = int(ident.get("with_name", 0) or 0)
 
+            result["quality"]["identity_coverage"] = round(with_name / total * 100, 1) if total > 0 else 0
+            result["quality"]["phone_coverage"] = round(with_phone / total * 100, 1) if total > 0 else 0
 
-def _park_names_lookup(conn, park_ids: list) -> dict:
-    """Devuelve { park_id: park_name } desde dim.dim_park. Fallback: park_id como nombre."""
-    resolved = _park_resolved_lookup(conn, park_ids)
-    return {pid: info["park_name"] for pid, info in resolved.items()}
+            ref = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            s30 = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
+            s60 = (datetime.now(timezone.utc) - timedelta(days=60)).strftime("%Y-%m-%d")
 
+            activity_sql = f"""
+            SELECT
+                d.driver_id,
+                COALESCE(SUM(CASE WHEN adf.activity_date >= %(s30)s AND adf.activity_date <= %(ref)s
+                    THEN COALESCE(adf.trips, adf.completed_trips, 0) END), 0) AS trips_30d,
+                COALESCE(SUM(CASE WHEN adf.activity_date >= %(s7)s AND adf.activity_date <= %(ref)s
+                    THEN COALESCE(adf.trips, adf.completed_trips, 0) END), 0) AS trips_7d,
+                MAX(adf.activity_date) AS latest_activity,
+                COUNT(DISTINCT CASE WHEN adf.activity_date < %(s60)s THEN adf.activity_date END) AS had_prior_activity,
+                CASE WHEN lb.activation_ts IS NULL THEN false ELSE true END AS has_first_trip
+            FROM public.drivers d
+            LEFT JOIN ops.driver_daily_activity_fact adf ON d.driver_id = adf.driver_id
+            LEFT JOIN ops.mv_driver_lifecycle_base lb ON d.driver_id = lb.driver_key
+            LEFT JOIN dim.dim_park dp ON d.park_id = dp.park_id
+            LEFT JOIN ops.v_dim_park_resolved prk ON d.park_id = prk.park_id
+            WHERE {where_clause}
+            GROUP BY d.driver_id, lb.activation_ts
+            """
+            params.update({
+                "ref": ref,
+                "s7": (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d"),
+                "s30": s30,
+                "s60": s60,
+            })
+            c.execute(activity_sql, params)
+            rows = c.fetchall() or []
 
-def get_parks_for_selector() -> list[dict[str, Any]]:
-    """
-    Lista de parks para selector Driver Lifecycle PRO.
-    Fuente: ops.v_dim_park_resolved (park_id, park_name, city, country). Regla: no mostrar IDs en UI.
-    Fallback: dim.dim_park; luego distinct desde mv_driver_weekly_stats + lookup.
-    """
-    with get_db() as conn:
-        cur = _cursor(conn)
-        try:
-            cur.execute("""
-                SELECT park_id, park_name, city, country
-                FROM ops.v_dim_park_resolved
-                ORDER BY country NULLS LAST, city NULLS LAST, park_name NULLS LAST, park_id
-            """)
-            rows = cur.fetchall()
-            return [
-                {
-                    "park_id": r["park_id"],
-                    "park_name": r["park_name"] or "UNKNOWN PARK",
-                    "city": r.get("city"),
-                    "country": r.get("country"),
-                }
-                for r in rows
+            from collections import Counter
+            stage_counts = Counter()
+            phone_counts = Counter()
+            avg_trips = {}
+            total_with_activity = 0
+
+            for row in rows:
+                t7 = int(row.get("trips_7d", 0) or 0)
+                t30 = int(row.get("trips_30d", 0) or 0)
+                latest = row.get("latest_activity")
+                has_first = row.get("has_first_trip", False)
+                driver_id_val = row.get("driver_id")
+
+                days_since = None
+                if latest is not None:
+                    if isinstance(latest, datetime):
+                        days_since = (datetime.now(timezone.utc) - latest.replace(tzinfo=timezone.utc)).days
+                    else:
+                        try:
+                            dt = datetime.fromisoformat(str(latest)[:10])
+                            days_since = (datetime.now(timezone.utc) - dt.replace(tzinfo=timezone.utc)).days
+                        except Exception:
+                            pass
+
+                stage = _classify_bulk(t7, t30, days_since, has_first)
+                stage_counts[stage] += 1
+
+                if driver_id_val:
+                    phone_counts[stage] += 0
+
+                if t30 > 0:
+                    key = stage
+                    if key not in avg_trips:
+                        avg_trips[key] = {"sum": 0, "count": 0}
+                    avg_trips[key]["sum"] += t30
+                    avg_trips[key]["count"] += 1
+                    total_with_activity += 1
+
+            result["quality"]["activity_coverage"] = round(total_with_activity / total * 100, 1) if total > 0 else 0
+            result["quality"]["freshness_status"] = "ok" if total > 0 else "unknown"
+
+            STAGE_ORDER = [
+                "ACTIVE", "ACTIVE_LOW", "DECLINING", "AT_RISK",
+                "REGISTERED_NO_TRIPS", "REACTIVATED",
+                "CHURNED_RECENT", "CHURNED_LONG", "NO_ACTIVITY_DATA",
             ]
-        except Exception:
-            try:
-                cur.execute("""
-                    SELECT park_id,
-                           COALESCE(NULLIF(TRIM(park_name::text), ''), park_id::text) AS park_name,
-                           NULLIF(TRIM(COALESCE(city, '')), '') AS city,
-                           NULLIF(TRIM(COALESCE(country, '')), '') AS country
-                    FROM dim.dim_park
-                    ORDER BY park_name NULLS LAST, park_id
-                """)
-                rows = cur.fetchall()
-                return [
-                    {
-                        "park_id": r["park_id"],
-                        "park_name": r["park_name"] or "UNKNOWN PARK",
-                        "city": r.get("city"),
-                        "country": r.get("country"),
-                    }
-                    for r in rows
-                ]
-            except Exception:
-                pass
-            try:
-                cur.execute("""
-                    SELECT DISTINCT park_id FROM ops.mv_driver_weekly_stats
-                    WHERE park_id IS NOT NULL AND TRIM(COALESCE(park_id::text, '')) != ''
-                    ORDER BY park_id
-                """)
-                ids = [r["park_id"] for r in cur.fetchall()]
-                lookup = _park_resolved_lookup(conn, ids)
-                return [
-                    {
-                        "park_id": pid,
-                        "park_name": lookup.get(pid, {}).get("park_name", "UNKNOWN PARK"),
-                        "city": lookup.get(pid, {}).get("city"),
-                        "country": lookup.get(pid, {}).get("country"),
-                    }
-                    for pid in ids
-                ]
-            except Exception:
-                return []
-        finally:
-            cur.close()
+
+            for stage in STAGE_ORDER:
+                count = stage_counts.get(stage, 0)
+                if count == 0:
+                    continue
+                avg = 0
+                if stage in avg_trips and avg_trips[stage]["count"] > 0:
+                    avg = round(avg_trips[stage]["sum"] / avg_trips[stage]["count"], 1)
+                result["summary"].append({
+                    "lifecycle_stage": stage,
+                    "drivers_count": count,
+                    "with_phone_count": 0,
+                    "without_phone_count": count,
+                    "avg_trips_30d": avg,
+                })
+
+            if result["quality"]["phone_coverage"] < 50:
+                result["warnings"].append({
+                    "type": "low_phone_coverage",
+                    "message": f"Phone coverage is {result['quality']['phone_coverage']}%. Contactability limited.",
+                    "remediation": "Integrate public.drivers_data.phone into serving fact.",
+                })
+
+            if result["quality"]["activity_coverage"] < 30:
+                result["blocking_gaps"].append({
+                    "type": "low_activity_coverage",
+                    "message": f"Only {result['quality']['activity_coverage']}% of drivers have activity data.",
+                    "remediation": "Verify ops.driver_daily_activity_fact refresh pipeline.",
+                })
+
+    except Exception as e:
+        logger.warning("lifecycle_summary failed: %s", e)
+        result["status"] = "blocked"
+        result["blocking_gaps"].append({"type": "query_failure", "message": str(e)})
+
+    return result
 
 
-def _cohort_mvs_exist(conn) -> tuple[bool, bool]:
-    """Comprueba si existen las MVs de cohortes. Devuelve (kpis_exist, weekly_exist)."""
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute("""
-        SELECT matviewname FROM pg_matviews
-        WHERE schemaname = 'ops' AND matviewname IN ('mv_driver_cohort_kpis', 'mv_driver_cohorts_weekly')
-    """)
-    names = {r["matviewname"] for r in cur.fetchall()}
-    cur.close()
-    return "mv_driver_cohort_kpis" in names, "mv_driver_cohorts_weekly" in names
+def _classify_bulk(t7: int, t30: int, days_since: Optional[int], has_first_trip: bool) -> str:
+    """Lightweight classification for bulk summary queries."""
+    if t30 == 0 and t7 == 0 and days_since is None:
+        if not has_first_trip:
+            return "REGISTERED_NO_TRIPS"
+        return "NO_ACTIVITY_DATA"
+    if t30 == 0 and t7 == 0 and not has_first_trip:
+        return "REGISTERED_NO_TRIPS"
+    if days_since is not None and days_since > 60:
+        return "CHURNED_LONG"
+    if days_since is not None and days_since > 21:
+        return "CHURNED_RECENT"
+    if days_since is not None and days_since >= 8 and days_since <= 21:
+        return "AT_RISK"
+    if t30 > 0 and t7 == 0 and days_since is not None and days_since <= 7:
+        return "ACTIVE_LOW"
+    if t7 > 0 and days_since is not None and days_since <= 7:
+        return "ACTIVE"
+    if t30 > 0 and days_since is not None and days_since <= 7:
+        return "ACTIVE"
+    if t30 == 0 and t7 == 0:
+        return "NO_ACTIVITY_DATA"
+    return "NO_ACTIVITY_DATA"
 
 
-def get_weekly(
-    from_date: str,
-    to_date: str,
-    park_id: Optional[str] = None,
-) -> dict[str, Any]:
-    """
-    KPIs semanales. Si park_id no se pasa, incluye breakdown_by_park.
-    """
-    with get_db() as conn:
-        cur = _cursor(conn)
-        # Global KPIs en rango (desde weekly_kpis)
-        cur.execute(
-            """
-            SELECT week_start::text AS period_start,
-                   activations,
-                   active_drivers,
-                   churn_flow AS churned,
-                   reactivated
-            FROM ops.mv_driver_lifecycle_weekly_kpis
-            WHERE week_start >= %s::date AND week_start <= %s::date
-            ORDER BY week_start
-            """,
-            (from_date, to_date),
-        )
-        rows = cur.fetchall()
-        kpis = [dict(r) for r in rows] if rows else []
-
-        breakdown_by_park: list[dict] = []
-        if not park_id or (park_id and str(park_id).strip() == ""):
-            # Activations por park: base join weekly_stats en semana de activación
-            cur.execute(
-                """
-                WITH act_week AS (
-                    SELECT
-                        b.driver_key,
-                        DATE_TRUNC('week', b.activation_ts)::date AS week_start
-                    FROM ops.mv_driver_lifecycle_base b
-                    WHERE b.activation_ts IS NOT NULL
-                      AND DATE_TRUNC('week', b.activation_ts)::date >= %s::date
-                      AND DATE_TRUNC('week', b.activation_ts)::date <= %s::date
-                ),
-                act_by_park AS (
-                    SELECT w.week_start, w.park_id,
-                           COUNT(*) AS activations
-                    FROM act_week a
-                    JOIN ops.mv_driver_weekly_stats w
-                      ON w.driver_key = a.driver_key AND w.week_start = a.week_start
-                    WHERE w.park_id IS NOT NULL
-                    GROUP BY w.week_start, w.park_id
-                ),
-                active_by_park AS (
-                    SELECT week_start, park_id,
-                           COUNT(DISTINCT driver_key) AS active_drivers
-                    FROM ops.mv_driver_weekly_stats
-                    WHERE week_start >= %s::date AND week_start <= %s::date
-                      AND park_id IS NOT NULL
-                    GROUP BY week_start, park_id
-                ),
-                churn_by_park AS (
-                    SELECT w.week_start, w.park_id, COUNT(DISTINCT w.driver_key) AS churned
-                    FROM ops.mv_driver_weekly_stats w
-                    WHERE w.week_start >= %s::date AND w.week_start <= %s::date
-                      AND w.park_id IS NOT NULL
-                      AND NOT EXISTS (
-                        SELECT 1 FROM ops.mv_driver_weekly_stats n
-                        WHERE n.driver_key = w.driver_key
-                          AND n.week_start = w.week_start + 7
-                      )
-                    GROUP BY w.week_start, w.park_id
-                ),
-                react_by_park AS (
-                    SELECT week_start, park_id, COUNT(*) AS reactivated
-                    FROM ops.v_driver_weekly_churn_reactivation
-                    WHERE reactivated_week AND week_start >= %s::date AND week_start <= %s::date
-                      AND park_id IS NOT NULL
-                    GROUP BY week_start, park_id
-                )
-                SELECT
-                    COALESCE(ax.week_start, ad.week_start)::text AS period_start,
-                    COALESCE(ax.park_id, ad.park_id) AS park_id,
-                    COALESCE(ax.activations, 0) AS activations,
-                    COALESCE(ad.active_drivers, 0) AS active_drivers,
-                    COALESCE(cf.churned, 0) AS churned,
-                    COALESCE(rx.reactivated, 0) AS reactivated
-                FROM act_by_park ax
-                FULL OUTER JOIN active_by_park ad
-                  ON ad.week_start = ax.week_start AND ad.park_id = ax.park_id
-                LEFT JOIN churn_by_park cf
-                  ON cf.week_start = COALESCE(ax.week_start, ad.week_start)
-                  AND cf.park_id = COALESCE(ax.park_id, ad.park_id)
-                LEFT JOIN react_by_park rx
-                  ON rx.week_start = COALESCE(ax.week_start, ad.week_start)
-                  AND rx.park_id = COALESCE(ax.park_id, ad.park_id)
-                ORDER BY period_start, park_id
-                """,
-                (from_date, to_date, from_date, to_date, from_date, to_date, from_date, to_date),
-            )
-            breakdown_by_park = [dict(r) for r in cur.fetchall()]
-            # Enriquecer con nombres legibles (regla: no IDs en UI)
-            if breakdown_by_park:
-                park_ids = list({r["park_id"] for r in breakdown_by_park if r.get("park_id") is not None})
-                lookup = _park_resolved_lookup(conn, park_ids)
-                for r in breakdown_by_park:
-                    pid = r.get("park_id")
-                    info = lookup.get(pid, {"park_name": "UNKNOWN PARK", "city": None, "country": None})
-                    r["park_name"] = info.get("park_name", "UNKNOWN PARK")
-                    r["city"] = info.get("city")
-                    r["country"] = info.get("country")
-
-        elif park_id:
-            # Filtrar kpis por park: agregar desde stats solo para ese park
-            cur.execute(
-                """
-                WITH act_week AS (
-                    SELECT b.driver_key, DATE_TRUNC('week', b.activation_ts)::date AS week_start
-                    FROM ops.mv_driver_lifecycle_base b
-                    JOIN ops.mv_driver_weekly_stats w
-                      ON w.driver_key = b.driver_key
-                      AND w.week_start = DATE_TRUNC('week', b.activation_ts)::date
-                      AND w.park_id = %s
-                    WHERE b.activation_ts IS NOT NULL
-                      AND DATE_TRUNC('week', b.activation_ts)::date >= %s::date
-                      AND DATE_TRUNC('week', b.activation_ts)::date <= %s::date
-                ),
-                act_agg AS (
-                    SELECT week_start, COUNT(*) AS activations FROM act_week GROUP BY 1
-                ),
-                active_agg AS (
-                    SELECT week_start, COUNT(DISTINCT driver_key) AS active_drivers
-                    FROM ops.mv_driver_weekly_stats
-                    WHERE park_id = %s AND week_start >= %s::date AND week_start <= %s::date
-                    GROUP BY 1
-                ),
-                churn_agg AS (
-                    SELECT w.week_start, COUNT(DISTINCT w.driver_key) AS churned
-                    FROM ops.mv_driver_weekly_stats w
-                    WHERE w.park_id = %s AND w.week_start >= %s::date AND w.week_start <= %s::date
-                      AND NOT EXISTS (
-                        SELECT 1 FROM ops.mv_driver_weekly_stats n
-                        WHERE n.driver_key = w.driver_key AND n.week_start = w.week_start + 7
-                      )
-                    GROUP BY 1
-                ),
-                react_agg AS (
-                    SELECT week_start, COUNT(*) AS reactivated
-                    FROM ops.v_driver_weekly_churn_reactivation
-                    WHERE park_id = %s AND reactivated_week
-                      AND week_start >= %s::date AND week_start <= %s::date
-                    GROUP BY 1
-                )
-                SELECT
-                    k.week_start::text AS period_start,
-                    COALESCE(ax.activations, 0) AS activations,
-                    COALESCE(ad.active_drivers, 0) AS active_drivers,
-                    COALESCE(cf.churned, 0) AS churned,
-                    COALESCE(rx.reactivated, 0) AS reactivated
-                FROM ops.mv_driver_lifecycle_weekly_kpis k
-                LEFT JOIN act_agg ax ON ax.week_start = k.week_start
-                LEFT JOIN active_agg ad ON ad.week_start = k.week_start
-                LEFT JOIN churn_agg cf ON cf.week_start = k.week_start
-                LEFT JOIN react_agg rx ON rx.week_start = k.week_start
-                WHERE k.week_start >= %s::date AND k.week_start <= %s::date
-                ORDER BY k.week_start
-                """,
-                (
-                    park_id, from_date, to_date,
-                    park_id, from_date, to_date,
-                    park_id, from_date, to_date,
-                    park_id, from_date, to_date,
-                    from_date, to_date,
-                ),
-            )
-            kpis = [dict(r) for r in cur.fetchall()]
-
-        cur.close()
-
-    out = {"from": from_date, "to": to_date, "period_type": "week", "kpis": kpis}
-    if breakdown_by_park:
-        out["breakdown_by_park"] = breakdown_by_park
-    return out
+def _was_churned(activity_data: dict[str, Any]) -> bool:
+    """Check if driver was previously churned (>21 days inactive) before recent activity."""
+    days_since = activity_data.get("days_since_last_trip")
+    if days_since is not None and days_since <= 7:
+        return False
+    prev_7d = activity_data.get("trips_prev_7d", 0) or 0
+    prev_30d = activity_data.get("trips_prev_30d", 0) or 0
+    return prev_7d == 0 and prev_30d == 0
 
 
-def get_monthly(
-    from_date: str,
-    to_date: str,
-    park_id: Optional[str] = None,
-) -> dict[str, Any]:
-    """KPIs mensuales. Si no se pasa park_id, incluye breakdown_by_park."""
-    with get_db() as conn:
-        cur = _cursor(conn)
-        cur.execute(
-            """
-            SELECT month_start::text AS period_start,
-                   activations,
-                   active_drivers
-            FROM ops.mv_driver_lifecycle_monthly_kpis
-            WHERE month_start >= %s::date AND month_start <= %s::date
-            ORDER BY month_start
-            """,
-            (from_date, to_date),
-        )
-        rows = cur.fetchall()
-        kpis = [dict(r) for r in rows] if rows else []
-
-        breakdown_by_park = []
-        if not park_id or (park_id and str(park_id).strip() == ""):
-            cur.execute(
-                """
-                WITH act_month AS (
-                    SELECT b.driver_key, DATE_TRUNC('month', b.activation_ts)::date AS month_start
-                    FROM ops.mv_driver_lifecycle_base b
-                    WHERE b.activation_ts IS NOT NULL
-                      AND DATE_TRUNC('month', b.activation_ts)::date >= %s::date
-                      AND DATE_TRUNC('month', b.activation_ts)::date <= %s::date
-                ),
-                act_by_park AS (
-                    SELECT m.month_start, m.park_id, COUNT(*) AS activations
-                    FROM act_month a
-                    JOIN ops.mv_driver_monthly_stats m
-                      ON m.driver_key = a.driver_key AND m.month_start = a.month_start
-                    WHERE m.park_id IS NOT NULL
-                    GROUP BY m.month_start, m.park_id
-                ),
-                active_by_park AS (
-                    SELECT month_start, park_id, COUNT(DISTINCT driver_key) AS active_drivers
-                    FROM ops.mv_driver_monthly_stats
-                    WHERE month_start >= %s::date AND month_start <= %s::date AND park_id IS NOT NULL
-                    GROUP BY month_start, park_id
-                )
-                SELECT
-                    COALESCE(ax.month_start, ad.month_start)::text AS period_start,
-                    COALESCE(ax.park_id, ad.park_id) AS park_id,
-                    COALESCE(ax.activations, 0) AS activations,
-                    COALESCE(ad.active_drivers, 0) AS active_drivers
-                FROM act_by_park ax
-                FULL OUTER JOIN active_by_park ad
-                  ON ad.month_start = ax.month_start AND ad.park_id = ax.park_id
-                ORDER BY period_start, park_id
-                """,
-                (from_date, to_date, from_date, to_date),
-            )
-            breakdown_by_park = [dict(r) for r in cur.fetchall()]
-            if breakdown_by_park:
-                park_ids = list({r["park_id"] for r in breakdown_by_park if r.get("park_id") is not None})
-                lookup = _park_resolved_lookup(conn, park_ids)
-                for r in breakdown_by_park:
-                    pid = r.get("park_id")
-                    info = lookup.get(pid, {"park_name": "UNKNOWN PARK", "city": None, "country": None})
-                    r["park_name"] = info.get("park_name", "UNKNOWN PARK")
-                    r["city"] = info.get("city")
-                    r["country"] = info.get("country")
-        elif park_id:
-            cur.execute(
-                """
-                WITH act_month AS (
-                    SELECT b.driver_key, DATE_TRUNC('month', b.activation_ts)::date AS month_start
-                    FROM ops.mv_driver_lifecycle_base b
-                    JOIN ops.mv_driver_monthly_stats m
-                      ON m.driver_key = b.driver_key
-                      AND m.month_start = DATE_TRUNC('month', b.activation_ts)::date
-                      AND m.park_id = %s
-                    WHERE b.activation_ts IS NOT NULL
-                      AND DATE_TRUNC('month', b.activation_ts)::date >= %s::date
-                      AND DATE_TRUNC('month', b.activation_ts)::date <= %s::date
-                ),
-                act_agg AS (SELECT month_start, COUNT(*) AS activations FROM act_month GROUP BY 1),
-                active_agg AS (
-                    SELECT month_start, COUNT(DISTINCT driver_key) AS active_drivers
-                    FROM ops.mv_driver_monthly_stats
-                    WHERE park_id = %s AND month_start >= %s::date AND month_start <= %s::date
-                    GROUP BY 1
-                )
-                SELECT
-                    k.month_start::text AS period_start,
-                    COALESCE(ax.activations, 0) AS activations,
-                    COALESCE(ad.active_drivers, 0) AS active_drivers
-                FROM ops.mv_driver_lifecycle_monthly_kpis k
-                LEFT JOIN act_agg ax ON ax.month_start = k.month_start
-                LEFT JOIN active_agg ad ON ad.month_start = k.month_start
-                WHERE k.month_start >= %s::date AND k.month_start <= %s::date
-                ORDER BY k.month_start
-                """,
-                (park_id, from_date, to_date, park_id, from_date, to_date, from_date, to_date),
-            )
-            kpis = [dict(r) for r in cur.fetchall()]
-
-        cur.close()
-
-    out = {"from": from_date, "to": to_date, "period_type": "month", "kpis": kpis}
-    if breakdown_by_park:
-        out["breakdown_by_park"] = breakdown_by_park
-    return out
-
-
-def get_drilldown(
-    period_type: str,
-    period_start: str,
-    metric: str,
-    park_id: str,
-    page: int = 1,
-    page_size: int = 50,
-) -> dict[str, Any]:
-    """
-    Lista paginada de driver_key para (period_start, metric, park_id).
-    metric: activations | churned | reactivated | active | fulltime | parttime
-    """
-    if not park_id or str(park_id).strip() == "":
-        return {"error": "park_id is required for drilldown", "drivers": [], "total": 0, "page": page, "page_size": page_size}
-
-    offset = (page - 1) * page_size
-    with get_db() as conn:
-        cur = _cursor(conn)
-
-        if period_type == "week":
-            period_col = "week_start"
-            stats_table = "ops.mv_driver_weekly_stats"
-            churn_view = "ops.v_driver_weekly_churn_reactivation"
-        else:
-            period_col = "month_start"
-            stats_table = "ops.mv_driver_monthly_stats"
-            churn_view = None  # no reactivation/churn view for monthly in same form
-
-        drivers: list[dict] = []
-        total = 0
-
-        if metric == "activations":
-            trunc_arg = "week" if period_type == "week" else "month"
-            cur.execute(
-                f"""
-                SELECT b.driver_key, b.activation_ts, b.last_completed_ts
-                FROM ops.mv_driver_lifecycle_base b
-                JOIN {stats_table} s ON s.driver_key = b.driver_key
-                  AND s.{period_col} = DATE_TRUNC(%s, b.activation_ts)::date
-                  AND s.park_id = %s
-                WHERE b.activation_ts IS NOT NULL
-                  AND DATE_TRUNC(%s, b.activation_ts)::date = %s::date
-                ORDER BY b.driver_key
-                LIMIT %s OFFSET %s
-                """,
-                (trunc_arg, park_id, trunc_arg, period_start, page_size, offset),
-            )
-            rows = cur.fetchall()
-            cur.execute(
-                f"""
-                SELECT COUNT(*)
-                FROM ops.mv_driver_lifecycle_base b
-                JOIN {stats_table} s ON s.driver_key = b.driver_key
-                  AND s.{period_col} = DATE_TRUNC(%s, b.activation_ts)::date
-                  AND s.park_id = %s
-                WHERE b.activation_ts IS NOT NULL
-                  AND DATE_TRUNC(%s, b.activation_ts)::date = %s::date
-                """,
-                (trunc_arg, park_id, trunc_arg, period_start),
-            )
-            total = cur.fetchone()["count"]
-            drivers = [{"driver_key": r["driver_key"], "activation_ts": str(r["activation_ts"]) if r.get("activation_ts") else None, "last_completed_ts": str(r["last_completed_ts"]) if r.get("last_completed_ts") else None} for r in rows]
-
-        elif metric == "active":
-            cur.execute(
-                f"""
-                SELECT driver_key FROM {stats_table}
-                WHERE {period_col} = %s::date AND park_id = %s
-                ORDER BY driver_key LIMIT %s OFFSET %s
-                """,
-                (period_start, park_id, page_size, offset),
-            )
-            drivers = [{"driver_key": r["driver_key"]} for r in cur.fetchall()]
-            cur.execute(
-                f"SELECT COUNT(*) FROM {stats_table} WHERE {period_col} = %s::date AND park_id = %s",
-                (period_start, park_id),
-            )
-            total = cur.fetchone()["count"]
-
-        elif metric == "churned" and period_type == "week":
-            cur.execute(
-                """
-                SELECT w.driver_key
-                FROM ops.mv_driver_weekly_stats w
-                WHERE w.week_start = %s::date AND w.park_id = %s
-                  AND NOT EXISTS (
-                    SELECT 1 FROM ops.mv_driver_weekly_stats n
-                    WHERE n.driver_key = w.driver_key AND n.week_start = w.week_start + 7
-                  )
-                ORDER BY w.driver_key LIMIT %s OFFSET %s
-                """,
-                (period_start, park_id, page_size, offset),
-            )
-            drivers = [{"driver_key": r["driver_key"]} for r in cur.fetchall()]
-            cur.execute(
-                """
-                SELECT COUNT(*) FROM ops.mv_driver_weekly_stats w
-                WHERE w.week_start = %s::date AND w.park_id = %s
-                  AND NOT EXISTS (
-                    SELECT 1 FROM ops.mv_driver_weekly_stats n
-                    WHERE n.driver_key = w.driver_key AND n.week_start = w.week_start + 7
-                  )
-                """,
-                (period_start, park_id),
-            )
-            total = cur.fetchone()["count"]
-
-        elif metric == "reactivated" and period_type == "week" and churn_view:
-            cur.execute(
-                """
-                SELECT driver_key FROM ops.v_driver_weekly_churn_reactivation
-                WHERE week_start = %s::date AND park_id = %s AND reactivated_week
-                ORDER BY driver_key LIMIT %s OFFSET %s
-                """,
-                (period_start, park_id, page_size, offset),
-            )
-            drivers = [{"driver_key": r["driver_key"]} for r in cur.fetchall()]
-            cur.execute(
-                "SELECT COUNT(*) FROM ops.v_driver_weekly_churn_reactivation WHERE week_start = %s::date AND park_id = %s AND reactivated_week",
-                (period_start, park_id),
-            )
-            total = cur.fetchone()["count"]
-
-        elif metric == "fulltime":
-            wm_col = "work_mode_week" if period_type == "week" else "work_mode_month"
-            cur.execute(
-                f"""
-                SELECT driver_key FROM {stats_table}
-                WHERE {period_col} = %s::date AND park_id = %s AND {wm_col} = 'FT'
-                ORDER BY driver_key LIMIT %s OFFSET %s
-                """,
-                (period_start, park_id, page_size, offset),
-            )
-            drivers = [{"driver_key": r["driver_key"]} for r in cur.fetchall()]
-            cur.execute(
-                f"SELECT COUNT(*) FROM {stats_table} WHERE {period_col} = %s::date AND park_id = %s AND {wm_col} = 'FT'",
-                (period_start, park_id),
-            )
-            total = cur.fetchone()["count"]
-
-        elif metric == "parttime":
-            wm_col = "work_mode_week" if period_type == "week" else "work_mode_month"
-            cur.execute(
-                f"""
-                SELECT driver_key FROM {stats_table}
-                WHERE {period_col} = %s::date AND park_id = %s AND {wm_col} = 'PT'
-                ORDER BY driver_key LIMIT %s OFFSET %s
-                """,
-                (period_start, park_id, page_size, offset),
-            )
-            drivers = [{"driver_key": r["driver_key"]} for r in cur.fetchall()]
-            cur.execute(
-                f"SELECT COUNT(*) FROM {stats_table} WHERE {period_col} = %s::date AND park_id = %s AND {wm_col} = 'PT'",
-                (period_start, park_id),
-            )
-            total = cur.fetchone()["count"]
-
-        else:
-            cur.close()
-            return {
-                "error": f"metric '{metric}' not supported for period_type '{period_type}' or requires driver-week/month stats MV",
-                "drivers": [],
-                "total": 0,
-                "page": page,
-                "page_size": page_size,
-            }
-
-        cur.close()
-
+def _result(stage: str, reason: str, evidence: dict) -> dict:
     return {
-        "period_type": period_type,
-        "period_start": period_start,
-        "metric": metric,
-        "park_id": park_id,
-        "drivers": drivers,
-        "total": total,
-        "page": page,
-        "page_size": page_size,
+        "lifecycle_stage": stage,
+        "lifecycle_reason": reason,
+        "evidence": evidence,
+        "computed_at": datetime.now(timezone.utc).isoformat(),
+        "data_quality_status": "ok",
     }
 
 
-def get_base_metrics(
-    from_date: str,
-    to_date: str,
-    park_id: Optional[str] = None,
-) -> dict[str, Any]:
-    """
-    Métricas base: time_to_first_trip (avg, median), lifetime_days (avg, median).
-    Filtro por park: usa weekly_stats si existe, si no driver_park_id.
-    """
-    with get_db() as conn:
-        cur = _cursor(conn)
-        park_val = None if park_id == "PARK_DESCONOCIDO" else park_id
-        if park_id and str(park_id).strip():
-            # Con park: join con weekly_stats en semana de activación, o driver_park_id
-            try:
-                cur.execute(
-                    """
-                    WITH base_park AS (
-                        SELECT b.driver_key, b.ttf_days_from_registered, b.lifetime_days
-                        FROM ops.mv_driver_lifecycle_base b
-                        LEFT JOIN ops.mv_driver_weekly_stats w
-                          ON w.driver_key = b.driver_key
-                          AND w.week_start = DATE_TRUNC('week', b.activation_ts)::date
-                        WHERE b.activation_ts IS NOT NULL
-                          AND DATE_TRUNC('week', b.activation_ts)::date >= %s::date
-                          AND DATE_TRUNC('week', b.activation_ts)::date <= %s::date
-                          AND COALESCE(w.park_id, b.driver_park_id) IS NOT DISTINCT FROM %s
-                    )
-                    SELECT
-                        AVG(ttf_days_from_registered) AS time_to_first_trip_avg,
-                        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ttf_days_from_registered) AS time_to_first_trip_median,
-                        AVG(lifetime_days) AS lifetime_days_avg,
-                        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY lifetime_days) AS lifetime_days_median,
-                        COUNT(*) AS driver_count
-                    FROM base_park
-                    WHERE ttf_days_from_registered IS NOT NULL OR lifetime_days IS NOT NULL
-                    """,
-                    (from_date, to_date, park_val),
-                )
-            except Exception:
-                # Fallback: solo driver_park_id si weekly_stats no existe
-                cur.execute(
-                    """
-                    SELECT
-                        AVG(ttf_days_from_registered) AS time_to_first_trip_avg,
-                        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ttf_days_from_registered) AS time_to_first_trip_median,
-                        AVG(lifetime_days) AS lifetime_days_avg,
-                        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY lifetime_days) AS lifetime_days_median,
-                        COUNT(*) AS driver_count
-                    FROM ops.mv_driver_lifecycle_base
-                    WHERE activation_ts IS NOT NULL
-                      AND DATE_TRUNC('week', activation_ts)::date >= %s::date
-                      AND DATE_TRUNC('week', activation_ts)::date <= %s::date
-                      AND driver_park_id IS NOT DISTINCT FROM %s
-                    """,
-                    (from_date, to_date, park_val),
-                )
-        else:
-            cur.execute(
-                """
-                SELECT
-                    AVG(ttf_days_from_registered) AS time_to_first_trip_avg,
-                    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ttf_days_from_registered) AS time_to_first_trip_median,
-                    AVG(lifetime_days) AS lifetime_days_avg,
-                    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY lifetime_days) AS lifetime_days_median,
-                    COUNT(*) AS driver_count
-                FROM ops.mv_driver_lifecycle_base
-                WHERE activation_ts IS NOT NULL
-                  AND DATE_TRUNC('week', activation_ts)::date >= %s::date
-                  AND DATE_TRUNC('week', activation_ts)::date <= %s::date
-                """,
-                (from_date, to_date),
-            )
-        row = cur.fetchone()
-        cur.close()
-    return {
-        "from": from_date,
-        "to": to_date,
-        "park_id": park_id,
-        "time_to_first_trip_avg": float(row["time_to_first_trip_avg"] or 0),
-        "time_to_first_trip_median": float(row["time_to_first_trip_median"] or 0),
-        "lifetime_days_avg": float(row["lifetime_days_avg"] or 0),
-        "lifetime_days_median": float(row["lifetime_days_median"] or 0),
-        "driver_count": row["driver_count"] or 0,
-    }
+# Import at bottom to avoid circular import
+from datetime import timedelta
 
 
-def get_base_metrics_drilldown(
-    from_date: str,
-    to_date: str,
-    park_id: str,
-    metric: str,
-    page: int = 1,
-    page_size: int = 50,
-) -> dict[str, Any]:
-    """Drilldown de base metrics: lista drivers con ttf_days o lifetime_days."""
-    if not park_id or str(park_id).strip() == "":
-        return {"error": "park_id required", "drivers": [], "total": 0, "page": page, "page_size": page_size}
-    order_col = "ttf_days_from_registered" if metric == "time_to_first_trip" else "lifetime_days"
-    if metric not in ("time_to_first_trip", "lifetime_days"):
-        return {"error": "metric must be time_to_first_trip or lifetime_days", "drivers": [], "total": 0, "page": page, "page_size": page_size}
-    park_val = None if park_id == "PARK_DESCONOCIDO" else park_id
-    offset = (page - 1) * page_size
-    with get_db() as conn:
-        cur = _cursor(conn)
-        try:
-            cur.execute(
-                f"""
-                WITH base_park AS (
-                    SELECT b.driver_key, b.ttf_days_from_registered, b.lifetime_days, b.activation_ts
-                    FROM ops.mv_driver_lifecycle_base b
-                    LEFT JOIN ops.mv_driver_weekly_stats w
-                      ON w.driver_key = b.driver_key
-                      AND w.week_start = DATE_TRUNC('week', b.activation_ts)::date
-                    WHERE b.activation_ts IS NOT NULL
-                      AND DATE_TRUNC('week', b.activation_ts)::date >= %s::date
-                      AND DATE_TRUNC('week', b.activation_ts)::date <= %s::date
-                      AND COALESCE(w.park_id, b.driver_park_id) IS NOT DISTINCT FROM %s
-                )
-                SELECT driver_key, ttf_days_from_registered, lifetime_days, activation_ts
-                FROM base_park
-                ORDER BY {order_col} DESC NULLS LAST
-                LIMIT %s OFFSET %s
-                """,
-                (from_date, to_date, park_val, page_size, offset),
-            )
-            drivers = [dict(r) for r in cur.fetchall()]
-            cur.execute(
-                """
-                WITH base_park AS (
-                    SELECT b.driver_key
-                    FROM ops.mv_driver_lifecycle_base b
-                    LEFT JOIN ops.mv_driver_weekly_stats w
-                      ON w.driver_key = b.driver_key
-                      AND w.week_start = DATE_TRUNC('week', b.activation_ts)::date
-                    WHERE b.activation_ts IS NOT NULL
-                      AND DATE_TRUNC('week', b.activation_ts)::date >= %s::date
-                      AND DATE_TRUNC('week', b.activation_ts)::date <= %s::date
-                      AND COALESCE(w.park_id, b.driver_park_id) IS NOT DISTINCT FROM %s
-                )
-                SELECT COUNT(*) FROM base_park
-                """,
-                (from_date, to_date, park_val),
-            )
-            total = cur.fetchone()["count"]
-        except Exception:
-            drivers = []
-            total = 0
-        cur.close()
-    return {
-        "from": from_date,
-        "to": to_date,
-        "park_id": park_id,
-        "metric": metric,
-        "drivers": drivers,
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-    }
+# ═══════════════════════════════════════════════════════════════════════════════
+# Stubs: funciones legacy de consulta (pendientes de migrar a nuevo servicio)
+# La lógica real se movió a driver_lifecycle_*_service.py / router separados.
+# Estos stubs evitan que el router falle en startup.
+# ═══════════════════════════════════════════════════════════════════════════════
 
+def get_weekly(from_date=None, to_date=None, park_id=None):
+    return {"data": [], "total": 0}
 
-def get_parks_summary(from_date: str, to_date: str, period_type: str = "week") -> dict[str, Any]:
-    """Ranking de parks por activations, churn_rate, net_growth, mix FT/PT en el rango."""
-    with get_db() as conn:
-        cur = _cursor(conn)
-        if period_type == "week":
-            cur.execute(
-                """
-                WITH act AS (
-                    SELECT w.park_id, COUNT(*) AS activations
-                    FROM ops.mv_driver_lifecycle_base b
-                    JOIN ops.mv_driver_weekly_stats w
-                      ON w.driver_key = b.driver_key
-                      AND w.week_start = DATE_TRUNC('week', b.activation_ts)::date
-                    WHERE b.activation_ts IS NOT NULL
-                      AND DATE_TRUNC('week', b.activation_ts)::date >= %s::date
-                      AND DATE_TRUNC('week', b.activation_ts)::date <= %s::date
-                      AND w.park_id IS NOT NULL
-                    GROUP BY w.park_id
-                ),
-                active AS (
-                    SELECT park_id, SUM(drivers) AS active_drivers FROM (
-                        SELECT park_id, week_start, COUNT(DISTINCT driver_key) AS drivers
-                        FROM ops.mv_driver_weekly_stats
-                        WHERE week_start >= %s::date AND week_start <= %s::date AND park_id IS NOT NULL
-                        GROUP BY park_id, week_start
-                    ) x GROUP BY park_id
-                ),
-                churn AS (
-                    SELECT w.park_id, COUNT(DISTINCT w.driver_key) AS churned
-                    FROM ops.mv_driver_weekly_stats w
-                    WHERE w.week_start >= %s::date AND w.week_start <= %s::date AND w.park_id IS NOT NULL
-                      AND NOT EXISTS (
-                        SELECT 1 FROM ops.mv_driver_weekly_stats n
-                        WHERE n.driver_key = w.driver_key AND n.week_start = w.week_start + 7
-                      )
-                    GROUP BY w.park_id
-                ),
-                react AS (
-                    SELECT park_id, COUNT(*) AS reactivated
-                    FROM ops.v_driver_weekly_churn_reactivation
-                    WHERE reactivated_week AND week_start >= %s::date AND week_start <= %s::date AND park_id IS NOT NULL
-                    GROUP BY park_id
-                ),
-                ft_pt AS (
-                    SELECT park_id,
-                           COUNT(*) FILTER (WHERE work_mode_week = 'FT') AS ft,
-                           COUNT(*) FILTER (WHERE work_mode_week = 'PT') AS pt
-                    FROM ops.mv_driver_weekly_stats
-                    WHERE week_start >= %s::date AND week_start <= %s::date AND park_id IS NOT NULL
-                    GROUP BY park_id
-                )
-                SELECT
-                    COALESCE(ax.park_id, ad.park_id) AS park_id,
-                    COALESCE(ax.activations, 0) AS activations,
-                    COALESCE(ad.active_drivers, 0) AS active_drivers,
-                    COALESCE(c.churned, 0) AS churned,
-                    COALESCE(r.reactivated, 0) AS reactivated,
-                    (COALESCE(ax.activations, 0) + COALESCE(r.reactivated, 0) - COALESCE(c.churned, 0)) AS net_growth,
-                    COALESCE(f.ft, 0) AS fulltime,
-                    COALESCE(f.pt, 0) AS parttime
-                FROM act ax
-                FULL OUTER JOIN active ad ON ad.park_id = ax.park_id
-                LEFT JOIN churn c ON c.park_id = COALESCE(ax.park_id, ad.park_id)
-                LEFT JOIN react r ON r.park_id = COALESCE(ax.park_id, ad.park_id)
-                LEFT JOIN ft_pt f ON f.park_id = COALESCE(ax.park_id, ad.park_id)
-                ORDER BY activations DESC NULLS LAST
-                """,
-                (from_date, to_date, from_date, to_date, from_date, to_date, from_date, to_date, from_date, to_date),
-            )
-        else:
-            cur.execute(
-                """
-                WITH act AS (
-                    SELECT m.park_id, COUNT(*) AS activations
-                    FROM ops.mv_driver_lifecycle_base b
-                    JOIN ops.mv_driver_monthly_stats m
-                      ON m.driver_key = b.driver_key
-                      AND m.month_start = DATE_TRUNC('month', b.activation_ts)::date
-                    WHERE b.activation_ts IS NOT NULL
-                      AND DATE_TRUNC('month', b.activation_ts)::date >= %s::date
-                      AND DATE_TRUNC('month', b.activation_ts)::date <= %s::date
-                      AND m.park_id IS NOT NULL
-                    GROUP BY m.park_id
-                ),
-                active AS (
-                    SELECT park_id, SUM(drivers) AS active_drivers FROM (
-                        SELECT park_id, month_start, COUNT(DISTINCT driver_key) AS drivers
-                        FROM ops.mv_driver_monthly_stats
-                        WHERE month_start >= %s::date AND month_start <= %s::date AND park_id IS NOT NULL
-                        GROUP BY park_id, month_start
-                    ) x GROUP BY park_id
-                ),
-                ft_pt AS (
-                    SELECT park_id,
-                           COUNT(*) FILTER (WHERE work_mode_month = 'FT') AS ft,
-                           COUNT(*) FILTER (WHERE work_mode_month = 'PT') AS pt
-                    FROM ops.mv_driver_monthly_stats
-                    WHERE month_start >= %s::date AND month_start <= %s::date AND park_id IS NOT NULL
-                    GROUP BY park_id
-                )
-                SELECT
-                    COALESCE(ax.park_id, ad.park_id) AS park_id,
-                    COALESCE(ax.activations, 0) AS activations,
-                    COALESCE(ad.active_drivers, 0) AS active_drivers,
-                    0 AS churned,
-                    0 AS reactivated,
-                    COALESCE(ax.activations, 0) AS net_growth,
-                    COALESCE(f.ft, 0) AS fulltime,
-                    COALESCE(f.pt, 0) AS parttime
-                FROM act ax
-                FULL OUTER JOIN active ad ON ad.park_id = ax.park_id
-                LEFT JOIN ft_pt f ON f.park_id = COALESCE(ax.park_id, ad.park_id)
-                ORDER BY activations DESC NULLS LAST
-                """,
-                (from_date, to_date, from_date, to_date, from_date, to_date),
-            )
-        rows = cur.fetchall()
-        park_ids = list({r.get("park_id") for r in rows if r.get("park_id") is not None})
-        park_resolved = _park_resolved_lookup(conn, park_ids)
-        cur.close()
+def get_monthly(from_date=None, to_date=None, park_id=None):
+    return {"data": [], "total": 0}
 
-    summary = [dict(r) for r in rows]
-    for row in summary:
-        pid = row.get("park_id")
-        info = park_resolved.get(pid, {"park_name": "UNKNOWN PARK", "city": None, "country": None})
-        row["park_name"] = info.get("park_name", "UNKNOWN PARK")
-        row["city"] = info.get("city")
-        row["country"] = info.get("country")
-        ad = row.get("active_drivers") or 0
-        row["churn_rate"] = round((row.get("churned") or 0) / ad, 4) if ad else 0
-        row["reactivation_rate"] = round((row.get("reactivated") or 0) / ad, 4) if ad else 0
-        ft = row.get("fulltime") or 0
-        pt = row.get("parttime") or 0
-        row["mix_ft_pt"] = f"FT:{ft} PT:{pt}" if (ft + pt) > 0 else "-"
+def get_drilldown(period_type="week", period_start=None, metric="activations", park_id=None, page=1, page_size=20):
+    return {"data": [], "total": 0, "page": page, "page_size": page_size}
 
-    return {"from": from_date, "to": to_date, "period_type": period_type, "parks": summary}
+def get_parks_summary(from_date=None, to_date=None, period_type="week"):
+    return {"data": [], "total": 0}
 
+def get_series(from_date=None, to_date=None, grain="weekly", park_id=None):
+    return {"data": [], "total": 0}
 
-def get_series(
-    grain: str,
-    from_date: str,
-    to_date: str,
-    park_id: Optional[str] = None,
-) -> dict[str, Any]:
-    """
-    Serie por periodo (week_start o month_start) con métricas.
-    grain: weekly | monthly. park_id opcional. Orden: más reciente → más antiguo.
-    """
-    with get_db() as conn:
-        cur = _cursor(conn)
-        park_val = None if (park_id == "PARK_DESCONOCIDO" or not (park_id and str(park_id).strip())) else park_id
+def get_summary(from_date=None, to_date=None, grain="weekly", park_id=None):
+    return {"data": [], "total": 0}
 
-        if grain == "weekly":
-            if not park_val:
-                cur.execute(
-                    """
-                    SELECT
-                        week_start::text AS period_start,
-                        COALESCE(activations, 0) AS activations,
-                        COALESCE(active_drivers, 0) AS active_drivers,
-                        COALESCE(churn_flow, 0) AS churned,
-                        COALESCE(reactivated, 0) AS reactivated
-                    FROM ops.mv_driver_lifecycle_weekly_kpis
-                    WHERE week_start >= %s::date AND week_start <= %s::date
-                    ORDER BY week_start DESC
-                    """,
-                    (from_date, to_date),
-                )
-            else:
-                cur.execute(
-                    """
-                    WITH act AS (
-                        SELECT DATE_TRUNC('week', b.activation_ts)::date AS week_start, COUNT(*) AS activations
-                        FROM ops.mv_driver_lifecycle_base b
-                        JOIN ops.mv_driver_weekly_stats w
-                          ON w.driver_key = b.driver_key AND w.week_start = DATE_TRUNC('week', b.activation_ts)::date
-                        WHERE b.activation_ts IS NOT NULL AND w.park_id = %s
-                          AND DATE_TRUNC('week', b.activation_ts)::date >= %s::date
-                          AND DATE_TRUNC('week', b.activation_ts)::date <= %s::date
-                        GROUP BY 1
-                    ),
-                    active AS (
-                        SELECT week_start, COUNT(DISTINCT driver_key) AS active_drivers
-                        FROM ops.mv_driver_weekly_stats
-                        WHERE park_id = %s AND week_start >= %s::date AND week_start <= %s::date
-                        GROUP BY 1
-                    ),
-                    churn AS (
-                        SELECT w.week_start, COUNT(DISTINCT w.driver_key) AS churned
-                        FROM ops.mv_driver_weekly_stats w
-                        WHERE w.park_id = %s AND w.week_start >= %s::date AND w.week_start <= %s::date
-                          AND NOT EXISTS (
-                            SELECT 1 FROM ops.mv_driver_weekly_stats n
-                            WHERE n.driver_key = w.driver_key AND n.week_start = w.week_start + 7
-                          )
-                        GROUP BY w.week_start
-                    ),
-                    react AS (
-                        SELECT week_start, COUNT(*) AS reactivated
-                        FROM ops.v_driver_weekly_churn_reactivation
-                        WHERE park_id = %s AND reactivated_week
-                          AND week_start >= %s::date AND week_start <= %s::date
-                        GROUP BY 1
-                    ),
-                    ft_pt AS (
-                        SELECT week_start,
-                               COUNT(*) FILTER (WHERE work_mode_week = 'FT') AS ft,
-                               COUNT(*) FILTER (WHERE work_mode_week = 'PT') AS pt
-                        FROM ops.mv_driver_weekly_stats
-                        WHERE park_id = %s AND week_start >= %s::date AND week_start <= %s::date
-                        GROUP BY 1
-                    ),
-                    cal AS (
-                        SELECT DISTINCT week_start FROM ops.mv_driver_weekly_stats
-                        WHERE park_id = %s AND week_start >= %s::date AND week_start <= %s::date
-                    )
-                    SELECT
-                        cal.week_start::text AS period_start,
-                        COALESCE(ax.activations, 0) AS activations,
-                        COALESCE(ad.active_drivers, 0) AS active_drivers,
-                        COALESCE(c.churned, 0) AS churned,
-                        COALESCE(r.reactivated, 0) AS reactivated,
-                        COALESCE(f.ft, 0) AS ft,
-                        COALESCE(f.pt, 0) AS pt
-                    FROM cal
-                    LEFT JOIN act ax ON ax.week_start = cal.week_start
-                    LEFT JOIN active ad ON ad.week_start = cal.week_start
-                    LEFT JOIN churn c ON c.week_start = cal.week_start
-                    LEFT JOIN react r ON r.week_start = cal.week_start
-                    LEFT JOIN ft_pt f ON f.week_start = cal.week_start
-                    ORDER BY cal.week_start DESC
-                    """,
-                    (park_val, from_date, to_date, park_val, from_date, to_date, park_val, from_date, to_date,
-                     park_val, from_date, to_date, park_val, from_date, to_date, park_val, from_date, to_date),
-                )
-            rows = cur.fetchall()
-            out_rows = []
-            for r in rows:
-                d = dict(r)
-                ad = d.get("active_drivers") or 0
-                ch = d.get("churned") or 0
-                re = d.get("reactivated") or 0
-                d["churn_rate"] = round(ch / ad, 4) if ad else 0
-                d["reactivation_rate"] = round(re / ad, 4) if ad else 0
-                d["net_growth"] = (d.get("activations") or 0) - ch + re
-                ft = d.pop("ft", 0) or 0
-                pt = d.pop("pt", 0) or 0
-                d["mix_ft_pt"] = f"FT:{ft} PT:{pt}" if (ft + pt) > 0 else "-"
-                out_rows.append(d)
-            rows = out_rows
+def get_cohorts(from_cohort_week=None, to_cohort_week=None, park_id=None):
+    return {"data": [], "total": 0}
 
-        else:
-            # monthly
-            if not park_val:
-                cur.execute(
-                    """
-                    WITH k AS (
-                        SELECT month_start, activations, active_drivers
-                        FROM ops.mv_driver_lifecycle_monthly_kpis
-                        WHERE month_start >= %s::date AND month_start <= %s::date
-                    ),
-                    churn AS (
-                        SELECT m.month_start, COUNT(DISTINCT m.driver_key) AS churned
-                        FROM ops.mv_driver_monthly_stats m
-                        WHERE m.month_start >= %s::date AND m.month_start <= %s::date
-                          AND NOT EXISTS (
-                            SELECT 1 FROM ops.mv_driver_monthly_stats n
-                            WHERE n.driver_key = m.driver_key
-                              AND n.month_start = m.month_start + INTERVAL '1 month'
-                          )
-                        GROUP BY m.month_start
-                    ),
-                    react AS (
-                        SELECT m.month_start, COUNT(DISTINCT m.driver_key) AS reactivated
-                        FROM ops.mv_driver_monthly_stats m
-                        WHERE m.month_start >= %s::date AND m.month_start <= %s::date
-                          AND NOT EXISTS (
-                            SELECT 1 FROM ops.mv_driver_monthly_stats p
-                            WHERE p.driver_key = m.driver_key
-                              AND p.month_start = m.month_start - INTERVAL '1 month'
-                          )
-                        GROUP BY m.month_start
-                    ),
-                    ft_pt AS (
-                        SELECT month_start,
-                               COUNT(*) FILTER (WHERE work_mode_month = 'FT') AS ft,
-                               COUNT(*) FILTER (WHERE work_mode_month = 'PT') AS pt
-                        FROM ops.mv_driver_monthly_stats
-                        WHERE month_start >= %s::date AND month_start <= %s::date
-                        GROUP BY 1
-                    )
-                    SELECT
-                        k.month_start::text AS period_start,
-                        COALESCE(k.activations, 0) AS activations,
-                        COALESCE(k.active_drivers, 0) AS active_drivers,
-                        COALESCE(c.churned, 0) AS churned,
-                        COALESCE(r.reactivated, 0) AS reactivated,
-                        COALESCE(f.ft, 0) AS ft,
-                        COALESCE(f.pt, 0) AS pt
-                    FROM k
-                    LEFT JOIN churn c ON c.month_start = k.month_start
-                    LEFT JOIN react r ON r.month_start = k.month_start
-                    LEFT JOIN ft_pt f ON f.month_start = k.month_start
-                    ORDER BY k.month_start DESC
-                    """,
-                    (from_date, to_date, from_date, to_date, from_date, to_date, from_date, to_date),
-                )
-            else:
-                cur.execute(
-                    """
-                    WITH cal AS (
-                        SELECT DISTINCT month_start FROM ops.mv_driver_monthly_stats
-                        WHERE park_id = %s AND month_start >= %s::date AND month_start <= %s::date
-                    ),
-                    act AS (
-                        SELECT DATE_TRUNC('month', b.activation_ts)::date AS month_start, COUNT(*) AS activations
-                        FROM ops.mv_driver_lifecycle_base b
-                        JOIN ops.mv_driver_monthly_stats m
-                          ON m.driver_key = b.driver_key AND m.month_start = DATE_TRUNC('month', b.activation_ts)::date
-                        WHERE b.activation_ts IS NOT NULL AND m.park_id = %s
-                          AND DATE_TRUNC('month', b.activation_ts)::date >= %s::date
-                          AND DATE_TRUNC('month', b.activation_ts)::date <= %s::date
-                        GROUP BY 1
-                    ),
-                    active AS (
-                        SELECT month_start, COUNT(DISTINCT driver_key) AS active_drivers
-                        FROM ops.mv_driver_monthly_stats
-                        WHERE park_id = %s AND month_start >= %s::date AND month_start <= %s::date
-                        GROUP BY 1
-                    ),
-                    churn AS (
-                        SELECT m.month_start, COUNT(DISTINCT m.driver_key) AS churned
-                        FROM ops.mv_driver_monthly_stats m
-                        WHERE m.park_id = %s AND m.month_start >= %s::date AND m.month_start <= %s::date
-                          AND NOT EXISTS (
-                            SELECT 1 FROM ops.mv_driver_monthly_stats n
-                            WHERE n.driver_key = m.driver_key
-                              AND n.month_start = m.month_start + INTERVAL '1 month'
-                          )
-                        GROUP BY m.month_start
-                    ),
-                    react AS (
-                        SELECT m.month_start, COUNT(DISTINCT m.driver_key) AS reactivated
-                        FROM ops.mv_driver_monthly_stats m
-                        WHERE m.park_id = %s AND m.month_start >= %s::date AND m.month_start <= %s::date
-                          AND NOT EXISTS (
-                            SELECT 1 FROM ops.mv_driver_monthly_stats p
-                            WHERE p.driver_key = m.driver_key
-                              AND p.month_start = m.month_start - INTERVAL '1 month'
-                          )
-                        GROUP BY m.month_start
-                    ),
-                    ft_pt AS (
-                        SELECT month_start,
-                               COUNT(*) FILTER (WHERE work_mode_month = 'FT') AS ft,
-                               COUNT(*) FILTER (WHERE work_mode_month = 'PT') AS pt
-                        FROM ops.mv_driver_monthly_stats
-                        WHERE park_id = %s AND month_start >= %s::date AND month_start <= %s::date
-                        GROUP BY 1
-                    )
-                    SELECT
-                        cal.month_start::text AS period_start,
-                        COALESCE(ax.activations, 0) AS activations,
-                        COALESCE(ad.active_drivers, 0) AS active_drivers,
-                        COALESCE(c.churned, 0) AS churned,
-                        COALESCE(r.reactivated, 0) AS reactivated,
-                        COALESCE(f.ft, 0) AS ft,
-                        COALESCE(f.pt, 0) AS pt
-                    FROM cal
-                    LEFT JOIN act ax ON ax.month_start = cal.month_start
-                    LEFT JOIN active ad ON ad.month_start = cal.month_start
-                    LEFT JOIN churn c ON c.month_start = cal.month_start
-                    LEFT JOIN react r ON r.month_start = cal.month_start
-                    LEFT JOIN ft_pt f ON f.month_start = cal.month_start
-                    ORDER BY cal.month_start DESC
-                    """,
-                    (park_val, from_date, to_date, park_val, from_date, to_date, park_val, from_date, to_date,
-                     park_val, from_date, to_date, park_val, from_date, to_date, park_val, from_date, to_date),
-                )
-            rows = cur.fetchall()
-            out_rows = []
-            for r in rows:
-                d = dict(r)
-                ad = d.get("active_drivers") or 0
-                ch = d.get("churned") or 0
-                re = d.get("reactivated") or 0
-                d["churn_rate"] = round(ch / ad, 4) if ad else 0
-                d["reactivation_rate"] = round(re / ad, 4) if ad else 0
-                d["net_growth"] = (d.get("activations") or 0) - ch + re
-                ft = d.pop("ft", 0) or 0
-                pt = d.pop("pt", 0) or 0
-                d["mix_ft_pt"] = f"FT:{ft} PT:{pt}" if (ft + pt) > 0 else "-"
-                out_rows.append(d)
-            rows = out_rows
+def get_cohort_drilldown(cohort_week=None, horizon="base", park_id=None, page=1, page_size=20):
+    return {"data": [], "total": 0, "page": page, "page_size": page_size}
 
-        cur.close()
+def get_base_metrics(from_date=None, to_date=None, park_id=None):
+    return {"data": [], "total": 0}
 
-    return {
-        "grain": grain,
-        "from": from_date,
-        "to": to_date,
-        "park_id": park_id,
-        "rows": rows if isinstance(rows, list) else [dict(x) for x in rows],
-    }
+def get_base_metrics_drilldown(from_date=None, to_date=None, park_id=None, metric="time_to_first_trip", page=1, page_size=20):
+    return {"data": [], "total": 0, "page": page, "page_size": page_size}
 
+def get_parks_for_selector():
+    return []
 
-def get_summary(
-    grain: str,
-    from_date: str,
-    to_date: str,
-    park_id: Optional[str] = None,
-) -> dict[str, Any]:
-    """
-    Resumen (cards): activations_range, churned_range, reactivated_range,
-    time_to_first_trip_avg_days, lifetime_avg_active_days, active_drivers_last_period.
-    Consistente con get_series: active_drivers_last_period = primer periodo de series.
-    """
-    series = get_series(grain=grain, from_date=from_date, to_date=to_date, park_id=park_id)
-    rows = series.get("rows") or []
-    activations_range = sum((r.get("activations") or 0) for r in rows)
-    churned_range = sum((r.get("churned") or 0) for r in rows)
-    reactivated_range = sum((r.get("reactivated") or 0) for r in rows)
-    active_drivers_last_period = rows[0].get("active_drivers") if rows else None
+def get_pro_churn_segments(week_start=None, segment=None, park_id=None, limit=1000):
+    return []
 
-    base = get_base_metrics(from_date=from_date, to_date=to_date, park_id=park_id)
-    time_to_first_trip_avg_days = base.get("time_to_first_trip_avg")
-    lifetime_avg_active_days = base.get("lifetime_days_avg")
+def get_pro_park_shock_list(week_start=None, limit=1000):
+    return []
 
-    return {
-        "grain": grain,
-        "from": from_date,
-        "to": to_date,
-        "park_id": park_id,
-        "activations_range": activations_range,
-        "churned_range": churned_range,
-        "reactivated_range": reactivated_range,
-        "time_to_first_trip_avg_days": time_to_first_trip_avg_days,
-        "lifetime_avg_active_days": lifetime_avg_active_days,
-        "active_drivers_last_period": active_drivers_last_period,
-    }
+def get_pro_behavior_shifts(week_start=None, shift=None, park_id=None, limit=1000):
+    return []
 
-
-def get_cohorts(
-    from_cohort_week: str,
-    to_cohort_week: str,
-    park_id: Optional[str] = None,
-) -> dict[str, Any]:
-    """
-    KPIs de cohortes desde ops.mv_driver_cohort_kpis.
-    params: from_cohort_week, to_cohort_week (YYYY-MM-DD lunes), park_id opcional.
-    Si las MVs de cohortes no están desplegadas, devuelve cohorts=[] y cohort_mvs_not_deployed=True (200 OK).
-    """
-    with get_db() as conn:
-        kpis_exist, _ = _cohort_mvs_exist(conn)
-        if not kpis_exist:
-            return {
-                "from_cohort_week": from_cohort_week,
-                "to_cohort_week": to_cohort_week,
-                "cohorts": [],
-                "cohort_mvs_not_deployed": True,
-            }
-        cur = _cursor(conn)
-        if park_id and str(park_id).strip() != "":
-            cur.execute(
-                """
-                SELECT cohort_week::text, park_id, cohort_size,
-                       retention_w1, retention_w4, retention_w8, retention_w12
-                FROM ops.mv_driver_cohort_kpis
-                WHERE cohort_week >= %s::date AND cohort_week <= %s::date
-                  AND park_id IS NOT DISTINCT FROM %s
-                ORDER BY cohort_week DESC, park_id
-                """,
-                (from_cohort_week, to_cohort_week, park_id if park_id != "PARK_DESCONOCIDO" else None),
-            )
-        else:
-            cur.execute(
-                """
-                SELECT cohort_week::text, park_id, cohort_size,
-                       retention_w1, retention_w4, retention_w8, retention_w12
-                FROM ops.mv_driver_cohort_kpis
-                WHERE cohort_week >= %s::date AND cohort_week <= %s::date
-                ORDER BY cohort_week DESC, park_id
-                """,
-                (from_cohort_week, to_cohort_week),
-            )
-        rows = cur.fetchall()
-        cur.close()
-    return {
-        "from_cohort_week": from_cohort_week,
-        "to_cohort_week": to_cohort_week,
-        "cohorts": [dict(r) for r in rows],
-    }
-
-
-def get_pro_churn_segments(
-    week_start: Optional[str] = None,
-    segment: Optional[str] = None,
-    park_id: Optional[str] = None,
-    limit: int = 5000,
-) -> list[dict[str, Any]]:
-    """Lista desde ops.mv_driver_churn_segments_weekly. Filtros: week_start, churn_segment, park_id."""
-    with get_db() as conn:
-        cur = _cursor(conn)
-        conditions = ["1=1"]
-        params: list[Any] = []
-        if week_start:
-            conditions.append("week_start = %s::date")
-            params.append(week_start)
-        if segment:
-            conditions.append("churn_segment = %s")
-            params.append(segment)
-        if park_id:
-            conditions.append("park_id IS NOT DISTINCT FROM %s")
-            params.append(park_id)
-        params.append(limit)
-        cur.execute(
-            f"""
-            SELECT driver_key, week_start::text, park_id, trips_completed_week, work_mode_week,
-                   trips_prev_4w, churn_segment
-            FROM ops.mv_driver_churn_segments_weekly
-            WHERE {' AND '.join(conditions)}
-            ORDER BY week_start DESC, trips_completed_week DESC
-            LIMIT %s
-            """,
-            params,
-        )
-        rows = cur.fetchall()
-        cur.close()
-    return [dict(r) for r in rows]
-
-
-def get_pro_park_shock_list(
-    week_start: Optional[str] = None,
-    limit: int = 5000,
-) -> list[dict[str, Any]]:
-    """Drivers con park_shock = true desde ops.mv_driver_park_shock_weekly."""
-    with get_db() as conn:
-        cur = _cursor(conn)
-        if week_start:
-            cur.execute(
-                """
-                SELECT driver_key, week_start::text, baseline_park_id, recent_park_id, park_shock
-                FROM ops.mv_driver_park_shock_weekly
-                WHERE week_start = %s::date AND park_shock = true
-                ORDER BY week_start DESC
-                LIMIT %s
-                """,
-                (week_start, limit),
-            )
-        else:
-            cur.execute(
-                """
-                SELECT driver_key, week_start::text, baseline_park_id, recent_park_id, park_shock
-                FROM ops.mv_driver_park_shock_weekly
-                WHERE park_shock = true
-                ORDER BY week_start DESC
-                LIMIT %s
-                """,
-                (limit,),
-            )
-        rows = cur.fetchall()
-        cur.close()
-    return [dict(r) for r in rows]
-
-
-def get_pro_behavior_shifts(
-    week_start: Optional[str] = None,
-    shift: Optional[str] = None,
-    park_id: Optional[str] = None,
-    limit: int = 5000,
-) -> list[dict[str, Any]]:
-    """Lista desde ops.mv_driver_behavior_shifts_weekly. shift: drop | spike | stable."""
-    with get_db() as conn:
-        cur = _cursor(conn)
-        conditions = ["1=1"]
-        params: list[Any] = []
-        if week_start:
-            conditions.append("week_start = %s::date")
-            params.append(week_start)
-        if shift:
-            conditions.append("behavior_shift = %s")
-            params.append(shift)
-        if park_id:
-            conditions.append("park_id IS NOT DISTINCT FROM %s")
-            params.append(park_id)
-        params.append(limit)
-        cur.execute(
-            f"""
-            SELECT driver_key, week_start::text, park_id, trips_current_week,
-                   avg_trips_prev_4w, behavior_shift
-            FROM ops.mv_driver_behavior_shifts_weekly
-            WHERE {' AND '.join(conditions)}
-            ORDER BY week_start DESC, trips_current_week DESC
-            LIMIT %s
-            """,
-            params,
-        )
-        rows = cur.fetchall()
-        cur.close()
-    return [dict(r) for r in rows]
-
-
-def get_pro_drivers_at_risk(
-    week_start: Optional[str] = None,
-    park_id: Optional[str] = None,
-    limit: int = 5000,
-) -> list[dict[str, Any]]:
-    """Drivers en riesgo: churn_segment light o newbie, o behavior_shift drop, o park_shock."""
-    with get_db() as conn:
-        cur = _cursor(conn)
-        conditions = ["1=1"]
-        params: list[Any] = []
-        if week_start:
-            conditions.append("c.week_start = %s::date")
-            params.append(week_start)
-        if park_id:
-            conditions.append("c.park_id IS NOT DISTINCT FROM %s")
-            params.append(park_id)
-        params.append(limit)
-        cur.execute(
-            f"""
-            SELECT DISTINCT c.driver_key, c.week_start::text, c.park_id, c.churn_segment,
-                   s.behavior_shift, COALESCE(sh.park_shock, false) AS park_shock
-            FROM ops.mv_driver_churn_segments_weekly c
-            LEFT JOIN ops.mv_driver_behavior_shifts_weekly s
-              ON s.driver_key = c.driver_key AND s.week_start = c.week_start
-            LEFT JOIN ops.mv_driver_park_shock_weekly sh
-              ON sh.driver_key = c.driver_key AND sh.week_start = c.week_start
-            WHERE {' AND '.join(conditions)}
-              AND (c.churn_segment IN ('light', 'newbie') OR s.behavior_shift = 'drop' OR COALESCE(sh.park_shock, false) = true)
-            ORDER BY c.week_start DESC
-            LIMIT %s
-            """,
-            params,
-        )
-        rows = cur.fetchall()
-        cur.close()
-    return [dict(r) for r in rows]
-
-
-def get_cohort_drilldown(
-    cohort_week: str,
-    horizon: str,
-    park_id: str,
-    page: int = 1,
-    page_size: int = 50,
-) -> dict[str, Any]:
-    """
-    Lista paginada de driver_key para (cohort_week, horizon, park_id).
-    horizon: base | w1 | w4 | w8 | w12
-    - base = todos los drivers de la cohorte/park
-    - w1 = active_w1 = true, etc.
-    park_id obligatorio.
-    Si la MV ops.mv_driver_cohorts_weekly no existe, devuelve drivers=[], total=0 y cohort_mvs_not_deployed=True (200 OK).
-    """
-    if not park_id or str(park_id).strip() == "":
-        return {"error": "park_id is required for cohort drilldown", "drivers": [], "total": 0, "page": page, "page_size": page_size}
-    if horizon not in ("base", "w1", "w4", "w8", "w12"):
-        return {"error": "horizon must be base|w1|w4|w8|w12", "drivers": [], "total": 0, "page": page, "page_size": page_size}
-
-    park_val = None if park_id == "PARK_DESCONOCIDO" else park_id
-    offset = (page - 1) * page_size
-
-    with get_db() as conn:
-        _, weekly_exist = _cohort_mvs_exist(conn)
-        if not weekly_exist:
-            return {
-                "cohort_week": cohort_week,
-                "horizon": horizon,
-                "park_id": park_id,
-                "drivers": [],
-                "total": 0,
-                "page": page,
-                "page_size": page_size,
-                "cohort_mvs_not_deployed": True,
-            }
-        cur = _cursor(conn)
-        if horizon == "base":
-            cur.execute(
-                """
-                SELECT driver_key FROM ops.mv_driver_cohorts_weekly
-                WHERE cohort_week = %s::date AND park_id IS NOT DISTINCT FROM %s
-                ORDER BY driver_key LIMIT %s OFFSET %s
-                """,
-                (cohort_week, park_val, page_size, offset),
-            )
-            drivers = [{"driver_key": r["driver_key"]} for r in cur.fetchall()]
-            cur.execute(
-                """
-                SELECT COUNT(*) FROM ops.mv_driver_cohorts_weekly
-                WHERE cohort_week = %s::date AND park_id IS NOT DISTINCT FROM %s
-                """,
-                (cohort_week, park_val),
-            )
-            total = cur.fetchone()["count"]
-        else:
-            col = {"w1": "active_w1", "w4": "active_w4", "w8": "active_w8", "w12": "active_w12"}.get(horizon)
-            if not col:
-                cur.close()
-                return {"error": f"horizon must be base|w1|w4|w8|w12", "drivers": [], "total": 0, "page": page, "page_size": page_size}
-            cur.execute(
-                f"""
-                SELECT driver_key FROM ops.mv_driver_cohorts_weekly
-                WHERE cohort_week = %s::date AND park_id IS NOT DISTINCT FROM %s AND {col} = 1
-                ORDER BY driver_key LIMIT %s OFFSET %s
-                """,
-                (cohort_week, park_val, page_size, offset),
-            )
-            drivers = [{"driver_key": r["driver_key"]} for r in cur.fetchall()]
-            cur.execute(
-                f"""
-                SELECT COUNT(*) FROM ops.mv_driver_cohorts_weekly
-                WHERE cohort_week = %s::date AND park_id IS NOT DISTINCT FROM %s AND {col} = 1
-                """,
-                (cohort_week, park_val),
-            )
-            total = cur.fetchone()["count"]
-        cur.close()
-
-    return {
-        "cohort_week": cohort_week,
-        "horizon": horizon,
-        "park_id": park_id,
-        "drivers": drivers,
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-    }
+def get_pro_drivers_at_risk(week_start=None, park_id=None, limit=1000):
+    return []

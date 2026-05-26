@@ -127,6 +127,9 @@ def run_control_loop_upload(
                 "metric": metric,
                 "value_numeric": val,
                 "source_sheet": row.get("source_sheet"),
+                "jefe_producto": row.get("jefe_producto"),
+                "producto": row.get("producto"),
+                "estado": row.get("estado"),
             }
         )
 
@@ -148,6 +151,18 @@ def run_control_loop_upload(
     except Exception as e:
         logger.warning("No se pudo guardar metadata de versión: %s", e)
 
+    # ── Fase 0.1: Sync ownership desde staging → governance ──────────
+    ownership_sync: Optional[Dict[str, Any]] = None
+    try:
+        from app.adapters.projection_ownership_repo import sync_ownership_from_staging
+        ownership_sync = sync_ownership_from_staging(pv)
+        logger.info(
+            "ownership_sync: plan_version=%s synced=%s conflicts=%s",
+            pv, ownership_sync.get("synced"), ownership_sync.get("conflicts"),
+        )
+    except Exception as e:
+        logger.warning("ownership_sync: falló de forma controlada — %s", e)
+
     return {
         "success": True,
         "plan_version": pv,
@@ -159,5 +174,6 @@ def run_control_loop_upload(
         "unmapped_lob_lines_sample": unmapped_samples,
         "months_detected": months,
         "reject_rows_logged": rej_count,
+        "ownership_sync": ownership_sync,
         "message": "Carga Control Loop procesada (staging).",
     }

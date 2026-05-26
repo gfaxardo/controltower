@@ -49,6 +49,10 @@ def insert_valid_metric_rows(
 ) -> Tuple[int, int]:
     """
     Inserta filas válidas con ON CONFLICT DO NOTHING.
+
+    Fase 0.0: persiste columnas ownership (jefe_producto, producto, estado)
+    si están presentes en los rows.
+
     Retorna (filas_insertadas, duplicados_omitidos).
     """
     if not rows:
@@ -61,8 +65,9 @@ def insert_valid_metric_rows(
                 """
                 INSERT INTO staging.control_loop_plan_metric_long (
                     upload_batch_id, plan_version, period, country, city,
-                    linea_negocio_excel, linea_negocio_canonica, metric, value_numeric, source_sheet
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    linea_negocio_excel, linea_negocio_canonica, metric, value_numeric, source_sheet,
+                    jefe_producto, producto, estado
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (plan_version, period, country, city, linea_negocio_canonica, metric)
                 DO NOTHING
                 """,
@@ -77,6 +82,9 @@ def insert_valid_metric_rows(
                     r["metric"],
                     r["value_numeric"],
                     r.get("source_sheet"),
+                    r.get("jefe_producto"),
+                    r.get("producto"),
+                    r.get("estado"),
                 ),
             )
             if cur.rowcount > 0:

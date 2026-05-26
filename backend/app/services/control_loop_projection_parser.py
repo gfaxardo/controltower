@@ -1,5 +1,10 @@
 """
 Parser aditivo: plantilla agregada wide (hojas TRIPS / REVENUE / DRIVERS o CSV equivalente) → long.
+
+Fase 0.0 — Ownership Compatibility:
+  - Acepta columnas extra: Jefe Producto, Producto, estado
+  - Las persiste como metadata raw en cada fila long
+  - metric auto-detectable desde nombre de archivo si no viene en el CSV
 """
 from __future__ import annotations
 
@@ -32,9 +37,39 @@ ID_COL_CANDIDATES = (
     "lob",
 )
 
+_OWNERSHIP_COLS_RAW = ("Jefe Producto", "Producto", "estado")
+_OWNERSHIP_MAP = {
+    "Jefe Producto": "jefe_producto",
+    "Producto": "producto",
+    "estado": "estado",
+}
+
 
 def _norm_col(c: str) -> str:
     return str(c).strip().lower().replace("_", " ")
+
+
+def _extract_ownership_metadata(row, df_columns: List[str]) -> Dict[str, Optional[str]]:
+    meta: Dict[str, Optional[str]] = {}
+    for raw_col, target_key in _OWNERSHIP_MAP.items():
+        if raw_col in df_columns:
+            val = row.get(raw_col)
+            if pd.notna(val):
+                s = str(val).strip()
+                if s and s.lower() != "nan":
+                    meta[target_key] = s
+    return meta
+
+
+def _infer_metric_from_filename(filename: str) -> Optional[str]:
+    fn_upper = (filename or "").upper()
+    if "DRIVER" in fn_upper:
+        return "active_drivers"
+    if "TRIP" in fn_upper:
+        return "trips"
+    if "REVENUE" in fn_upper:
+        return "revenue"
+    return None
 
 
 def _find_id_columns(columns: List[str]) -> Tuple[str, str, str]:
@@ -108,42 +143,79 @@ def parse_control_loop_excel(content: bytes, filename: str) -> Tuple[List[Dict[s
 
 
 def parse_control_loop_csv(content: bytes, filename: str) -> Tuple[List[Dict[str, Any]], List[str]]:
-    """CSV con columnas country, city, linea_negocio, metric + columnas YYYY-MM."""
+    """
+    CSV con columnas country, city, linea_negocio, metric + columnas YYYY-MM.
+
+    Fase 0.0: metric es opcional si se puede inferir del nombre del archivo
+    (ej. archivo "DRIVERS.csv" → active_drivers).
+    Columnas extra (Jefe Producto, Producto, estado) se pasan como metadata.
+    """
     df = pd.read_csv(io.BytesIO(content))
     cols = [str(c) for c in df.columns]
     by_norm = {_norm_col(c): c for c in df.columns}
-    if "metric" not in by_norm:
-        raise ValueError("CSV debe incluir columna 'metric' (trips|revenue|active_drivers).")
-    metric_col = by_norm["metric"]
+
+    has_metric_col = "metric" in by_norm
+
+    if has_metric_col:
+        metric_col = by_norm["metric"]
+    else:
+        inferred = _infer_metric_from_filename(filename)
+        if inferred:
+            logger.info(
+                "parse_control_loop_csv: columna 'metric' no encontrada, "
+                "inferida de nombre de archivo '%s' → %s", filename, inferred
+            )
+            metric_col = None
+        else:
+            raise ValueError(
+                "CSV debe incluir columna 'metric' (trips|revenue|active_drivers). "
+                "Si el archivo tiene nombre descriptivo (ej. 'DRIVERS.csv'), se intenta inferir. "
+                f"Columnas encontradas: {list(cols)}"
+            )
+
     out: List[Dict[str, Any]] = []
     months = _month_columns(cols)
     if not months:
         raise ValueError("No se detectaron columnas de mes YYYY-MM en el CSV.")
     country_k, city_k, lob_k = _find_id_columns(cols)
+
+    implicit_metric: Optional[str] = None
+    if not has_metric_col:
+        implicit_metric = _infer_metric_from_filename(filename)
+
     for idx, row in df.iterrows():
-        mraw = str(row[metric_col]).strip().lower()
-        if mraw in ("trips", "trip"):
-            metric = "trips"
-        elif mraw in ("revenue", "ingresos"):
-            metric = "revenue"
-        elif mraw in ("active_drivers", "drivers", "driver"):
-            metric = "active_drivers"
+        if has_metric_col:
+            mraw = str(row[metric_col]).strip().lower()
+            if mraw in ("trips", "trip"):
+                metric = "trips"
+            elif mraw in ("revenue", "ingresos"):
+                metric = "revenue"
+            elif mraw in ("active_drivers", "drivers", "driver"):
+                metric = "active_drivers"
+            else:
+                logger.warning("Fila %s: metric '%s' omitida", idx + 1, mraw)
+                continue
+        elif implicit_metric:
+            metric = implicit_metric
         else:
-            logger.warning("Fila %s: metric '%s' omitida", idx + 1, mraw)
             continue
+
+        ownership = _extract_ownership_metadata(row, cols)
+
         for mo in months:
             val = row.get(mo)
-            out.append(
-                {
-                    "country": row[country_k],
-                    "city": row[city_k],
-                    "linea_negocio": row[lob_k],
-                    "metric": metric,
-                    "period": mo,
-                    "raw_value": val,
-                    "source_sheet": "CSV",
-                }
-            )
+            row_dict: Dict[str, Any] = {
+                "country": row[country_k],
+                "city": row[city_k],
+                "linea_negocio": row[lob_k],
+                "metric": metric,
+                "period": mo,
+                "raw_value": val,
+                "source_sheet": "CSV",
+            }
+            if ownership:
+                row_dict.update(ownership)
+            out.append(row_dict)
     return out, months
 
 
@@ -165,20 +237,22 @@ def _dataframe_to_long(df: pd.DataFrame, metric: str) -> Tuple[List[Dict[str, An
     country_k, city_k, lob_k = _find_id_columns(cols)
     rows: List[Dict[str, Any]] = []
     for idx, row in df.iterrows():
+        ownership = _extract_ownership_metadata(row, cols)
         for mo in months:
             if mo not in df.columns:
                 continue
-            rows.append(
-                {
-                    "country": row[country_k],
-                    "city": row[city_k],
-                    "linea_negocio": row[lob_k],
-                    "metric": metric,
-                    "period": mo,
-                    "raw_value": row[mo],
-                    "source_sheet": metric,
-                }
-            )
+            row_dict: Dict[str, Any] = {
+                "country": row[country_k],
+                "city": row[city_k],
+                "linea_negocio": row[lob_k],
+                "metric": metric,
+                "period": mo,
+                "raw_value": row[mo],
+                "source_sheet": metric,
+            }
+            if ownership:
+                row_dict.update(ownership)
+            rows.append(row_dict)
     return rows, months
 
 

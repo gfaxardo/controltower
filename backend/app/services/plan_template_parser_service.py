@@ -11,6 +11,10 @@ Salida: lista de dicts compatible con ops.plan_trips_monthly.
 
 CT-MATCH-3: lob_base persiste el texto de linea_negocio del Excel (solo limpieza
 de espacios); no se aplica taxonomía legacy en la ingesta de esta plantilla.
+
+Fase 0.0 — Ownership Compatibility:
+  Columnas extra en las hojas (Jefe Producto, Producto, estado) se extraen
+  de la hoja TRIPS y se pasan como metadata en cada fila.
 """
 
 import io
@@ -31,6 +35,13 @@ logger = logging.getLogger(__name__)
 REQUIRED_SHEETS = {"TRIPS", "REVENUE", "DRIVERS"}
 DIM_COLS = ["country", "city", "linea_negocio"]
 MONTH_COL_RE = re.compile(r"^\d{4}-\d{2}$")
+
+_OWNERSHIP_COLS_RAW = ("Jefe Producto", "Producto", "estado")
+_OWNERSHIP_MAP = {
+    "Jefe Producto": "jefe_producto",
+    "Producto": "producto",
+    "estado": "estado",
+}
 
 # LEGACY — mapeo semántico conservado por si otro flujo lo reutiliza.
 # La plantilla Control Tower (parse_control_tower_template) ya NO usa estos mapas
@@ -162,6 +173,13 @@ def parse_control_tower_template(
     except KeyError as exc:
         raise ValueError(f"Hoja requerida no encontrada: {exc}") from exc
 
+    # ── Fase 0.0: Extraer columnas ownership de TRIPS antes de melt ──────
+    ownership_ref: Optional[pd.DataFrame] = None
+    ownership_cols_present = [c for c in df_trips.columns if c in _OWNERSHIP_COLS_RAW]
+    if ownership_cols_present:
+        ownership_ref = df_trips[DIM_COLS + ownership_cols_present].drop_duplicates()
+        logger.info("Columnas ownership detectadas en TRIPS: %s", ownership_cols_present)
+
     # ── Detectar columnas de mes ──────────────────────────────────────────
 
     def get_month_cols(df: pd.DataFrame) -> List[str]:
@@ -204,6 +222,11 @@ def parse_control_tower_template(
         .merge(df_r, on=merge_keys, how="left")
         .merge(df_d, on=merge_keys, how="left")
     )
+
+    # ── Fase 0.0: Join ownership metadata desde TRIPS ───────────────────
+    if ownership_ref is not None:
+        df = df.merge(ownership_ref, on=DIM_COLS, how="left")
+        logger.info("Ownership metadata joined: %d rows", len(df))
 
     # ── Warnings: combos sin revenue o drivers ────────────────────────────
 
@@ -276,6 +299,10 @@ def parse_control_tower_template(
             "active_drivers_plan":  safe_int(row.get("active_drivers_plan")),
             "revenue_plan":         safe_float(row.get("revenue_plan")),
             "avg_ticket_plan":      safe_float(row.get("avg_ticket_plan")),
+            # Fase 0.0 — Ownership metadata (nullable)
+            "jefe_producto":        safe_str(row.get("Jefe Producto")),
+            "producto":             safe_str(row.get("Producto")),
+            "estado":               safe_str(row.get("estado")),
         })
 
     logger.info(
