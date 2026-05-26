@@ -3,37 +3,20 @@
  *
  * CANONICAL display model for Omniview Vs Proyección cells.
  *
- * REGLA ABSOLUTA:
- *   Momentum (DoD/WoW/MoM) = lectura dominante.
- *   Plan vs Real = contexto secundario.
+ * REGLA ABSOLUTA (v2.0 — Delta Comparable Isolation):
+ *   L1: VALOR REAL — ejecución, extrabold, grande
+ *   L2: DELTA COMPARABLE — DoD/WoW/MoM, coloreado, arrow + pct + label
+ *       NUNCA attainment. NUNCA gap. NUNCA YTD.
+ *   L3: CONTEXTO SECUNDARIO — attainment o plan, ultra-small, muted
+ *   L4: STATUS — Pendiente / Sin ejecución
  *
- * Jerarquía visual aprobada:
- *   L1: VALOR REAL (extrabold, grande)
- *   L2: DELTA MOMENTUM (▼/▲ + %, coloreado por severity)
- *   L3: vs [comparable] (pequeño, contextual)
- *   L4: Plan / parcial / avance (ultra-small)
- *   L5: Future / Pending (cuando no hay real)
+ * La delta comparable se resuelve EXCLUSIVAMENTE vía comparableDeltaDisplay.js.
+ * Si no hay periodPop del backend, L2 muestra "—", no attainment.
  */
-import { getMomentumSeverityColor, getMomentumSeverityBg } from './operationalMomentumEmphasis.js'
+import { getMomentumSeverityBg } from './operationalMomentumEmphasis.js'
 import { fmtValue, MATRIX_KPIS } from '../components/omniview/omniviewMatrixUtils.js'
 import { fmtAttainment } from '../components/omniview/projectionMatrixUtils.js'
-
-function deriveMomentumLabel(grain) {
-  if (grain === 'daily') return 'DoD'
-  if (grain === 'weekly') return 'WoW'
-  if (grain === 'monthly') return 'MoM'
-  return null
-}
-
-/**
- * Temporal comparable label for context line.
- */
-function comparableContextLabel(grain) {
-  if (grain === 'daily') return 'vs domingo comparable'
-  if (grain === 'weekly') return 'vs semana anterior'
-  if (grain === 'monthly') return 'vs mes anterior'
-  return null
-}
+import { buildComparableDelta } from './comparableDeltaDisplay.js'
 
 export function buildProjectionCellDisplay(delta, grain, kpiKey) {
   const actual    = delta?.value
@@ -47,88 +30,77 @@ export function buildProjectionCellDisplay(delta, grain, kpiKey) {
   const hasNegActual = actual != null && Number(actual) < 0
   const isFuture = weekState === 'future' && !hasReal
 
-  // ── MOMENTUM DETECTION ──
-  // periodPop is { abs, pct, basis, cur_real, prev_real } from backend
-  // Extract pct (percentage change) for display
-  const popObj   = delta?.periodPop
-  const popValue = (popObj && typeof popObj === 'object') ? Number(popObj.pct) : NaN
-  const popAbs   = (popObj && typeof popObj === 'object') ? Number(popObj.abs) : NaN
-  const hasMomentumData = Number.isFinite(popValue)
+  // ── COMPARABLE DELTA — resuelto por el engine canónico ──
+  const comparableDelta = buildComparableDelta(delta, grain)
+  const hasComparable = comparableDelta.hasComparable
 
-  let primaryDeltaPct    = null
-  let primaryDeltaLabel  = null
-  let primaryDirection   = 'neutral'
-  let isMomentum   = false
-  let isPlanFallback = false
+  // ── SEVERITY BG — solo si hay momentum ──
+  const severityBg = hasComparable
+    ? getMomentumSeverityBg(comparableDelta.pct)
+    : ''
 
-  if (hasMomentumData) {
-    const pct = Number(popValue)
-    primaryDeltaPct   = pct
-    primaryDirection  = pct > 0 ? 'up' : pct < 0 ? 'down' : 'neutral'
-    primaryDeltaLabel = delta?.periodPopLabel || deriveMomentumLabel(grain) || null
-    isMomentum = true
-  } else if (isProjection && hasPlan) {
-    isPlanFallback = true
-  }
-
-  // ── SEVERITY ──
-  const severity = isMomentum
-    ? getMomentumSeverityColor(primaryDeltaPct)
-    : { color: '#9ca3af', level: 0 }
-  const severityBg = isMomentum ? getMomentumSeverityBg(primaryDeltaPct) : ''
-
-  // ── FORMATTED VALUES ──
+  // ── L1: REAL VALUE ──
   const realStr = hasReal ? fmtValue(actual, kpiKey)
     : hasNegActual ? fmtValue(actual, kpiKey)
     : (actual === 0 ? '0' : '—')
 
-  const deltaArrow = primaryDirection === 'up' ? '▲' : primaryDirection === 'down' ? '▼' : ''
-  const deltaPctStr = hasMomentumData && Number.isFinite(primaryDeltaPct)
-    ? `${primaryDeltaPct > 0 ? '+' : ''}${Number(primaryDeltaPct).toFixed(0)}%`
-    : null
-
-  // ── ATTAINMENT ──
+  // ── L3: ATTAINMENT (contexto secundario, NUNCA en L2) ──
   const attainmentStr = hasPlan && isProjection
     ? fmtAttainment(hasReal && !hasNegActual ? att : 0)
     : null
 
-  // ── COMPARABLE LABEL ──
-  const comparableLabel = isMomentum ? comparableContextLabel(grain) : null
-
-  // ── PLAN VALUE (context) ──
+  // ── L3: PLAN VALUE (contexto secundario) ──
   const planStr = hasPlan ? fmtValue(projected, kpiKey) : null
 
-  // ── STATUS ──
+  // ── L3: CONTEXT STRING — attainment o plan, según el caso ──
+  let contextStr = null
+  if (hasComparable && attainmentStr) {
+    // Hay momentum → attainment es contexto terciario
+    contextStr = attainmentStr
+  } else if (!hasComparable && hasPlan && attainmentStr) {
+    // Sin momentum → mostrar attainment como contexto (NO como delta)
+    contextStr = attainmentStr
+  } else if (!hasComparable && hasPlan && planStr) {
+    // Sin momentum ni attainment → mostrar plan
+    contextStr = planStr
+  }
+
+  // ── L4: STATUS ──
   const statusText = isFuture
     ? 'Pendiente'
     : (isProjection && !hasReal ? (weekState || 'Sin ejecución') : null)
 
-  const deltaBold = Math.abs(primaryDeltaPct || 0) > 15 ? 'font-extrabold'
-    : Math.abs(primaryDeltaPct || 0) > 5 ? 'font-bold' : 'font-semibold'
-
   return {
+    // L1
     realStr,
-    deltaArrow,
-    deltaPctStr,
-    deltaLabel: primaryDeltaLabel,
-    deltaColor: severity.color,
-    deltaBold,
-
-    comparableLabel,          // "vs domingo comparable"
-    attainmentStr,            // "47.3%"
-    planStr,                  // "59.6K"
-    statusText,               // "Pendiente" | "Sin ejecución" | null
-
     hasReal,
-    hasPlan,
     hasNegActual,
-    isMomentum,
-    isPlanFallback,
+
+    // L2 — comparable delta (canónico, aislado)
+    comparableDelta,
+    hasComparable,
+
+    // L3 — contexto secundario
+    contextStr,
+    attainmentStr,
+    planStr,
+    hasPlan,
+
+    // L4 — status
+    statusText,
+
+    // Estados
     isFuture,
-    hasMomentumData,
-    severity,
-    severityBg,
     weekState,
+    severityBg,
+
+    // Retenido para compatibilidad con cell renderer existente
+    isMomentum: hasComparable,
+    isPlanFallback: !hasComparable && hasPlan && isProjection,
+    hasMomentumData: hasComparable,
+    severity: hasComparable
+      ? { color: comparableDelta.severityColor, level: 0 }
+      : { color: '#9ca3af', level: 0 },
   }
 }
 

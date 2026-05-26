@@ -11,12 +11,16 @@
  */
 
 export const MATURITY = {
+  ACTIVE: 'active',
   STABLE: 'stable',
   HARDENING: 'hardening',
+  READY_NEXT: 'ready_next',
   IN_CONSTRUCTION: 'in_construction',
   EXPERIMENTAL: 'experimental',
+  FUTURE: 'future',
   LEGACY: 'legacy',
   DEPRECATED: 'deprecated',
+  BLOCKED: 'blocked',
 }
 
 export const ENGINE_OWNER = {
@@ -29,6 +33,19 @@ export const ENGINE_OWNER = {
   ACTION: 'Action Engine',
   AI_COPILOT: 'AI Copilot',
   LEARNING: 'Learning Engine',
+  OPERATIONAL_WORKFLOW: 'Operational Workflow',
+  DECISION_SUGGESTION: 'Decision / Suggestion',
+}
+
+export const DRIVER_PHASE = {
+  D1: 'D1 — Supply Foundation',
+  D2: 'D2 — Supply Hardening',
+  D3: 'D3 — Lifecycle Intelligence',
+  D4: 'D4 — Actionable Lists',
+  D5: 'D5 — Lifecycle Hardening',
+  D6: 'D6 — Diagnostic Readiness',
+  D7: 'D7 — Recoverability Readiness',
+  FUTURE: 'FUTURE — Backlog',
 }
 
 export const NAVIGATION_GROUP = {
@@ -106,77 +123,127 @@ export const OPERATIONAL_MATURITY_REGISTRY = {
   },
 
   // ═══════════════════════════════════════════════════════════════════
-  // DRIVERS
+  // DRIVERS — Driver Operating System progresivo
+  // ═══════════════════════════════════════════════════════════════════
+  // Regla: visible ≠ productionReady. Todas las tabs visibles para mostrar el roadmap.
+  // Solo Control Foundation tabs son productionReady en fase activa 1H.4.
+  // Diagnostic / Reachability / Future son visibles pero gobernadas visualmente.
   // ═══════════════════════════════════════════════════════════════════
   drivers_supply: {
-    maturity: MATURITY.STABLE,
-    phase: '1H',
+    maturity: MATURITY.HARDENING,
+    phase: 'D1/D2',
     engine: ENGINE_OWNER.CONTROL_FOUNDATION,
     visible: true,
     navigationGroup: NAVIGATION_GROUP.DRIVERS,
     legacy: false,
     experimental: false,
-    description: 'Dinámicas de supply, segmentación y migración de conductores.',
+    description: 'Supply Overview — dinámicas de supply, segmentación y migración de conductores.',
     endpoints: ['/ops/supply/geo', '/ops/supply/series', '/ops/supply/summary'],
+    statusLabel: 'Hardening',
+    statusTone: 'amber',
+    governanceReason: 'Control Foundation. Data real estable. Pendiente integración de actionable lists y serving facts unificados.',
+    dependencies: ['serving.driver_identity_fact', 'serving.driver_activity_weekly_fact'],
+    allowedInCurrentPhase: true,
   },
   drivers_lifecycle: {
-    maturity: MATURITY.HARDENING,
-    phase: '1H',
+    maturity: MATURITY.IN_CONSTRUCTION,
+    phase: 'D3',
     engine: ENGINE_OWNER.CONTROL_FOUNDATION,
     visible: true,
     navigationGroup: NAVIGATION_GROUP.DRIVERS,
     legacy: false,
     experimental: false,
-    description: 'Ciclo de vida de conductores, cohorts, métricas base.',
+    description: 'Ciclo de vida de conductores, cohorts, métricas base, retención.',
     endpoints: ['/ops/driver-lifecycle/weekly', '/ops/driver-lifecycle/monthly'],
+    statusLabel: 'Under Construction',
+    statusTone: 'purple',
+    governanceReason: 'Control Foundation. KPIs de ciclo de vida funcionales. Drilldown sin enriquecimiento de identidad (sin phone, sin nombre en algunas queries). Pendiente fusión con risk list de Diagnóstico.',
+    dependencies: ['serving.driver_lifecycle_fact', 'public.drivers_data.phone'],
+    allowedInCurrentPhase: true,
+  },
+  drivers_action_queues: {
+    maturity: MATURITY.HARDENING,
+    phase: 'D4',
+    engine: ENGINE_OWNER.CONTROL_FOUNDATION,
+    visible: true,
+    navigationGroup: NAVIGATION_GROUP.DRIVERS,
+    legacy: false,
+    experimental: false,
+    description: 'Action Queues — colas operacionales accionables con prioridad y evidencia.',
+    endpoints: ['/drivers/actionable-list', '/drivers/actionable-summary'],
+    statusLabel: 'Hardening',
+    statusTone: 'amber',
+    governanceReason: 'Control Foundation (D4). 5 queues operacionales con priority engine determinístico. Pendiente: workflow de asignación y gestión.',
+    dependencies: ['driver_identity_service', 'driver_activity_service', 'driver_lifecycle_service'],
+    allowedInCurrentPhase: true,
   },
   drivers_diagnostic: {
     maturity: MATURITY.IN_CONSTRUCTION,
-    phase: '2A.1',
+    phase: 'D3/D6',
     engine: ENGINE_OWNER.DIAGNOSTIC,
     visible: true,
     navigationGroup: NAVIGATION_GROUP.DRIVERS,
     legacy: false,
     experimental: false,
-    description: 'Diagnóstico determinista de ciclo de vida, riesgo y leakage.',
+    description: 'Diagnóstico determinista de ciclo de vida, funnel y risk list.',
     endpoints: ['/driver-lifecycle/summary', '/driver-lifecycle/funnel'],
+    statusLabel: 'Under Construction',
+    statusTone: 'purple',
+    governanceReason: 'Diagnostic Engine (Fase 2A.1). Risk list funcional pero sin phone/contacto. Motor Diagnostic no está ACTIVO (READY NEXT). Visible como preview. Se fusionará con Lifecycle en fase D5.',
+    dependencies: ['serving.driver_lifecycle_fact', 'driver_identity_resolver (phone)'],
+    allowedInCurrentPhase: false,
   },
   drivers_behavior_benchmarking: {
-    maturity: MATURITY.IN_CONSTRUCTION,
-    phase: '2A.2',
+    maturity: MATURITY.READY_NEXT,
+    phase: 'D6',
     engine: ENGINE_OWNER.DIAGNOSTIC,
     visible: true,
     navigationGroup: NAVIGATION_GROUP.DRIVERS,
     legacy: false,
     experimental: false,
-    description: 'Benchmarking comparativo de patrones operativos entre grupos.',
+    description: 'Behavior Benchmarking — comparación TOP vs DECLINING vs AT_RISK entre grupos.',
     endpoints: ['/driver-behavior/summary', '/driver-behavior/group-benchmarks'],
+    statusLabel: 'Diagnostic Engine · Ready Next',
+    statusTone: 'blue',
+    governanceReason: 'Diagnostic Engine (Fase 2A.2). Benchmarks agregados funcionales. Sin serving fact dedicado, fallback a trips_2026. Motor Diagnostic no está ACTIVO (READY NEXT).',
+    dependencies: ['driver_daily_activity_fact (estabilizar)', 'Diagnostic Engine activation'],
+    allowedInCurrentPhase: false,
   },
   drivers_behavioral_alerts: {
-    maturity: MATURITY.IN_CONSTRUCTION,
-    phase: '2A',
+    maturity: MATURITY.READY_NEXT,
+    phase: 'D6',
     engine: ENGINE_OWNER.DIAGNOSTIC,
     visible: true,
     navigationGroup: NAVIGATION_GROUP.DRIVERS,
     legacy: false,
     experimental: false,
-    description: 'Alertas de desviación conductual vs baseline.',
+    description: 'Alertas de desviación conductual vs baseline semanal.',
     endpoints: ['/ops/behavior-alerts/summary', '/ops/behavior-alerts/drivers'],
+    statusLabel: 'Ready Next',
+    statusTone: 'blue',
+    governanceReason: 'Diagnostic Engine (Fase 2A). Alertas de conducta con severity/risk funcionales. Depende de vista semanal. Motor Diagnostic no está ACTIVO.',
+    dependencies: ['v_driver_behavior_alerts_weekly', 'Diagnostic Engine activation'],
+    allowedInCurrentPhase: false,
   },
   drivers_fleet_leakage: {
     maturity: MATURITY.IN_CONSTRUCTION,
-    phase: '2A',
+    phase: 'D6/D7',
     engine: ENGINE_OWNER.DIAGNOSTIC,
     visible: true,
     navigationGroup: NAVIGATION_GROUP.DRIVERS,
     legacy: false,
     experimental: false,
-    description: 'Monitoreo de fuga de flota y pérdida de conductores.',
+    description: 'Fuga de flota — monitoreo de pérdida de conductores.',
     endpoints: ['/ops/leakage/summary', '/ops/leakage/drivers'],
+    statusLabel: 'Under Construction',
+    statusTone: 'purple',
+    governanceReason: 'Diagnostic Engine. Fleet leakage snapshot funcional pero marcado "under_review" por el propio sistema. Requiere validación de estabilidad runtime antes de subir a READY NEXT.',
+    dependencies: ['v_fleet_leakage_snapshot (validar)', 'Diagnostic Engine activation'],
+    allowedInCurrentPhase: false,
   },
   drivers_behavioral_patterns: {
-    maturity: MATURITY.IN_CONSTRUCTION,
-    phase: '2A.3',
+    maturity: MATURITY.READY_NEXT,
+    phase: 'D6',
     engine: ENGINE_OWNER.DIAGNOSTIC,
     visible: true,
     navigationGroup: NAVIGATION_GROUP.DRIVERS,
@@ -184,28 +251,43 @@ export const OPERATIONAL_MATURITY_REGISTRY = {
     experimental: false,
     description: 'Diagnóstico determinístico de patrones operativos diferenciales.',
     endpoints: ['/behavioral-patterns/summary', '/behavioral-patterns/patterns'],
+    statusLabel: 'Ready Next',
+    statusTone: 'blue',
+    governanceReason: 'Diagnostic Engine (Fase 2A.3). Pattern detection funcional pero sin serving fact estable. Motor Diagnostic no está ACTIVO. READY NEXT — bloqueado hasta estabilizar Serving Governance Foundation.',
+    dependencies: ['driver_daily_activity_fact', 'Diagnostic Engine activation', 'Serving Governance Foundation'],
+    allowedInCurrentPhase: false,
   },
   drivers_operational_intelligence: {
-    maturity: MATURITY.IN_CONSTRUCTION,
-    phase: '2B',
-    engine: ENGINE_OWNER.DIAGNOSTIC,
+    maturity: MATURITY.FUTURE,
+    phase: 'FUTURE',
+    engine: ENGINE_OWNER.DECISION_SUGGESTION,
     visible: true,
     navigationGroup: NAVIGATION_GROUP.DRIVERS,
     legacy: false,
     experimental: false,
-    description: 'Inteligencia operacional profunda. NO recomendaciones automáticas.',
+    description: 'Inteligencia operacional profunda con 7 sub-tabs. NO recomendaciones automáticas.',
     endpoints: ['/operational-intelligence/summary', '/operational-intelligence/efficiency'],
+    statusLabel: 'Future',
+    statusTone: 'gray',
+    governanceReason: 'Decision / Suggestion (FUTURE). 7 sub-tabs con timeouts de 120s, raw api.get(), sin output accionable. Depende de estabilización de Control Foundation + Diagnostic Engine completos. Pertenece a motores no activos (BACKLOG).',
+    dependencies: ['Control Foundation completo', 'Diagnostic Engine activo', 'Suggestion Engine'],
+    allowedInCurrentPhase: false,
   },
   drivers_recoverability: {
-    maturity: MATURITY.IN_CONSTRUCTION,
-    phase: '2C.1',
-    engine: ENGINE_OWNER.DIAGNOSTIC,
+    maturity: MATURITY.BLOCKED,
+    phase: 'D7',
+    engine: ENGINE_OWNER.REACHABILITY,
     visible: true,
     navigationGroup: NAVIGATION_GROUP.DRIVERS,
     legacy: false,
     experimental: false,
-    description: 'Recoverability intelligence. Shadow mode. NO acciones automáticas.',
+    description: 'Recoverability Intelligence — scoring de recuperabilidad. Shadow mode.',
     endpoints: ['/recoverability/summary', '/recoverability/top-recoverable'],
+    statusLabel: 'Blocked by Driver Lifecycle',
+    statusTone: 'warning',
+    governanceReason: 'Reachability Engine (BACKLOG). Shadow mode activo — calcula scores sin automatizar acciones. Motor Reachability no está activo. Bloqueado hasta que Driver Lifecycle (Control Foundation D3-D5) y Diagnostic Engine estén estables.',
+    dependencies: ['Driver Lifecycle (D3-D5)', 'Diagnostic Engine', 'Reachability Engine activation', 'driver_identity_fact (phone)'],
+    allowedInCurrentPhase: false,
   },
 
   // ═══════════════════════════════════════════════════════════════════
@@ -441,25 +523,74 @@ export function isModuleVisible (moduleKey) {
 
 /**
  * Devuelve el maturity badge info para UI.
+ * Incluye nuevos niveles: ACTIVE, READY_NEXT, FUTURE, BLOCKED.
  */
 export function getMaturityBadgeInfo (moduleKey) {
   const entry = OPERATIONAL_MATURITY_REGISTRY[moduleKey]
   if (!entry) return null
 
   switch (entry.maturity) {
+    case MATURITY.ACTIVE:
+      return { label: 'Active', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' }
     case MATURITY.HARDENING:
       return { label: 'Hardening', color: 'bg-amber-100 text-amber-800 border-amber-200' }
+    case MATURITY.READY_NEXT:
+      return { label: 'Ready Next', color: 'bg-blue-100 text-blue-800 border-blue-200' }
     case MATURITY.IN_CONSTRUCTION:
-      return { label: `En construcción — ${entry.phase}`, color: 'bg-blue-100 text-blue-800 border-blue-200' }
+      return { label: 'En construcción', color: 'bg-purple-100 text-purple-800 border-purple-200' }
     case MATURITY.EXPERIMENTAL:
       return { label: 'Experimental', color: 'bg-purple-100 text-purple-800 border-purple-200' }
+    case MATURITY.FUTURE:
+      return { label: 'Future', color: 'bg-gray-100 text-gray-600 border-gray-200' }
     case MATURITY.LEGACY:
       return { label: 'Legacy', color: 'bg-gray-100 text-gray-600 border-gray-200' }
     case MATURITY.DEPRECATED:
       return { label: 'Deprecated', color: 'bg-red-100 text-red-800 border-red-200' }
+    case MATURITY.BLOCKED:
+      return { label: 'Blocked', color: 'bg-orange-100 text-orange-800 border-orange-200' }
     default:
       return null
   }
+}
+
+/**
+ * Devuelve metadata completa de capability governance para un módulo.
+ * Usado por DriverCapabilityBadge y DriverCapabilityBanner.
+ */
+export function getCapabilityMeta (moduleKey) {
+  const entry = OPERATIONAL_MATURITY_REGISTRY[moduleKey]
+  if (!entry) return null
+
+  return {
+    moduleKey,
+    maturity: entry.maturity,
+    phase: entry.phase,
+    engine: entry.engine,
+    visible: entry.visible,
+    legacy: entry.legacy || false,
+    experimental: entry.experimental || false,
+    productionReady: isProductionReady(moduleKey),
+    statusLabel: entry.statusLabel || entry.maturity,
+    statusTone: entry.statusTone || 'gray',
+    governanceReason: entry.governanceReason || entry.description || '',
+    dependencies: entry.dependencies || [],
+    allowedInCurrentPhase: entry.allowedInCurrentPhase !== undefined ? entry.allowedInCurrentPhase : (entry.engine === ENGINE_OWNER.CONTROL_FOUNDATION),
+    description: entry.description || '',
+    endpoints: entry.endpoints || [],
+  }
+}
+
+/**
+ * Determina si un módulo está productionReady.
+ * Control Foundation: STABLE, ACTIVE, o HARDENING.
+ * Otros motores: solo STABLE/ACTIVE (ninguno — motores no activos).
+ */
+export function isProductionReady (moduleKey) {
+  const meta = getCapabilityMeta(moduleKey)
+  if (!meta) return false
+  if (meta.maturity === MATURITY.STABLE || meta.maturity === MATURITY.ACTIVE) return true
+  if (meta.maturity === MATURITY.HARDENING && meta.engine === ENGINE_OWNER.CONTROL_FOUNDATION) return true
+  return false
 }
 
 /**

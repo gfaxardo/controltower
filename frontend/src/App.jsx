@@ -45,6 +45,27 @@ import BacklogPlaceholder from './components/BacklogPlaceholder'
 import OperationalOpportunitiesView from './components/operacion/OperationalOpportunitiesView'
 import YangoLoyaltyView from './components/yangoLoyalty/YangoLoyaltyView'
 import { MaturityStatusBar } from './components/operational/MaturityIndicators.jsx'
+import { isProductionReady } from './config/operationalMaturityRegistry.js'
+import DriverOperatingHub from './components/driver/DriverOperatingHub.jsx'
+import DriverActionableLists from './components/driver/DriverActionableLists.jsx'
+
+const DRIVER_CAPABILITY_GROUPS = [
+  {
+    id: 'foundation',
+    label: 'Foundation',
+    keys: ['drivers_supply', 'drivers_action_queues', 'drivers_lifecycle'],
+  },
+  {
+    id: 'readiness',
+    label: 'Diagnostic Readiness',
+    keys: ['drivers_diagnostic', 'drivers_behavior_benchmarking', 'drivers_behavioral_alerts', 'drivers_fleet_leakage', 'drivers_behavioral_patterns'],
+  },
+  {
+    id: 'future',
+    label: 'Future Intelligence',
+    keys: ['drivers_operational_intelligence', 'drivers_recoverability'],
+  },
+]
 
 const TAB_PERFORMANCE = 'Performance'
 const TAB_DRIVERS = 'Drivers'
@@ -81,6 +102,7 @@ const ROUTE_MAP = [
   { path: '/performance/yango-loyalty', tab: TAB_PERFORMANCE, sub: 'performance_yango_loyalty' },
   { path: '/drivers', tab: TAB_DRIVERS, sub: 'drivers_supply' },
   { path: '/drivers/supply', tab: TAB_DRIVERS, sub: 'drivers_supply' },
+  { path: '/drivers/action-queues', tab: TAB_DRIVERS, sub: 'drivers_action_queues' },
   { path: '/drivers/lifecycle', tab: TAB_DRIVERS, sub: 'drivers_lifecycle' },
   { path: '/drivers/diagnostic', tab: TAB_DRIVERS, sub: 'drivers_diagnostic' },
   { path: '/drivers/behavior-benchmarking', tab: TAB_DRIVERS, sub: 'drivers_behavior_benchmarking' },
@@ -112,6 +134,7 @@ const SUB_URL = {
   performance_real: '/performance/real',
   performance_yango_loyalty: '/performance/yango-loyalty',
   drivers_supply: '/drivers/supply',
+  drivers_action_queues: '/drivers/action-queues',
   drivers_lifecycle: '/drivers/lifecycle',
   drivers_diagnostic: '/drivers/diagnostic',
   drivers_behavior_benchmarking: '/drivers/behavior-benchmarking',
@@ -209,6 +232,7 @@ function ControlTowerApp () {
 
   const subPill = (id, label) => {
     const maturityInfo = getMaturityBadgeInfo(id)
+    const ready = isProductionReady(id)
     return (
       <button
         key={id}
@@ -221,12 +245,39 @@ function ControlTowerApp () {
         }`}
       >
         {label}
-        {maturityInfo && !(activeSub === id) && (
-          <span className={`inline-block w-1 h-1 rounded-full ${maturityInfo.label.includes('construcción') ? 'bg-blue-400' : maturityInfo.label === 'Hardening' ? 'bg-amber-400' : 'bg-gray-400'}`} />
+        {maturityInfo && (
+          <span className={`inline-flex items-center px-1.5 py-px rounded-full text-[10px] font-medium border ${maturityInfo.color} ${
+            activeSub === id ? 'opacity-80' : ''
+          }`}>
+            <span className={`w-1 h-1 rounded-full mr-1 ${
+              maturityInfo.label.includes('Hardening') ? 'bg-amber-500' :
+              maturityInfo.label.includes('Ready Next') ? 'bg-blue-500' :
+              maturityInfo.label.includes('construcción') || maturityInfo.label.includes('Construction') ? 'bg-purple-500' :
+              maturityInfo.label.includes('Future') ? 'bg-gray-400' :
+              maturityInfo.label.includes('Blocked') ? 'bg-orange-500' :
+              'bg-gray-400'
+            }`} />
+            {maturityInfo.label}
+          </span>
         )}
       </button>
     )
   }
+
+  const subPillSimple = (id, label) => (
+    <button
+      key={id}
+      type="button"
+      onClick={() => setSubTab(id)}
+      className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
+        activeSub === id
+          ? 'bg-ct-accent text-white shadow-sm'
+          : 'text-ct-text2 hover:text-ct-text hover:bg-ct-border'
+      }`}
+    >
+      {label}
+    </button>
+  )
 
   return (
     <div className="min-h-screen bg-ct-bg">
@@ -281,12 +332,32 @@ function ControlTowerApp () {
         {/* Sub-nav (solo si hay subtabs) */}
         {activeSubtabs.length > 1 && (
           <div className="bg-ct-surface border-b border-ct-border px-4 py-1.5 flex items-center gap-1.5 overflow-x-auto">
-            {activeSubtabs.map(({ id, label }) => subPill(id, label))}
+            {activeTab === TAB_DRIVERS ? (
+              <>
+                {DRIVER_CAPABILITY_GROUPS.map((group, gi) => (
+                  <span key={group.id} className='inline-flex items-center gap-1'>
+                    {gi > 0 && (
+                      <span className='text-[10px] text-gray-300 mx-1 select-none'>|</span>
+                    )}
+                    <span className='text-[10px] text-gray-400 font-medium select-none whitespace-nowrap'>
+                      {group.label}
+                    </span>
+                    {group.keys.map((key) => {
+                      const entry = activeSubtabs.find((s) => s.id === key)
+                      if (!entry) return null
+                      return subPillSimple(key, entry.label)
+                    })}
+                  </span>
+                ))}
+              </>
+            ) : (
+              activeSubtabs.map(({ id, label }) => subPill(id, label))
+            )}
           </div>
         )}
 
-        {/* ── Maturity status bar (FASE 1H.4) — visible para vistas no-STABLE ── */}
-        {activeSub && OPERATIONAL_MATURITY_REGISTRY[activeSub] && OPERATIONAL_MATURITY_REGISTRY[activeSub].maturity !== 'stable' && (
+        {/* ── Maturity status bar (FASE 1H.4) — visible para vistas no-STABLE/no-ACTIVE ── */}
+        {activeSub && OPERATIONAL_MATURITY_REGISTRY[activeSub] && OPERATIONAL_MATURITY_REGISTRY[activeSub].maturity !== 'stable' && OPERATIONAL_MATURITY_REGISTRY[activeSub].maturity !== 'active' && (
           <div className="bg-ct-bg/80 border-b border-ct-border px-4 py-1 flex items-center gap-2 flex-wrap">
             <MaturityStatusBar
               moduleKey={activeSub}
@@ -337,15 +408,18 @@ function ControlTowerApp () {
 
             {activeTab === TAB_DRIVERS && (
               <section aria-label="Drivers">
-                {driversSubTab === 'drivers_supply' && <SupplyView key={`supply-${refreshKey}`} />}
-                {driversSubTab === 'drivers_lifecycle' && <DriverLifecycleView key={`driver-lifecycle-${refreshKey}`} />}
-                {driversSubTab === 'drivers_diagnostic' && <DriverLifecycleDashboard key={`driver-diagnostic-${refreshKey}`} />}
-                {driversSubTab === 'drivers_behavior_benchmarking' && <DriverBehaviorBenchmarkingDashboard key={`driver-behavior-bench-${refreshKey}`} />}
-                {driversSubTab === 'drivers_behavioral_alerts' && <BehavioralAlertsView key={`behavioral-alerts-${refreshKey}`} />}
-                {driversSubTab === 'drivers_fleet_leakage' && <FleetLeakageView key={`fleet-leakage-${refreshKey}`} />}
-                {driversSubTab === 'drivers_behavioral_patterns' && <BehavioralPatternDiagnosisDashboard key={`behavioral-patterns-${refreshKey}`} />}
-                {driversSubTab === 'drivers_operational_intelligence' && <OperationalBehavioralIntelligenceDashboard key={`operational-intel-${refreshKey}`} />}
-                {driversSubTab === 'drivers_recoverability' && <RecoverabilityIntelligenceDashboard key={`recoverability-${refreshKey}`} />}
+                <DriverOperatingHub activeSub={driversSubTab} refreshKey={refreshKey}>
+                  {driversSubTab === 'drivers_supply' && <SupplyView key={`supply-${refreshKey}`} />}
+                  {driversSubTab === 'drivers_action_queues' && <DriverActionableLists key={`action-queues-${refreshKey}`} />}
+                  {driversSubTab === 'drivers_lifecycle' && <DriverLifecycleView key={`driver-lifecycle-${refreshKey}`} />}
+                  {driversSubTab === 'drivers_diagnostic' && <DriverLifecycleDashboard key={`driver-diagnostic-${refreshKey}`} />}
+                  {driversSubTab === 'drivers_behavior_benchmarking' && <DriverBehaviorBenchmarkingDashboard key={`driver-behavior-bench-${refreshKey}`} />}
+                  {driversSubTab === 'drivers_behavioral_alerts' && <BehavioralAlertsView key={`behavioral-alerts-${refreshKey}`} />}
+                  {driversSubTab === 'drivers_fleet_leakage' && <FleetLeakageView key={`fleet-leakage-${refreshKey}`} />}
+                  {driversSubTab === 'drivers_behavioral_patterns' && <BehavioralPatternDiagnosisDashboard key={`behavioral-patterns-${refreshKey}`} />}
+                  {driversSubTab === 'drivers_operational_intelligence' && <OperationalBehavioralIntelligenceDashboard key={`operational-intel-${refreshKey}`} />}
+                  {driversSubTab === 'drivers_recoverability' && <RecoverabilityIntelligenceDashboard key={`recoverability-${refreshKey}`} />}
+                </DriverOperatingHub>
               </section>
             )}
 

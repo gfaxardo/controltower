@@ -18,7 +18,7 @@ const STATE_BADGE_STYLES = {
 const CURRENT_PERIOD_BG = 'bg-blue-950/90'
 const CURRENT_PERIOD_GLOW = 'ring-1 ring-inset ring-blue-400/60 shadow-[inset_0_0_16px_rgba(59,130,246,0.25)]'
 
-export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, compact, periodStates, matrixTrust = null, focusedKpi, periodMeta = null, periodDayLabels = null, isProjection = false }) {
+export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, compact, periodStates, matrixTrust = null, focusedKpi, periodMeta = null, periodDayLabels = null, isProjection = false, currentPeriodKey = null }) {
   const py1 = compact ? 'py-1' : 'py-2'
   const py2 = compact ? 'py-0.5' : 'py-1.5'
   const fontSize1 = compact ? 'text-[10px]' : 'text-[13px]'
@@ -51,7 +51,7 @@ export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, 
           const periodTrust = resolvePeriodTrustVisual(pk, grain, matrixTrust)
           const trustTop =
             periodTrust === 'blocked' ? 'border-t-[3px] border-t-red-500' : periodTrust === 'warning' ? 'border-t-[3px] border-t-amber-500' : ''
-          const isCurrent = isCurrentPeriod(pk, grain)
+          const isCurrent = currentPeriodKey ? (pk === currentPeriodKey) : isCurrentPeriod(pk, grain)
           const currentBadge = isCurrent ? getCurrentPeriodBadge(pk, grain) : null
           const currentPeriodFontSize1 = isCurrent
             ? compact ? 'text-[12px]' : 'text-[15px]'
@@ -95,7 +95,7 @@ export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, 
           const periodTrust = resolvePeriodTrustVisual(pk, grain, matrixTrust)
           const trustTop =
             periodTrust === 'blocked' ? 'border-t-[2px] border-t-red-500/90' : periodTrust === 'warning' ? 'border-t-[2px] border-t-amber-500/90' : ''
-          const isCurrent = isCurrentPeriod(pk, grain)
+          const isCurrent = currentPeriodKey ? (pk === currentPeriodKey) : isCurrentPeriod(pk, grain)
           const currentKpiFont = isCurrent
             ? compact ? 'text-[10px]' : 'text-[13px]'
             : fontSize2

@@ -40,6 +40,8 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
   matrixCellId = null,
   mode = 'evolution',
   isCurrentPeriod = false,
+  isWorstInRow = false,
+  isCalendarCurrentPartial = false,
 }) {
   const [ctxMenu, setCtxMenu] = useState(null)
 
@@ -76,6 +78,8 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
         isCurrentPeriod={isCurrentPeriod}
         periodKey={periodKey}
         grain={grain}
+        isWorstInRow={isWorstInRow}
+        isCalendarCurrentPartial={isCalendarCurrentPartial}
       />
     )
   }
@@ -199,7 +203,7 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
  * Si no hay datos (delta = null):
  *   —               ← celda vacía, sin plan ni real
  */
-function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compact, periodIdx, cityName, lineName, periodLbl, matrixCellId, isCurrentPeriod = false, periodKey = null, grain = 'daily' }) {
+function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compact, periodIdx, cityName, lineName, periodLbl, matrixCellId, isCurrentPeriod = false, periodKey = null, grain = 'daily', isWorstInRow = false, isCalendarCurrentPartial = false }) {
   const zebra = periodIdx % 2 === 1
   const isProjectable = PROJECTION_KPIS.includes(kpiKey)
 
@@ -219,7 +223,7 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
     return (
       <td
         data-matrix-cell-id={matrixCellId || undefined}
-        className={`px-1 ${py} text-center border-r border-gray-100/60 cursor-default select-none ${isSelected ? 'bg-blue-50' : isCurrentPeriod ? 'bg-emerald-50/30 border-l-2 border-r-2 border-emerald-300/60 shadow-[inset_0_0_12px_rgba(16,185,129,0.08)]' : zebra ? 'bg-slate-50/50' : ''}`}
+        className={`px-1 ${py} text-center border-r border-gray-100/20 cursor-default select-none ${isSelected ? 'bg-blue-50' : isCurrentPeriod ? 'bg-emerald-50/30 border-l-2 border-r-2 border-emerald-300/60 shadow-[inset_0_0_12px_rgba(16,185,129,0.08)]' : zebra ? 'bg-slate-50/25' : ''}`}
         title={buildProjectionCellTooltip(kpi, null, cityName, lineName, periodLbl)}
       >
         <div className={`${szProy} text-gray-200 leading-none`}>—</div>
@@ -235,10 +239,10 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
     return (
       <td
         data-matrix-cell-id={matrixCellId || undefined}
-        className={`px-1 ${py} text-center whitespace-nowrap cursor-pointer select-none border-r border-gray-100/60 transition-colors
+        className={`px-1 ${py} text-center whitespace-nowrap cursor-pointer select-none border-r border-gray-100/20 transition-colors
           ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-300'
             : isCurrentPeriod ? 'bg-emerald-50/30 border-l-2 border-r-2 border-emerald-300/60 shadow-[inset_0_0_12px_rgba(16,185,129,0.08)]'
-            : zebra ? 'bg-slate-50/50 hover:bg-blue-50/40' : 'hover:bg-blue-50/40'}`}
+            : zebra ? 'bg-slate-50/25 hover:bg-blue-50/40' : 'hover:bg-blue-50/40'}`}
         onClick={onClick}
         title={`Sin proyección para este período.\nReal: ${valStr}\n${cityName} · ${lineName} · ${periodLbl}`}
       >
@@ -258,10 +262,10 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
     return (
       <td
         data-matrix-cell-id={matrixCellId || undefined}
-        className={`px-1 ${py} text-center whitespace-nowrap cursor-pointer select-none border-r border-gray-100/60 transition-colors
+        className={`px-1 ${py} text-center whitespace-nowrap cursor-pointer select-none border-r border-gray-100/20 transition-colors
           ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-300'
             : isCurrentPeriod ? 'bg-emerald-50/30 border-l-2 border-r-2 border-emerald-300/60 shadow-[inset_0_0_12px_rgba(16,185,129,0.08)]'
-            : zebra ? 'bg-slate-50/50 hover:bg-blue-50/40' : 'hover:bg-blue-50/40'}`}
+            : zebra ? 'bg-slate-50/25 hover:bg-blue-50/40' : 'hover:bg-blue-50/40'}`}
         onClick={onClick}
         title={tooltip}
       >
@@ -281,38 +285,68 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
     : 0
   const pastDegraded = temporalAge > 0 && !isCurrentPeriod && !isSelected
 
+  // ── SEVERITY-BASED EMPHASIS (per-cell, self-limiting) ──
+  const sev = dm.hasComparable ? dm.comparableDelta.severity : null
+  const severityEmphasis = sev === 'critical'  ? 'ring-1 ring-inset ring-red-300/30 border-l-2 border-red-300/45'
+    : sev === 'elevated'  ? 'border-l-2 border-amber-300/25'
+    : sev === 'warning'   ? 'border-l border-amber-200/15'
+    : ''
+  const severityBg     = sev === 'critical'  ? 'bg-red-50/25'
+    : sev === 'elevated'  ? 'bg-amber-50/15'
+    : sev === 'warning'   ? 'bg-amber-50/8'
+    : ''
+
+  // ── TEMPORAL SCAN: worst in visible row gets extra signal ──
+  const worstEmphasis = isWorstInRow && sev && !isCurrentPeriod && !isSelected
+    ? 'ring-2 ring-inset ring-red-300/55 border-l-2 border-red-400/70 shadow-[inset_0_0_6px_rgba(239,68,68,0.10)]'
+    : ''
+
+  // ── BASE BORDER — softer, lower contrast ──
+  const baseBorder = 'border-r border-gray-100/25'
+
+  // ── ZEBRA — ultra subtle ──
+  const zebraBg = zebra ? 'bg-slate-50/25' : ''
+
   // Confidence
   const conf    = delta.curve_confidence
   const lowConf = conf === 'low' || conf === 'fallback'
   const medConf = conf === 'medium'
   const confBorder = lowConf
-    ? 'ring-1 ring-inset ring-dashed ring-red-300/70'
+    ? 'ring-1 ring-inset ring-dashed ring-red-300/50'
     : medConf
-      ? 'ring-1 ring-inset ring-dashed ring-amber-300/60'
+      ? 'ring-1 ring-inset ring-dashed ring-amber-300/40'
       : ''
 
   // Critical alert — only for real deterioration, not future
   const criticalAlert = !dm.isFuture && (dm.hasNegActual || (dm.hasPlan && !dm.hasReal && delta.attainment_pct != null && delta.attainment_pct < 75))
 
   // Future/pending: ghosted, muted. Real: full intensity.
-  const futureDim = dm.isFuture ? 'opacity-45 grayscale-[30%]' : ''
+  const futureDim = dm.isFuture ? 'opacity-35 grayscale-[40%]' : ''
+
+  // ── PAST DEGRADATION ── applies to border too
+  const pastStyle = pastDegraded && !dm.isFuture
+    ? { opacity: 1 - temporalAge, borderRightColor: 'rgba(243,244,246,0.15)' }
+    : undefined
 
   return (
     <td
       data-matrix-cell-id={matrixCellId || undefined}
-      className={`px-1 ${py} text-center whitespace-nowrap cursor-pointer select-none border-r border-gray-100/60 transition-colors relative
+      className={`px-1 ${py} text-center whitespace-nowrap cursor-pointer select-none transition-colors relative
+        ${baseBorder}
         ${isSelected
           ? 'bg-blue-50 ring-1 ring-inset ring-blue-300'
           : isCurrentPeriod && !dm.isFuture
-            ? `${dm.severityBg || ''} bg-gradient-to-b from-emerald-50/40 to-emerald-50/20 border-l-2 border-r-2 border-emerald-400/60 shadow-[inset_0_0_18px_rgba(16,185,129,0.12),0_0_10px_rgba(16,185,129,0.10)]`
+            ? `bg-gradient-to-b from-emerald-50/40 to-emerald-50/20 border-l-2 border-r-2 border-emerald-400/60 shadow-[inset_0_0_18px_rgba(16,185,129,0.12),0_0_10px_rgba(16,185,129,0.10)]`
             : isCurrentPeriod && dm.isFuture
-              ? 'bg-slate-100/40 border-l border-r border-slate-200/60'  // future current: muted, NOT green
+              ? 'bg-slate-100/40 border-l border-r border-slate-200/60'  // future: muted
             : dm.isFuture
-              ? 'bg-slate-50/30'
-              : `${dm.isMomentum ? dm.severityBg : ''} ${zebra && !dm.severityBg ? 'bg-slate-50/50' : ''} hover:bg-blue-50/40`}
+              ? 'bg-slate-50/20'
+              : `${sev ? severityBg : zebraBg} hover:bg-blue-50/40`}
+        ${!isSelected && !isCurrentPeriod ? severityEmphasis : ''}
+        ${worstEmphasis}
         ${futureDim}
         ${!isSelected && !dm.isFuture ? confBorder : ''}`}
-      style={pastDegraded && !dm.isFuture ? { opacity: 1 - temporalAge } : undefined}
+      style={pastStyle}
       onClick={onClick}
       title={tooltip}
     >
@@ -332,11 +366,18 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
         </span>
       )}
 
-      {/* ── L1: HOY badge ── */}
+      {/* ── L0: PERIOD BADGE ── */}
       {isCurrentPeriod && !dm.isFuture && (
         <div className={`${szStatus} leading-none mb-0.5`}>
           <span className="inline-block px-1 py-px rounded text-[7px] font-bold uppercase leading-none bg-emerald-500 text-white">
-            {grain === 'daily' ? 'HOY' : grain === 'weekly' ? 'SEM ACT' : 'MES ACT'}
+            {grain === 'daily' ? 'ÚLTIMO CIERRE' : grain === 'weekly' ? 'SEM. CERRADA' : 'MES CERRADO'}
+          </span>
+        </div>
+      )}
+      {isCalendarCurrentPartial && !dm.isFuture && (
+        <div className={`${szStatus} leading-none mb-0.5`}>
+          <span className="inline-block px-1 py-px rounded text-[7px] font-bold uppercase leading-none bg-amber-500/70 text-white">
+            PARCIAL
           </span>
         </div>
       )}
@@ -346,46 +387,33 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
         {dm.realStr}
       </div>
 
-      {/* ── L3: DELTA MOMENTUM — DOMINANTE ── */}
+      {/* ── L2: DELTA COMPARABLE (DoD/WoW/MoM) — DOMINANTE ── */}
       <div className="leading-none mt-0.5 flex items-center justify-center">
-        {dm.isMomentum ? (
-          /* MOMENTUM: colored, bold, arrow + pct. SIMPLE. */
-          <span className={`${szAv} ${dm.deltaBold}`} style={{ color: dm.deltaColor }}>
-            {dm.deltaArrow}{dm.deltaPctStr}
-          </span>
-        ) : dm.isPlanFallback ? (
-          /* PLAN FALLBACK: attainment, muted, small */
-          <span className={`${szStatus} font-semibold text-gray-400`}>
-            {dm.attainmentStr || '—'}
+        {dm.hasComparable ? (
+          <span className={`${szAv} ${dm.comparableDelta.deltaBold}`}
+            style={{ color: dm.comparableDelta.severityColor }}>
+            {dm.comparableDelta.display}
           </span>
         ) : dm.isFuture ? (
-          /* FUTURE: pending, no delta */
           <span className={`${szStatus} font-medium text-slate-300`}>—</span>
         ) : (
           <span className={`${szStatus} text-gray-300`}>—</span>
         )}
       </div>
 
-      {/* ── L4: COMPARABLE CONTEXT ── */}
-      {dm.comparableLabel && (
-        <div className={`${szStatus} leading-none mt-0.5 text-gray-400`}>
-          {dm.comparableLabel}
-        </div>
-      )}
-
-      {/* ── L5: PLAN / AVANCE CONTEXT ── */}
-      {dm.isMomentum && dm.attainmentStr && (
+      {/* ── L3: CONTEXTO SECUNDARIO — solo cuando no hay momentum ── */}
+      {dm.contextStr && !dm.hasComparable && !dm.isFuture && (
         <div className={`text-[7px] leading-none mt-px text-gray-300`}>
-          Plan {dm.attainmentStr}
+          Avance {dm.contextStr}
         </div>
       )}
       {dm.isPlanFallback && dm.planStr && (
-        <div className={`${szStatus} leading-none mt-0.5 text-gray-400`}>
+        <div className={`text-[7px] leading-none mt-px text-gray-300`}>
           Plan {dm.planStr}
         </div>
       )}
 
-      {/* ── L6: STATUS / PENDING ── */}
+      {/* ── L4: STATUS / PENDING ── */}
       {dm.statusText && (
         <div className={`${szStatus} leading-none mt-px font-medium ${dm.isFuture ? 'text-slate-300' : 'text-slate-400'}`}>
           {dm.statusText}
@@ -411,10 +439,10 @@ function computePastAgingOpacity(periodKey, grain) {
     const diffDays = Math.floor((now - d) / (1000 * 60 * 60 * 24))
     if (diffDays <= 0) return 0
     const steps = grain === 'daily'
-      ? Math.min(Math.floor(diffDays / 1), 60)
+      ? Math.min(Math.floor(diffDays / 1), 90)
       : grain === 'weekly'
-        ? Math.min(Math.floor(diffDays / 7), 40)
-        : Math.min(Math.floor(diffDays / 30), 24)
+        ? Math.min(Math.floor(diffDays / 7), 52)
+        : Math.min(Math.floor(diffDays / 30), 36)
     return Math.min(steps * 0.025, 0.55)
   } catch {
     return 0

@@ -9,6 +9,7 @@
  * - Funciona con el scrollContainerRef real de la tabla.
  * - Respeta el zoom, compact, column widths.
  * - No hace "mini scroll" — centra operacionalmente.
+ * - Proporciona visibilidad del período actual y límites de ventana temporal.
  *
  * REGLAS:
  * - NO tocar serving logic
@@ -40,17 +41,12 @@ function getCurrentPeriodKey(grain) {
     const d = String(monday.getDate()).padStart(2, '0')
     return `${y}-${m}-${d}`
   }
-  // monthly: first day of current month
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
 }
 
 /**
  * Encuentra el índice del período actual en allPeriods.
  * Si el período exacto no existe, busca el más cercano hacia atrás.
- *
- * @param {string[]} allPeriods - Lista de period keys (YYYY-MM-DD o YYYY-MM-DD para monthly)
- * @param {string} grain - 'daily' | 'weekly' | 'monthly'
- * @returns {number} - índice del período actual, o -1 si no se encuentra
  */
 export function findCurrentPeriodIndex(allPeriods, grain) {
   if (!allPeriods || !allPeriods.length) return -1
@@ -69,22 +65,61 @@ export function findCurrentPeriodIndex(allPeriods, grain) {
 }
 
 /**
- * Calcula la posición de scroll horizontal para centrar el período actual
- * en el viewport visible.
- *
- * @param {Object} params
- * @param {HTMLElement} params.container - El scroll container (scrollContainerRef.current)
- * @param {string[]} params.allPeriods - Lista de period keys
- * @param {string} params.grain - 'daily' | 'weekly' | 'monthly'
- * @param {number} params.fixedCol1W - Ancho de la columna fija 1 (COL1_W)
- * @param {number} params.fixedCol2W - Ancho de la columna fija 2 (COL2_W)
- * @param {number} params.colW - Ancho de cada columna de período
- * @returns {{ scrollLeft: number, currentIdx: number } | null}
+ * Encuentra el índice de un período específico en allPeriods.
+ * Si no existe, busca el más cercano hacia atrás.
  */
-export function computeViewportCenterScroll({ container, allPeriods, grain, fixedCol1W, fixedCol2W, colW }) {
+export function findPeriodIndex(allPeriods, periodKey) {
+  if (!allPeriods || !allPeriods.length || !periodKey) return -1
+  const exactIdx = allPeriods.indexOf(periodKey)
+  if (exactIdx >= 0) return exactIdx
+  for (let i = allPeriods.length - 1; i >= 0; i--) {
+    if (allPeriods[i] <= periodKey) return i
+  }
+  return allPeriods.length - 1
+}
+
+/**
+ * Calcula el número de columnas visibles en el viewport actual.
+ */
+export function visibleColumnCount(container, colW, fixedCol1W, fixedCol2W) {
+  if (!container) return 0
+  const viewW = container.clientWidth
+  const fixedW = fixedCol1W + fixedCol2W
+  return Math.max(0, Math.floor((viewW - fixedW) / colW))
+}
+
+/**
+ * Calcula el rango de períodos visibles [startIdx, endIdx].
+ */
+export function visibleWindowRange({ container, allPeriods, grain, colW, fixedCol1W, fixedCol2W }) {
+  if (!container || !allPeriods || !allPeriods.length) return { start: 0, end: 0, currentIdx: -1 }
+
+  const currentIdx = findCurrentPeriodIndex(allPeriods, grain)
+  const visCount = visibleColumnCount(container, colW, fixedCol1W, fixedCol2W)
+
+  const scrollLeft = container.scrollLeft
+  const fixedW = fixedCol1W + fixedCol2W
+  const startIdx = Math.max(0, Math.floor((scrollLeft - fixedW) / colW))
+  const endIdx = Math.min(allPeriods.length, startIdx + visCount + 1)
+
+  return {
+    start: Math.max(0, startIdx),
+    end: endIdx,
+    currentIdx,
+    currentIsVisible: currentIdx >= 0 && currentIdx >= startIdx && currentIdx <= endIdx,
+  }
+}
+
+/**
+ * Calcula la posición de scroll horizontal para centrar un período en el viewport.
+ * Si anchorPeriodKey no se provee, usa findCurrentPeriodIndex por grain.
+ */
+export function computeViewportCenterScroll({ container, allPeriods, grain, fixedCol1W, fixedCol2W, colW, anchorPeriodKey = null }) {
   if (!container || !allPeriods || !allPeriods.length) return null
 
-  const idx = findCurrentPeriodIndex(allPeriods, grain)
+  const idx = anchorPeriodKey
+    ? findPeriodIndex(allPeriods, anchorPeriodKey)
+    : findCurrentPeriodIndex(allPeriods, grain)
   if (idx < 0) return null
 
   const fixedW = fixedCol1W + fixedCol2W
@@ -93,19 +128,16 @@ export function computeViewportCenterScroll({ container, allPeriods, grain, fixe
 
   if (viewportWidth <= 0) return null
 
-  // Centrar: posición del centro del período actual en el centro del viewport
   const scrollTo = Math.max(0, targetLeft - Math.floor(viewportWidth / 2) + Math.floor(colW / 2))
 
-  return { scrollLeft: scrollTo, currentIdx: idx }
+  const maxScroll = container.scrollWidth - container.clientWidth
+  const clampedScroll = Math.min(scrollTo, Math.max(0, maxScroll))
+
+  return { scrollLeft: clampedScroll, currentIdx: idx }
 }
 
 /**
  * Ejecuta el scroll centrado operacionalmente.
- * Respeta el comportamiento smooth para navegación natural.
- *
- * @param {HTMLElement} container - El scroll container
- * @param {number} scrollLeft - Posición de scroll calculada
- * @param {string} behavior - 'smooth' | 'auto' | 'instant'
  */
 export function executeViewportCenter(container, scrollLeft, behavior = 'smooth') {
   if (!container) return
@@ -117,16 +149,8 @@ export function executeViewportCenter(container, scrollLeft, behavior = 'smooth'
 }
 
 /**
- * Función principal: centrar el viewport de proyección en el período actual.
- * Uso: llamar desde useEffect después de que los datos de proyección estén listos.
- *
- * @param {Object} params
- * @param {React.RefObject} params.scrollContainerRef - Ref al scroll container
- * @param {Object|null} params.projMatrix - Matriz de proyección (o displayProjMatrix)
- * @param {string} params.grain - Grano actual
- * @param {boolean} params.compact - Modo compacto
- * @param {boolean} params.isProjectionMode - Si está en modo proyección
- * @param {boolean} [params.force=false] - Forzar centrado incluso si ya se aplicó
+ * Función principal: centrar el viewport de proyección en el anchor period.
+ * Si no se provee anchorPeriodKey, usa el período calendario actual.
  */
 export function centerProjectionViewport({
   scrollContainerRef,
@@ -135,6 +159,7 @@ export function centerProjectionViewport({
   compact,
   isProjectionMode,
   force = false,
+  anchorPeriodKey = null,
 }) {
   if (!isProjectionMode) return false
   if (!projMatrix || !projMatrix.allPeriods || !projMatrix.allPeriods.length) return false
@@ -155,6 +180,7 @@ export function centerProjectionViewport({
     fixedCol1W,
     fixedCol2W,
     colW,
+    anchorPeriodKey,
   })
 
   if (!result) return false
@@ -164,15 +190,7 @@ export function centerProjectionViewport({
 }
 
 /**
- * Verifica si el período actual ya es visible en el viewport sin necesidad de scroll.
- *
- * @param {HTMLElement} container
- * @param {string[]} allPeriods
- * @param {string} grain
- * @param {number} colW
- * @param {number} fixedCol1W
- * @param {number} fixedCol2W
- * @returns {boolean}
+ * Verifica si el período actual ya es visible en el viewport.
  */
 export function isCurrentPeriodVisible({ container, allPeriods, grain, colW, fixedCol1W, fixedCol2W }) {
   if (!container || !allPeriods || !allPeriods.length) return false

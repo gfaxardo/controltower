@@ -133,6 +133,20 @@ export const CONTROL_TOWER_NAVIGATION_REGISTRY = [
     endpoints: ['/ops/driver-lifecycle/weekly', '/ops/driver-lifecycle/monthly', '/ops/driver-lifecycle/series'],
   },
   {
+    key: 'drivers_action_queues',
+    label: 'Action Queues',
+    tab: 'Drivers',
+    component: 'DriverActionableLists',
+    route: '/drivers/action-queues',
+    engine: ENGINE.CONTROL_FOUNDATION,
+    phaseStatus: PHASE_STATUS.ACTIVE,
+    visibility: VISIBILITY.KEEP_VISIBLE,
+    productionReady: true,
+    requiresValidation: false,
+    reason: 'Control Foundation (D4): colas operacionales accionables. Listas priorizadas para mejorar supply.',
+    endpoints: ['/drivers/actionable-list', '/drivers/actionable-summary'],
+  },
+  {
     key: 'drivers_diagnostic',
     label: 'Diagnostico',
     tab: 'Drivers',
@@ -141,9 +155,9 @@ export const CONTROL_TOWER_NAVIGATION_REGISTRY = [
     engine: ENGINE.DIAGNOSTIC,
     phaseStatus: PHASE_STATUS.READY_NEXT,
     visibility: VISIBILITY.KEEP_VISIBLE,
-    productionReady: true,
-    requiresValidation: false,
-    reason: 'Diagnostic Engine (Fase 2A.1): diagnostico determinista de ciclo de vida, riesgo y leakage.',
+    productionReady: false,
+    requiresValidation: true,
+    reason: 'Diagnostic Engine (Fase 2A.1): diagnostico determinista de ciclo de vida, riesgo y leakage. Motor Diagnostic READY NEXT — NO ACTIVO. Visible como roadmap preview.',
     endpoints: ['/driver-lifecycle/summary', '/driver-lifecycle/funnel', '/driver-lifecycle/risk-list', '/driver-lifecycle/cohorts-basic'],
   },
   {
@@ -155,9 +169,9 @@ export const CONTROL_TOWER_NAVIGATION_REGISTRY = [
     engine: ENGINE.DIAGNOSTIC,
     phaseStatus: PHASE_STATUS.READY_NEXT,
     visibility: VISIBILITY.KEEP_VISIBLE,
-    productionReady: true,
-    requiresValidation: false,
-    reason: 'Diagnostic Engine (Fase 2A.2): benchmarking comparativo de patrones operativos entre grupos de conductores.',
+    productionReady: false,
+    requiresValidation: true,
+    reason: 'Diagnostic Engine (Fase 2A.2): benchmarking comparativo de patrones operativos entre grupos. Motor Diagnostic READY NEXT — NO ACTIVO.',
     endpoints: ['/driver-behavior/summary', '/driver-behavior/group-benchmarks', '/driver-behavior/top-vs-risk'],
   },
   {
@@ -169,9 +183,9 @@ export const CONTROL_TOWER_NAVIGATION_REGISTRY = [
     engine: ENGINE.DIAGNOSTIC,
     phaseStatus: PHASE_STATUS.READY_NEXT,
     visibility: VISIBILITY.KEEP_VISIBLE,
-    productionReady: true,
-    requiresValidation: false,
-    reason: 'Diagnostic Engine (READY NEXT): alertas de desviación conductual vs baseline.',
+    productionReady: false,
+    requiresValidation: true,
+    reason: 'Diagnostic Engine (READY NEXT): alertas de desviación conductual vs baseline. Motor Diagnostic READY NEXT — NO ACTIVO.',
     endpoints: ['/ops/behavior-alerts/summary', '/ops/behavior-alerts/drivers', '/ops/behavior-alerts/driver-detail'],
   },
   {
@@ -183,9 +197,9 @@ export const CONTROL_TOWER_NAVIGATION_REGISTRY = [
     engine: ENGINE.DIAGNOSTIC,
     phaseStatus: PHASE_STATUS.READY_NEXT,
     visibility: VISIBILITY.KEEP_VISIBLE,
-    productionReady: true,
-    requiresValidation: false,
-    reason: 'Diagnostic Engine (READY NEXT): monitoreo de fuga de flota y pérdida de conductores.',
+    productionReady: false,
+    requiresValidation: true,
+    reason: 'Diagnostic Engine (READY NEXT): monitoreo de fuga de flota. Bajo revisión de estabilidad runtime.',
     endpoints: ['/ops/leakage/summary', '/ops/leakage/drivers'],
   },
   {
@@ -197,9 +211,9 @@ export const CONTROL_TOWER_NAVIGATION_REGISTRY = [
     engine: ENGINE.DIAGNOSTIC,
     phaseStatus: PHASE_STATUS.READY_NEXT,
     visibility: VISIBILITY.KEEP_VISIBLE,
-    productionReady: true,
-    requiresValidation: false,
-    reason: 'Diagnostic Engine (Fase 2A.3): diagnóstico determinístico de patrones operativos diferenciales. No genera recomendaciones.',
+    productionReady: false,
+    requiresValidation: true,
+    reason: 'Diagnostic Engine (Fase 2A.3): diagnóstico de patrones operativos. Motor Diagnostic READY NEXT — bloqueado hasta estabilizar Serving Governance.',
     endpoints: ['/behavioral-patterns/summary', '/behavioral-patterns/patterns', '/behavioral-patterns/group-profile', '/behavioral-patterns/decline-signals'],
   },
   {
@@ -209,11 +223,11 @@ export const CONTROL_TOWER_NAVIGATION_REGISTRY = [
     component: 'OperationalBehavioralIntelligenceDashboard',
     route: '/drivers/operational-intelligence',
     engine: ENGINE.DIAGNOSTIC,
-    phaseStatus: PHASE_STATUS.READY_NEXT,
+    phaseStatus: PHASE_STATUS.BACKLOG,
     visibility: VISIBILITY.KEEP_VISIBLE,
-    productionReady: true,
-    requiresValidation: false,
-    reason: 'Diagnostic Engine (Fase 2B): inteligencia operacional profunda. KPIs de eficiencia, sesiones, zonas, horarios, pre-churn signals, arquetipos. NO recomendaciones automáticas.',
+    productionReady: false,
+    requiresValidation: true,
+    reason: 'FUTURE (BACKLOG): inteligencia operacional profunda con 7 sub-tabs. Depende de estabilización de Control Foundation + Diagnostic Engine completos. Pertenece a motores Decision/Suggestion no activos.',
     endpoints: ['/operational-intelligence/summary', '/operational-intelligence/efficiency', '/operational-intelligence/sessions', '/operational-intelligence/zones', '/operational-intelligence/time-patterns', '/operational-intelligence/pre-churn-signals', '/operational-intelligence/archetypes', '/operational-intelligence/top-vs-churned'],
   },
   {
@@ -222,12 +236,12 @@ export const CONTROL_TOWER_NAVIGATION_REGISTRY = [
     tab: 'Drivers',
     component: 'RecoverabilityIntelligenceDashboard',
     route: '/drivers/recoverability',
-    engine: ENGINE.DIAGNOSTIC,
-    phaseStatus: PHASE_STATUS.READY_NEXT,
+    engine: ENGINE.REACHABILITY,
+    phaseStatus: PHASE_STATUS.BACKLOG,
     visibility: VISIBILITY.KEEP_VISIBLE,
-    productionReady: true,
-    requiresValidation: false,
-    reason: 'Diagnostic Engine (Fase 2C.1): recoverability intelligence. Shadow mode — calcula scores de recuperabilidad sin automatizar acciones. NO recomendaciones. NO intervenciones automaticas.',
+    productionReady: false,
+    requiresValidation: true,
+    reason: 'BACKLOG (Reachability Engine): recoverability intelligence en shadow mode. Motor Reachability no activo. Bloqueado hasta estabilizar Driver Lifecycle + Diagnostic Engine.',
     endpoints: ['/recoverability/summary', '/recoverability/top-recoverable', '/recoverability/distribution', '/recoverability/driver/{driver_id}', '/recoverability/shadow-priority', '/recoverability/segments', '/recoverability/explainability/{driver_id}', '/recoverability/risk-distribution'],
   },
 
@@ -484,7 +498,7 @@ export function getVisibleNavigation () {
   const showDevModules = typeof import.meta !== 'undefined' && import.meta.env?.VITE_SHOW_DEV_MODULES === 'true'
 
   return CONTROL_TOWER_NAVIGATION_REGISTRY.filter((item) => {
-    if (item.visibility === VISIBILITY.KEEP_VISIBLE && item.productionReady) return true
+    if (item.visibility === VISIBILITY.KEEP_VISIBLE) return true
     if (item.visibility === VISIBILITY.DEV_ONLY && (isDev || showDevModules)) return true
     return false
   })

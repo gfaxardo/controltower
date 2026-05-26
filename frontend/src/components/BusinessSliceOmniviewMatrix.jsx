@@ -20,6 +20,7 @@ import {
 } from '../services/api.js'
 import { exportOmniviewFull } from '../utils/omniviewExport.js'
 import { centerProjectionViewport, isCurrentPeriodVisible } from '../utils/projectionViewportFocusEngine.js'
+import { resolveClosedPeriodAnchor, getAnchorButtonLabel } from '../utils/projectionClosedPeriodEngine.js'
 import ProjectionVersionSelector from './projections/ProjectionVersionSelector.jsx'
 import {
   buildMatrix,
@@ -1046,7 +1047,25 @@ export default function BusinessSliceOmniviewMatrix () {
     [grain]
   )
 
+  // ── CLOSED PERIOD ANCHOR (Proyección) ──
+  const closedPeriodAnchor = useMemo(() => {
+    if (!isProjectionMode || !displayProjMatrix?.allPeriods?.length) return null
+    return resolveClosedPeriodAnchor({
+      allPeriods: displayProjMatrix.allPeriods,
+      grain,
+      projectionMeta,
+    })
+  }, [isProjectionMode, displayProjMatrix?.allPeriods, grain, projectionMeta])
+
+  const operationalCurrentPeriodKey = useMemo(() => {
+    if (isProjectionMode && closedPeriodAnchor?.anchorPeriodKey) {
+      return closedPeriodAnchor.anchorPeriodKey
+    }
+    return currentPeriodKey
+  }, [isProjectionMode, closedPeriodAnchor, currentPeriodKey])
+
   const autoScrollAppliedRef = useRef(false)
+  const userHasScrolledRef = useRef(false)
   const scrollRafRef = useRef(null)
 
   const scrollToCurrentPeriod = useCallback(() => {
@@ -1059,18 +1078,28 @@ export default function BusinessSliceOmniviewMatrix () {
     const evColW = compact ? 58 : 78
     const projColW = compact ? 78 : 100
     const colW = isProjectionMode ? projColW : evColW
-    const idx = resolveCurrentPeriodIndex(allPeriods, grain)
-    if (idx < 0) return
+    const idx = isProjectionMode && closedPeriodAnchor?.anchorPeriodKey
+      ? resolveCurrentPeriodIndex(allPeriods, grain) // fallback: use calendar if anchor not found in range
+      : resolveCurrentPeriodIndex(allPeriods, grain)
+    // Use anchor period key if available
+    const targetAllPeriods = allPeriods
+    const anchorKey = isProjectionMode ? closedPeriodAnchor?.anchorPeriodKey : null
+    let effectiveIdx = idx
+    if (anchorKey) {
+      const anchorIdx = targetAllPeriods.indexOf(anchorKey)
+      if (anchorIdx >= 0) effectiveIdx = anchorIdx
+    }
+    if (effectiveIdx < 0) return
     const viewportWidth = container.clientWidth
     const fixedW = COL1_W + COL2_W
-    const scrollTo = calculateScrollTarget(idx, colW, fixedW, viewportWidth)
+    const scrollTo = calculateScrollTarget(effectiveIdx, colW, fixedW, viewportWidth)
     container.scrollTo({ left: scrollTo, behavior: 'smooth' })
-  }, [matrix.allPeriods, grain, compact, isProjectionMode])
+  }, [matrix.allPeriods, grain, compact, isProjectionMode, closedPeriodAnchor])
 
   useEffect(() => {
     const hasData = isProjectionMode ? projectionRows.length > 0 : rows.length > 0
     if (loading || blockedByCountry || !hasData) return
-    if (!autoScrollAppliedRef.current) {
+    if (!autoScrollAppliedRef.current && !userHasScrolledRef.current) {
       scrollRafRef.current = requestAnimationFrame(() => {
         scrollRafRef.current = requestAnimationFrame(() => {
           scrollToCurrentPeriod()
@@ -1088,7 +1117,25 @@ export default function BusinessSliceOmniviewMatrix () {
 
   useEffect(() => {
     autoScrollAppliedRef.current = false
-  }, [grain, viewMode])
+    userHasScrolledRef.current = false
+  }, [grain, viewMode, country, city, year, month, businessSlice])
+
+  // Detect user manual scroll to prevent anchor fights
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    const onUserScroll = () => {
+      if (autoScrollAppliedRef.current) {
+        userHasScrolledRef.current = true
+      }
+    }
+    container.addEventListener('wheel', onUserScroll, { passive: true })
+    container.addEventListener('touchmove', onUserScroll, { passive: true })
+    return () => {
+      container.removeEventListener('wheel', onUserScroll)
+      container.removeEventListener('touchmove', onUserScroll)
+    }
+  }, [])
 
   const executiveForBanner = useMemo(() => {
     if (!matrixTrust) return null
@@ -1552,13 +1599,13 @@ export default function BusinessSliceOmniviewMatrix () {
                     </svg>
                     Descargar
                   </button>
-                  <button type="button" onClick={scrollToCurrentPeriod}
+                  <button type="button" onClick={() => { userHasScrolledRef.current = false; scrollToCurrentPeriod() }}
                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 hover:border-blue-300 transition-all"
-                    title={grain === 'daily' ? 'Ir a hoy' : grain === 'weekly' ? 'Ir a semana actual' : 'Ir a mes actual'}>
+                    title={isProjectionMode && closedPeriodAnchor ? getAnchorButtonLabel(grain, closedPeriodAnchor.isCalendarCurrentPartial) : grain === 'daily' ? 'Ir a hoy' : grain === 'weekly' ? 'Ir a semana actual' : 'Ir a mes actual'}>
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    {grain === 'daily' ? 'Ir a hoy' : grain === 'weekly' ? 'Ir a sem. actual' : 'Ir a mes actual'}
+                    {isProjectionMode && closedPeriodAnchor ? getAnchorButtonLabel(grain, closedPeriodAnchor.isCalendarCurrentPartial) : grain === 'daily' ? 'Ir a hoy' : grain === 'weekly' ? 'Ir a sem. actual' : 'Ir a mes actual'}
                   </button>
                 </>
               )}
@@ -1760,7 +1807,7 @@ export default function BusinessSliceOmniviewMatrix () {
         {/* ── Matrix + Inspector (Evolución) — FASE 1H.3 fullscreen ── */}
         {heavyQueriesEnabled && !loading && !blockedByCountry && !isProjectionMode && rows.length > 0 && (
           matrixFullscreen ? (
-            <div className="fixed inset-0 z-[100] bg-white overflow-y-auto" role="dialog" aria-modal="true" aria-label="Omniview Matrix — pantalla completa">
+            <div className="fixed inset-0 z-[100] bg-white overflow-hidden" role="dialog" aria-modal="true" aria-label="Omniview Matrix — pantalla completa">
               <div className="max-w-full mx-auto p-3 sm:p-4">
                 <div className="flex items-center justify-between mb-2 px-1">
                   <div className="flex items-center gap-2">
@@ -1784,7 +1831,8 @@ export default function BusinessSliceOmniviewMatrix () {
                       lineImpactMap={lineImpactMap} periodStates={periodStates}
                       matrixTrust={matrixTrust}
                       focusedKpi={focusedKpi}
-                      currentPeriodKey={currentPeriodKey}
+                      currentPeriodKey={operationalCurrentPeriodKey}
+                      calendarCurrentPeriodKey={isProjectionMode ? currentPeriodKey : undefined}
                       scrollContainerRef={scrollContainerRef}
                     />
                   </div>
@@ -1825,7 +1873,8 @@ export default function BusinessSliceOmniviewMatrix () {
                   lineImpactMap={lineImpactMap} periodStates={periodStates}
                   matrixTrust={matrixTrust}
                   focusedKpi={focusedKpi}
-                  currentPeriodKey={currentPeriodKey}
+                  currentPeriodKey={operationalCurrentPeriodKey}
+                      calendarCurrentPeriodKey={isProjectionMode ? currentPeriodKey : undefined}
                   scrollContainerRef={scrollContainerRef}
                 />
               </div>
@@ -1871,7 +1920,7 @@ export default function BusinessSliceOmniviewMatrix () {
         {/* ── Matrix + Drill (Vs Proyección) — FASE 1H.3 fullscreen ── */}
         {heavyQueriesEnabled && projectionReady && isProjectionMode && projMatrix && projectionRows.length > 0 && (
           matrixFullscreen ? (
-            <div className="fixed inset-0 z-[100] bg-white overflow-y-auto" role="dialog" aria-modal="true" aria-label="Omniview Proyección — pantalla completa">
+            <div className="fixed inset-0 z-[100] bg-white overflow-hidden" role="dialog" aria-modal="true" aria-label="Omniview Proyección — pantalla completa">
               <div className="max-w-full mx-auto p-3 sm:p-4">
                 <div className="flex items-center justify-between mb-2 px-1">
                   <div className="flex items-center gap-2">
@@ -1901,7 +1950,8 @@ export default function BusinessSliceOmniviewMatrix () {
                       mode="projection"
                       projectionAuthoritativeYtd={projectionMeta?.authoritative_ytd}
                       projectionIntegrityBroken={projectionIntegrityBroken}
-                      currentPeriodKey={currentPeriodKey}
+                      currentPeriodKey={operationalCurrentPeriodKey}
+                      calendarCurrentPeriodKey={isProjectionMode ? currentPeriodKey : undefined}
                       scrollContainerRef={scrollContainerRef}
                     />
                   </div>
@@ -1942,7 +1992,8 @@ export default function BusinessSliceOmniviewMatrix () {
                   mode="projection"
                   projectionAuthoritativeYtd={projectionMeta?.authoritative_ytd}
                   projectionIntegrityBroken={projectionIntegrityBroken}
-                  currentPeriodKey={currentPeriodKey}
+                  currentPeriodKey={operationalCurrentPeriodKey}
+                      calendarCurrentPeriodKey={isProjectionMode ? currentPeriodKey : undefined}
                   scrollContainerRef={scrollContainerRef}
                 />
               </div>

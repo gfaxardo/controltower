@@ -103,6 +103,7 @@ export default function BusinessSliceOmniviewMatrixTable ({
   projectionAuthoritativeYtd = null,
   projectionIntegrityBroken = false,
   currentPeriodKey = null,
+  calendarCurrentPeriodKey = null,
   scrollContainerRef = null,
 }) {
   const isProjection = mode === 'projection'
@@ -333,6 +334,7 @@ export default function BusinessSliceOmniviewMatrixTable ({
                   projectionIntegrityBroken={projectionIntegrityBroken}
                   projectionAuthoritativeYtd={projectionAuthoritativeYtd}
                   currentPeriodKey={currentPeriodKey}
+                  calendarCurrentPeriodKey={calendarCurrentPeriodKey}
                 />
               )
             })}
@@ -520,7 +522,7 @@ const ProjectionTotalsRow = memo(function ProjectionTotalsRow ({ allPeriods, tot
   )
 })
 
-function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, onToggle, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode, periodMeta = null, periodDayLabels = null, projectionIntegrityBroken = false, projectionAuthoritativeYtd = null, currentPeriodKey = null }) {
+function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, onToggle, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode, periodMeta = null, periodDayLabels = null, projectionIntegrityBroken = false, projectionAuthoritativeYtd = null, currentPeriodKey = null, calendarCurrentPeriodKey = null }) {
   const totalCols = allPeriods.length
   const py = compact ? 'py-1' : 'py-2'
   const fontSize = compact ? 'text-[11px]' : 'text-[14px]'
@@ -556,13 +558,13 @@ function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, o
           allPeriods={allPeriods} onCellClick={onCellClick} selectedCell={selectedCell} grain={grain} compact={compact}
           insightCellMap={insightCellMap} insightMode={insightMode} periodStates={periodStates}
           matrixTrust={matrixTrust} trustLine={trustLine} focusedKpi={focusedKpi} mode={mode} periodMeta={periodMeta} periodDayLabels={periodDayLabels}
-          projectionIntegrityBroken={projectionIntegrityBroken} currentPeriodKey={currentPeriodKey} />
+           projectionIntegrityBroken={projectionIntegrityBroken} currentPeriodKey={currentPeriodKey} calendarCurrentPeriodKey={calendarCurrentPeriodKey} />
       ))}
     </>
   )
 }
 
-function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode, periodMeta = null, periodDayLabels = null, projectionIntegrityBroken = false, currentPeriodKey = null }) {
+function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode, periodMeta = null, periodDayLabels = null, projectionIntegrityBroken = false, currentPeriodKey = null, calendarCurrentPeriodKey = null }) {
   const isProjection = mode === 'projection'
   const deltas = useMemo(
     () => isProjection
@@ -584,6 +586,28 @@ function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClic
   }, [isProjection, projectionIntegrityBroken, lineData.periods])
 
   const lineYtdVis = lineYtdSlice ? ytdSliceBadgeVisual(lineYtdSlice) : null
+
+  // ── TEMPORAL SEVERITY SCAN: worst period in row ──
+  const worstPeriodPk = useMemo(() => {
+    if (!isProjection) return null
+    let worstKey = null
+    let worstVal = Infinity
+    for (const pk of allPeriods) {
+      const pd = deltas.get(pk)
+      if (!pd) continue
+      const d = pd[focusedKpi.key]
+      if (!d) continue
+      const pop = d.periodPop
+      if (!pop || typeof pop !== 'object') continue
+      const pct = Number(pop.pct)
+      if (!Number.isFinite(pct)) continue
+      if (pct < worstVal) {
+        worstVal = pct
+        worstKey = pk
+      }
+    }
+    return (worstVal < -5) ? worstKey : null
+  }, [isProjection, allPeriods, deltas, focusedKpi])
 
   useEffect(() => {
     if (!isProjection || projectionIntegrityBroken) return
@@ -641,6 +665,8 @@ function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClic
             matrixCellId={cellId}
             mode={mode}
             isCurrentPeriod={currentPeriodKey === pk}
+            isCalendarCurrentPartial={calendarCurrentPeriodKey ? (calendarCurrentPeriodKey === pk && pk !== currentPeriodKey) : false}
+            isWorstInRow={isProjection && pk === worstPeriodPk}
             onClick={() => onCellClick?.({
               id: cellId, cityKey, lineKey, period: pk, kpiKey: focusedKpi.key,
               lineData, periodDeltas, raw: lineData.periods.get(pk)?.raw,
