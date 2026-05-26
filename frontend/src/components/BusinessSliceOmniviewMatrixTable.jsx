@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, memo } from 'react'
+import { useMemo, useState, useEffect, useRef, memo } from 'react'
 import BusinessSliceOmniviewMatrixHeader, { COL1_W, COL2_W, HEADER_H_COMFORTABLE, HEADER_H_COMPACT } from './BusinessSliceOmniviewMatrixHeader.jsx'
 import BusinessSliceOmniviewMatrixCell from './BusinessSliceOmniviewMatrixCell.jsx'
 import { MATRIX_KPIS, computeDeltas, computeTotalsDeltas, fmtValue, fmtDelta, signalColorForKpi, signalArrow, sortLineEntries, periodTooltipLabel as periodLabelFn, trustIssueSummaryForTooltip, trustPeriodCellOverlayClass, resolveCellTrustVisual, resolveTotalsTrustVisual } from './omniview/omniviewMatrixUtils.js'
@@ -108,19 +108,26 @@ export default function BusinessSliceOmniviewMatrixTable ({
   const isProjection = mode === 'projection'
   const { cities, allPeriods, totals, comparisonTotals, comparisonMeta, cityVolumeMap, lineVolumeMap, periodMeta, periodDayLabels } = matrix
 
-  // FASE 1H.2 — Daily grain: collapse all cities by default (thousands of cells → DOM overload)
-  const dailyDefaultCollapsed = useMemo(() => {
-    if (grain !== 'daily') return new Set()
-    return new Set([...cities.keys()])
-  }, [grain, cities])
-  const [collapsed, setCollapsed] = useState(dailyDefaultCollapsed)
+  // FASE 1H.4 — Default all cities expanded. User collapses respected.
+  // Reset only when the set of city keys changes (filter/grain/mode change)
+  const [collapsed, setCollapsed] = useState(() => new Set())
+  const userToggledRef = useRef(false)
+  const prevCityKeysRef = useRef(null)
+
   useEffect(() => {
-    if (grain === 'daily') {
-      setCollapsed(new Set([...cities.keys()]))
-    } else {
+    const currentKeys = [...cities.keys()].sort().join('|')
+    const prevKeys = prevCityKeysRef.current
+    prevCityKeysRef.current = currentKeys
+
+    // First mount or context changed: expand all by default
+    if (prevKeys === null || prevKeys !== currentKeys) {
       setCollapsed(new Set())
+      userToggledRef.current = false
+      return
     }
-  }, [grain, cities])
+    // User hasn't touched collapse: stay expanded on re-renders
+  }, [cities])
+
   const headerH = compact ? HEADER_H_COMPACT : HEADER_H_COMFORTABLE
   const trustLine = useMemo(() => isProjection ? null : trustIssueSummaryForTooltip(matrixTrust), [matrixTrust, isProjection])
   const activeKpi = useMemo(
@@ -160,6 +167,7 @@ export default function BusinessSliceOmniviewMatrixTable ({
   )
 
   const toggleCity = (ck) => {
+    userToggledRef.current = true
     setCollapsed((prev) => {
       const next = new Set(prev)
       if (next.has(ck)) next.delete(ck)
@@ -168,8 +176,8 @@ export default function BusinessSliceOmniviewMatrixTable ({
     })
   }
 
-  const expandAll = () => setCollapsed(new Set())
-  const collapseAll = () => setCollapsed(new Set(cityEntries.map(([k]) => k)))
+  const expandAll = () => { userToggledRef.current = true; setCollapsed(new Set()) }
+  const collapseAll = () => { userToggledRef.current = true; setCollapsed(new Set(cityEntries.map(([k]) => k))) }
 
   const expandedCount = cityEntries.length - collapsed.size
 
@@ -245,7 +253,7 @@ export default function BusinessSliceOmniviewMatrixTable ({
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden" data-omniview-matrix-table>
+    <div className="rounded-lg border border-gray-100 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]" style={{ overflow: 'clip' }} data-omniview-matrix-table>
       {cityEntries.length > 1 && (
         <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50/80 border-b border-gray-200 text-[10px]">
           <button type="button" onClick={expandAll} className="px-2 py-0.5 rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-100 hover:text-gray-800 transition-colors">Expandir todo</button>
@@ -408,13 +416,13 @@ const ProjectionTotalsRow = memo(function ProjectionTotalsRow ({ allPeriods, tot
 
   return (
     <tr
-      className="bg-slate-800/[.06] border-b-2 border-slate-300 font-semibold"
+      className="bg-slate-100/60 border-b border-slate-200/80 font-semibold"
       style={{ position: 'sticky', top: headerH, zIndex: 18 }}
     >
-      <td className={`sticky left-0 z-10 px-2 ${py} ${valSize} font-bold text-slate-600 uppercase tracking-wide border-r border-slate-200`}
-        style={{ backgroundColor: 'rgb(243,244,248)', minWidth: COL1_W, boxShadow: '2px 0 4px rgba(0,0,0,0.05)' }}>Total</td>
-      <td className={`sticky z-10 px-2 ${py} border-r border-slate-200`}
-        style={{ left: COL1_W, backgroundColor: 'rgb(243,244,248)', minWidth: COL2_W, boxShadow: '3px 0 8px rgba(0,0,0,0.06)' }}
+      <td className={`sticky left-0 z-10 px-2 ${py} ${valSize} font-bold text-slate-600 uppercase tracking-wide border-r border-slate-200/70`}
+        style={{ backgroundColor: 'rgb(248,249,252)', minWidth: COL1_W, boxShadow: '2px 0 3px rgba(0,0,0,0.03)' }}>Total</td>
+      <td className={`sticky z-10 px-2 ${py} border-r border-slate-200/70`}
+        style={{ left: COL1_W, backgroundColor: 'rgb(248,249,252)', minWidth: COL2_W, boxShadow: '3px 0 6px rgba(0,0,0,0.04)' }}
         title={totalYtdSlice ? buildYtdSliceTooltip(totalYtdSlice) : undefined}
       >
         {ytdVis && ytdVis.label !== 'YTD —' && (
@@ -425,7 +433,7 @@ const ProjectionTotalsRow = memo(function ProjectionTotalsRow ({ allPeriods, tot
         const pDeltas = totalsDeltas.get(pk)
         const zebra = periodIdx % 2 === 1
         const d = pDeltas?.[focusedKpi.key]
-        const bgStyle = zebra ? { backgroundColor: 'rgb(238,240,245)' } : { backgroundColor: 'rgb(243,244,248)' }
+        const bgStyle = zebra ? { backgroundColor: 'rgb(245,245,250)' } : { backgroundColor: 'rgb(249,249,252)' }
 
         if (!d) return (
           <td key={`t-${pk}-${focusedKpi.key}`} className={`px-1 ${py} text-center ${lblSize} text-gray-300 border-r border-gray-200/60`} style={bgStyle}>—</td>
@@ -526,7 +534,7 @@ function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, o
 
   return (
     <>
-      <tr className="bg-slate-100 hover:bg-slate-200/80 cursor-pointer transition-colors border-t-2 border-slate-300" onClick={onToggle}>
+      <tr className="bg-slate-100/80 hover:bg-slate-200/60 cursor-pointer transition-colors border-t border-slate-200/80" onClick={onToggle}>
         <td colSpan={2} className={`sticky left-0 z-10 px-2 ${py} ${fontSize} font-bold text-slate-700 uppercase tracking-wide select-none`}
           style={{ minWidth: COL1_W + COL2_W, backgroundColor: 'rgb(241,245,249)', boxShadow: '3px 0 8px rgba(0,0,0,0.06)' }}
           title={cityYtdSlice ? buildYtdSliceTooltip(cityYtdSlice) : undefined}>
@@ -592,8 +600,8 @@ function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClic
   }, [isProjection, projectionIntegrityBroken, lineData.periods, lineKey])
 
   return (
-    <tr className={`border-b border-gray-100/80 ${isSubfleet ? 'bg-gray-50/40' : 'bg-white'} hover:bg-blue-50/40 transition-colors`}>
-      <td className={`sticky left-0 z-10 border-r border-gray-100 ${py}`} style={{ width: COL1_W, minWidth: COL1_W, backgroundColor: isSubfleet ? 'rgb(250,250,250)' : 'rgb(255,255,255)', boxShadow: '2px 0 4px rgba(0,0,0,0.04)' }} />
+    <tr className="border-b border-gray-200/70 hover:bg-blue-50/40 transition-colors">
+      <td className={`sticky left-0 z-10 border-r border-gray-200/70 ${py}`} style={{ width: COL1_W, minWidth: COL1_W, backgroundColor: isSubfleet ? 'rgb(252,252,250)' : 'rgb(255,255,255)', boxShadow: '2px 0 4px rgba(0,0,0,0.03)' }} />
       <td className={`sticky z-10 px-2 ${py} ${fontSize} text-gray-700 font-medium border-r border-gray-200 whitespace-nowrap overflow-hidden text-ellipsis`}
         style={{ left: COL1_W, width: COL2_W, minWidth: COL2_W, backgroundColor: isSubfleet ? 'rgb(250,250,250)' : 'rgb(255,255,255)', boxShadow: '3px 0 8px rgba(0,0,0,0.06)' }}
         title={[lineYtdSlice ? buildYtdSliceTooltip(lineYtdSlice) : null, `${lineData.business_slice_name}${lineData.fleet_display_name && lineData.fleet_display_name !== '—' && lineData.fleet_display_name !== lineData.business_slice_name ? ` · ${lineData.fleet_display_name}` : ''}${isSubfleet ? ` (sub: ${lineData.subfleet_name})` : ''}`].filter(Boolean).join('\n\n')}>
@@ -632,7 +640,7 @@ function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClic
             periodKey={pk}
             matrixCellId={cellId}
             mode={mode}
-            isCurrentPeriod={!isProjection && currentPeriodKey === pk}
+            isCurrentPeriod={currentPeriodKey === pk}
             onClick={() => onCellClick?.({
               id: cellId, cityKey, lineKey, period: pk, kpiKey: focusedKpi.key,
               lineData, periodDeltas, raw: lineData.periods.get(pk)?.raw,

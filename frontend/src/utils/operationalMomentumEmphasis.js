@@ -163,6 +163,88 @@ export function isMomentumComparison(delta = {}, grain = 'monthly') {
 }
 
 export { COMPARISON_LABEL }
+
+/* ── MOMENTUM COLOR SEVERITY SCALE ── */
+
+/**
+ * Negative severity levels (downward momentum).
+ * Higher number = more severe.
+ */
+const NEGATIVE_SEVERITY = [
+  { maxPct: 5,   color: '#fca5a5', label: 'tenue' },
+  { maxPct: 15,  color: '#f87171', label: 'suave' },
+  { maxPct: 30,  color: '#ef4444', label: 'medio' },
+  { maxPct: 50,  color: '#dc2626', label: 'fuerte' },
+  { maxPct: Infinity, color: '#991b1b', label: 'crítico' },
+]
+
+/**
+ * Positive severity levels (upward momentum).
+ */
+const POSITIVE_SEVERITY = [
+  { maxPct: 5,   color: '#6ee7b7', label: 'tenue' },
+  { maxPct: 15,  color: '#34d399', label: 'suave' },
+  { maxPct: 30,  color: '#10b981', label: 'medio' },
+  { maxPct: 50,  color: '#059669', label: 'fuerte' },
+  { maxPct: Infinity, color: '#047857', label: 'fuerte' },
+]
+
+/**
+ * Returns the severity color for a momentum percentage change.
+ * The color communicates severity automatically — no manual color selection needed.
+ *
+ * @param {number} pct - Percentage change (e.g., -21.6, +12, 0)
+ * @returns {{ color: string, label: string, level: number }} severity info
+ */
+export function getMomentumSeverityColor(pct) {
+  if (pct == null || !Number.isFinite(pct)) return { color: '#9ca3af', label: 'neutral', level: 0 }
+
+  const absPct = Math.abs(pct)
+
+  if (pct < 0) {
+    for (let i = 0; i < NEGATIVE_SEVERITY.length; i++) {
+      if (absPct <= NEGATIVE_SEVERITY[i].maxPct) {
+        return { color: NEGATIVE_SEVERITY[i].color, label: NEGATIVE_SEVERITY[i].label, level: -(i + 1) }
+      }
+    }
+  }
+
+  if (pct > 0) {
+    for (let i = 0; i < POSITIVE_SEVERITY.length; i++) {
+      if (absPct <= POSITIVE_SEVERITY[i].maxPct) {
+        return { color: POSITIVE_SEVERITY[i].color, label: POSITIVE_SEVERITY[i].label, level: i + 1 }
+      }
+    }
+  }
+
+  return { color: '#9ca3af', label: 'neutral', level: 0 }
+}
+
+/**
+ * Returns a Tailwind-like background color class for momentum severity.
+ * Used for cell background tinting based on momentum direction+severity.
+ *
+ * @param {number} pct - Percentage change
+ * @returns {string} Tailwind-like class for bg opacity
+ */
+export function getMomentumSeverityBg(pct) {
+  if (pct == null || !Number.isFinite(pct) || pct === 0) return ''
+  const absPct = Math.abs(pct)
+  if (pct < 0) {
+    if (absPct > 30) return 'bg-red-50/50'
+    if (absPct > 15) return 'bg-red-50/40'
+    if (absPct > 5)  return 'bg-red-50/30'
+    return 'bg-red-50/20'
+  }
+  if (pct > 0) {
+    if (absPct > 30) return 'bg-emerald-50/50'
+    if (absPct > 15) return 'bg-emerald-50/40'
+    if (absPct > 5)  return 'bg-emerald-50/30'
+    return 'bg-emerald-50/20'
+  }
+  return ''
+}
+
 export default {
   COMPARISON_CLASS,
   EMPHASIS_LEVEL,

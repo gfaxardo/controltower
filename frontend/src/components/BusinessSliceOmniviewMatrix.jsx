@@ -19,6 +19,7 @@ import {
   getServingPlanVersions,
 } from '../services/api.js'
 import { exportOmniviewFull } from '../utils/omniviewExport.js'
+import { centerProjectionViewport, isCurrentPeriodVisible } from '../utils/projectionViewportFocusEngine.js'
 import ProjectionVersionSelector from './projections/ProjectionVersionSelector.jsx'
 import {
   buildMatrix,
@@ -1051,7 +1052,9 @@ export default function BusinessSliceOmniviewMatrix () {
   const scrollToCurrentPeriod = useCallback(() => {
     const container = scrollContainerRef.current
     if (!container) return
-    const allPeriods = matrix.allPeriods || []
+    const allPeriods = isProjectionMode
+      ? (displayProjMatrix?.allPeriods || projMatrix?.allPeriods || [])
+      : (matrix.allPeriods || [])
     if (!allPeriods.length) return
     const evColW = compact ? 58 : 78
     const projColW = compact ? 78 : 100
@@ -1065,7 +1068,8 @@ export default function BusinessSliceOmniviewMatrix () {
   }, [matrix.allPeriods, grain, compact, isProjectionMode])
 
   useEffect(() => {
-    if (loading || blockedByCountry || rows.length === 0) return
+    const hasData = isProjectionMode ? projectionRows.length > 0 : rows.length > 0
+    if (loading || blockedByCountry || !hasData) return
     if (!autoScrollAppliedRef.current) {
       scrollRafRef.current = requestAnimationFrame(() => {
         scrollRafRef.current = requestAnimationFrame(() => {
@@ -1080,7 +1084,7 @@ export default function BusinessSliceOmniviewMatrix () {
     return () => {
       if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current)
     }
-  }, [loading, blockedByCountry, rows.length, scrollToCurrentPeriod])
+  }, [loading, blockedByCountry, rows.length, projectionRows.length, scrollToCurrentPeriod, isProjectionMode])
 
   useEffect(() => {
     autoScrollAppliedRef.current = false
@@ -1384,7 +1388,10 @@ export default function BusinessSliceOmniviewMatrix () {
             {grain === 'daily' && (
               <div className="flex flex-col gap-1 self-end">
                 <span className="text-2xs font-semibold text-ct-text3 uppercase tracking-wider">
-                  Día {weekdayFocus != null ? `· ${displayMatrix?.allPeriods?.length || 0} cols de ${matrix?.allPeriods?.length || 0}` : ''}
+                  {weekdayFocus != null
+                    ? `Comparando ${['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'][weekdayFocus]} vs ${['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'][weekdayFocus]}`
+                    : 'Todos los días'}
+                  <span className="text-ct-text3/50 font-normal ml-1 lowercase">{weekdayFocus != null ? `· ${displayMatrix?.allPeriods?.length || 0} semanas` : ''}</span>
                 </span>
                 <div className="flex gap-0.5">
                   {['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'].map((label, idx) => {
@@ -1394,12 +1401,12 @@ export default function BusinessSliceOmniviewMatrix () {
                         key={label}
                         type="button"
                         onClick={() => setWeekdayFocus(isActive ? null : idx)}
-                        className={`px-1.5 py-0.5 rounded text-[11px] font-medium transition-all ${
+                        className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
                           isActive
-                            ? 'bg-ct-accent text-white shadow-sm'
-                            : 'text-ct-text3 hover:text-ct-text hover:bg-ct-border/30'
+                            ? 'bg-blue-600 text-white shadow-[0_0_12px_rgba(59,130,246,0.35)] ring-1 ring-blue-400/50 scale-110'
+                            : 'text-ct-text3 hover:text-ct-text hover:bg-ct-border/50'
                         }`}
-                        title={isActive ? `Mostrar todos los días` : `Ver solo ${label}`}
+                        title={isActive ? `Mostrar todos los días` : `Ver solo ${label} — comparar ${label} contra ${label}`}
                       >
                         {label}
                       </button>
@@ -1928,7 +1935,7 @@ export default function BusinessSliceOmniviewMatrix () {
                   </div>
                 )}
                 <BusinessSliceOmniviewMatrixTable
-                  matrix={projMatrix} grain={grain} compact={compact} sortKey={sortKey}
+                  matrix={displayProjMatrix} grain={grain} compact={compact} sortKey={sortKey}
                   onCellClick={handleCellClick} selectedCell={selectedCell}
                   periodStates={periodStates}
                   focusedKpi={focusedKpi}

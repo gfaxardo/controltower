@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { MATRIX_KPIS, periodHeaderPrimary } from './omniview/omniviewMatrixUtils.js'
 import OmniviewMomentumDrillChart from './omniview/momentum/OmniviewMomentumDrillChart.jsx'
+import { selectionHasMomentum } from '../utils/projectionCellDisplayModel.js'
 import {
   PROJECTION_KPIS,
   fmtAttainment,
@@ -61,7 +62,9 @@ export default function OmniviewProjectionDrill ({ selection, grain, compact, on
 function DrillContent ({ selection, grain, compact, onClose, projectionMeta, planVersion, fullscreen, onToggleFullscreen }) {
   const [clData, setClData] = useState(null)
   const [clLoading, setClLoading] = useState(false)
-  const [drillMode, setDrillMode] = useState('plan_vs_real') // 'plan_vs_real' | 'momentum'
+  const [drillMode, setDrillMode] = useState(() =>
+    selectionHasMomentum(selection) ? 'momentum' : 'plan_vs_real'
+  )
 
   const { cityKey, lineKey, period, kpiKey, lineData, periodDeltas, raw } = selection
   const cityParts = cityKey.split('::')

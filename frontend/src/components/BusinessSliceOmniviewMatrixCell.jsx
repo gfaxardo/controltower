@@ -15,6 +15,8 @@ import {
   getKpiComparabilityBadge,
 } from './omniview/projectionMatrixUtils.js'
 import { getComparisonLabel, isMomentumComparison } from '../utils/operationalMomentumEmphasis.js'
+import { getMomentumSeverityColor, getMomentumSeverityBg } from '../utils/operationalMomentumEmphasis.js'
+import { buildProjectionCellDisplay } from '../utils/projectionCellDisplayModel.js'
 
 export default memo(function BusinessSliceOmniviewMatrixCell ({
   kpiKey,
@@ -71,6 +73,9 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
         isSelected={isSelected} compact={compact} periodIdx={periodIdx}
         cityName={cityName} lineName={lineName} periodLbl={periodLbl}
         matrixCellId={matrixCellId}
+        isCurrentPeriod={isCurrentPeriod}
+        periodKey={periodKey}
+        grain={grain}
       />
     )
   }
@@ -194,7 +199,7 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
  * Si no hay datos (delta = null):
  *   —               ← celda vacía, sin plan ni real
  */
-function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compact, periodIdx, cityName, lineName, periodLbl, matrixCellId }) {
+function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compact, periodIdx, cityName, lineName, periodLbl, matrixCellId, isCurrentPeriod = false, periodKey = null, grain = 'daily' }) {
   const zebra = periodIdx % 2 === 1
   const isProjectable = PROJECTION_KPIS.includes(kpiKey)
 
@@ -214,7 +219,7 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
     return (
       <td
         data-matrix-cell-id={matrixCellId || undefined}
-        className={`px-1 ${py} text-center border-r border-gray-100/60 cursor-default select-none ${isSelected ? 'bg-blue-50' : zebra ? 'bg-slate-50/50' : ''}`}
+        className={`px-1 ${py} text-center border-r border-gray-100/60 cursor-default select-none ${isSelected ? 'bg-blue-50' : isCurrentPeriod ? 'bg-emerald-50/30 border-l-2 border-r-2 border-emerald-300/60 shadow-[inset_0_0_12px_rgba(16,185,129,0.08)]' : zebra ? 'bg-slate-50/50' : ''}`}
         title={buildProjectionCellTooltip(kpi, null, cityName, lineName, periodLbl)}
       >
         <div className={`${szProy} text-gray-200 leading-none`}>—</div>
@@ -231,7 +236,9 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
       <td
         data-matrix-cell-id={matrixCellId || undefined}
         className={`px-1 ${py} text-center whitespace-nowrap cursor-pointer select-none border-r border-gray-100/60 transition-colors
-          ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-300' : zebra ? 'bg-slate-50/50 hover:bg-blue-50/40' : 'hover:bg-blue-50/40'}`}
+          ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-300'
+            : isCurrentPeriod ? 'bg-emerald-50/30 border-l-2 border-r-2 border-emerald-300/60 shadow-[inset_0_0_12px_rgba(16,185,129,0.08)]'
+            : zebra ? 'bg-slate-50/50 hover:bg-blue-50/40' : 'hover:bg-blue-50/40'}`}
         onClick={onClick}
         title={`Sin proyección para este período.\nReal: ${valStr}\n${cityName} · ${lineName} · ${periodLbl}`}
       >
@@ -252,7 +259,9 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
       <td
         data-matrix-cell-id={matrixCellId || undefined}
         className={`px-1 ${py} text-center whitespace-nowrap cursor-pointer select-none border-r border-gray-100/60 transition-colors
-          ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-300' : zebra ? 'bg-slate-50/50 hover:bg-blue-50/40' : 'hover:bg-blue-50/40'}`}
+          ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-300'
+            : isCurrentPeriod ? 'bg-emerald-50/30 border-l-2 border-r-2 border-emerald-300/60 shadow-[inset_0_0_12px_rgba(16,185,129,0.08)]'
+            : zebra ? 'bg-slate-50/50 hover:bg-blue-50/40' : 'hover:bg-blue-50/40'}`}
         onClick={onClick}
         title={tooltip}
       >
@@ -263,74 +272,16 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
   }
 
   // ── KPI proyectable ───────────────────────────────────────────────────────
-  const projected = delta.projected_total
-  const actual    = delta.value
-  const att       = delta.attainment_pct  // canónico: NUNCA negativo (null si actual < 0)
-  const gap       = delta.gap_to_expected // gap_abs
-  const gapPct    = delta.gap_pct         // gap%: puede ser negativo
+  // CANONICAL: build display model → momentum always dominates when data exists
+  const dm = buildProjectionCellDisplay(delta, grain, kpiKey)
 
-  const hasPlan         = projected != null && Number(projected) > 0
-  const hasReal         = actual != null && Number(actual) > 0
-  const hasNegActual    = actual != null && Number(actual) < 0
+  // Temporal degradation
+  const temporalAge = periodKey
+    ? computePastAgingOpacity(periodKey, grain)
+    : 0
+  const pastDegraded = temporalAge > 0 && !isCurrentPeriod && !isSelected
 
-  // Formato de valores mostrados
-  const projStr = hasPlan ? fmtValue(projected, kpiKey) : '—'
-  const realStr = hasReal
-    ? fmtValue(actual, kpiKey)
-    : hasNegActual
-      ? fmtValue(actual, kpiKey)   // revenue negativo: mostrar el valor (ej: -5.2K)
-      : (actual === 0 || actual === null ? '0' : '—')
-
-  // Sufijo de base: (E) = expected_to_date, (F) = full period
-  const basis   = delta.comparison_basis
-  const sfx     = basisSuffix(basis)           // '(E)', '(F)', o ''
-
-  // Avance %: NUNCA negativo. Si actual < 0 → mostrar gap% en su lugar.
-  // El sufijo (E)/(F) se añade cuando el avance es un valor real (no '—' ni '0.0%' de sin ejecución).
-  const rawAvStr = hasNegActual
-    ? '—'
-    : hasPlan
-      ? fmtAttainment(hasReal ? att : 0)
-      : '—'
-  const avStr = (rawAvStr !== '—' && sfx)
-    ? `${rawAvStr} ${sfx}`
-    : rawAvStr
-
-  // Si avance_pct es null por actual negativo, mostramos gap% como fallback informativo
-  const showGapPctFallback = hasNegActual && gapPct != null
-  const gapPctStr = fmtGapPct(gapPct)
-
-  const gapStr = gap != null ? fmtGap(gap, kpiKey) : null
-
-  // ── MOMENTUM (DoD/WoW/MoM) — COLOR AUTHORITY ──
-  const hasMomentum = delta.periodPopComparable && delta.periodPopLabel && delta.periodPop != null
-  const momLabel = hasMomentum ? delta.periodPopLabel : null
-  const momValue = hasMomentum ? delta.periodPop : 0
-  const momUp = momValue > 0
-  const momDown = momValue < 0
-  const momSignal = momDown ? 'down' : momUp ? 'up' : 'neutral'
-  // Momentum usa el mismo sistema de colores que Evolution (green up, red down)
-  const momColor = momSignal === 'up' ? '#22c55e' : momSignal === 'down' ? '#ef4444' : '#9ca3af'
-  const momArrow = momUp ? '▲' : momDown ? '▼' : ''
-  const momPctStr = hasMomentum ? `${momUp ? '+' : ''}${Number(momValue).toFixed(0)}%` : ''
-  // Momentum severity: >10% change is notable
-  const momBold = Math.abs(momValue) > 5
-
-  // Señal: si sin real forzamos no_data para coloración neutra
-  // Si actual < 0 → danger (problema real, aunque avance no aplique)
-  const signal = hasNegActual
-    ? 'danger'
-    : (hasPlan && !hasReal) ? 'no_data' : (delta.signal || 'no_data')
-  const dotClass = SIGNAL_DOT[signal] || SIGNAL_DOT.no_data
-  const attColor = projectionSignalColor(signal)
-
-  // Fondo semántico por señal
-  const signalBg = signal === 'danger'  ? 'bg-red-50/60'
-    : signal === 'warning' ? 'bg-amber-50/40'
-    : signal === 'green'   ? 'bg-emerald-50/30'
-    : ''
-
-  // Confianza de la curva
+  // Confidence
   const conf    = delta.curve_confidence
   const lowConf = conf === 'low' || conf === 'fallback'
   const medConf = conf === 'medium'
@@ -340,20 +291,11 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
       ? 'ring-1 ring-inset ring-dashed ring-amber-300/60'
       : ''
 
-  // Alerta crítica: < 75% o actual negativo
-  const criticalAlert = signal === 'danger' && (hasNegActual || (att != null && att < 75))
+  // Critical alert — only for real deterioration, not future
+  const criticalAlert = !dm.isFuture && (dm.hasNegActual || (dm.hasPlan && !dm.hasReal && delta.attainment_pct != null && delta.attainment_pct < 75))
 
-  // Estado semántico
-  const week_state = delta.week_state || null
-  const attPctForStatus = hasReal && !hasNegActual ? att : (hasPlan ? 0 : null)
-  const statusLabel = getProjectionStatusLabel(attPctForStatus, hasPlan, hasReal, week_state)
-  const statusColors = getProjectionStatusColors(statusLabel)
-
-  // Mostrar etiqueta: siempre para plan sin real (future/current/closed),
-  // o cuando tiene real pero queremos el badge
-  const showStatusLabel = statusLabel && (!hasReal || week_state === 'current')
-
-  const futureDim = week_state === 'future' && !hasReal ? 'opacity-60' : ''
+  // Future/pending: ghosted, muted. Real: full intensity.
+  const futureDim = dm.isFuture ? 'opacity-45 grayscale-[30%]' : ''
 
   return (
     <td
@@ -361,83 +303,120 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
       className={`px-1 ${py} text-center whitespace-nowrap cursor-pointer select-none border-r border-gray-100/60 transition-colors relative
         ${isSelected
           ? 'bg-blue-50 ring-1 ring-inset ring-blue-300'
-          : `${signalBg} ${zebra && !signalBg ? 'bg-slate-50/50' : ''} hover:bg-blue-50/40`}
+          : isCurrentPeriod && !dm.isFuture
+            ? `${dm.severityBg || ''} bg-gradient-to-b from-emerald-50/40 to-emerald-50/20 border-l-2 border-r-2 border-emerald-400/60 shadow-[inset_0_0_18px_rgba(16,185,129,0.12),0_0_10px_rgba(16,185,129,0.10)]`
+            : isCurrentPeriod && dm.isFuture
+              ? 'bg-slate-100/40 border-l border-r border-slate-200/60'  // future current: muted, NOT green
+            : dm.isFuture
+              ? 'bg-slate-50/30'
+              : `${dm.isMomentum ? dm.severityBg : ''} ${zebra && !dm.severityBg ? 'bg-slate-50/50' : ''} hover:bg-blue-50/40`}
         ${futureDim}
-        ${!isSelected ? confBorder : ''}`}
+        ${!isSelected && !dm.isFuture ? confBorder : ''}`}
+      style={pastDegraded && !dm.isFuture ? { opacity: 1 - temporalAge } : undefined}
       onClick={onClick}
       title={tooltip}
     >
-      {/* Alerta crítica < 75% o negativo */}
+      {/* Alerta crítica — ONLY for real deterioration */}
       {criticalAlert && (
-        <span
-          className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-red-600 ring-1 ring-white shadow-sm"
-          title={hasNegActual ? 'Alerta: valor real negativo' : 'Alerta: cumplimiento bajo 75%'}
-          aria-hidden
-        />
+        <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-red-600 ring-1 ring-white shadow-sm"
+          title={dm.hasNegActual ? 'Alerta: valor real negativo' : 'Alerta: cumplimiento bajo 75%'} aria-hidden />
       )}
-      {(delta?.projection_confidence === 'low' || delta?.projection_anomaly) && (
-        <span
-          className="absolute top-0.5 left-0.5 w-1 h-1 rounded-full bg-amber-500 ring-1 ring-white shadow-sm"
-          title={delta.projection_anomaly ? 'Anomalía de volatilidad en derivación' : 'Baja confianza de proyección (fallback/ajuste)'}
-          aria-hidden
-        />
+      {(delta?.projection_confidence === 'low' || delta?.projection_anomaly) && !dm.isFuture && (
+        <span className="absolute top-0.5 left-0.5 w-1 h-1 rounded-full bg-amber-500 ring-1 ring-white shadow-sm"
+          title={delta.projection_anomaly ? 'Anomalía de volatilidad' : 'Baja confianza'} aria-hidden />
       )}
-      {/* FASE_KPI_CONSISTENCY: badge discreto cuando el KPI no es comparable por suma entre granos */}
       {!isKpiComparableAcrossGrains(kpiKey) && (
-        <span
-          className="absolute bottom-0.5 right-0.5 px-0.5 text-[6px] font-semibold leading-none rounded-sm bg-slate-200/80 text-slate-600"
-          title={`${getKpiComparabilityBadge(kpiKey)?.label || ''}: comparación por scope, no por suma entre granos.`}
-          aria-hidden
-        >
+        <span className="absolute bottom-0.5 right-0.5 px-0.5 text-[6px] font-semibold leading-none rounded-sm bg-slate-200/80 text-slate-600"
+          title={`${getKpiComparabilityBadge(kpiKey)?.label || ''}`} aria-hidden>
           {getKpiComparabilityBadge(kpiKey)?.short || '≠Σ'}
         </span>
       )}
 
-      {/* Fila 1: Proyectado */}
-      <div className={`${szProy} text-gray-400 leading-none`}>
-        <span className="text-gray-300">↑</span> {projStr}
-      </div>
-
-      {/* Fila 2: Real alcanzado */}
-      <div className={`${szReal} font-semibold leading-none mt-px ${(hasReal || hasNegActual) ? (hasNegActual ? 'text-red-700' : 'text-gray-800') : 'text-gray-400'}`}>
-        {realStr}
-      </div>
-
-      {/* Fila 2.5: Momentum (DoD/WoW/MoM) — COLOR AUTHORITY DOMINANT */}
-      {hasMomentum && (
-        <div
-          className={`${szAv} leading-none mt-px flex items-center justify-center gap-0.5 ${momBold ? 'font-bold' : 'font-semibold'}`}
-          title={`${momLabel} vs período anterior — ${kpiKey}: ${momPctStr}`}
-          style={{ color: momColor }}
-        >
-          <span className="text-[0.7em] opacity-70">{momLabel}</span>
-          <span>{momArrow}{momPctStr}</span>
+      {/* ── L1: HOY badge ── */}
+      {isCurrentPeriod && !dm.isFuture && (
+        <div className={`${szStatus} leading-none mb-0.5`}>
+          <span className="inline-block px-1 py-px rounded text-[7px] font-bold uppercase leading-none bg-emerald-500 text-white">
+            {grain === 'daily' ? 'HOY' : grain === 'weekly' ? 'SEM ACT' : 'MES ACT'}
+          </span>
         </div>
       )}
 
-      {/* Fila 3: Avance % con señal (o gap% si actual negativo) — secundario si hay momentum */}
-      <div className={`${szAv} leading-none ${hasMomentum ? 'font-normal opacity-60' : 'font-semibold'} mt-px flex items-center justify-center gap-0.5`}>
-        <span className={`inline-block w-1.5 h-1.5 rounded-full ${dotClass} flex-shrink-0`} />
-        {showGapPctFallback
-          ? <span style={{ color: attColor }} title="Gap% (avance no aplica con valor negativo)">{gapPctStr}</span>
-          : <span style={{ color: attColor }}>{avStr}</span>
-        }
-        {lowConf && (
-          <span className="text-[6px] text-red-400 font-bold" title="Baja confianza en curva de distribución">?</span>
+      {/* ── L2: REAL VALUE — DOMINANTE ── */}
+      <div className={`${isCurrentPeriod && !dm.isFuture ? (compact ? 'text-[12px]' : 'text-[16px]') : szReal} font-extrabold leading-tight ${dm.hasReal || dm.hasNegActual ? (dm.hasNegActual ? 'text-red-700' : dm.isFuture ? 'text-gray-400' : 'text-gray-900') : 'text-gray-400'}`}>
+        {dm.realStr}
+      </div>
+
+      {/* ── L3: DELTA MOMENTUM — DOMINANTE ── */}
+      <div className="leading-none mt-0.5 flex items-center justify-center">
+        {dm.isMomentum ? (
+          /* MOMENTUM: colored, bold, arrow + pct. SIMPLE. */
+          <span className={`${szAv} ${dm.deltaBold}`} style={{ color: dm.deltaColor }}>
+            {dm.deltaArrow}{dm.deltaPctStr}
+          </span>
+        ) : dm.isPlanFallback ? (
+          /* PLAN FALLBACK: attainment, muted, small */
+          <span className={`${szStatus} font-semibold text-gray-400`}>
+            {dm.attainmentStr || '—'}
+          </span>
+        ) : dm.isFuture ? (
+          /* FUTURE: pending, no delta */
+          <span className={`${szStatus} font-medium text-slate-300`}>—</span>
+        ) : (
+          <span className={`${szStatus} text-gray-300`}>—</span>
         )}
       </div>
 
-      {/* Fila 4: Gap absoluto (solo si disponible y no es caso negativo) */}
-      {gapStr && !showGapPctFallback && (
-        <div className={`${szGap} leading-none mt-px ${hasMomentum ? 'text-gray-300' : 'text-gray-400'}`}>{gapStr}</div>
+      {/* ── L4: COMPARABLE CONTEXT ── */}
+      {dm.comparableLabel && (
+        <div className={`${szStatus} leading-none mt-0.5 text-gray-400`}>
+          {dm.comparableLabel}
+        </div>
       )}
 
-      {/* Etiqueta de estado "Sin ejecución" (solo cuando no hay real) */}
-      {showStatusLabel && (
-        <div className={`${szStatus} leading-none mt-px font-medium truncate ${statusColors.text}`}>
-          {statusLabel}
+      {/* ── L5: PLAN / AVANCE CONTEXT ── */}
+      {dm.isMomentum && dm.attainmentStr && (
+        <div className={`text-[7px] leading-none mt-px text-gray-300`}>
+          Plan {dm.attainmentStr}
+        </div>
+      )}
+      {dm.isPlanFallback && dm.planStr && (
+        <div className={`${szStatus} leading-none mt-0.5 text-gray-400`}>
+          Plan {dm.planStr}
+        </div>
+      )}
+
+      {/* ── L6: STATUS / PENDING ── */}
+      {dm.statusText && (
+        <div className={`${szStatus} leading-none mt-px font-medium ${dm.isFuture ? 'text-slate-300' : 'text-slate-400'}`}>
+          {dm.statusText}
         </div>
       )}
     </td>
   )
+}
+
+/**
+ * Compute opacity for past periods based on temporal distance from current period.
+ * Returns 0 for current period, 0.08 per period away from current (max 0.6 opacity reduction).
+ */
+function computePastAgingOpacity(periodKey, grain) {
+  if (!periodKey || typeof periodKey !== 'string') return 0
+  try {
+    const d = new Date(periodKey + 'T00:00:00')
+    if (isNaN(d)) return 0
+    const now = new Date()
+    now.setHours(0, 0, 0, 0)
+    d.setHours(0, 0, 0, 0)
+    if (d >= now) return 0
+    const diffDays = Math.floor((now - d) / (1000 * 60 * 60 * 24))
+    if (diffDays <= 0) return 0
+    const steps = grain === 'daily'
+      ? Math.min(Math.floor(diffDays / 1), 60)
+      : grain === 'weekly'
+        ? Math.min(Math.floor(diffDays / 7), 40)
+        : Math.min(Math.floor(diffDays / 30), 24)
+    return Math.min(steps * 0.025, 0.55)
+  } catch {
+    return 0
+  }
 }

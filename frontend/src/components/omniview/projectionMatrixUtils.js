@@ -290,7 +290,7 @@ export function projectionSignalColor (signal) {
 }
 
 export function fmtAttainment (pct) {
-  if (pct == null) return '—'
+  if (pct == null || !Number.isFinite(pct)) return '—'
   return `${pct >= 1000 ? '>999' : pct.toFixed(1)}%`
 }
 
@@ -700,7 +700,7 @@ export function describeBasis (basis) {
  * gap_pct puede ser negativo (diferencia a favor o en contra de lo esperado).
  */
 export function fmtGapPct (pct) {
-  if (pct == null) return null
+  if (pct == null || !Number.isFinite(pct)) return null
   return `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`
 }
 
