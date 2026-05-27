@@ -76,18 +76,24 @@ function QueuePill ({ qt, active, onClick, count }) {
 export default function DriverActionableLists () {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [activeQueue, setActiveQueue] = useState(null)
   const [workflows, setWorkflows] = useState({})
   const [assignOwner, setAssignOwner] = useState('')
 
   const fetchData = useCallback(async (queueFilter) => {
     setLoading(true)
+    setError(null)
     try {
       const res = await api.get('/drivers/actionable-list', {
         params: { queue_type: queueFilter || undefined, limit: 200, offset: 0 }, timeout: 30000,
       })
       setData(res.data)
-    } catch { setData(null) } finally { setLoading(false) }
+      setError(null)
+    } catch (err) {
+      setData(null)
+      setError(err?.response?.data?.detail || err?.message || 'Failed to load actionable list')
+    } finally { setLoading(false) }
   }, [])
 
   useEffect(() => { fetchData(activeQueue) }, [activeQueue, fetchData])
@@ -151,6 +157,27 @@ export default function DriverActionableLists () {
 
   if (loading && !data) {
     return <div className='animate-pulse space-y-2'><div className='h-3 bg-gray-100 rounded w-full' /><div className='h-3 bg-gray-50 rounded w-3/4' /></div>
+  }
+
+  if (error && !data) {
+    return (
+      <div className='border border-red-200 rounded-lg p-4 bg-red-50/50'>
+        <div className='flex items-center gap-2 mb-2'>
+          <span className='text-[11px] font-medium text-red-700'>Action Queues: unavailable</span>
+          <span className='text-[10px] text-red-600'>{error}</span>
+        </div>
+        <p className='text-[10px] text-red-500 mb-2'>
+          Remediation: Verify /drivers/actionable-list endpoint and lifecycle-service connectivity.
+        </p>
+        <button
+          type='button'
+          onClick={() => fetchData(activeQueue)}
+          className='px-2 py-1 rounded text-[10px] font-medium bg-red-100 text-red-700 hover:bg-red-200 border border-red-200'
+        >
+          Reintentar
+        </button>
+      </div>
+    )
   }
 
   return (
@@ -233,7 +260,22 @@ export default function DriverActionableLists () {
           </table>
         </div>
       ) : (
-        <div className='text-center py-6 text-xs text-gray-400'>No actionable drivers in selected queue.</div>
+        <div className='text-center py-6 text-xs text-gray-400'>
+          {error
+            ? `Error loading data: ${error}. Try refreshing.`
+            : activeQueue
+              ? `No actionable drivers in "${QUEUE_LABELS[activeQueue] || activeQueue}" queue with current filters.`
+              : 'No hay drivers accionables con los filtros actuales.'}
+          {error && (
+            <button
+              type='button'
+              onClick={() => fetchData(activeQueue)}
+              className='ml-2 underline text-blue-500 hover:text-blue-700'
+            >
+              Reintentar
+            </button>
+          )}
+        </div>
       )}
     </div>
   )

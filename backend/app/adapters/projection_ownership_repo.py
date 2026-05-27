@@ -12,6 +12,8 @@ import logging
 from datetime import date as _date
 from typing import Any, Dict, List, Optional, Tuple
 
+from psycopg2.extras import RealDictCursor
+
 from app.db.connection import get_db
 
 logger = logging.getLogger(__name__)
@@ -30,6 +32,18 @@ def _has_ownership_data(row: Dict[str, Any]) -> bool:
         if val and str(val).strip():
             return True
     return False
+
+
+def _parse_period_date(raw: Any) -> Optional[_date]:
+    """Convierte period strings como '2026-01' o '2026-01-01' a date."""
+    if not raw:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+    if len(s) == 7 and s[4] == '-':
+        s = s + '-01'
+    return _date.fromisoformat(s)
 
 
 def sync_ownership_from_staging(plan_version: str) -> Dict[str, Any]:
@@ -123,7 +137,7 @@ def sync_ownership_from_staging(plan_version: str) -> Dict[str, Any]:
                             lob_canon,
                             jefe, prod, est,
                             str(upload_id) if upload_id else None,
-                            _date.fromisoformat(period_first) if period_first else None,
+                            _parse_period_date(period_first),
                             row_hash,
                         ),
                     )
@@ -178,6 +192,137 @@ def sync_ownership_from_staging(plan_version: str) -> Dict[str, Any]:
             )
 
         return result
+
+
+def query_ownership_serving_fact(
+    plan_version_key: Optional[str] = None,
+    country: Optional[str] = None,
+    city: Optional[str] = None,
+    jefe_producto: Optional[str] = None,
+    lob: Optional[str] = None,
+    period: Optional[str] = None,
+    ownership_assignment: Optional[str] = None,
+    limit: int = 2000,
+    offset: int = 0,
+) -> Dict[str, Any]:
+    """Consulta la MV ops.mv_ownership_serving_fact con filtros opcionales.
+
+    Retorna rows + metadata (totals, owners detectados, grain info).
+    Solo lectura. No modifica datos.
+    """
+    with get_db() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        where = ["TRUE"]
+        params: List[Any] = []
+
+        if plan_version_key:
+            where.append("plan_version = %s")
+            params.append(plan_version_key)
+        if country:
+            where.append("TRIM(LOWER(COALESCE(country, ''))) = TRIM(LOWER(%s))")
+            params.append(country)
+        if city:
+            where.append("TRIM(LOWER(COALESCE(city, ''))) = TRIM(LOWER(%s))")
+            params.append(city)
+        if jefe_producto:
+            where.append("TRIM(LOWER(COALESCE(jefe_producto, ''))) = TRIM(LOWER(%s))")
+            params.append(jefe_producto)
+        if lob:
+            where.append("TRIM(LOWER(COALESCE(lob_base, ''))) = TRIM(LOWER(%s))")
+            params.append(lob)
+        if period:
+            where.append("to_char(period, 'YYYY-MM') = %s")
+            params.append(period)
+        if ownership_assignment:
+            where.append("ownership_assignment = %s")
+            params.append(ownership_assignment)
+
+        clause = " AND ".join(where)
+
+        try:
+            cur.execute(
+                f"""
+                SELECT COUNT(*) AS total_rows
+                FROM ops.mv_ownership_serving_fact
+                WHERE {clause}
+                """,
+                params,
+            )
+            total = cur.fetchone()["total_rows"]
+
+            cur.execute(
+                f"""
+                SELECT
+                    plan_version, period, month, country, city, city_norm,
+                    lob_base, segment, jefe_producto, producto_plan,
+                    estado_validacion, ownership_assignment, ownership_quality,
+                    conflict_detected, conflict_detail,
+                    projected_trips, projected_drivers, projected_ticket,
+                    projected_revenue, projected_trips_per_driver,
+                    real_trips, real_trips_cancelled, real_active_drivers,
+                    real_avg_ticket, real_commission_pct, real_revenue,
+                    execution_pct_trips, execution_pct_revenue,
+                    gap_trips, gap_revenue, momentum_status,
+                    mom_pct_real_trips, mom_pct_real_revenue,
+                    mom_pct_projected_trips, mom_delta_execution_pp,
+                    real_fact_refreshed_at, refreshed_at
+                FROM ops.mv_ownership_serving_fact
+                WHERE {clause}
+                ORDER BY period DESC, country, city, lob_base, jefe_producto
+                LIMIT %s OFFSET %s
+                """,
+                params + [limit, offset],
+            )
+            rows = [dict(r) for r in cur.fetchall()]
+
+            cur.execute(
+                f"""
+                SELECT
+                    COUNT(DISTINCT jefe_producto) FILTER (WHERE jefe_producto IS NOT NULL) AS owners_detected,
+                    COUNT(*) FILTER (WHERE ownership_assignment = 'assigned') AS assigned_count,
+                    COUNT(*) FILTER (WHERE ownership_assignment = 'missing') AS missing_count,
+                    COUNT(*) FILTER (WHERE ownership_assignment = 'conflicting') AS conflicting_count,
+                    SUM(projected_trips) AS total_projected_trips,
+                    SUM(projected_revenue) AS total_projected_revenue,
+                    SUM(real_trips) AS total_real_trips,
+                    SUM(real_revenue) AS total_real_revenue
+                FROM ops.mv_ownership_serving_fact
+                WHERE {clause}
+                """,
+                params,
+            )
+            totals = dict(cur.fetchone())
+
+            cur.execute(
+                f"""
+                SELECT jefe_producto, COUNT(*) AS row_count,
+                       SUM(projected_trips) AS projected_trips,
+                       SUM(real_trips) AS real_trips,
+                       SUM(projected_revenue) AS projected_revenue,
+                       SUM(real_revenue) AS real_revenue
+                FROM ops.mv_ownership_serving_fact
+                WHERE {clause} AND jefe_producto IS NOT NULL
+                GROUP BY jefe_producto
+                ORDER BY row_count DESC
+                """,
+                params,
+            )
+            by_owner = [dict(r) for r in cur.fetchall()]
+
+            cur.close()
+        except Exception as e:
+            cur.close()
+            raise
+
+    return {
+        "rows": rows,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "aggregates": totals,
+        "by_owner": by_owner,
+    }
 
 
 def get_ownership_summary(plan_version_key: str) -> Dict[str, Any]:

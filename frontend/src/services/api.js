@@ -6,6 +6,7 @@ const baseURL = import.meta.env.DEV ? '/api' : (apiBase || '/api')
 
 const api = axios.create({
   baseURL,
+  timeout: 60000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -170,6 +171,16 @@ export const getControlLoopPlanVersions = async () => {
 
 export const getOmniviewProjection = async (params = {}, { signal } = {}) => {
   const response = await api.get('/ops/business-slice/omniview-projection', { params, signal })
+  return response.data
+}
+
+/**
+ * FASE 1.1 — Ownership Serving Monthly.
+ * Devuelve métricas plan vs real agrupadas por Jefe Producto.
+ * Params: plan_version_key, country, city, jefe_producto, lob, period, ownership_assignment.
+ */
+export const getOwnershipServingMonthly = async (params = {}, { signal } = {}) => {
+  const response = await api.get('/ops/ownership-serving/monthly', { params, signal })
   return response.data
 }
 
@@ -696,6 +707,24 @@ export const getSupplySegmentConfig = async () => {
 // Driver Supply Dynamics — definiciones oficiales de métricas (tooltips, glosario)
 export const getSupplyDefinitions = async () => {
   const response = await api.get('/ops/supply/definitions', { timeout: 5000 })
+  return response.data
+}
+
+// SH3.5 — Fact-based endpoints (lean, no runtime)
+export const getSupplyOverviewFact = async (params = {}) => {
+  const response = await api.get('/drivers/supply-overview-fact', { params, timeout: 15000 })
+  return response.data
+}
+export const getSegmentCompositionFact = async (params = {}) => {
+  const response = await api.get('/drivers/segment-composition-fact', { params, timeout: 15000 })
+  return response.data
+}
+export const getGeoOptions = async () => {
+  const response = await api.get('/drivers/geo-options', { timeout: 10000 })
+  return response.data
+}
+export const getServingFreshness = async (params = {}) => {
+  const response = await api.get('/drivers/serving-freshness', { params, timeout: 10000 })
   return response.data
 }
 

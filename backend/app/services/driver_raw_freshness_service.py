@@ -258,16 +258,9 @@ def inspect_source(cur, source_def: dict) -> dict:
 def get_raw_freshness_map() -> dict[str, Any]:
     """
     Inspect all driver RAW sources and return structured freshness map.
-
-    Returns:
-        {
-            "status": "ok|warning|blocked",
-            "generated_at": ISO timestamp,
-            "sources": [ ... per-source freshness ... ],
-            "blocking_gaps": [ ... sources where is_blocking_for_d2 AND NOT fresh ... ],
-            "warnings": [ ... sources that are stale ... ]
-        }
+    Per-source timeout: 5s. Total max: ~60s.
     """
+    import signal
     sources_result = []
     blocking_gaps = []
     warnings_list = []
@@ -275,25 +268,38 @@ def get_raw_freshness_map() -> dict[str, Any]:
     try:
         with get_db() as conn:
             cur = _cursor(conn)
+            cur.execute("SET LOCAL statement_timeout = '5000'")  # 5s per query
 
             for source_def in SOURCES:
-                info = inspect_source(cur, source_def)
-                sources_result.append(info)
+                try:
+                    info = inspect_source(cur, source_def)
+                    sources_result.append(info)
 
-                if info.get("is_blocking_for_d2") and info.get("freshness_status") in ("stale", "blocked", "unknown"):
-                    blocking_gaps.append({
-                        "source_name": info["source_name"],
-                        "role": info["role"],
-                        "freshness_status": info["freshness_status"],
-                        "remediation": info.get("remediation", ""),
-                    })
+                    if info.get("is_blocking_for_d2") and info.get("freshness_status") in ("stale", "blocked", "unknown"):
+                        blocking_gaps.append({
+                            "source_name": info["source_name"],
+                            "role": info["role"],
+                            "freshness_status": info["freshness_status"],
+                            "remediation": info.get("remediation", ""),
+                        })
 
-                if info.get("freshness_status") == "stale":
-                    warnings_list.append({
-                        "source_name": info["source_name"],
-                        "role": info["role"],
-                        "freshness_status": info["freshness_status"],
-                        "freshness_reason": info.get("freshness_reason", ""),
+                    if info.get("freshness_status") == "stale":
+                        warnings_list.append({
+                            "source_name": info["source_name"],
+                            "role": info["role"],
+                            "freshness_status": info["freshness_status"],
+                            "freshness_reason": info.get("freshness_reason", ""),
+                        })
+                except Exception as se:
+                    sources_result.append({
+                        "source_name": source_def.get("source_name", "unknown"),
+                        "source_type": source_def.get("source_type", "unknown"),
+                        "exists": False,
+                        "role": source_def.get("role", "unknown"),
+                        "freshness_status": "blocked",
+                        "freshness_reason": f"Inspection timed out or failed: {str(se)[:100]}",
+                        "is_blocking_for_d2": source_def.get("is_blocking_for_d2", False),
+                        "remediation": "Source inspection failed. Check DB connectivity and table existence.",
                     })
     except Exception as e:
         logger.error("driver_raw_freshness_service: failed to inspect sources: %s", e)

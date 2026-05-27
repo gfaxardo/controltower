@@ -1,6 +1,6 @@
 /**
- * Driver Lifecycle — Drilldown obligatorio por PARK.
- * Filtros: From/To, Park (multi-select), Weekly/Monthly.
+ * Driver Lifecycle — Filtros: From/To, Park (opcional), Weekly/Monthly.
+ * Datos agregados si no se selecciona park.
  * Bloque KPI + tabla Desglose por Park; celdas clickeables abren modal con lista de drivers.
  */
 import { useState, useEffect, useCallback } from 'react'
@@ -93,16 +93,11 @@ export default function DriverLifecycleView () {
   const grain = periodType === 'week' ? 'weekly' : 'monthly'
 
   const loadData = useCallback(async () => {
-    if (!parkId || parkId.trim() === '') {
-      setSummary(null)
-      setSeriesRows([])
-      setParksSummary([])
-      return
-    }
     setLoading(true)
     setError(null)
     try {
-      const params = { from, to, grain, park_id: parkId }
+      const params = { from, to, grain }
+      if (parkId && parkId.trim() !== '') params.park_id = parkId
 
       const [summaryRes, seriesRes] = await Promise.all([
         getDriverLifecycleSummary(params),
@@ -270,7 +265,7 @@ export default function DriverLifecycleView () {
   return (
     <div className="bg-white rounded-lg shadow p-6">
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        <h2 className="text-xl font-semibold text-gray-800">Driver Lifecycle (por Park)</h2>
+        <h2 className="text-xl font-semibold text-gray-800">Driver Lifecycle</h2>
         <DataTrustBadge status={dataTrust.status} message={dataTrust.message} last_update={dataTrust.last_update} />
       </div>
 
@@ -294,13 +289,13 @@ export default function DriverLifecycleView () {
           />
         </label>
         <label className="flex items-center gap-2">
-          <span className="text-sm text-gray-600">Park (obligatorio)</span>
+          <span className="text-sm text-gray-600">Park</span>
           <select
             value={parkId}
             onChange={e => setParkId(e.target.value)}
             className="border rounded px-2 py-1 text-sm min-w-[200px]"
           >
-            <option value="">— Selecciona park —</option>
+            <option value="">— Todos —</option>
             {parksList.map(p => (
               <option key={p.park_id ?? ''} value={p.park_id ?? ''}>{displayParkLabel(p)}</option>
             ))}
@@ -330,8 +325,8 @@ export default function DriverLifecycleView () {
       {loading && <div className="text-gray-500 py-2">Cargando...</div>}
 
       {!parkId || parkId.trim() === '' ? (
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-6 rounded text-center">
-          Selecciona un Park para ver la serie por periodo y las tarjetas de resumen.
+        <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-6 rounded text-center">
+          Mostrando datos agregados. Selecciona un Park para ver la serie por periodo y tarjetas de resumen específicas.
         </div>
       ) : !loading && !error ? (
         <>

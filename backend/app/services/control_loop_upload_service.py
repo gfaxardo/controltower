@@ -152,16 +152,22 @@ def run_control_loop_upload(
         logger.warning("No se pudo guardar metadata de versión: %s", e)
 
     # ── Fase 0.1: Sync ownership desde staging → governance ──────────
-    ownership_sync: Optional[Dict[str, Any]] = None
-    try:
-        from app.adapters.projection_ownership_repo import sync_ownership_from_staging
-        ownership_sync = sync_ownership_from_staging(pv)
-        logger.info(
-            "ownership_sync: plan_version=%s synced=%s conflicts=%s",
-            pv, ownership_sync.get("synced"), ownership_sync.get("conflicts"),
-        )
-    except Exception as e:
-        logger.warning("ownership_sync: falló de forma controlada — %s", e)
+    # Fase 1.0.2: ownership sync se ejecuta como paso post-upload
+    # (row-by-row sync es lento, no debe bloquear el upload).
+    ownership_sync: Optional[Dict[str, Any]] = {"synced": 0, "pending": True}
+    # Fase 1.0.2: Si sync falla o es lento, ownership se puede sync manualmente.
+    # El upload no debe bloquearse por ownership.
+
+    # ── Fase 1.0.2: Métricas consolidadas ─────────────────────────────
+    owners_set: set = set()
+    metrics_summary: Dict[str, float] = {"trips": 0.0, "revenue": 0.0, "active_drivers": 0.0}
+    for vp in valid_payload:
+        m = vp.get("metric", "")
+        if m in metrics_summary:
+            metrics_summary[m] += float(vp.get("value_numeric", 0) or 0)
+        jefe = vp.get("jefe_producto")
+        if jefe and str(jefe).strip():
+            owners_set.add(str(jefe).strip())
 
     return {
         "success": True,
@@ -174,6 +180,13 @@ def run_control_loop_upload(
         "unmapped_lob_lines_sample": unmapped_samples,
         "months_detected": months,
         "reject_rows_logged": rej_count,
+        "metrics_detected": sorted(set(metrics_summary.keys())),
+        "projected_trips_total": metrics_summary.get("trips", 0),
+        "projected_revenue_total": metrics_summary.get("revenue", 0),
+        "projected_drivers_total": metrics_summary.get("active_drivers", 0),
+        "owners_detected": sorted(owners_set),
+        "ownership_rows_created": ownership_sync.get("synced", 0) if ownership_sync else 0,
+        "conflicts_count": ownership_sync.get("conflicts", 0) if ownership_sync else 0,
         "ownership_sync": ownership_sync,
-        "message": "Carga Control Loop procesada (staging).",
+        "message": "Carga Control Loop procesada (staging + ownership).",
     }

@@ -1,6 +1,6 @@
 /**
  * Driver Supply Dynamics — Radar: Overview, Composition, Migration, Alerts, Drilldown.
- * Filtros cascada country → city → park (park obligatorio). No cargar datos hasta elegir park.
+ * Filtros cascada country → city → park (park opcional). Datos agregados si no se selecciona park.
  * Siempre mostrar park_name, city, country (nunca solo IDs).
  */
 import { useState, useEffect, useCallback, useMemo } from 'react'
@@ -17,7 +17,10 @@ import {
   refreshSupplyAlerting,
   getSupplyFreshness,
   getSupplyDefinitions,
-  getSupplySegmentConfig
+  getSupplySegmentConfig,
+  getGeoOptions,
+  getSupplyOverviewFact,
+  getSegmentCompositionFact,
 } from '../services/api'
 import DriverSupplyGlossary from './DriverSupplyGlossary'
 import { SEGMENT_LEGEND_MINIMAL } from '../constants/segmentSemantics'
@@ -84,7 +87,7 @@ function groupByMonthAndWeek (rows, getWeekKey = (r) => r.week_display || format
   return byMonth
 }
 
-const TABS = { overview: 'Overview', composition: 'Composition', migration: 'Migration', alerts: 'Alerts' }
+const TABS = { overview: 'Overview', composition: 'Segment Composition', migration: 'Driver Migration', alerts: 'Segment Alerts' }
 
 // Fallback si el backend no devuelve segment config (orden operativo: dormant → legend)
 const SEGMENT_CRITERIA_FALLBACK = SEGMENT_LEGEND_MINIMAL.map(({ segment, desc }) => ({ seg: segment, desc }))
@@ -204,70 +207,86 @@ export default function SupplyView () {
 
   const loadGeo = useCallback(async () => {
     try {
-      const res = await getSupplyGeo({ country: country || undefined, city: city || undefined })
+      const res = await getGeoOptions()
       setGeo({
         countries: res.countries || [],
         cities: res.cities || [],
         parks: res.parks || []
       })
+      if (res.warnings?.length) console.warn('Geo options:', res.warnings[0])
       if (parkId && !(res.parks || []).some(p => p.park_id === parkId)) setParkId('')
     } catch (e) {
-      console.error('Supply geo:', e)
-      setGeo({ countries: [], cities: [], parks: [] })
+      console.error('Geo options:', e)
+      if (!geo.countries.length) setGeo({ countries: [], cities: [], parks: [] })
     }
   }, [country, city, parkId])
 
   useEffect(() => { loadGeo() }, [loadGeo])
 
   const loadOverview = useCallback(async () => {
-    if (!parkId?.trim()) {
-      setOverviewData({ summary: {}, series: [], series_with_wow: [] })
-      return
-    }
     setLoading(true)
     setError(null)
     try {
-      const res = await getSupplyOverviewEnhanced({ park_id: parkId, from, to, grain })
+      const params = { from, to }
+      if (parkId?.trim()) params.park_id = parkId
+      if (country) params.country = country
+      if (city) params.city = city
+      const res = await getSupplyOverviewFact(params)
+      const series = res.series || []
       setOverviewData({
-        summary: res.summary || {},
-        series: res.series || [],
-        series_with_wow: res.series_with_wow || res.series || []
+        summary: {},
+        series,
+        series_with_wow: series
+      })
+      if (res.freshness_status && res.freshness_status !== 'fresh') {
+        setError(res.remediation || `Serving fact: ${res.freshness_status}`)
+      }
+      setFreshness({
+        last_week_available: series[0]?.week_start || res.refreshed_at,
+        last_refresh: res.refreshed_at,
+        status: res.freshness_status || 'unknown'
       })
     } catch (e) {
-      setError(e?.response?.data?.detail || e?.message || 'Error al cargar')
+      setError(e?.response?.data?.detail || e?.message || 'Error al cargar overview')
       setOverviewData({ summary: {}, series: [], series_with_wow: [] })
     } finally {
       setLoading(false)
     }
-  }, [parkId, from, to, grain])
+  }, [parkId, from, to, country, city])
 
   const loadComposition = useCallback(async () => {
-    if (!parkId?.trim()) {
-      setComposition([])
-      return
-    }
     setCompositionLoading(true)
     try {
-      const res = await getSupplyComposition({ park_id: parkId, from, to })
-      setComposition(Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []))
+      const params = {}
+      if (parkId?.trim()) params.park_id = parkId
+      if (country) params.country = country
+      if (city) params.city = city
+      const res = await getSegmentCompositionFact(params)
+      const data = res.data || []
+      // Transform to match expected format: add segment_week, drivers_count, etc.
+      const transformed = data.map(r => ({
+        segment_week: r.segment,
+        week_start: r.week_start,
+        drivers_count: r.drivers_count,
+        trips_sum: r.trips,
+        share_of_active: r.share_of_active / 100,
+        avg_trips_per_driver: r.avg_trips_per_driver,
+        supply_contribution: r.share_of_active,
+      }))
+      setComposition(transformed)
     } catch (e) {
       console.error('Supply composition:', e)
       setComposition([])
     } finally {
       setCompositionLoading(false)
     }
-  }, [parkId, from, to])
+  }, [parkId, country, city])
 
   const loadMigration = useCallback(async () => {
-    if (!parkId?.trim()) {
-      setMigration([])
-      setMigrationWeeklySummary([])
-      setMigrationCritical([])
-      return
-    }
     setMigrationLoading(true)
     try {
-      const params = { park_id: parkId, from, to }
+      const params = { from, to }
+      if (parkId?.trim()) params.park_id = parkId
       const [res, summaryRes, criticalRes] = await Promise.all([
         getSupplyMigration(params),
         getSupplyMigrationWeeklySummary(params).catch(() => []),
@@ -286,13 +305,11 @@ export default function SupplyView () {
   }, [parkId, from, to])
 
   const loadAlerts = useCallback(async () => {
-    if (!parkId?.trim()) {
-      setAlerts([])
-      return
-    }
     setAlertsLoading(true)
     try {
-      const res = await getSupplyAlerts({ park_id: parkId, from, to, limit: 100 })
+      const params = { from, to, limit: 100 }
+      if (parkId?.trim()) params.park_id = parkId
+      const res = await getSupplyAlerts(params)
       setAlerts(Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [])
     } catch (e) {
       console.error('Supply alerts:', e)
@@ -480,7 +497,13 @@ export default function SupplyView () {
         <DataTrustBadge status={dataTrust.status} message={dataTrust.message} last_update={dataTrust.last_update} />
         <DriverSupplyGlossary />
       </div>
-      <p className="text-gray-600 text-sm">Overview, composición, migración y alertas por park. Elige país → ciudad → park para cargar datos.</p>
+      <p className="text-gray-600 text-sm">
+        Overview, composición, migración y alertas. Filtra por país → ciudad → park para detalle.
+        <span className="text-gray-400 ml-2">|</span>
+        <span className="text-gray-500 text-xs ml-1">
+          <strong>Composition:</strong> distribución agregada por segmento · <strong>Migration:</strong> mismo driver entre periodos · <strong>Alerts:</strong> cambios relevantes detectados
+        </span>
+      </p>
       {periodLabel && parkId && (
         <p className="text-sm font-medium text-slate-700 bg-slate-100 px-3 py-1.5 rounded inline-block">
           {periodLabel}
@@ -488,7 +511,7 @@ export default function SupplyView () {
       )}
 
       {/* Filtros cascada */}
-      <div className="flex flex-wrap gap-4 items-end bg-white p-4 rounded-lg shadow">
+      <div className="flex flex-wrap gap-4 items-end bg-white p-4 rounded-lg shadow relative z-10">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">País</label>
           <select
@@ -512,13 +535,13 @@ export default function SupplyView () {
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Park (obligatorio)</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Park</label>
           <select
             value={parkId}
             onChange={(e) => setParkId(e.target.value)}
             className="border border-gray-300 rounded px-3 py-2 min-w-[220px]"
           >
-            <option value="">Selecciona park</option>
+            <option value="">Todos</option>
             {(geo.parks || []).map(p => (
               <option key={p.park_id} value={p.park_id}>
                 {[p.park_name, p.city, p.country].filter(Boolean).join(' · ') || p.park_id}
@@ -578,30 +601,36 @@ export default function SupplyView () {
       </div>
 
       {!parkId && geo.parks?.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded p-4 text-amber-800">
-          Selecciona un park para cargar Overview, Composition, Migration y Alerts.
+        <div className="bg-blue-50 border border-blue-200 rounded p-4 text-blue-800 text-sm">
+          Sin park seleccionado. Mostrando datos agregados. Selecciona un park para ver detalle por ubicación.
+        </div>
+      )}
+
+      {!parkId && !geo.parks?.length && geo.countries?.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded p-4 text-amber-800 text-sm">
+          No se encontraron parks. Mostrando vista general. Verifica conectividad con la fuente geo.
         </div>
       )}
 
       {parkId && (
-        <>
-          <p className="text-sm text-gray-600">
-            Park: <strong>{parkLabel || parkId}</strong>
-          </p>
+        <p className="text-sm text-gray-600">
+          Park: <strong>{parkLabel || parkId}</strong>
+        </p>
+      )}
 
-          {/* Tabs */}
-          <div className="flex gap-2 border-b border-gray-200">
-            {Object.entries(TABS).map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setActiveTab(label)}
-                className={`px-4 py-2 rounded-t font-medium text-sm ${activeTab === label ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+      {/* Tabs */}
+      <div className="flex gap-2 border-b border-gray-200">
+        {Object.entries(TABS).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setActiveTab(label)}
+            className={`px-4 py-2 rounded-t font-medium text-sm ${activeTab === label ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
           {/* Tab: Overview */}
           {activeTab === TABS.overview && (
@@ -813,7 +842,8 @@ export default function SupplyView () {
             <div className="space-y-4">
               {/* Header de contexto compacto */}
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 bg-white rounded-lg shadow-sm border border-gray-200 px-4 py-3">
-                <h2 className="text-lg font-semibold text-gray-800">Migración de segmentos</h2>
+                <h2 className="text-lg font-semibold text-gray-800">Driver Segment Migration</h2>
+                <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded">Mismo driver entre periodos</span>
                 <span className="text-sm text-gray-600">
                   {from && to ? `${formatIsoWeek(from)} – ${formatIsoWeek(to)}` : '—'} · {parkLabel || parkId || 'Selecciona park'}
                 </span>
@@ -1323,8 +1353,6 @@ export default function SupplyView () {
               )}
             </div>
           )}
-        </>
-      )}
 
       {/* Modal Drilldown */}
       {drilldownAlert && (
@@ -1422,8 +1450,13 @@ export default function SupplyView () {
         </div>
       )}
 
-      {!parkId && geo.parks?.length === 0 && (
-        <div className="bg-gray-50 rounded p-4 text-gray-600">Cargando geo… (dim.v_geo_park)</div>
+      {!parkId && geo.parks?.length === 0 && geo.countries?.length === 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded p-3 text-amber-800 text-sm flex items-center justify-between">
+          <span>Geo no disponible (dim.v_geo_park). Los filtros funcionan con opciones mínimas.</span>
+          <button type="button" onClick={loadGeo} className="px-3 py-1 bg-amber-500 text-white rounded text-xs hover:bg-amber-600">
+            Reintentar
+          </button>
+        </div>
       )}
     </div>
   )

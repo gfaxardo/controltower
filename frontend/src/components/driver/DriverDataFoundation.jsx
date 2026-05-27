@@ -45,16 +45,36 @@ export default function DriverDataFoundation () {
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    api.get('/drivers/raw-freshness', { timeout: 15000 })
+    api.get('/drivers/serving-freshness', { timeout: 10000 })
       .then((res) => {
         if (!cancelled) {
-          setData(res.data)
+          const d = res.data
+          const facts = d.facts || []
+          const freshCount = facts.filter(f => f.freshness_status === 'fresh').length
+          const staleCount = facts.filter(f => f.freshness_status === 'stale').length
+          const blockedCount = facts.filter(f => f.freshness_status === 'blocked').length
+          const freshMap = {}
+          facts.forEach(f => { freshMap[f.fact_name] = f })
+          setData({
+            status: d.status || 'ok',
+            sources: facts.map(f => ({
+              source_name: f.fact_name,
+              role: 'serving_fact',
+              freshness_status: f.freshness_status,
+            })),
+            blocking_gaps: d.blocked_facts?.length ? d.blocked_facts.map(n => ({ source_name: n, role: 'serving_fact', remediation: d.remediation })) : [],
+            _freshCount: freshCount,
+            _staleCount: staleCount,
+            _blockedCount: blockedCount,
+            _freshMap: freshMap,
+            _remediation: d.remediation,
+          })
           setError(null)
         }
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err.message || 'Failed to load freshness data')
+          setError(err.message || 'Failed to load serving freshness')
         }
       })
       .finally(() => {
@@ -86,21 +106,16 @@ export default function DriverDataFoundation () {
 
   if (!data) return null
 
+  const freshCount = data._freshCount ?? 0
+  const staleCount = data._staleCount ?? 0
+  const blockedCount = data._blockedCount ?? 0
   const sources = data.sources || []
   const blocking = data.blocking_gaps || []
-
-  const freshCount = sources.filter((s) => s.freshness_status === 'fresh').length
-  const staleCount = sources.filter((s) => s.freshness_status === 'stale').length
-  const blockedCount = sources.filter((s) => s.freshness_status === 'blocked').length
-  const identitySources = sources.filter((s) => s.role === 'identity' || s.role === 'contactability')
-  const hasPhoneSource = identitySources.some(
-    (s) => s.available_columns && (s.available_columns.phone || s.available_columns.driver_phone)
-  )
 
   return (
     <div className='border border-ct-border rounded-lg p-3 bg-white/40 mb-4'>
       <div className='flex items-baseline gap-2 mb-2'>
-        <h3 className='text-xs font-semibold text-ct-text'>Data Foundation</h3>
+        <h3 className='text-xs font-semibold text-ct-text'>Serving Foundation</h3>
         <span className={`text-[10px] font-medium px-1.5 py-px rounded-full border ${
           data.status === 'ok' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
           data.status === 'warning' ? 'bg-amber-50 text-amber-700 border-amber-200' :
@@ -110,7 +125,7 @@ export default function DriverDataFoundation () {
         </span>
       </div>
 
-      <div className='flex items-center gap-4 flex-wrap text-[11px] text-gray-500 mb-2'>
+      <div className='flex items-center gap-4 flex-wrap text-[11px] text-gray-500'>
         <span className='inline-flex items-center gap-1'>
           <FreshnessDot status='fresh' /> {freshCount} fresh
         </span>
@@ -121,28 +136,18 @@ export default function DriverDataFoundation () {
           <FreshnessDot status='blocked' /> {blockedCount} blocked
         </span>
         <span className='text-gray-300'>|</span>
-        <span className='inline-flex items-center gap-1'>
-          <span className='text-gray-400'>Phone:</span>
-          <span className={hasPhoneSource ? 'text-emerald-600 font-medium' : 'text-amber-600 font-medium'}>
-            {hasPhoneSource ? 'Source found' : 'No source'}
-          </span>
+        <span className='inline-flex items-center gap-1 text-emerald-600'>
+          Facts: serving
         </span>
       </div>
 
       {blocking.length > 0 && (
         <div className='border-t border-gray-100 pt-2 mt-1'>
           <span className='text-[10px] font-medium text-red-600 uppercase tracking-wide'>
-            Blocking Gaps ({blocking.length})
+            Blocking ({blocking.length})
           </span>
-          <div className='mt-1'>
-            {blocking.slice(0, 3).map((gap, i) => (
-              <GapItem key={i} gap={gap} />
-            ))}
-            {blocking.length > 3 && (
-              <span className='text-[10px] text-gray-400 ml-4'>
-                +{blocking.length - 3} more
-              </span>
-            )}
+          <div className='mt-1 text-[10px] text-red-500'>
+            {data._remediation || 'Run refresh_driver_supply_facts.py'}
           </div>
         </div>
       )}

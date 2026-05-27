@@ -142,20 +142,97 @@ def parse_control_loop_excel(content: bytes, filename: str) -> Tuple[List[Dict[s
     return all_rows, months_sorted
 
 
+def _parse_long_format(
+    df: pd.DataFrame, cols: List[str], by_norm: Dict[str, str]
+) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """
+    Formato long unificado (Fase 1.0.2):
+    country | city | linea_negocio | metric | period | value | Jefe Producto | Producto | estado
+
+    Cada fila ya está en formato long: una combinación de dimensiones + métrica + período + valor.
+    No requiere expansión wide→long.
+    """
+    country_k, city_k, lob_k = _find_id_columns(cols)
+    period_col = by_norm.get("period") or by_norm.get("periodo")
+    metric_col = by_norm["metric"]
+    value_col = by_norm.get("value") or by_norm.get("valor")
+
+    rows: List[Dict[str, Any]] = []
+    periods_seen: set = set()
+
+    for idx, row in df.iterrows():
+        # Metric mapping
+        mraw = str(row[metric_col]).strip().lower()
+        if mraw in ("trips", "trip"):
+            metric = "trips"
+        elif mraw in ("revenue", "ingresos"):
+            metric = "revenue"
+        elif mraw in ("active_drivers", "drivers", "driver"):
+            metric = "active_drivers"
+        else:
+            logger.warning("Fila %s: metric '%s' no reconocida, omitida", idx + 1, mraw)
+            continue
+
+        # Period: YYYY-MM from period column
+        period_val = str(row[period_col]).strip()
+        if not _MONTH_COL.match(period_val):
+            logger.warning("Fila %s: period '%s' no es YYYY-MM, omitida", idx + 1, period_val)
+            continue
+        periods_seen.add(period_val)
+
+        # Value
+        raw_value = row[value_col] if value_col in row.index else row.get(value_col)
+
+        ownership = _extract_ownership_metadata(row, cols)
+
+        row_dict: Dict[str, Any] = {
+            "country": row[country_k],
+            "city": row[city_k],
+            "linea_negocio": row[lob_k],
+            "metric": metric,
+            "period": period_val,
+            "raw_value": raw_value,
+            "source_sheet": "CSV_LONG",
+        }
+        if ownership:
+            row_dict.update(ownership)
+        rows.append(row_dict)
+
+    logger.info(
+        "_parse_long_format: %d filas long, %d periodos detectados",
+        len(rows), len(periods_seen),
+    )
+    return rows, sorted(periods_seen)
+
+
 def parse_control_loop_csv(content: bytes, filename: str) -> Tuple[List[Dict[str, Any]], List[str]]:
     """
-    CSV con columnas country, city, linea_negocio, metric + columnas YYYY-MM.
+    CSV con columnas country, city, linea_negocio + formato wide (columnas YYYY-MM)
+    o formato long (columnas metric + period).
 
     Fase 0.0: metric es opcional si se puede inferir del nombre del archivo
     (ej. archivo "DRIVERS.csv" → active_drivers).
     Columnas extra (Jefe Producto, Producto, estado) se pasan como metadata.
+
+    Fase 1.0.2: Soporte para plantilla unificada long (metric + period + value).
     """
     df = pd.read_csv(io.BytesIO(content))
     cols = [str(c) for c in df.columns]
     by_norm = {_norm_col(c): c for c in df.columns}
 
     has_metric_col = "metric" in by_norm
+    has_period_col = "period" in by_norm or "periodo" in by_norm
+    has_value_col = "value" in by_norm or "valor" in by_norm
 
+    # ── Detección de formato long unificado ──────────────────────────────
+    if has_period_col and has_metric_col and has_value_col:
+        logger.info(
+            "parse_control_loop_csv: detectado formato long unificado "
+            "(metric + period + value) en '%s'", filename
+        )
+        return _parse_long_format(df, cols, by_norm)
+
+    # ── Formato wide legacy ─────────────────────────────────────────────
     if has_metric_col:
         metric_col = by_norm["metric"]
     else:
@@ -176,7 +253,11 @@ def parse_control_loop_csv(content: bytes, filename: str) -> Tuple[List[Dict[str
     out: List[Dict[str, Any]] = []
     months = _month_columns(cols)
     if not months:
-        raise ValueError("No se detectaron columnas de mes YYYY-MM en el CSV.")
+        raise ValueError(
+            "No se detectaron columnas de mes YYYY-MM en el CSV. "
+            "Use formato wide (columnas 2026-01, 2026-02...) o formato long "
+            "(columnas metric + period + value)."
+        )
     country_k, city_k, lob_k = _find_id_columns(cols)
 
     implicit_metric: Optional[str] = None

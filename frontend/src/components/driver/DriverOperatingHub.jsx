@@ -1,20 +1,20 @@
 /**
- * DriverOperatingHub — FASE D1.3
+ * DriverOperatingHub — FASE H3.1
  *
- * Driver Operating System wrapper. Transforma la seccion Drivers de
- * "9 modulos aislados" a "1 sistema operacional cohesivo".
+ * Driver Intelligence + Execution Operating System wrapper.
+ * 4 capas: Command Center, Intelligence, Execution, Foundation.
  *
  * Principios:
- * - Supply Overview como nucleo dominante
- * - Agrupacion por capability group (Foundation / Diagnostic / Future)
- * - Single operational flow, progressive disclosure
- * - NO oculta tabs, NO toca queries, NO implementa logica nueva
+ * - Análisis + Ejecución como capas conversantes
+ * - Placeholders gobernados para caps no construidas
+ * - NO oculta tabs, NO toca queries, NO implementa lógica nueva
  */
 import { useMemo } from 'react'
 import { getCapabilityMeta, MATURITY, ENGINE_OWNER } from '../../config/operationalMaturityRegistry.js'
 import { DriverCapabilityBanner, EngineIndicator } from '../operational/MaturityIndicators.jsx'
 import DriverDataFoundation from './DriverDataFoundation.jsx'
 import DriverLifecycleSummary from './DriverLifecycleSummary.jsx'
+import { ROLES, ROLE_VIEWS_REGISTRY, getPersistedRole, setPersistedRole } from '../../config/driverRoleViewsRegistry.js'
 
 const TONE = {
   success: { dot: 'bg-emerald-500', text: 'text-emerald-700', border: 'border-emerald-200', bg: 'bg-emerald-50' },
@@ -33,41 +33,68 @@ const DRIVER_KEYS = [
   'drivers_behavioral_alerts',
   'drivers_fleet_leakage',
   'drivers_behavioral_patterns',
-  'drivers_operational_intelligence',
   'drivers_recoverability',
+  'drivers_operational_intelligence',
+  'drivers_action_queues',
+  'drivers_pilot',
+  'drivers_operational_workflows',
+  'drivers_campaign_intelligence',
+  'drivers_crm_bridge',
+  'drivers_campaign_effectiveness',
+  'drivers_data_foundation',
+  'drivers_operational_health',
+  'drivers_capability_governance',
 ]
 
-function countByMaturity () {
-  const counts = { productionReady: 0, inConstruction: 0, readyNext: 0, futureBlocked: 0 }
-  for (const key of DRIVER_KEYS) {
-    const meta = getCapabilityMeta(key)
-    if (!meta) continue
-    if (meta.productionReady) { counts.productionReady++ } else if (meta.maturity === MATURITY.READY_NEXT) { counts.readyNext++ } else if (meta.maturity === MATURITY.FUTURE || meta.maturity === MATURITY.BLOCKED) { counts.futureBlocked++ } else { counts.inConstruction++ }
+const LAYER_MAP = {
+  'Command Center': { color: TONE.amber, keys: ['drivers_supply'] },
+  Intelligence: { color: TONE.blue, keys: ['drivers_lifecycle', 'drivers_diagnostic', 'drivers_behavior_benchmarking', 'drivers_behavioral_alerts', 'drivers_fleet_leakage', 'drivers_behavioral_patterns', 'drivers_recoverability', 'drivers_operational_intelligence'] },
+  Execution: { color: TONE.purple, keys: ['drivers_action_queues', 'drivers_pilot', 'drivers_operational_workflows', 'drivers_campaign_intelligence', 'drivers_crm_bridge', 'drivers_campaign_effectiveness'] },
+  Foundation: { color: TONE.gray, keys: ['drivers_data_foundation', 'drivers_operational_health', 'drivers_capability_governance'] },
+}
+
+function countByLayer () {
+  const counts = {}
+  for (const [layer, config] of Object.entries(LAYER_MAP)) {
+    let productionReady = 0
+    let inConstruction = 0
+    let readyNext = 0
+    let futureBlocked = 0
+    for (const key of config.keys) {
+      const meta = getCapabilityMeta(key)
+      if (!meta) continue
+      if (meta.productionReady) {
+        productionReady++
+      } else if (meta.maturity === MATURITY.READY_NEXT) {
+        readyNext++
+      } else if (meta.maturity === MATURITY.FUTURE || meta.maturity === MATURITY.BLOCKED) {
+        futureBlocked++
+      } else {
+        inConstruction++
+      }
+    }
+    counts[layer] = {
+      total: config.keys.length,
+      productionReady,
+      inConstruction,
+      readyNext,
+      futureBlocked,
+      color: config.color,
+    }
   }
   return counts
 }
 
-/**
- * Barra resumen de capabilities.
- * Muestra distribucion de madurez con dots + contadores.
- * Ligera, no consume espacio vertical.
- */
 function CapabilitySummaryBar () {
-  const counts = useMemo(() => countByMaturity(), [])
-
-  const segments = [
-    { label: 'Operational', count: counts.productionReady + counts.inConstruction, dot: TONE.amber.dot, text: TONE.amber.text },
-    { label: 'Diagnostic', count: counts.readyNext, dot: TONE.blue.dot, text: TONE.blue.text },
-    { label: 'Future', count: counts.futureBlocked, dot: TONE.gray.dot, text: TONE.gray.text },
-  ]
+  const counts = useMemo(() => countByLayer(), [])
 
   return (
     <div className='flex items-center gap-3 flex-wrap'>
-      {segments.map((seg) => (
-        <span key={seg.label} className='inline-flex items-center gap-1 text-[11px]'>
-          <span className={`w-1.5 h-1.5 rounded-full ${seg.dot}`} />
-          <span className={`font-medium ${seg.text}`}>{seg.count}</span>
-          <span className='text-gray-400'>{seg.label}</span>
+      {Object.entries(counts).map(([layer, c]) => (
+        <span key={layer} className='inline-flex items-center gap-1 text-[11px]'>
+          <span className={`w-1.5 h-1.5 rounded-full ${c.color.dot}`} />
+          <span className={`font-medium ${c.color.text}`}>{c.total}</span>
+          <span className='text-gray-400'>{layer}</span>
         </span>
       ))}
     </div>
@@ -75,22 +102,64 @@ function CapabilitySummaryBar () {
 }
 
 /**
- * Header del sistema operacional Drivers.
- * Muestra titulo, subtitulo y resumen de capabilities.
+ * Capability Group Cards — mini cards por capa en el header.
  */
-function DriverSystemHeader () {
+function CapabilityGroupCards () {
+  const counts = useMemo(() => countByLayer(), [])
+
+  return (
+    <div className='grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3'>
+      {Object.entries(counts).map(([layer, c]) => (
+        <div key={layer} className={`rounded-lg border px-3 py-2 ${c.color.bg} ${c.color.border}`}>
+          <div className='text-[10px] font-medium text-ct-text3 uppercase tracking-wide mb-1'>{layer}</div>
+          <div className='flex items-center gap-2 text-[11px]'>
+            <span className='font-semibold text-ct-text'>{c.total} caps</span>
+            {c.productionReady > 0 && <span className='text-emerald-600'>{c.productionReady} ready</span>}
+            {c.inConstruction > 0 && <span className='text-purple-600'>{c.inConstruction} building</span>}
+            {c.readyNext > 0 && <span className='text-blue-600'>{c.readyNext} next</span>}
+            {c.futureBlocked > 0 && <span className='text-gray-500'>{c.futureBlocked} blocked</span>}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function DriverSystemHeader ({ role, onRoleChange }) {
   return (
     <div className='mb-3 pb-3 border-b border-ct-border'>
-      <div className='flex items-baseline gap-2 flex-wrap'>
-        <h1 className='text-lg font-semibold text-ct-text tracking-tight'>
-          Drivers
-        </h1>
-        <span className='text-xs text-ct-text3 font-medium'>
-          Driver Operating System
-        </span>
+      <div className='flex items-baseline gap-2 flex-wrap justify-between'>
+        <div className='flex items-baseline gap-2 flex-wrap'>
+          <h1 className='text-lg font-semibold text-ct-text tracking-tight'>
+            Drivers
+          </h1>
+          <span className='text-xs text-ct-text3 font-medium'>
+            Driver Intelligence + Execution OS
+          </span>
+        </div>
+
+        {/* Role Switcher */}
+        <div className='flex items-center gap-1.5'>
+          <span className='text-[10px] text-ct-text3'>View as:</span>
+          <div className='flex gap-0.5 bg-ct-border/30 rounded-lg p-0.5'>
+            {Object.entries(ROLE_VIEWS_REGISTRY).map(([key, r]) => (
+              <button
+                key={key}
+                type='button'
+                onClick={() => { setPersistedRole(key); onRoleChange && onRoleChange(key) }}
+                className={`px-2 py-1 rounded text-[10px] font-medium transition-all ${
+                  role === key ? 'bg-ct-accent text-white shadow-sm' : 'text-ct-text2 hover:text-ct-text hover:bg-ct-border/50'
+                }`}
+                title={r.description}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
       <p className='text-xs text-ct-text3 mt-0.5'>
-        Operational control center for driver supply, lifecycle and execution.
+        Analiza el universo conductor, crea cohorts accionables y mide ejecución vía CRM/workflows.
       </p>
       <div className='mt-2'>
         <CapabilitySummaryBar />
@@ -110,17 +179,19 @@ function DriverSystemHeader () {
  *  - refreshKey: key para forzar re-render
  *  - children: contenido renderizado por App.jsx (los componentes de cada tab)
  */
-export default function DriverOperatingHub ({ activeSub, refreshKey, children }) {
+export default function DriverOperatingHub ({ activeSub, refreshKey, children, role, onRoleChange }) {
   const activeMeta = getCapabilityMeta(activeSub)
+  const currentRole = role || getPersistedRole()
 
   return (
     <div>
-      <DriverSystemHeader />
+      <DriverSystemHeader role={currentRole} onRoleChange={onRoleChange} />
+      <CapabilityGroupCards />
 
-      {/* Data Foundation + Lifecycle cards — Supply, Action Queues & Lifecycle tabs */}
-      {(activeSub === 'drivers_supply' || activeSub === 'drivers_action_queues' || activeSub === 'drivers_lifecycle') && (
+      {/* Data Foundation + Lifecycle cards — Supply, Pilot, Action Queues & Lifecycle tabs */}
+      {(activeSub === 'drivers_supply' || activeSub === 'drivers_pilot' || activeSub === 'drivers_action_queues' || activeSub === 'drivers_lifecycle') && (
         <>
-          {activeSub === 'drivers_supply' && <DriverDataFoundation />}
+          {(activeSub === 'drivers_supply' || activeSub === 'drivers_pilot') && <DriverDataFoundation />}
           {activeSub !== 'drivers_lifecycle' && <DriverLifecycleSummary />}
         </>
       )}
@@ -138,4 +209,4 @@ export default function DriverOperatingHub ({ activeSub, refreshKey, children })
   )
 }
 
-export { DRIVER_KEYS, countByMaturity }
+export { DRIVER_KEYS, countByLayer }

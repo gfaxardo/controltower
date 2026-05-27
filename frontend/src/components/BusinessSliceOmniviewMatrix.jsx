@@ -17,6 +17,7 @@ import {
   uploadPlanRuta27UI,
   getPlanMappingAudit,
   getServingPlanVersions,
+  getOwnershipServingMonthly,
 } from '../services/api.js'
 import { exportOmniviewFull } from '../utils/omniviewExport.js'
 import { centerProjectionViewport, isCurrentPeriodVisible } from '../utils/projectionViewportFocusEngine.js'
@@ -72,6 +73,7 @@ import OperationalStatusBar from './operational/OperationalStatusBar.jsx'
 import ActionContext from './operational/ActionContext.jsx'
 import OmniviewCommandHeader from './omniview/command/OmniviewCommandHeader.jsx'
 import OmniviewMomentumPriorityStrip from './omniview/momentum/OmniviewMomentumPriorityStrip.jsx'
+import OwnershipServingView from './ownership/OwnershipServingView.jsx'
 
 const GRAINS = [
   { id: 'monthly', label: 'Mensual' },
@@ -300,6 +302,12 @@ export default function BusinessSliceOmniviewMatrix () {
 
   const [viewMode, setViewMode] = useState(saved?.viewMode || 'evolucion')
   const [operationalMode, setOperationalMode] = useState('operational')
+  const [perspective, setPerspective] = useState('operational') // FASE 1.1 — Perspective Engine
+  const [ownershipRows, setOwnershipRows] = useState([])
+  const [ownershipByOwner, setOwnershipByOwner] = useState([])
+  const [ownershipLoading, setOwnershipLoading] = useState(false)
+  const [ownershipError, setOwnershipError] = useState(null)
+  const ownershipRequestIdRef = useRef(0)
   const [weekdayFocus, setWeekdayFocus] = useState(null) // null=todos, 0=DOM, 1=LUN, ..., 6=SÁB
   const [planVersion, setPlanVersion] = useState(saved?.planVersion || '')
   const [planVersions, setPlanVersions] = useState([])
@@ -398,6 +406,39 @@ export default function BusinessSliceOmniviewMatrix () {
       loadPlanVersions()
     }
   }, [isProjectionMode]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── FASE 1.1: Ownership Perspective data load ──────────────────────────
+  useEffect(() => {
+    if (perspective !== 'ownership') {
+      setOwnershipRows([])
+      setOwnershipByOwner([])
+      setOwnershipError(null)
+      return
+    }
+    if (!planVersion) return
+
+    let cancelled = false
+    const reqId = ++ownershipRequestIdRef.current
+
+    setOwnershipLoading(true)
+    setOwnershipError(null)
+
+    getOwnershipServingMonthly({ plan_version_key: planVersion, limit: 5000 })
+      .then((data) => {
+        if (cancelled || reqId !== ownershipRequestIdRef.current) return
+        setOwnershipRows(data?.rows || [])
+        setOwnershipByOwner(data?.by_owner || [])
+        setOwnershipLoading(false)
+      })
+      .catch((err) => {
+        if (cancelled || reqId !== ownershipRequestIdRef.current) return
+        console.error('Ownership load failed:', err)
+        setOwnershipError(err?.response?.data?.detail || err?.message || 'Error desconocido')
+        setOwnershipLoading(false)
+      })
+
+    return () => { cancelled = true }
+  }, [perspective, planVersion])
 
   const [freshnessInfo, setFreshnessInfo] = useState(null)
   const [sliceMaxTripDate, setSliceMaxTripDate] = useState(null)
@@ -1479,6 +1520,32 @@ export default function BusinessSliceOmniviewMatrix () {
               </div>
             </div>
 
+            {/* FASE 1.1 — Perspective Selector (solo en modo Proyección) */}
+            {isProjectionMode && (
+              <>
+                <div className="w-px h-4 bg-gray-200 hidden sm:block" />
+                <div className="flex items-center gap-1">
+                  <span className="text-[11px] font-medium text-ct-text3 mr-1">Perspectiva</span>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      className={btnCls(perspective === 'operational')}
+                      onClick={() => setPerspective('operational')}
+                    >
+                      Operational
+                    </button>
+                    <button
+                      type="button"
+                      className={btnCls(perspective === 'ownership')}
+                      onClick={() => setPerspective('ownership')}
+                    >
+                      Ownership
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+
             {isProjectionMode && (
               <>
                 <div className="w-px h-4 bg-gray-200 hidden sm:block" />
@@ -1907,7 +1974,7 @@ export default function BusinessSliceOmniviewMatrix () {
         )}
 
         {/* ── Prioridades del periodo (Vs Proyección) — FASE 3.3 ───── */}
-        {!focusMode && heavyQueriesEnabled && projectionReady && isProjectionMode && projMatrix && projectionRows.length > 0 && !projectionIntegrityBroken && (
+        {!focusMode && heavyQueriesEnabled && projectionReady && isProjectionMode && perspective === 'operational' && projMatrix && projectionRows.length > 0 && !projectionIntegrityBroken && (
           <OmniviewPriorityPanel
             projMatrix={projMatrix}
             focusedKpi={focusedKpi}
@@ -1917,8 +1984,20 @@ export default function BusinessSliceOmniviewMatrix () {
           />
         )}
 
+        {/* ── FASE 1.1: Ownership Perspective View ────────────────────── */}
+        {heavyQueriesEnabled && isProjectionMode && perspective === 'ownership' && planVersion && (
+          <div className="px-4 py-4">
+            <OwnershipServingView
+              rows={ownershipRows}
+              byOwner={ownershipByOwner}
+              loading={ownershipLoading}
+              error={ownershipError}
+            />
+          </div>
+        )}
+
         {/* ── Matrix + Drill (Vs Proyección) — FASE 1H.3 fullscreen ── */}
-        {heavyQueriesEnabled && projectionReady && isProjectionMode && projMatrix && projectionRows.length > 0 && (
+        {heavyQueriesEnabled && projectionReady && isProjectionMode && perspective === 'operational' && projMatrix && projectionRows.length > 0 && (
           matrixFullscreen ? (
             <div className="fixed inset-0 z-[100] bg-white overflow-hidden" role="dialog" aria-modal="true" aria-label="Omniview Proyección — pantalla completa">
               <div className="max-w-full mx-auto p-3 sm:p-4">

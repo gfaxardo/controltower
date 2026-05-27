@@ -194,11 +194,10 @@ def compute_lifecycle_summary(
             identity_sql = f"""
             SELECT
                 COUNT(*) AS total_drivers,
-                COUNT(dd.driver_phone) FILTER (WHERE dd.driver_phone IS NOT NULL) AS with_phone,
+                COUNT(d.phone) FILTER (WHERE d.phone IS NOT NULL) AS with_phone,
                 COUNT(*) FILTER (WHERE vr.driver_name IS NOT NULL) AS with_name
             FROM public.drivers d
             LEFT JOIN ops.v_dim_driver_resolved vr ON d.driver_id = vr.driver_id
-            LEFT JOIN public.drivers_data dd ON d.driver_id = dd.driver_id
             LEFT JOIN dim.dim_park dp ON d.park_id = dp.park_id
             LEFT JOIN ops.v_dim_park_resolved prk ON d.park_id = prk.park_id
             WHERE {where_clause}

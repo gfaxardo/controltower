@@ -285,15 +285,36 @@ def search_driver_identities(
     results = []
 
     # Build base query from public.drivers, with rich identity fields
-    base_sql = """
+    # Defensive: check if drivers_data.driver_phone column exists
+    has_dd_phone = False
+    has_mct_phone = False
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='drivers_data' AND column_name='driver_phone'")
+            has_dd_phone = cur.fetchone() is not None
+            cur.execute("SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='module_ct_cabinet_drivers' AND column_name='driver_phone'")
+            has_mct_phone = cur.fetchone() is not None
+    except Exception:
+        pass
+
+    if has_dd_phone:
+        phone_expr = "COALESCE(dd.driver_phone, d.phone::text)"
+    elif has_mct_phone:
+        phone_expr = "COALESCE(d.phone::text, mct.driver_phone)"
+    else:
+        phone_expr = "d.phone::text"
+
+    dd_join = "LEFT JOIN public.drivers_data dd ON d.driver_id = dd.driver_id" if has_dd_phone else ""
+    mct_join = "LEFT JOIN public.module_ct_cabinet_drivers mct ON d.driver_id = mct.driver_id" if has_mct_phone else ""
+
+    base_sql = f"""
     SELECT
         d.driver_id,
         COALESCE(dr.driver_name, NULLIF(TRIM(d.full_name), '')) AS driver_name,
-        COALESCE(dd.driver_phone, d.phone::text, mct.driver_phone) AS phone,
-        CASE WHEN dd.driver_phone IS NOT NULL THEN 'public.drivers_data.driver_phone'
-             WHEN d.phone IS NOT NULL THEN 'public.drivers.phone'
-             WHEN mct.driver_phone IS NOT NULL THEN 'public.module_ct_cabinet_drivers.driver_phone'
-             ELSE 'none' END AS phone_source,
+        {phone_expr} as has_phone,
+        d.phone::text as phone,
+        'public.drivers' AS phone_source,
         COALESCE(dp.city, prk.city) AS city,
         COALESCE(dp.country, prk.country) AS country,
         d.park_id,
@@ -302,16 +323,16 @@ def search_driver_identities(
         lb.activation_ts AS first_trip_at,
         lb.last_completed_ts AS latest_trip_at,
         GREATEST(lb.last_completed_ts, d.created_at) AS latest_activity_at,
-        CASE WHEN dd.driver_phone IS NOT NULL OR d.phone IS NOT NULL OR mct.driver_phone IS NOT NULL THEN 'high'
+        CASE WHEN d.phone IS NOT NULL THEN 'high'
              WHEN dr.driver_name IS NOT NULL THEN 'medium'
              ELSE 'low' END AS identity_confidence,
-        CASE WHEN dd.driver_phone IS NULL AND d.phone IS NULL AND mct.driver_phone IS NULL THEN 'warning'
+        CASE WHEN d.phone IS NULL THEN 'warning'
              ELSE 'ok' END AS data_quality_status,
         NOW() AS refreshed_at
     FROM public.drivers d
     LEFT JOIN ops.v_dim_driver_resolved dr ON d.driver_id = dr.driver_id
-    LEFT JOIN public.drivers_data dd ON d.driver_id = dd.driver_id
-    LEFT JOIN public.module_ct_cabinet_drivers mct ON d.driver_id = mct.driver_id
+    {dd_join}
+    {mct_join}
     LEFT JOIN dim.dim_park dp ON d.park_id = dp.park_id
     LEFT JOIN ops.v_dim_park_resolved prk ON d.park_id = prk.park_id
     LEFT JOIN ops.mv_driver_lifecycle_base lb ON d.driver_id = lb.driver_key
@@ -339,13 +360,9 @@ def search_driver_identities(
         params["park_id"] = park_id
 
     if has_phone is True:
-        conditions.append(
-            "(dd.driver_phone IS NOT NULL OR d.phone IS NOT NULL OR mct.driver_phone IS NOT NULL)"
-        )
+        conditions.append("d.phone IS NOT NULL")
     elif has_phone is False:
-        conditions.append(
-            "(dd.driver_phone IS NULL AND d.phone IS NULL AND mct.driver_phone IS NULL)"
-        )
+        conditions.append("d.phone IS NULL")
 
     if conditions:
         base_sql += " AND " + " AND ".join(conditions)

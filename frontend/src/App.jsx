@@ -48,22 +48,38 @@ import { MaturityStatusBar } from './components/operational/MaturityIndicators.j
 import { isProductionReady } from './config/operationalMaturityRegistry.js'
 import DriverOperatingHub from './components/driver/DriverOperatingHub.jsx'
 import DriverActionableLists from './components/driver/DriverActionableLists.jsx'
+import PilotWorkboard from './components/driver/PilotWorkboard.jsx'
+import DriverCapabilityPlaceholder from './components/driver/DriverCapabilityPlaceholder.jsx'
+import CampaignIntelligence from './components/driver/CampaignIntelligence.jsx'
+import CrmBridge from './components/driver/CrmBridge.jsx'
+import CampaignEffectiveness from './components/driver/CampaignEffectiveness.jsx'
+import OperationalPriorities from './components/driver/OperationalPriorities.jsx'
+import DriverOperatorView from './components/driver/DriverOperatorView.jsx'
+import DriverSupervisorView from './components/driver/DriverSupervisorView.jsx'
+import DriverStrategyView from './components/driver/DriverStrategyView.jsx'
+import DriverAdminDataView from './components/driver/DriverAdminDataView.jsx'
+import { getPersistedRole, setPersistedRole } from './config/driverRoleViewsRegistry.js'
 
 const DRIVER_CAPABILITY_GROUPS = [
   {
+    id: 'command',
+    label: 'Command Center',
+    keys: ['drivers_supply'],
+  },
+  {
+    id: 'intelligence',
+    label: 'Intelligence',
+    keys: ['drivers_lifecycle', 'drivers_diagnostic', 'drivers_behavior_benchmarking', 'drivers_behavioral_alerts', 'drivers_fleet_leakage', 'drivers_behavioral_patterns', 'drivers_recoverability', 'drivers_operational_intelligence'],
+  },
+  {
+    id: 'execution',
+    label: 'Execution',
+    keys: ['drivers_action_queues', 'drivers_pilot', 'drivers_operational_priorities', 'drivers_operational_workflows', 'drivers_campaign_intelligence', 'drivers_crm_bridge', 'drivers_campaign_effectiveness'],
+  },
+  {
     id: 'foundation',
     label: 'Foundation',
-    keys: ['drivers_supply', 'drivers_action_queues', 'drivers_lifecycle'],
-  },
-  {
-    id: 'readiness',
-    label: 'Diagnostic Readiness',
-    keys: ['drivers_diagnostic', 'drivers_behavior_benchmarking', 'drivers_behavioral_alerts', 'drivers_fleet_leakage', 'drivers_behavioral_patterns'],
-  },
-  {
-    id: 'future',
-    label: 'Future Intelligence',
-    keys: ['drivers_operational_intelligence', 'drivers_recoverability'],
+    keys: ['drivers_data_foundation', 'drivers_operational_health', 'drivers_capability_governance'],
   },
 ]
 
@@ -102,6 +118,11 @@ const ROUTE_MAP = [
   { path: '/performance/yango-loyalty', tab: TAB_PERFORMANCE, sub: 'performance_yango_loyalty' },
   { path: '/drivers', tab: TAB_DRIVERS, sub: 'drivers_supply' },
   { path: '/drivers/supply', tab: TAB_DRIVERS, sub: 'drivers_supply' },
+  { path: '/drivers/operator', tab: TAB_DRIVERS, sub: 'drivers_operator' },
+  { path: '/drivers/supervisor', tab: TAB_DRIVERS, sub: 'drivers_supervisor' },
+  { path: '/drivers/strategy', tab: TAB_DRIVERS, sub: 'drivers_strategy' },
+  { path: '/drivers/admin', tab: TAB_DRIVERS, sub: 'drivers_admin' },
+  { path: '/drivers/pilot', tab: TAB_DRIVERS, sub: 'drivers_pilot' },
   { path: '/drivers/action-queues', tab: TAB_DRIVERS, sub: 'drivers_action_queues' },
   { path: '/drivers/lifecycle', tab: TAB_DRIVERS, sub: 'drivers_lifecycle' },
   { path: '/drivers/diagnostic', tab: TAB_DRIVERS, sub: 'drivers_diagnostic' },
@@ -111,6 +132,14 @@ const ROUTE_MAP = [
   { path: '/drivers/behavioral-patterns', tab: TAB_DRIVERS, sub: 'drivers_behavioral_patterns' },
   { path: '/drivers/operational-intelligence', tab: TAB_DRIVERS, sub: 'drivers_operational_intelligence' },
   { path: '/drivers/recoverability', tab: TAB_DRIVERS, sub: 'drivers_recoverability' },
+  { path: '/drivers/operational-workflows', tab: TAB_DRIVERS, sub: 'drivers_operational_workflows' },
+  { path: '/drivers/campaign-intelligence', tab: TAB_DRIVERS, sub: 'drivers_campaign_intelligence' },
+  { path: '/drivers/crm-bridge', tab: TAB_DRIVERS, sub: 'drivers_crm_bridge' },
+  { path: '/drivers/campaign-effectiveness', tab: TAB_DRIVERS, sub: 'drivers_campaign_effectiveness' },
+  { path: '/drivers/operational-priorities', tab: TAB_DRIVERS, sub: 'drivers_operational_priorities' },
+  { path: '/drivers/data-foundation', tab: TAB_DRIVERS, sub: 'drivers_data_foundation' },
+  { path: '/drivers/operational-health', tab: TAB_DRIVERS, sub: 'drivers_operational_health' },
+  { path: '/drivers/capability-governance', tab: TAB_DRIVERS, sub: 'drivers_capability_governance' },
   { path: '/riesgo', tab: TAB_RISK, sub: 'riesgo_driver_behavior' },
   { path: '/riesgo/driver-behavior', tab: TAB_RISK, sub: 'riesgo_driver_behavior' },
   { path: '/operacion', tab: TAB_OPERACION, sub: 'operacion_omniview_matrix' },
@@ -408,8 +437,33 @@ function ControlTowerApp () {
 
             {activeTab === TAB_DRIVERS && (
               <section aria-label="Drivers">
+                {/* Role-Based Views — when a role route is active */}
+                {driversSubTab === 'drivers_operator' && (
+                  <DriverOperatingHub activeSub={driversSubTab} refreshKey={refreshKey}>
+                    <DriverOperatorView key={`operator-${refreshKey}`} />
+                  </DriverOperatingHub>
+                )}
+                {driversSubTab === 'drivers_supervisor' && (
+                  <DriverOperatingHub activeSub={driversSubTab} refreshKey={refreshKey}>
+                    <DriverSupervisorView key={`supervisor-${refreshKey}`} />
+                  </DriverOperatingHub>
+                )}
+                {driversSubTab === 'drivers_strategy' && (
+                  <DriverOperatingHub activeSub={driversSubTab} refreshKey={refreshKey}>
+                    <DriverStrategyView key={`strategy-${refreshKey}`} />
+                  </DriverOperatingHub>
+                )}
+                {driversSubTab === 'drivers_admin' && (
+                  <DriverOperatingHub activeSub={driversSubTab} refreshKey={refreshKey}>
+                    <DriverAdminDataView key={`admin-${refreshKey}`} />
+                  </DriverOperatingHub>
+                )}
+
+                {/* Full Capability Map — existing navigation for all non-role tabs */}
+                {!['drivers_operator', 'drivers_supervisor', 'drivers_strategy', 'drivers_admin'].includes(driversSubTab) && (
                 <DriverOperatingHub activeSub={driversSubTab} refreshKey={refreshKey}>
                   {driversSubTab === 'drivers_supply' && <SupplyView key={`supply-${refreshKey}`} />}
+                  {driversSubTab === 'drivers_pilot' && <PilotWorkboard key={`pilot-${refreshKey}`} />}
                   {driversSubTab === 'drivers_action_queues' && <DriverActionableLists key={`action-queues-${refreshKey}`} />}
                   {driversSubTab === 'drivers_lifecycle' && <DriverLifecycleView key={`driver-lifecycle-${refreshKey}`} />}
                   {driversSubTab === 'drivers_diagnostic' && <DriverLifecycleDashboard key={`driver-diagnostic-${refreshKey}`} />}
@@ -419,7 +473,16 @@ function ControlTowerApp () {
                   {driversSubTab === 'drivers_behavioral_patterns' && <BehavioralPatternDiagnosisDashboard key={`behavioral-patterns-${refreshKey}`} />}
                   {driversSubTab === 'drivers_operational_intelligence' && <OperationalBehavioralIntelligenceDashboard key={`operational-intel-${refreshKey}`} />}
                   {driversSubTab === 'drivers_recoverability' && <RecoverabilityIntelligenceDashboard key={`recoverability-${refreshKey}`} />}
+                  {driversSubTab === 'drivers_operational_workflows' && <DriverCapabilityPlaceholder moduleKey='drivers_operational_workflows' />}
+                  {driversSubTab === 'drivers_campaign_intelligence' && <CampaignIntelligence key={`campaign-intel-${refreshKey}`} />}
+                  {driversSubTab === 'drivers_crm_bridge' && <CrmBridge key={`crm-bridge-${refreshKey}`} />}
+                  {driversSubTab === 'drivers_campaign_effectiveness' && <CampaignEffectiveness key={`campaign-eff-${refreshKey}`} />}
+                  {driversSubTab === 'drivers_operational_priorities' && <OperationalPriorities key={`ops-priorities-${refreshKey}`} />}
+                  {driversSubTab === 'drivers_data_foundation' && <DriverCapabilityPlaceholder moduleKey='drivers_data_foundation' />}
+                  {driversSubTab === 'drivers_operational_health' && <DriverCapabilityPlaceholder moduleKey='drivers_operational_health' />}
+                  {driversSubTab === 'drivers_capability_governance' && <DriverCapabilityPlaceholder moduleKey='drivers_capability_governance' />}
                 </DriverOperatingHub>
+                )}
               </section>
             )}
 

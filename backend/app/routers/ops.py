@@ -47,6 +47,7 @@ from app.services.business_slice_real_freshness_service import (
 )
 from app.services.business_slice_real_refresh_job import run_business_slice_real_refresh_job
 from app.services.omniview_momentum_drill_service import get_omniview_momentum_drill
+from app.services.ownership_serving_service import get_ownership_serving_monthly
 from app.utils.json_sanitizer import sanitize_for_json
 from app.settings import settings
 from app.services.plan_real_split_service import (
@@ -544,6 +545,53 @@ async def serving_integrity():
         return sanitize_for_json(compute_serving_integrity())
     except Exception as e:
         logger.exception("serving/integrity")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─── FASE 0.2 — Ownership Serving Endpoint ───────────────────────────────────
+
+@router.get("/ownership-serving/monthly")
+async def ownership_serving_monthly(
+    plan_version: Optional[str] = Query(None, description="Plan version key vinculada al ownership"),
+    country: Optional[str] = Query(None),
+    city: Optional[str] = Query(None),
+    jefe_producto: Optional[str] = Query(None, description="Filtrar por Jefe Producto"),
+    lob: Optional[str] = Query(None, description="Filtrar por linea de negocio canonica"),
+    period: Optional[str] = Query(None, description="YYYY-MM"),
+    ownership_assignment: Optional[str] = Query(None, description="assigned | missing | conflicting"),
+    limit: int = Query(2000, ge=1, le=10000),
+    offset: int = Query(0, ge=0),
+):
+    """
+    FASE 0.2 — Ownership Serving Fact ( técnico, solo lectura ).
+
+    Devuelve datos mensuales del serving fact ownership-aware:
+    - Plan vs Real por owner (jefe_producto)
+    - Execution % (trips + revenue)
+    - MoM growth (real trips/revenue)
+    - Momentum status (on_track | at_risk | behind | no_target)
+    - Ownership metadata (assignment, conflicts, quality)
+
+    Grain: (plan_version, period, country, city, lob_base, jefe_producto)
+    Source: ops.mv_ownership_serving_fact
+
+    NO expone UI. NO modifica datos. Base futura para Ownership Perspective.
+    """
+    try:
+        result = get_ownership_serving_monthly(
+            plan_version_key=plan_version,
+            country=country,
+            city=city,
+            jefe_producto=jefe_producto,
+            lob=lob,
+            period=period,
+            ownership_assignment=ownership_assignment,
+            limit=limit,
+            offset=offset,
+        )
+        return sanitize_for_json(result)
+    except Exception as e:
+        logger.exception("ownership-serving/monthly")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1274,14 +1322,15 @@ async def get_supply_alert_drilldown_endpoint(
 
 @router.get("/supply/overview-enhanced")
 async def get_supply_overview_enhanced_endpoint(
-    park_id: str = Query(..., description="Park (obligatorio)"),
+    park_id: str = Query("", description="Park (opcional)"),
     from_: str = Query(..., alias="from", description="YYYY-MM-DD"),
     to: str = Query(..., description="YYYY-MM-DD"),
     grain: Literal["weekly", "monthly"] = Query("weekly"),
 ):
     """Overview enriquecido: trips, avg_trips_per_driver, FT/PT/weak_supply share; WoW cuando grain=weekly."""
     try:
-        data = get_supply_overview_enhanced(park_id=park_id, from_date=from_, to_date=to, grain=grain)
+        pid = park_id if park_id and park_id.strip() else None
+        data = get_supply_overview_enhanced(park_id=pid, from_date=from_, to_date=to, grain=grain)
         return data
     except Exception as e:
         logger.error("GET /ops/supply/overview-enhanced: %s", e)

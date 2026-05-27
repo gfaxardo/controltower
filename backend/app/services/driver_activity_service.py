@@ -265,7 +265,7 @@ def search_driver_activity(
     SELECT
         d.driver_id,
         COALESCE(vr.driver_name, dd.full_name) AS driver_name,
-        COALESCE(dd.driver_phone, d.phone::text) AS phone,
+        d.phone::text AS phone,
         COALESCE(dp.city, prk.city) AS city,
         COALESCE(dp.country, prk.country) AS country,
         d.park_id,
