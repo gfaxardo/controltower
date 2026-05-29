@@ -1,0 +1,23 @@
+conductor_id,conductor_nombre,dias_activos,total_trips,total_revenue,avg_jornada_h,rev_per_hora,trips_per_hora,rev_per_dia
+d125dba79d74433cb1e14bd49a9e0748,Basto Parada Jose Richard,13,170,1831.10,4.8,29.25,2.72,140.85
+a0bbb643f3ea4c3a9d8a3b135c0de027,Unyen Nuñez Daniel Ernesto,15,185,1754.70,4.2,27.93,2.94,116.98
+169fe9b89a4242b1a4dbf7db24fbffc8,Durand Huamani Americo,16,149,1532.00,3.3,29.15,2.83,95.75
+35361f8580a44874bf9dab0e0ffe65a0,Quispe Medina Rubher Jesus,17,165,1457.20,3.4,25.05,2.84,85.72
+1e91148b37e54461a02a9c450a3dc577,Diaz Diaz Madley Erixon,11,138,1431.30,3.9,33.25,3.21,130.12
+80091ecf77bb4d90b299664a80591eb3,Carbonell Rodriguez Jhair Michael,15,126,1160.70,3.7,20.93,2.27,77.38
+471d5c59d1624a358ade09a83921f7ab,Diaz Diaz Jhonatan,13,131,1151.50,4.1,21.75,2.47,88.58
+6f6f82bd30fe4fffbf01f82299740680,Rojas Percy,17,107,1144.90,2.8,24.45,2.29,67.35
+73ffe5abf820442697122497c6b48d1a,Choquehuanca Ppoccohuanca Roberto Carlos,9,103,1043.80,4.2,27.50,2.71,115.98
+a53cb92fedaf44fd85bb028366cf855f,Sender Quiros Christiam Valerie,9,102,1043.20,3.7,31.06,3.04,115.91
+c3ade46b21074399ae77020b03866104,Burga Jose,8,91,1025.10,3.7,34.30,3.04,128.14
+248939a059ed428ca63e229751c58f46,Vilavila Candela Alex John,11,114,1017.40,3.4,27.48,3.08,92.49
+520ccfd4f18e47a1b43f2a58c14b75fd,Contreras Linares Victor Manuel,8,91,996.30,3.9,32.07,2.93,124.54
+afdc5e70106a4de59f1a0f186b279325,Carrasco Cardenas Yuri,6,96,866.10,5.1,28.35,3.14,144.35
+0b6e8a0ee3cf402aba02b5e68d8d9e74,Jabali Baker Mahmoud,14,53,804.50,1.8,31.29,2.06,57.46
+b63613895dbb4a97b896bfe12d4cc745,Vilcas Marquina Segundo David,7,69,783.00,3.8,29.35,2.59,111.86
+245743818ced4fa8ba10473fcf7a7f13,Zuñiga Honisman Jaime Enrique,5,65,678.50,4.2,32.57,3.12,135.70
+b05cba5df4084fbbb2120b579de8c846,Quispe Medina Aldo Cristhian Cristhian,7,60,591.50,3.5,24.06,2.44,84.50
+94f6aca70a0746dc932ef2ec2b4de4e5,Solorzano Contreras Freddy Alberto,6,51,523.80,4.0,22.08,2.15,87.30
+f7e45b714f0845bdbc848c7bd2f733b2,Farro Malasque Jean Carlos,5,56,511.00,3.5,29.01,3.18,102.20
+c3ade46b21074399ae77020b03866104,Balarezo Burga Renato Jose Jose,5,57,500.90,3.1,31.92,3.63,100.18
+0e6603f4a61c4df78a61b6a6a0f595b9,Huamani Secas Kevin Gerardo Gerardo,7,43,465.70,2.9,22.79,2.10,66.53

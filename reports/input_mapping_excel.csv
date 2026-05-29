@@ -1,0 +1,30 @@
+input_excel,valor,fuente,tipo,confianza,observacion
+Ticket promedio,10.21,trips_2026 AVG(precio_yango_pro),REAL,ALTA,"Ultimos 30 dias, solo completados"
+Ticket mediana,9.00,trips_2026 PERCENTILE_CONT(0.5),REAL,ALTA,Usar mediana para escenarios conservadores
+KM por viaje (con pasajero),3.75,trips_2026 AVG(distancia_km)/1000,REAL,ALTA,"Campo en metros, convertido a km"
+KM por viaje (total real),9.20,module_weekly_billing km/viajes,REAL,ALTA,Incluye recorrido vacio. USAR ESTE para costos
+Combustible S//km,0.1528,module_weekly_billing combustible/km,REAL,ALTA,Dato real operativo (antes se asumia 0.20)
+Mantenimiento S//km,0.1500,module_weekly_billing mantenimiento/km,REAL,ALTA,Dato real operativo (antes se asumia 0.15)
+Combustible S//viaje,1.41,module_weekly_billing,REAL,ALTA,Para P&L por viaje
+Mantenimiento S//viaje,1.38,module_weekly_billing,REAL,ALTA,Para P&L por viaje
+Comision plataforma %,16.66,module_weekly_billing comision_app/producido,REAL,ALTA,InDrive/Yango cobra ~16.7% del bruto
+Cuota vehiculo semanal,500-562.50,module_miauto_cronograma_rule,REAL,ALTA,Varia por modelo y num trips. Base sin descuento
+Cuota vehiculo mensual,2000-2250,cronograma_rule * 4,DERIVADO,ALTA,Rango segun modelo (antes se asumia 2357)
+Seguro/GPS mensual,N/D,No existe en BD,NO DISPONIBLE,N/A,Posiblemente incluido en cuota o en otros_gastos del cronograma
+Pago conductor % produccion,47.69,module_weekly_billing AVG(porcentaje_pago),REAL,ALTA,Promedio real aplicado. Rango 20-60%
+Pago conductor S//viaje,2.96,module_weekly_billing,REAL,ALTA,Pago promedio real por viaje completado
+Revenue por hora,28.97,module_weekly_billing producido/horas,REAL,ALTA,Revenue bruto generado por hora trabajada
+Viajes por hora,2.32,module_weekly_billing viajes/horas,REAL,ALTA,Productividad real
+Horas trabajo/dia,9.08,module_weekly_billing horas/dias,REAL,ALTA,Jornada promedio real
+Dias trabajados/semana,5.77,module_weekly_billing,REAL,ALTA,Promedio real
+Bono Yango semanal/flota,5126.57,module_weekly_billing SUM(bono_yango),REAL,ALTA,Incentivo plataforma recibido
+Bono adicional viajes/flota,2125.00,module_weekly_billing SUM(bono_adic_viajes),REAL,ALTA,Bono por volumen de trips
+Utilidad por viaje (actual),-2.17,module_weekly_billing,REAL,ALTA,NEGATIVO - el modelo actual pierde dinero
+Utilidad semanal total flota,-5509.90,module_weekly_billing SUM(utilidad),REAL,ALTA,PERDIDA operativa real del park
+Conductores activos diarios,21.8,trips_2026 COUNT DISTINCT daily,REAL,ALTA,Promedio 30 dias
+Tasa cancelacion,49.5,trips_2026 cancelados/total,REAL,ALTA,Casi 1:1 completados vs cancelados
+Revenue bruto mensual flota,142474,trips_2026 SUM(precio_yango_pro),REAL,ALTA,30 dias completos
+Horas online/conectado,N/D,No existe tabla,NO DISPONIBLE,N/A,horas_trabajo de billing es la mejor proxy
+Reserva desgaste %,N/D,No existe en BD,SUPUESTO,BAJA,Mantener como input configurable (sugerido 10-20%)
+Escalones pago (trips/sem),90/95/100/107/117/128/140,module_payment_percentages,REAL,ALTA,30%/35%/40%/45%/50%/55%/60%
+Bono reduccion cuota vehiculo,10/40/70,module_miauto_cronograma_rule,REAL,ALTA,Por 90-119/120-149/150-179 trips

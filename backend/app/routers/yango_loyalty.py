@@ -28,6 +28,17 @@ from app.services.yango_loyalty_service import (
     upsert_batch_targets,
     ensure_loyalty_tables,
 )
+from app.services.yango_loyalty_performance_service import (
+    get_loyalty_performance,
+)
+from app.services.yango_loyalty_definition_service import (
+    get_sources,
+    get_definition_sets,
+    get_definition_set,
+    preview_all_sets,
+    get_validation_pack,
+    get_operational_flow,
+)
 
 import logging
 
@@ -125,4 +136,83 @@ async def loyalty_ensure_tables():
         return ensure_loyalty_tables()
     except Exception as e:
         logger.exception("yango-loyalty ensure-tables: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/performance")
+async def loyalty_performance(
+    month: Optional[str] = Query(None, description="YYYY-MM"),
+    country: str = Query("peru"),
+    city: Optional[str] = Query(None),
+    include_missing_targets: bool = Query(True),
+):
+    try:
+        return get_loyalty_performance(
+            month=month,
+            country=country,
+            city=city,
+            include_missing_targets=include_missing_targets,
+        )
+    except Exception as e:
+        logger.exception("yango-loyalty performance: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Metric Definition Registry endpoints ---
+
+@router.get("/definitions/sources")
+async def definition_sources():
+    try:
+        return get_sources()
+    except Exception as e:
+        logger.exception("definitions sources: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/definitions/sets")
+async def definition_sets():
+    try:
+        return get_definition_sets()
+    except Exception as e:
+        logger.exception("definitions sets: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/definitions/sets/{set_id}")
+async def definition_set_detail(set_id: str):
+    try:
+        result = get_definition_set(set_id)
+        if not result:
+            raise HTTPException(status_code=404, detail=f"Definition set {set_id} not found")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("definitions set detail: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/definitions/validation-pack")
+async def definition_validation_pack(
+    month: str = Query("2026-04", description="YYYY-MM"),
+    country: str = Query("PE"),
+    city: str = Query("lima"),
+):
+    try:
+        return get_validation_pack(month, country, city)
+    except Exception as e:
+        logger.exception("definitions validation-pack: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/operational-flow")
+async def loyalty_operational_flow(
+    month: Optional[str] = Query(None, description="YYYY-MM"),
+    country: str = Query("PE"),
+    city: str = Query("lima"),
+):
+    try:
+        return get_operational_flow(month or "2026-04", country, city)
+    except Exception as e:
+        logger.exception("yango-loyalty operational-flow: %s", e)
         raise HTTPException(status_code=500, detail=str(e))

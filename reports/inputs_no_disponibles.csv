@@ -1,0 +1,17 @@
+input,razon,impacto,alternativa
+horas_online_conectado,No existe tabla de sessions/conexion para drivers en la plataforma de ride,CRITICO,Estimacion desde jornada (primer a ultimo viaje) o horas_trabajo en billing
+tasa_aceptacion_real_por_turno,summary_daily y fleet_summary_daily vacios para este park,ALTO,No disponible
+tasa_cancelacion_por_conductor,trips cancelados no tienen conductor_id asignado consistentemente,MEDIO,Puede estimarse desde total cancelados vs completados por hora
+gasto_seguro_mensual_real,No existe tabla de seguros en BD,MEDIO,Puede incluirse en otros_gastos de cronograma (26 cuotas)
+gasto_gps_mensual_real,No existe tabla de GPS/tracking costs,BAJO,Incluido probablemente en cuota fija del cronograma
+km_muertos_sin_pasajero,trips_2026 solo registra distancia con pasajero; billing tiene km total pero sin desglose,ALTO,Derivado: km_billing - km_trips = ~5.45 km muertos/viaje
+downtime_vehiculo_dias,No existe tabla de disponibilidad/mantenimiento de vehiculos,MEDIO,Puede inferirse de dias sin viajes por vehiculo
+accidentes_siniestros,No existe tabla de accidentes,BAJO,No disponible
+multas_peajes,No existe tabla de multas ni peajes,BAJO,No disponible
+lavados,No existe tabla de lavados,BAJO,No disponible
+depreciacion_contable,No existe tabla contable de depreciacion,MEDIO,Puede derivarse del valor vehiculo y cuotas (261 semanas = ~5 años)
+revenue_neto_post_comision_exacto,comision_empresa_asociada siempre NULL en trips,ALTO,Se usa comision_app de billing (16.7%) o platform_fees de income (14.9%)
+consumo_combustible_litros,"Solo existe gasto en soles, no litros consumidos",BAJO,Dividir gasto entre precio gasolina (~S/15-17/galon)
+precio_gasolina_referencia,No existe en BD,BAJO,Input manual configurable
+costo_llantas,No existe desglose de costos de llantas,BAJO,Incluido en mantenimiento general
+zona_demanda_por_hora,"Solo existe direccion texto, no geocodificado",MEDIO,No disponible

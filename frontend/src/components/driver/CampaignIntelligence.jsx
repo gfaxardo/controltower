@@ -9,6 +9,7 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 import api from '../../services/api'
+import CampaignOperatingBoard from './CampaignOperatingBoard'
 
 const CAMPAIGN_TYPES = ['RECOVERY', 'REACTIVATION', 'LOYALTY', 'ACTIVATION', 'RETENTION', 'CROSS_SELL', 'OTHER']
 
@@ -81,20 +82,23 @@ export default function CampaignIntelligence () {
   const [progress, setProgress] = useState(null)
   const [effectiveness, setEffectiveness] = useState(null)
   const [effLoading, setEffLoading] = useState(false)
+  const [loopStatus, setLoopStatus] = useState(null)
 
   // Detail
   const loadDetail = useCallback(async (id) => {
     setDetailId(id)
     setDetailLoading(true)
     try {
-      const [dRes, mRes, pRes] = await Promise.all([
+      const [dRes, mRes, pRes, lRes] = await Promise.all([
         api.get(`/drivers/campaigns/${id}`, { timeout: 15000 }),
         api.get(`/drivers/campaigns/${id}/members`, { params: { limit: 100 }, timeout: 15000 }),
         api.get(`/drivers/campaigns/${id}/progress`, { timeout: 15000 }),
+        api.get(`/drivers/campaigns/${id}/loop-status`, { timeout: 15000 }),
       ])
       setDetail(dRes.data)
       setMembers(mRes.data)
       setProgress(pRes.data)
+      setLoopStatus(lRes.data)
       loadEffectiveness(id)
     } catch { /* ignore */ } finally { setDetailLoading(false) }
   }, [])
@@ -118,7 +122,7 @@ export default function CampaignIntelligence () {
       <div className='bg-ct-card border border-ct-border rounded-xl px-5 py-4'>
         <h2 className='text-lg font-bold text-ct-text'>Campaign Intelligence</h2>
         <p className='text-xs text-ct-text3 mt-1'>
-          Define universos y campañas accionables desde segmentos/queues. El CRM ejecuta la comunicación.
+          Define universos y campañas accionables. El CRM ejecuta la comunicación. Aquí se decide qué hacer, con quién y por qué.
         </p>
       </div>
 
@@ -126,6 +130,7 @@ export default function CampaignIntelligence () {
       <div className='flex gap-1.5 flex-wrap'>
         {[
           { key: 'builder', label: 'Campaign Builder' },
+          { key: 'board', label: 'Operating Board' },
           { key: 'list', label: 'Campaigns' },
           { key: 'detail', label: 'Detail' },
         ].map(t => (
@@ -241,13 +246,16 @@ export default function CampaignIntelligence () {
               </button>
             </div>
 
-            {/* API contract hint */}
-            <div className='mt-4 p-3 bg-blue-50 border border-blue-200 rounded text-[11px] text-blue-800'>
-              <strong>API Contract CRM:</strong>{' '}
-              <code className='text-blue-900'>GET /drivers/campaigns/{'{campaign_id}'}/members?only_with_phone=true</code>
-              <br />
-              <span className='text-blue-700'>El CRM consumirá este endpoint para obtener los miembros de la campaña.</span>
-            </div>
+            {/* API contract hint — hidden by default for operators */}
+            <details className='mt-4'>
+              <summary className='text-[10px] text-ct-text3 cursor-pointer hover:text-ct-text'>Ver detalle técnico</summary>
+              <div className='mt-2 p-3 bg-blue-50 border border-blue-200 rounded text-[11px] text-blue-800'>
+                <strong>API Contract CRM:</strong>{' '}
+                <code className='text-blue-900'>GET /drivers/campaigns/{'{campaign_id}'}/members?only_with_phone=true</code>
+                <br />
+                <span className='text-blue-700'>El CRM consumirá este endpoint para obtener los conductores de la campaña.</span>
+              </div>
+            </details>
           </div>
 
           {/* Preview result */}
@@ -324,6 +332,11 @@ export default function CampaignIntelligence () {
             </div>
           )}
         </div>
+      )}
+
+      {/* ── Operating Board ── */}
+      {activeView === 'board' && (
+        <CampaignOperatingBoard onSelectCampaign={(id) => { setActiveView('detail'); loadDetail(id) }} />
       )}
 
       {/* ── List ── */}
@@ -417,10 +430,60 @@ export default function CampaignIntelligence () {
                 </div>
               </div>
 
+              {/* Operational Loop Status */}
+              {loopStatus?.status === 'ok' && (
+                <div className='bg-indigo-50 border border-indigo-200 rounded-lg p-4'>
+                  <div className='flex items-center justify-between mb-2'>
+                    <h3 className='text-sm font-semibold text-indigo-900'>Estado del Loop Operativo</h3>
+                    <span className='text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-medium'>
+                      Etapa {loopStatus.readiness?.current_stage}/{loopStatus.readiness?.total_stages}
+                    </span>
+                  </div>
+                  <div className='grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]'>
+                    <div>
+                      <span className='text-indigo-600 font-medium'>Etapa actual:</span>{' '}
+                      <strong className='text-indigo-900'>{loopStatus.readiness?.loop_status_label}</strong>
+                    </div>
+                    <div>
+                      <span className='text-indigo-600 font-medium'>Siguiente acción:</span>{' '}
+                      <strong className='text-indigo-900'>{loopStatus.next_action?.label}</strong>
+                    </div>
+                    {loopStatus.readiness?.missing?.length > 0 && (
+                      <div className='col-span-2'>
+                        <span className='text-amber-600 font-medium'>Qué falta:</span>{' '}
+                        <span className='text-amber-800'>{loopStatus.readiness.missing.join(' · ')}</span>
+                      </div>
+                    )}
+                    <div>
+                      <span className='text-indigo-600 font-medium'>Depende del CRM:</span>{' '}
+                      <span className={loopStatus.readiness?.depends_on_crm ? 'text-amber-700' : 'text-emerald-700'}>
+                        {loopStatus.readiness?.depends_on_crm ? 'Sí' : 'No'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className='text-indigo-600 font-medium'>Se puede medir:</span>{' '}
+                      <span className={loopStatus.readiness?.can_measure ? 'text-emerald-700' : 'text-gray-500'}>
+                        {loopStatus.readiness?.can_measure ? 'Sí' : 'Aún no'}
+                      </span>
+                    </div>
+                  </div>
+                  {loopStatus.readiness?.human_summary && (
+                    <div className='mt-2 px-3 py-2 bg-white/60 rounded text-xs text-indigo-800 font-medium'>
+                      {loopStatus.readiness.human_summary}
+                    </div>
+                  )}
+                  {loopStatus.next_action?.blocking_gap && (
+                    <div className='mt-2 text-[10px] text-red-600'>
+                      Bloqueo: {loopStatus.next_action.blocking_gap}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Members summary */}
               {detail.members_summary && (
                 <div className='bg-ct-card border border-ct-border rounded-lg p-4'>
-                  <h3 className='text-sm font-semibold text-ct-text mb-2'>Members ({detail.members_summary.total})</h3>
+                  <h3 className='text-sm font-semibold text-ct-text mb-2'>Conductores en campaña ({detail.members_summary.total})</h3>
                   <div className='flex flex-wrap gap-2 text-[11px] mb-3'>
                     {Object.entries(detail.members_summary.by_crm_status || {}).map(([k, v]) => (
                       <span key={k} className='px-1.5 py-0.5 rounded bg-gray-100 text-gray-600'>{k}: {v}</span>
@@ -520,7 +583,7 @@ export default function CampaignIntelligence () {
 
               {/* Campaign Effectiveness */}
               <div className='bg-ct-card border border-ct-border rounded-lg p-4'>
-                <h3 className='text-sm font-semibold text-ct-text mb-2'>Effectiveness (D+7)</h3>
+                <h3 className='text-sm font-semibold text-ct-text mb-2'>Resultado observado (D+7)</h3>
                 {effLoading ? (
                   <div className='text-xs text-ct-text3'>Loading...</div>
                 ) : effectiveness?.status === 'error' ? (
@@ -536,27 +599,31 @@ export default function CampaignIntelligence () {
                     {effectiveness.warnings?.length > 0 && (
                       <div className='text-[10px] text-amber-600'>{effectiveness.warnings[0]}</div>
                     )}
-                    <p className='text-[10px] text-gray-400 italic mt-1'>Observed lift, not causal. D+{effectiveness.window_days}, {effectiveness.days_since_campaign}d since campaign.</p>
+                    <p className='text-[10px] text-gray-400 italic mt-1'>Cambio observado, no causal. Ventana D+{effectiveness.window_days}, {effectiveness.days_since_campaign} días desde campaña.</p>
                   </div>
                 ) : (
                   <div className='text-xs text-ct-text3'>Effectiveness not yet available.</div>
                 )}
               </div>
 
-              {/* CRM Export + API contract */}
+              {/* CRM Export */}
               <div className='bg-blue-50 border border-blue-200 rounded-lg p-4'>
-                <h3 className='text-sm font-semibold text-blue-900 mb-2'>CRM Bridge</h3>
+                <h3 className='text-sm font-semibold text-blue-900 mb-2'>Exportar al CRM</h3>
+                <p className='text-[11px] text-blue-700 mb-3'>Genera la lista de conductores contactables para el equipo de llamadas.</p>
                 <div className='flex flex-wrap gap-2 mb-3'>
                   <a href={`/api/drivers/campaigns/${detailId}/crm-export`} target='_blank' rel='noopener noreferrer'
                     className='px-3 py-1.5 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 inline-block'>
-                    Export CRM Payload
+                    Exportar lista para CRM
                   </a>
                 </div>
-                <div className='text-[11px] text-blue-800 space-y-1'>
-                  <div><strong>GET Members:</strong> <code className='text-blue-900'>/drivers/campaigns/{detailId}/members?only_with_phone=true&limit=200</code></div>
-                  <div><strong>POST Outcomes:</strong> <code className='text-blue-900'>/drivers/campaigns/{detailId}/outcomes</code></div>
-                  <div><strong>GET Progress:</strong> <code className='text-blue-900'>/drivers/campaigns/{detailId}/progress</code></div>
-                </div>
+                <details>
+                  <summary className='text-[10px] text-blue-600 cursor-pointer hover:text-blue-800'>Ver detalle técnico</summary>
+                  <div className='mt-2 text-[11px] text-blue-800 space-y-1'>
+                    <div><strong>GET Members:</strong> <code className='text-blue-900'>/drivers/campaigns/{detailId}/members?only_with_phone=true&limit=200</code></div>
+                    <div><strong>POST Outcomes:</strong> <code className='text-blue-900'>/drivers/campaigns/{detailId}/outcomes</code></div>
+                    <div><strong>GET Progress:</strong> <code className='text-blue-900'>/drivers/campaigns/{detailId}/progress</code></div>
+                  </div>
+                </details>
               </div>
             </>
           ) : (

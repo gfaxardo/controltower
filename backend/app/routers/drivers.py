@@ -47,6 +47,10 @@ from app.services.driver_crm_bridge_service import (
 from app.services.driver_campaign_effectiveness_service import (
     compute_campaign_effectiveness, get_effectiveness_summary,
 )
+from app.services.driver_operational_loop_service import (
+    get_operational_loop_model, get_campaign_loop_status,
+    get_campaign_follow_up, get_campaign_qa_checklist, get_operating_board,
+)
 from app.services.driver_segment_migration_service import compute_segment_migration
 from app.services.driver_operational_priority_service import get_actionable_movements
 from app.services.driver_serving_freshness_service import check_all_facts, check_fact_freshness
@@ -673,6 +677,38 @@ async def campaign_effectiveness(
 async def campaign_effectiveness_summary():
     """Get effectiveness summary across all campaigns with measurements."""
     return JSONResponse(content=get_effectiveness_summary())
+
+
+# ─── OLM1: Operational Loop ───────────────────────────────────────────────────
+
+@router.get("/operational-loop/model")
+async def operational_loop_model():
+    """Get the operational loop model definition."""
+    return JSONResponse(content=get_operational_loop_model())
+
+
+@router.get("/campaigns/operating-board")
+async def campaigns_operating_board():
+    """Campaign Operating Board: campaigns grouped by loop stage."""
+    return JSONResponse(content=get_operating_board())
+
+
+@router.get("/campaigns/{campaign_id}/loop-status")
+async def campaign_loop_status(campaign_id: str):
+    """Derived operational loop status for a campaign."""
+    return JSONResponse(content=get_campaign_loop_status(campaign_id))
+
+
+@router.get("/campaigns/{campaign_id}/follow-up")
+async def campaign_follow_up(campaign_id: str):
+    """Follow-up classification for campaign members based on outcomes."""
+    return JSONResponse(content=get_campaign_follow_up(campaign_id))
+
+
+@router.get("/campaigns/{campaign_id}/qa-checklist")
+async def campaign_qa_checklist(campaign_id: str):
+    """Human QA checklist for campaign supervision."""
+    return JSONResponse(content=get_campaign_qa_checklist(campaign_id))
 
 
 # ─── H3.5A: Segment Migration ─────────────────────────────────────────────────

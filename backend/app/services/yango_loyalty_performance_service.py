@@ -1,0 +1,600 @@
+"""
+Yango Loyalty Performance Service — Lima-Only Pilot
+Control Foundation Hardening / Phase 1H.4
+
+PILOT SCOPE: Lima only.
+Metrics: AD, Supply Hours, Nuevos + Reactivados (N+R).
+
+Sources:
+  AD: ops.real_business_slice_month_fact (Auto regular only, matching Yango definition)
+  SH: public.module_ct_fleet_summary_daily (ALL rows -> forced to Lima)
+  N+R: Derived from trips history, filtered to fleet_summary driver universe
+
+Scoring guardrails:
+  - AD drift vs Yango ref >5%  -> blocked_pending_reconciliation
+  - SH drift vs Yango ref >5%  -> blocked_pending_reconciliation
+  - N+R drift vs Yango ref >10% -> blocked_pending_reconciliation
+  - N+R provisional definition  -> blocked_pending_reconciliation
+  - N+R runtime >5s             -> blocked_pending_reconciliation
+
+NO Forecast. NO Suggestion. NO Decision. NO Action. NO AI.
+"""
+
+from __future__ import annotations
+
+import calendar
+import logging
+from datetime import date, datetime, timedelta
+from typing import Any, Optional
+
+from psycopg2.extras import RealDictCursor
+
+from app.db.connection import get_db
+
+logger = logging.getLogger(__name__)
+
+TIMEOUT_MS = 60000
+
+PILOT_SCOPE = "lima_only"
+PILOT_COUNTRY = "PE"
+PILOT_CITY_NORM = "lima"
+SOURCE_TABLE = "public.module_ct_fleet_summary_daily"
+SOURCE_SCOPE_REASON = "fleet_summary_confirmed_lima_only"
+
+UNSUPPORTED_CITIES = ["trujillo", "arequipa"]
+
+NR_SOURCE = "derived_from_fleet_scope_trips"
+NR_DEFINITION_STATUS = "provisional_pending_business_validation"
+NR_SOURCE_CONFIDENCE = "medium_derived_from_trip_history"
+NR_REACTIVATION_WINDOW_DAYS = 30
+
+# Yango official reference values — used for guardrail drift detection, NOT as targets
+REF_AD_YANGO = 5601
+REF_SH_YANGO = 357000
+REF_NR_YANGO = 1064
+
+GUARDRAIL_AD_DRIFT_PCT = 5
+GUARDRAIL_SH_DRIFT_PCT = 5
+GUARDRAIL_NR_DRIFT_PCT = 10
+
+
+def _cursor(conn, timeout_ms=TIMEOUT_MS):
+    c = conn.cursor(cursor_factory=RealDictCursor)
+    c.execute("SET LOCAL statement_timeout = %s", (str(timeout_ms),))
+    return c
+
+
+def get_loyalty_performance(
+    month: Optional[str] = None,
+    country: str = "peru",
+    city: Optional[str] = None,
+    include_missing_targets: bool = True,
+) -> dict[str, Any]:
+    today = date.today()
+    if month:
+        try:
+            parts = month.split("-")
+            month_start = date(int(parts[0]), int(parts[1]), 1)
+        except (ValueError, IndexError):
+            month_start = date(today.year, today.month, 1)
+    else:
+        month_start = date(today.year, today.month, 1)
+
+    month_str = month_start.strftime("%Y-%m")
+    total_days = calendar.monthrange(month_start.year, month_start.month)[1]
+
+    city_requested = city.lower().strip() if city else None
+
+    if city_requested and city_requested in UNSUPPORTED_CITIES:
+        return _unsupported_city_response(month_str, country, city_requested)
+
+    try:
+        with get_db() as conn:
+            cur = _cursor(conn)
+
+            lima_data = _fetch_lima_performance(cur, month_start)
+            nr_data = _fetch_nr_lazy_stub(month_start)
+            targets_data = _fetch_targets(cur, month_str)
+            freshness = _compute_freshness(lima_data, today)
+
+            city_result = _build_lima_city(lima_data, nr_data, targets_data,
+                                           month_start, total_days, today)
+            summary = _build_summary(city_result, nr_data, targets_data)
+            target_status = _compute_target_status(targets_data)
+            scoring = _compute_scoring(city_result, nr_data, targets_data)
+            remediation = _build_remediation(target_status, freshness, scoring, nr_data)
+
+            if city_result:
+                city_result["scoring_status"] = scoring["scoring_status"]
+                city_result["performance_goals_completed"] = scoring["performance_goals_completed"]
+                city_result["performance_category"] = scoring["performance_category"]
+                city_result["guardrail_flags"] = scoring.get("guardrail_flags", [])
+
+            reconciliation = {
+                "status": "pending" if scoring["scoring_status"] == "blocked_pending_reconciliation" else "ok",
+                "ad_current": city_result["active_drivers_mtd"] if city_result else 0,
+                "ad_reference": REF_AD_YANGO,
+                "ad_drift_pct": round(abs((city_result["active_drivers_mtd"] - REF_AD_YANGO) / REF_AD_YANGO * 100), 1) if city_result else 0,
+                "sh_current": round(city_result["supply_hours_mtd"]) if city_result else 0,
+                "sh_reference": REF_SH_YANGO,
+                "sh_drift_pct": round(abs((city_result["supply_hours_mtd"] - REF_SH_YANGO) / REF_SH_YANGO * 100), 1) if city_result else 0,
+                "nr_current": city_result["new_plus_reactivated_mtd"] if city_result else 0,
+                "nr_reference": REF_NR_YANGO,
+                "nr_drift_pct": round(abs((city_result["new_plus_reactivated_mtd"] - REF_NR_YANGO) / REF_NR_YANGO * 100), 1) if city_result and city_result["new_plus_reactivated_mtd"] > 0 else 0,
+                "guardrail_flags": scoring.get("guardrail_flags", []),
+            }
+
+            unsupported = [
+                {"city_norm": c, "data_status": "not_available", "reason": "source_pending_enrichment"}
+                for c in UNSUPPORTED_CITIES
+            ]
+
+            return {
+                "month": month_str,
+                "country": country,
+                "data_until": freshness["data_until"],
+                "freshness_status": freshness["status"],
+                "target_status": target_status,
+                "scoring_status": scoring["scoring_status"],
+                "reconciliation": reconciliation,
+                "scope": {
+                    "mode": "pilot",
+                    "pilot_scope": PILOT_SCOPE,
+                    "country": PILOT_COUNTRY,
+                    "city_norm": PILOT_CITY_NORM,
+                    "source_table": SOURCE_TABLE,
+                    "source_scope_reason": SOURCE_SCOPE_REASON,
+                },
+                "summary": summary,
+                "cities": [city_result] if city_result else [],
+                "unsupported_cities": unsupported,
+                "remediation": remediation,
+            }
+    except Exception as e:
+        logger.exception("yango_loyalty_performance: %s", e)
+        return _error_response(month_str, country, str(e))
+
+
+# ═══════════════════════════════════════════════════════════════
+# Response builders
+# ═══════════════════════════════════════════════════════════════
+
+def _unsupported_city_response(month_str: str, country: str, city_norm: str) -> dict:
+    return {
+        "month": month_str, "country": country, "data_until": None,
+        "freshness_status": "not_available", "target_status": "not_available",
+        "scoring_status": "blocked_source_pending",
+        "scope": {
+            "mode": "pilot", "pilot_scope": PILOT_SCOPE,
+            "country": PILOT_COUNTRY, "city_norm": PILOT_CITY_NORM,
+            "source_table": SOURCE_TABLE, "source_scope_reason": SOURCE_SCOPE_REASON,
+        },
+        "summary": _empty_summary(with_nr=True),
+        "cities": [{"city_norm": city_norm, "active_drivers_mtd": 0, "supply_hours_mtd": 0,
+                     "new_drivers_mtd": 0, "reactivated_drivers_mtd": 0,
+                     "new_plus_reactivated_mtd": 0, "data_status": "not_available",
+                     "reason": "source_pending_enrichment",
+                     "city_assignment_method": "not_in_pilot"}],
+        "unsupported_cities": [{"city_norm": city_norm, "data_status": "not_available", "reason": "source_pending_enrichment"}],
+        "remediation": [{"type": "unsupported_city",
+                          "message": f"Fuente actual solo habilitada para Lima. Enriquecer tabla para activar {city_norm}."}],
+    }
+
+
+def _error_response(month_str: str, country: str, error_msg: str) -> dict:
+    return {
+        "month": month_str, "country": country, "data_until": None,
+        "freshness_status": "error", "target_status": "error",
+        "scoring_status": "blocked_error",
+        "scope": {
+            "mode": "pilot", "pilot_scope": PILOT_SCOPE,
+            "country": PILOT_COUNTRY, "city_norm": PILOT_CITY_NORM,
+            "source_table": SOURCE_TABLE, "source_scope_reason": SOURCE_SCOPE_REASON,
+        },
+        "summary": _empty_summary(with_nr=True),
+        "cities": [], "unsupported_cities": [],
+        "remediation": [{"type": "error", "message": f"Error: {error_msg[:200]}"}],
+    }
+
+
+def _empty_summary(with_nr: bool = False) -> dict:
+    s = {
+        "active_drivers_mtd": 0, "supply_hours_mtd": 0,
+        "target_active_drivers": None, "target_supply_hours": None,
+        "gap_active_drivers_vs_target": None, "gap_supply_hours_vs_target": None,
+        "projected_supply_hours_eom": None,
+        "performance_goals_completed": 0, "performance_category": None,
+    }
+    if with_nr:
+        s.update({
+            "new_drivers_mtd": 0, "reactivated_drivers_mtd": 0,
+            "new_plus_reactivated_mtd": 0, "target_new_plus_reactivated": None,
+            "gap_new_plus_reactivated_vs_target": None,
+            "nr_source": None, "nr_definition_status": "not_available",
+            "nr_source_confidence": None,
+        })
+    return s
+
+
+# ═══════════════════════════════════════════════════════════════
+# Data fetchers
+# ═══════════════════════════════════════════════════════════════
+
+def _fetch_lima_performance(cur, month_start: date) -> dict:
+    cur.execute("""
+        SELECT
+            COUNT(DISTINCT driver_id) FILTER (WHERE count_orders_completed > 0) AS ad_fleet_summary,
+            SUM(work_time_hours) AS supply_hours_mtd,
+            MAX(fecha) AS data_until,
+            COUNT(DISTINCT fecha) AS days_with_data
+        FROM public.module_ct_fleet_summary_daily
+        WHERE fecha >= %(ms)s AND fecha < (%(ms)s + interval '1 month')::date
+    """, {"ms": month_start})
+    sh_row = cur.fetchone()
+
+    cur.execute("""
+        SELECT SUM(active_drivers) AS active_drivers_mtd
+        FROM ops.real_business_slice_month_fact
+        WHERE month = %(ms)s AND country = 'peru' AND city = 'lima'
+          AND business_slice_name = 'Auto regular'
+    """, {"ms": month_start})
+    ad_row = cur.fetchone()
+
+    return {
+        "active_drivers_mtd": int(ad_row["active_drivers_mtd"] or 0) if ad_row else 0,
+        "supply_hours_mtd": float(sh_row["supply_hours_mtd"] or 0) if sh_row else 0,
+        "data_until": sh_row["data_until"] if sh_row else None,
+        "days_with_data": int(sh_row["days_with_data"] or 0) if sh_row else 0,
+        "ad_fleet_summary": int(sh_row["ad_fleet_summary"] or 0) if sh_row else 0,
+    }
+
+
+def _fetch_nr_lazy_stub(month_start: date) -> dict:
+    """Fast stub — N+R is loaded lazily from operational-flow endpoint (serving fact v2)."""
+    return {
+        "new_drivers_mtd": 0,
+        "reactivated_drivers_mtd": 0,
+        "new_plus_reactivated_mtd": 0,
+        "nr_source": "lazy_loaded_from_operational_flow_endpoint",
+        "nr_definition_status": "lazy_cached",
+        "nr_source_confidence": "lazy",
+        "reactivation_window_days": 30,
+    }
+
+
+def _fetch_nr_lima_heavy(cur, month_start: date) -> dict:
+    month_end = date(month_start.year, month_start.month,
+                     calendar.monthrange(month_start.year, month_start.month)[1])
+    reactivation_cutoff = month_start - timedelta(days=NR_REACTIVATION_WINDOW_DAYS)
+
+    cur.execute("""
+        WITH lima_parks AS (
+            SELECT DISTINCT park_id FROM dim.dim_park
+            WHERE city = 'lima' AND country = 'peru'
+        ),
+        fleet_drivers AS (
+            SELECT DISTINCT driver_id
+            FROM public.module_ct_fleet_summary_daily
+            WHERE fecha >= %(ms)s AND fecha < (%(ms)s + interval '1 month')::date
+        ),
+        all_trips_history AS (
+            SELECT t.conductor_id, t.fecha_inicio_viaje::date as trip_date
+            FROM public.trips_2026 t
+            JOIN lima_parks lp ON lp.park_id = t.park_id
+            WHERE t.condicion = 'Completado'
+            UNION ALL
+            SELECT t.conductor_id, t.fecha_inicio_viaje::date
+            FROM public.trips_2025 t
+            JOIN lima_parks lp ON lp.park_id = t.park_id
+            WHERE t.condicion = 'Completado'
+        ),
+        driver_first_trip AS (
+            SELECT conductor_id, MIN(trip_date) as first_trip
+            FROM all_trips_history
+            WHERE conductor_id IN (SELECT driver_id FROM fleet_drivers)
+            GROUP BY conductor_id
+        ),
+        active_current_month AS (
+            SELECT DISTINCT t.conductor_id
+            FROM public.trips_2026 t
+            JOIN lima_parks lp ON lp.park_id = t.park_id
+            WHERE t.condicion = 'Completado'
+              AND t.fecha_inicio_viaje >= %(ms)s AND t.fecha_inicio_viaje < %(me)s
+              AND t.conductor_id IN (SELECT driver_id FROM fleet_drivers)
+        ),
+        last_activity_before_window AS (
+            SELECT t.conductor_id, MAX(t.fecha_inicio_viaje::date) as last_trip
+            FROM public.trips_2026 t
+            JOIN lima_parks lp ON lp.park_id = t.park_id
+            WHERE t.condicion = 'Completado' AND t.fecha_inicio_viaje < %(ms)s
+              AND t.conductor_id IN (SELECT driver_id FROM fleet_drivers)
+            GROUP BY t.conductor_id
+        )
+        SELECT
+            COUNT(*)::int as total_active,
+            COUNT(*) FILTER (
+                WHERE f.first_trip >= %(ms)s AND f.first_trip < %(me)s
+            )::int as new_drivers,
+            COUNT(*) FILTER (
+                WHERE f.first_trip < %(ms)s
+                  AND (l.last_trip IS NULL OR l.last_trip < %(rc)s)
+            )::int as reactivated_drivers
+        FROM active_current_month a
+        LEFT JOIN driver_first_trip f ON f.conductor_id = a.conductor_id
+        LEFT JOIN last_activity_before_window l ON l.conductor_id = a.conductor_id
+    """, {"ms": month_start, "me": month_end, "rc": reactivation_cutoff})
+    nr_row = cur.fetchone()
+
+    new_d = nr_row["new_drivers"] if nr_row else 0
+    rea_d = nr_row["reactivated_drivers"] if nr_row else 0
+
+    return {
+        "new_drivers_mtd": new_d,
+        "reactivated_drivers_mtd": rea_d,
+        "new_plus_reactivated_mtd": new_d + rea_d,
+        "nr_source": NR_SOURCE,
+        "nr_definition_status": NR_DEFINITION_STATUS,
+        "nr_source_confidence": NR_SOURCE_CONFIDENCE,
+        "reactivation_window_days": NR_REACTIVATION_WINDOW_DAYS,
+    }
+
+
+def _fetch_targets(cur, month_str: str) -> dict:
+    targets: dict = {}
+    try:
+        cur.execute("""
+            SELECT kpi_code, target_value
+            FROM ops.yango_loyalty_monthly_goals
+            WHERE month = %(m)s AND LOWER(city) = 'lima'
+              AND kpi_code IN ('AD', 'SH', 'N_R')
+        """, {"m": month_str})
+        for row in cur.fetchall():
+            targets[row["kpi_code"]] = float(row["target_value"])
+    except Exception as e:
+        logger.warning("Targets from yango_loyalty_monthly_goals: %s", e)
+        try:
+            cur.execute("""
+                SELECT kpi_key, target_value FROM ops.yango_loyalty_targets
+                WHERE month_key = %(m)s AND LOWER(city) = 'lima'
+                  AND kpi_key IN ('ad', 'supply_hours', 'nuevos_reactivados')
+            """, {"m": month_str})
+            for row in cur.fetchall():
+                m = {"ad": "AD", "supply_hours": "SH", "nuevos_reactivados": "N_R"}.get(row["kpi_key"])
+                if m:
+                    targets[m] = float(row["target_value"])
+        except Exception:
+            pass
+    return targets
+
+
+# ═══════════════════════════════════════════════════════════════
+# Freshness
+# ═══════════════════════════════════════════════════════════════
+
+def _compute_freshness(lima_data: dict, today: date) -> dict:
+    data_until = lima_data.get("data_until")
+    if not data_until:
+        return {"data_until": None, "status": "no_data"}
+    if isinstance(data_until, datetime):
+        data_until = data_until.date()
+    yesterday = today - timedelta(days=1)
+    status = "ok" if data_until >= yesterday else "warning" if (today - data_until).days <= 3 else "stale"
+    return {"data_until": data_until.isoformat(), "status": status}
+
+
+# ═══════════════════════════════════════════════════════════════
+# City response builder
+# ═══════════════════════════════════════════════════════════════
+
+def _build_lima_city(lima_data: dict, nr_data: dict, targets: dict,
+                     month_start: date, total_days: int, today: date) -> Optional[dict]:
+    ad_mtd = lima_data["active_drivers_mtd"]
+    sh_mtd = lima_data["supply_hours_mtd"]
+    new_mtd = nr_data["new_drivers_mtd"]
+    rea_mtd = nr_data["reactivated_drivers_mtd"]
+    nr_mtd = nr_data["new_plus_reactivated_mtd"]
+
+    if ad_mtd == 0 and sh_mtd == 0:
+        return None
+
+    data_until = lima_data.get("data_until")
+    if data_until:
+        if isinstance(data_until, datetime):
+            data_until = data_until.date()
+        days_elapsed = (data_until - month_start).days + 1
+    else:
+        days_elapsed = (today - month_start).days if today.year == month_start.year and today.month == month_start.month else total_days
+    days_elapsed = max(1, min(days_elapsed, total_days))
+    expected_pct = round(days_elapsed / total_days, 4)
+
+    t_ad = targets.get("AD")
+    t_sh = targets.get("SH")
+    t_nr = targets.get("N_R")
+
+    expected_sh = round(t_sh * expected_pct, 1) if t_sh else None
+    gap_ad = round(ad_mtd - t_ad, 0) if t_ad else None
+    gap_sh = round(sh_mtd - t_sh, 1) if t_sh else None
+    gap_sh_e = round(sh_mtd - expected_sh, 1) if expected_sh else None
+    gap_nr = round(nr_mtd - t_nr, 0) if t_nr else None
+
+    proj_sh = round(sh_mtd / expected_pct, 0) if expected_pct > 0 and sh_mtd > 0 else None
+
+    has_targets = t_ad is not None or t_sh is not None or t_nr is not None
+
+    return {
+        "city_norm": "lima",
+        "active_drivers_mtd": ad_mtd,
+        "supply_hours_mtd": round(sh_mtd, 1),
+        "new_drivers_mtd": new_mtd,
+        "reactivated_drivers_mtd": rea_mtd,
+        "new_plus_reactivated_mtd": nr_mtd,
+        "target_active_drivers": t_ad,
+        "target_supply_hours": t_sh,
+        "target_new_plus_reactivated": t_nr,
+        "expected_progress_pct": expected_pct,
+        "expected_supply_hours_to_date": expected_sh,
+        "gap_active_drivers_vs_target": gap_ad,
+        "gap_supply_hours_vs_target": gap_sh,
+        "gap_supply_hours_vs_expected": gap_sh_e,
+        "gap_new_plus_reactivated_vs_target": gap_nr,
+        "projected_supply_hours_eom": proj_sh,
+        "nr_source": nr_data["nr_source"],
+        "nr_definition_status": nr_data["nr_definition_status"],
+        "nr_source_confidence": nr_data["nr_source_confidence"],
+        "target_status": "configured" if has_targets else "missing_targets",
+        "data_status": "ok",
+        "city_assignment_method": "forced_lima_pilot",
+        "city_assignment_confidence": "high_for_lima_only_source",
+        "city_assignment_warning": None,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# Summary builder
+# ═══════════════════════════════════════════════════════════════
+
+def _build_summary(city_result: Optional[dict], nr_data: dict, targets: dict) -> dict:
+    if not city_result:
+        return _empty_summary(with_nr=True)
+
+    return {
+        "active_drivers_mtd": city_result["active_drivers_mtd"],
+        "supply_hours_mtd": city_result["supply_hours_mtd"],
+        "new_drivers_mtd": city_result["new_drivers_mtd"],
+        "reactivated_drivers_mtd": city_result["reactivated_drivers_mtd"],
+        "new_plus_reactivated_mtd": city_result["new_plus_reactivated_mtd"],
+        "target_active_drivers": city_result["target_active_drivers"],
+        "target_supply_hours": city_result["target_supply_hours"],
+        "target_new_plus_reactivated": city_result["target_new_plus_reactivated"],
+        "gap_active_drivers_vs_target": city_result["gap_active_drivers_vs_target"],
+        "gap_supply_hours_vs_target": city_result["gap_supply_hours_vs_target"],
+        "gap_new_plus_reactivated_vs_target": city_result["gap_new_plus_reactivated_vs_target"],
+        "projected_supply_hours_eom": city_result["projected_supply_hours_eom"],
+        "nr_source": nr_data["nr_source"],
+        "nr_definition_status": nr_data["nr_definition_status"],
+        "nr_source_confidence": nr_data["nr_source_confidence"],
+        "performance_goals_completed": 0,
+        "performance_category": None,
+        "scoring_status": "blocked_missing_targets",
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# Targets & Scoring
+# ═══════════════════════════════════════════════════════════════
+
+def _compute_target_status(targets: dict) -> str:
+    has_ad = "AD" in targets
+    has_sh = "SH" in targets
+    has_nr = "N_R" in targets
+    if has_ad and has_sh and has_nr:
+        return "configured"
+    if has_ad or has_sh or has_nr:
+        return "partial"
+    return "missing_targets"
+
+
+def _compute_scoring(city_result: Optional[dict], nr_data: dict, targets: dict) -> dict:
+    results = {
+        "scoring_status": "blocked_missing_targets",
+        "performance_goals_completed": 0,
+        "performance_category": None,
+    }
+
+    if not city_result:
+        return results
+
+    # Guardrail: check drift vs Yango reference
+    ad_val = city_result.get("active_drivers_mtd", 0)
+    sh_val = city_result.get("supply_hours_mtd", 0)
+    nr_val = city_result.get("new_plus_reactivated_mtd", 0)
+
+    ad_drift = abs(ad_val - REF_AD_YANGO) / REF_AD_YANGO * 100 if REF_AD_YANGO else 0
+    sh_drift = abs(sh_val - REF_SH_YANGO) / REF_SH_YANGO * 100 if REF_SH_YANGO else 0
+    nr_drift = abs(nr_val - REF_NR_YANGO) / REF_NR_YANGO * 100 if REF_NR_YANGO else 0
+
+    guardrail_blocks = []
+    if ad_drift > GUARDRAIL_AD_DRIFT_PCT:
+        guardrail_blocks.append(f"AD_drift_{ad_drift:.0f}pct")
+    if sh_drift > GUARDRAIL_SH_DRIFT_PCT:
+        guardrail_blocks.append(f"SH_drift_{sh_drift:.0f}pct")
+    if nr_drift > GUARDRAIL_NR_DRIFT_PCT and nr_val > 0:
+        guardrail_blocks.append(f"NR_drift_{nr_drift:.0f}pct")
+    if nr_data.get("nr_definition_status") == "provisional_pending_business_validation":
+        guardrail_blocks.append("NR_provisional_definition")
+    if nr_val > 0:
+        guardrail_blocks.append("NR_runtime_source_no_serving_fact")
+
+    if guardrail_blocks:
+        results["scoring_status"] = "blocked_pending_yango_definition_validation"
+        results["guardrail_flags"] = guardrail_blocks
+        return results
+
+    t_ad = targets.get("AD")
+    t_sh = targets.get("SH")
+    t_nr = targets.get("N_R")
+
+    if t_ad is None or t_sh is None or t_nr is None:
+        results["scoring_status"] = "blocked_missing_targets"
+        return results
+
+    r_ad = ad_val
+    r_sh = sh_val
+    r_nr = nr_val
+
+    if r_ad is None or r_sh is None or r_nr is None or (r_ad == 0 and r_sh == 0 and r_nr == 0):
+        results["scoring_status"] = "blocked_missing_results"
+        return results
+
+    ad_met = (r_ad or 0) >= (t_ad or float('inf'))
+    sh_met = (r_sh or 0) >= (t_sh or float('inf'))
+    nr_met = (r_nr or 0) >= (t_nr or float('inf'))
+
+    goals = sum([ad_met, sh_met, nr_met])
+    cat = "oro" if goals >= 3 else "plata" if goals >= 2 else "bronce"
+
+    return {
+        "scoring_status": "enabled",
+        "performance_goals_completed": goals,
+        "performance_category": cat,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# Remediation
+# ═══════════════════════════════════════════════════════════════
+
+def _build_remediation(target_status: str, freshness: dict, scoring: dict, nr_data: dict) -> list[dict]:
+    items = []
+
+    if target_status == "missing_targets":
+        items.append({
+            "type": "missing_targets",
+            "message": "Configura metas de AD, Supply Hours y N+R para Lima.",
+        })
+    elif target_status == "partial":
+        items.append({
+            "type": "partial_targets",
+            "message": "Faltan metas. Configura AD, SH y N+R para desbloquear scoring.",
+        })
+
+    if nr_data["nr_definition_status"] == "provisional_pending_business_validation":
+        items.append({
+            "type": "nr_provisional",
+            "message": f"N+R usa definicion provisional (reactivacion: {NR_REACTIVATION_WINDOW_DAYS}d inactividad). Pendiente validacion de negocio.",
+        })
+
+    if scoring["scoring_status"] == "enabled":
+        items.append({
+            "type": "scoring_active",
+            "message": f"Scoring Performance Lima activo: {scoring['performance_goals_completed']}/3 metas ({scoring['performance_category'].capitalize()}).",
+        })
+
+    if freshness["status"] == "stale":
+        items.append({"type": "stale_data",
+                       "message": f"Datos desactualizados. Ultima fecha: {freshness['data_until']}."})
+    elif freshness["status"] == "no_data":
+        items.append({"type": "no_data",
+                       "message": "Sin datos disponibles para este periodo."})
+
+    return items

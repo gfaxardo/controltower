@@ -1,0 +1,34 @@
+check_id,category,check_description,status,details,severity
+1,GOVERNANCE,Active phase is Control Foundation,PASS,Phase 1H.4 Operational Maturity — serving layer allowed,BLOCKER
+2,GOVERNANCE,No Forecast/Suggestion/Decision/Action engines used,PASS,Module is read-only serving layer,BLOCKER
+3,GOVERNANCE,Serving-first architecture,PASS,MV → Service → Router → API pattern,BLOCKER
+4,ARCHITECTURE,Service uses get_db_quick with timeout,PASS,15s timeout protects against heavy queries,HIGH
+5,ARCHITECTURE,Graceful failure on missing views,PASS,Returns MISSING_SOURCE + remediation,HIGH
+6,ARCHITECTURE,No UPDATE/DELETE/INSERT in service,PASS,Purely read-only SELECT queries,BLOCKER
+7,ARCHITECTURE,Router registered in main.py,PASS,Import + include_router added,HIGH
+8,ARCHITECTURE,All endpoints have park_id filter,PASS,Default park_id with Query parameter,HIGH
+9,DATA,Serving views defined with proper filters,PASS,park_id hardcoded in WHERE clauses,HIGH
+10,DATA,KM conversion (meters to km) applied,PASS,Division by 1000 in MV_DAY view,MEDIUM
+11,DATA,Metric metadata on every KPI,PASS,source/metric_type/confidence/notes on each value,HIGH
+12,DATA,Payment tiers included in input-mapping,PASS,7 tiers from module_payment_percentages,MEDIUM
+13,ENDPOINT,GET /overview returns structured KPIs,PASS,Trips + billing combined,HIGH
+14,ENDPOINT,GET /weekly returns billing series,PASS,From mv_yego_pro_profitability_week,HIGH
+15,ENDPOINT,GET /daily returns trip-based daily,PASS,From mv_yego_pro_profitability_day,HIGH
+16,ENDPOINT,GET /drivers returns per-driver P&L,PASS,From mv_yego_pro_driver_profitability_week,HIGH
+17,ENDPOINT,GET /vehicles returns fleet config,PASS,LIMITED status acknowledged,MEDIUM
+18,ENDPOINT,GET /shifts returns day/night breakdown,PASS,From mv_yego_pro_shift_profitability_week,HIGH
+19,ENDPOINT,GET /input-mapping returns classified inputs,PASS,REAL/ASSUMPTION/NOT_AVAILABLE categories,HIGH
+20,ENDPOINT,GET /quality returns health check,PASS,View existence + row counts + freshness,HIGH
+21,RISK,Billing only 1 week available,ACKNOWLEDGED,data_confidence=MEDIUM indicator exposed,HIGH
+22,RISK,No supply hours (fleet_summary empty),ACKNOWLEDGED,horas_trabajo proxy from billing used,MEDIUM
+23,RISK,No vehicle-to-driver assignment,ACKNOWLEDGED,Vehicle endpoint marked as LIMITED,MEDIUM
+24,RISK,Module does not break existing endpoints,PASS,New prefix /fleet-project/yego-pro/ isolated,BLOCKER
+25,COMPILE,python -m compileall passes,PASS,0 errors on full backend/app,HIGH
+26,QA,Endpoints respond with park_id filter,PASS,All 8 endpoints tested with real data — all PASS,HIGH
+27,SQL,SQL views created in database,PASS,9/9 statements executed successfully,HIGH
+28,SQL,Fix applied: d.nombre -> d.full_name,PASS,drivers table uses full_name column,MEDIUM
+29,FRESHNESS,trips_2026 fresh (147 days),PASS,Jan 1 - May 27 2026 — 30d window complete,HIGH
+30,FRESHNESS,module_weekly_billing available,PASS,1 week (2026-05-18) — PARTIAL but functional,HIGH
+31,FRESHNESS,Serving views refreshed,PASS,All refreshed 2026-05-28 20:31,HIGH
+32,SCOPE,No scope contamination affecting P1,PASS,OLM1 and Yango Loyalty changes are isolated,BLOCKER
+33,VERDICT,GO UI P2,PASS,All blockers pass — proceed to frontend,BLOCKER

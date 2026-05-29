@@ -1,0 +1,15 @@
+input,valor,unidad,formula,confianza,nota
+km_muertos_por_viaje,5.45,km,km_billing(9.20) - km_trips(3.75),MEDIA,Diferencia entre km total facturado y km solo con pasajero
+ratio_km_muertos,59.2,%,(9.20-3.75)/9.20*100,MEDIA,59% del recorrido es sin pasajero
+utilidad_mensual_estimada,-22040,S/,utilidad_semanal*4,MEDIA,Extrapolacion lineal de 1 semana de billing
+revenue_por_km_total,1.35,S/km,revenue/km_total_billing,ALTA,Incluye km muertos
+revenue_por_km_pasajero,2.72,S/km,ticket/km_viaje,ALTA,Solo km con pasajero
+costo_total_por_viaje,2.79,S/,(combustible+mantenimiento)/viajes,ALTA,Solo costos variables registrados
+margen_bruto_por_viaje,7.42,S/,ticket(10.21) - costo_variable(2.79),MEDIA,Antes de comision app y pago conductor
+margen_neto_por_viaje_actual,-2.17,S/,utilidad_billing / viajes,ALTA,Resultado real del modelo actual
+cuota_vehiculo_mensual_equiv,2130,S/,532.50 * 4 semanas (seminuevo Kia),ALTA,Base sin descuento por trips
+cuota_vehiculo_mensual_con_bono,1770,S/,(532.5-90)*4 si 150-179 trips/sem,MEDIA,Mejor escenario con descuento
+breakeven_trips_semanal,172+,trips/sem,Solo 1 driver (Carrasco) logro utilidad positiva con 172 trips,ALTA,Observado en billing real
+pct_drivers_con_utilidad_positiva,3.8,%,1/26 drivers con utilidad > 0,ALTA,"Solo Carrasco (172 trips, 60%, 7 dias)"
+ingreso_conductor_mediana_semanal,440,S/,mediana de pago_total en billing,ALTA,"Rango: S/17 a S/1,065"
+costo_hora_trabajo_empresa,32.83,S/hora,(combustible+mantenimiento+pago_total)/horas,ALTA,Costo total por hora para la empresa

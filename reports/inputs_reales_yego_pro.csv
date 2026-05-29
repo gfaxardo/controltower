@@ -1,0 +1,68 @@
+input,valor,unidad,fuente,periodo,confianza
+ticket_promedio,10.21,S/,trips_2026,30d,ALTA
+ticket_mediana,9.00,S/,trips_2026,30d,ALTA
+ticket_dia,10.67,S/,trips_2026,30d,ALTA
+ticket_noche,9.91,S/,trips_2026,30d,ALTA
+km_por_viaje_con_pasajero,3.75,km,trips_2026,30d,ALTA
+km_total_por_viaje_incluyendo_vacio,9.20,km,module_weekly_billing,1 semana,ALTA
+duracion_promedio_viaje,12.70,min,trips_2026,30d,ALTA
+viajes_completados_30d,13951,trips,trips_2026,30d,ALTA
+viajes_cancelados_30d,13647,trips,trips_2026,30d,ALTA
+conductores_activos_total,34,drivers,trips_2026,30d,ALTA
+conductores_activos_diarios_avg,21.8,drivers,trips_2026,30d,ALTA
+conductores_activos_semanales_avg,25.2,drivers,trips_2026,30d,ALTA
+revenue_bruto_total_30d,142474,S/,trips_2026,30d,ALTA
+revenue_dia_30d,59349,S/,trips_2026,30d,ALTA
+revenue_noche_30d,83125,S/,trips_2026,30d,ALTA
+pct_trips_dia,39.9,%,trips_2026,30d,ALTA
+pct_trips_noche,60.1,%,trips_2026,30d,ALTA
+viajes_por_conductor_dia,13.68,trips/driver/dia,trips_2026,30d,ALTA
+revenue_por_conductor_dia,139.68,S/,trips_2026,30d,ALTA
+viajes_por_conductor_semana,95.42,trips,trips_2026,30d,ALTA
+revenue_por_conductor_semana,974.51,S/,trips_2026,30d,ALTA
+horas_trabajo_semana_avg,52.36,horas,module_weekly_billing,1 semana,ALTA
+horas_por_dia_avg,9.08,horas,module_weekly_billing,1 semana,ALTA
+dias_trabajados_semana_avg,5.77,dias,module_weekly_billing,1 semana,ALTA
+revenue_por_hora_billing,28.97,S/hora,module_weekly_billing,1 semana,ALTA
+viajes_por_hora_billing,2.32,trips/hora,module_weekly_billing,1 semana,ALTA
+revenue_por_hora_jornada_trips,25.50,S/hora,trips_2026,30d,MEDIA
+gasto_combustible_por_km_real,0.1528,S/km,module_weekly_billing,1 semana,ALTA
+gasto_mantenimiento_por_km_real,0.1500,S/km,module_weekly_billing,1 semana,ALTA
+costo_variable_total_por_km,0.3028,S/km,module_weekly_billing,1 semana,ALTA
+combustible_por_viaje_real,1.41,S/,module_weekly_billing,1 semana,ALTA
+mantenimiento_por_viaje_real,1.38,S/,module_weekly_billing,1 semana,ALTA
+comision_plataforma_pct,16.66,%,module_weekly_billing,1 semana,ALTA
+platform_fee_pct_income,14.94,%,module_weekly_income,30d,ALTA
+comision_yego_proxy_peru,3.00,%,ops.yego_commission_proxy_config,vigente,ALTA
+avg_porcentaje_pago_conductor,47.69,%,module_weekly_billing,1 semana,ALTA
+pago_total_sobre_bruto_real,26.95,%,module_weekly_billing,1 semana,ALTA
+pago_total_sobre_neto_real,32.34,%,module_weekly_billing,1 semana,ALTA
+pago_por_viaje_avg,2.96,S/,module_weekly_billing,1 semana,ALTA
+utilidad_por_viaje_avg,-2.17,S/,module_weekly_billing,1 semana,ALTA
+utilidad_semanal_total,-5509.90,S/,module_weekly_billing,1 semana,ALTA
+bono_yango_semanal_total,5126.57,S/,module_weekly_billing,1 semana,ALTA
+bono_adicional_viajes_semanal,2125.00,S/,module_weekly_billing,1 semana,ALTA
+cuota_vehiculo_semanal_0km_base,500.00,S/,module_miauto_cronograma_rule,vigente,ALTA
+cuota_vehiculo_semanal_seminuevo_kia,532.50,S/,module_miauto_cronograma_rule,vigente,ALTA
+cuota_vehiculo_semanal_seminuevo_hyundai,562.50,S/,module_miauto_cronograma_rule,vigente,ALTA
+cuota_vehiculo_semanal_seminuevo2026_kia,500.00,S/,module_miauto_cronograma_rule (2026-II),vigente,ALTA
+tasa_interes_mora,4.00,%,module_miauto_cronograma,vigente,ALTA
+total_cuotas_semanales_0km,261,semanas,module_miauto_cronograma_vehiculo,vigente,ALTA
+total_cuotas_semanales_seminuevo,156-230,semanas,module_miauto_cronograma_vehiculo,vigente,ALTA
+inicial_vehiculo,500-1000,S/,module_miauto_cronograma_vehiculo,vigente,ALTA
+bono_auto_90_119_trips,10.00,S/,module_miauto_cronograma_rule,vigente,ALTA
+bono_auto_120_149_trips,40.00,S/,module_miauto_cronograma_rule,vigente,ALTA
+bono_auto_150_179_trips,70.00,S/,module_miauto_cronograma_rule,vigente,ALTA
+p50_trips_conductor_30d,471,trips,trips_2026,30d,ALTA
+p50_revenue_conductor_30d,4747.85,S/,trips_2026,30d,ALTA
+p90_trips_conductor_30d,675,trips,trips_2026,30d,ALTA
+p90_revenue_conductor_30d,7131.84,S/,trips_2026,30d,ALTA
+km_dia_promedio,3.89,km,trips_2026,30d,ALTA
+km_noche_promedio,3.66,km,trips_2026,30d,ALTA
+escalon_pago_90trips,30,%,module_payment_percentages,vigente,ALTA
+escalon_pago_100trips,40,%,module_payment_percentages,vigente,ALTA
+escalon_pago_117trips,50,%,module_payment_percentages,vigente,ALTA
+escalon_pago_140trips,60,%,module_payment_percentages,vigente,ALTA
+cash_pct_revenue,80.1,%,trips_2026,30d,ALTA
+tarjeta_pct_revenue,16.5,%,trips_2026,30d,ALTA
+bonificacion_pct_revenue_income,23.06,%,module_weekly_income,30d,ALTA

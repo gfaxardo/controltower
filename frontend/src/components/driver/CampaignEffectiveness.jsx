@@ -76,9 +76,9 @@ export default function CampaignEffectiveness () {
     <div className='space-y-4'>
       {/* Header + disclaimer */}
       <div className='bg-ct-card border border-ct-border rounded-xl px-5 py-4'>
-        <h2 className='text-lg font-bold text-ct-text'>Campaign Effectiveness</h2>
+        <h2 className='text-lg font-bold text-ct-text'>Resultado Observado de Campañas</h2>
         <p className='text-xs text-ct-text3 mt-1'>
-          Mide actividad real post-campaña. Resultados expresados como "observed lift". NO afirmar causalidad.
+          Mide actividad real post-campaña. Resultados expresados como "cambio observado". NO afirmar causalidad.
         </p>
       </div>
 
@@ -99,10 +99,10 @@ export default function CampaignEffectiveness () {
                   <tr className='text-left text-gray-400 border-b'>
                     <th className='py-1.5 pr-2'>Campaign</th>
                     <th className='py-1.5 pr-2'>Type</th>
-                    <th className='py-1.5 pr-2 text-right'>Members</th>
-                    <th className='py-1.5 pr-2 text-right'>Contacted</th>
-                    <th className='py-1.5 pr-2 text-right'>Recovered</th>
-                    <th className='py-1.5 pr-2 text-right'>Bad Phone</th>
+                    <th className='py-1.5 pr-2 text-right'>Conductores</th>
+                    <th className='py-1.5 pr-2 text-right'>Contactados</th>
+                    <th className='py-1.5 pr-2 text-right'>Recuperados</th>
+                    <th className='py-1.5 pr-2 text-right'>Tel. malo</th>
                     <th className='py-1.5 pr-2'>Status</th>
                     <th className='py-1.5 pr-2'>Action</th>
                   </tr>
@@ -175,12 +175,12 @@ export default function CampaignEffectiveness () {
                   {/* KPI strip */}
                   <div className='grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2'>
                     {[
-                      { label: `D+${windowDays} Window`, value: `${effectiveness.days_since_campaign}d elapsed`, color: '' },
-                      { label: 'Members', value: effectiveness.summary.target_count, color: '' },
-                      { label: 'Contacted', value: effectiveness.summary.contacted_count, color: 'text-emerald-700' },
-                      { label: 'Re-activated', value: effectiveness.summary.reactivated_count, color: 'text-green-700' },
-                      { label: 'Re-activation Rate', value: formatPct(effectiveness.summary.reactivation_rate), color: 'text-green-700' },
-                      { label: 'Trip Δ', value: (effectiveness.summary.observed_trip_delta >= 0 ? '+' : '') + formatNum(effectiveness.summary.observed_trip_delta), color: effectiveness.summary.observed_trip_delta >= 0 ? 'text-emerald-700' : 'text-red-600' },
+                      { label: `Ventana D+${windowDays}`, value: `${effectiveness.days_since_campaign}d transcurridos`, color: '' },
+                      { label: 'Conductores', value: effectiveness.summary.target_count, color: '' },
+                      { label: 'Contactados', value: effectiveness.summary.contacted_count, color: 'text-emerald-700' },
+                      { label: 'Reactivados', value: effectiveness.summary.reactivated_count, color: 'text-green-700' },
+                      { label: 'Tasa reactivación', value: formatPct(effectiveness.summary.reactivation_rate), color: 'text-green-700' },
+                      { label: 'Cambio viajes', value: (effectiveness.summary.observed_trip_delta >= 0 ? '+' : '') + formatNum(effectiveness.summary.observed_trip_delta), color: effectiveness.summary.observed_trip_delta >= 0 ? 'text-emerald-700' : 'text-red-600' },
                     ].map(kpi => (
                       <div key={kpi.label} className='border border-ct-border rounded-lg px-3 py-2'>
                         <div className='text-[10px] text-ct-text3 uppercase'>{kpi.label}</div>
@@ -192,15 +192,15 @@ export default function CampaignEffectiveness () {
                   {/* Before / After comparison */}
                   <div className='grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs'>
                     <div className='border border-ct-border rounded-lg px-3 py-2'>
-                      <div className='text-[10px] text-ct-text3'>Trips Before</div>
+                      <div className='text-[10px] text-ct-text3'>Viajes antes</div>
                       <div className='font-bold text-ct-text'>{formatNum(effectiveness.summary.trips_before_window)}</div>
                     </div>
                     <div className='border border-ct-border rounded-lg px-3 py-2'>
-                      <div className='text-[10px] text-ct-text3'>Trips After</div>
+                      <div className='text-[10px] text-ct-text3'>Viajes después</div>
                       <div className='font-bold text-ct-text'>{formatNum(effectiveness.summary.trips_after_window)}</div>
                     </div>
                     <div className='border border-ct-border rounded-lg px-3 py-2'>
-                      <div className='text-[10px] text-ct-text3'>Avg Days to First Trip</div>
+                      <div className='text-[10px] text-ct-text3'>Días hasta primer viaje</div>
                       <div className='font-bold text-ct-text'>{effectiveness.summary.avg_days_to_first_trip_after ?? '—'}</div>
                     </div>
                   </div>
@@ -208,7 +208,7 @@ export default function CampaignEffectiveness () {
                   {/* Warnings */}
                   {effectiveness.warnings?.length > 0 && (
                     <div className='bg-amber-50 border border-amber-200 rounded-lg px-4 py-3'>
-                      <div className='text-xs font-semibold text-amber-800 mb-1'>Data Quality Warnings</div>
+                      <div className='text-xs font-semibold text-amber-800 mb-1'>Data pendiente de refresco</div>
                       {effectiveness.warnings.map((w, i) => (
                         <div key={i} className='text-[11px] text-amber-700'>{w}</div>
                       ))}

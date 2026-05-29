@@ -14,6 +14,7 @@ import { getCapabilityMeta, MATURITY, ENGINE_OWNER } from '../../config/operatio
 import { DriverCapabilityBanner, EngineIndicator } from '../operational/MaturityIndicators.jsx'
 import DriverDataFoundation from './DriverDataFoundation.jsx'
 import DriverLifecycleSummary from './DriverLifecycleSummary.jsx'
+import DriverTabGuide from './DriverTabGuide.jsx'
 import { ROLES, ROLE_VIEWS_REGISTRY, getPersistedRole, setPersistedRole } from '../../config/driverRoleViewsRegistry.js'
 
 const TONE = {
@@ -200,6 +201,9 @@ export default function DriverOperatingHub ({ activeSub, refreshKey, children, r
       {activeMeta && !activeMeta.productionReady && (
         <DriverCapabilityBanner moduleKey={activeSub} />
       )}
+
+      {/* Human Guide */}
+      <DriverTabGuide tabKey={activeSub} />
 
       {/* Contenido */}
       <div>

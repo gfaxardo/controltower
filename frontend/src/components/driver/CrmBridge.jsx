@@ -68,7 +68,7 @@ export default function CrmBridge () {
       <div className='bg-ct-card border border-ct-border rounded-xl px-5 py-4'>
         <h2 className='text-lg font-bold text-ct-text'>CRM Bridge</h2>
         <p className='text-xs text-ct-text3 mt-1'>
-          Puente bidireccional entre Drivers Campaign Intelligence y CRM. Exporta cohorts, recibe outcomes, mantiene trazabilidad.
+          Exporta listas de conductores al CRM y recibe resultados del contacto. Mantiene trazabilidad completa.
         </p>
       </div>
 
@@ -76,15 +76,15 @@ export default function CrmBridge () {
       <div className='bg-orange-50 border border-orange-200 rounded-lg p-3 flex items-center gap-2'>
         <span className='text-orange-500 text-lg'>&#x26A0;</span>
         <div className='text-xs text-orange-800'>
-          <strong>Graceful Degradation:</strong> CRM failure does NOT block Drivers. Campaigns, queues and workflows remain fully operational.
+          <strong>Importante:</strong> Si el CRM no responde, Drivers sigue funcionando normalmente. Las campañas, colas y workflows no se bloquean.
         </div>
       </div>
 
       {/* Tabs */}
       <div className='flex gap-1.5 flex-wrap'>
         {[
-          { key: 'overview', label: 'Overview' },
-          { key: 'syncs', label: 'Sync History' },
+          { key: 'overview', label: 'Resumen' },
+          { key: 'syncs', label: 'Historial de sincronización' },
         ].map(t => (
           <button key={t.key} type='button' onClick={() => setActiveTab(t.key)}
             className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${activeTab === t.key ? 'bg-ct-accent text-white shadow-sm' : 'text-ct-text2 hover:text-ct-text hover:bg-ct-border'}`}>
@@ -121,11 +121,11 @@ export default function CrmBridge () {
               {/* Stats */}
               <div className='grid grid-cols-2 sm:grid-cols-5 gap-2'>
                 {[
-                  { label: 'Total Syncs', value: health.total_syncs },
-                  { label: 'Completed', value: health.completed, color: 'text-emerald-700' },
-                  { label: 'Exported', value: health.exported, color: 'text-blue-700' },
-                  { label: 'Partial', value: health.partial, color: 'text-amber-700' },
-                  { label: 'Failed', value: health.failed, color: 'text-red-700' },
+                  { label: 'Total envíos', value: health.total_syncs },
+                  { label: 'Completados', value: health.completed, color: 'text-emerald-700' },
+                  { label: 'Exportados', value: health.exported, color: 'text-blue-700' },
+                  { label: 'Parciales', value: health.partial, color: 'text-amber-700' },
+                  { label: 'Fallidos', value: health.failed, color: 'text-red-700' },
                 ].map(kpi => (
                   <div key={kpi.label} className='border border-ct-border rounded-lg px-3 py-2'>
                     <div className='text-[10px] text-ct-text3 uppercase'>{kpi.label}</div>

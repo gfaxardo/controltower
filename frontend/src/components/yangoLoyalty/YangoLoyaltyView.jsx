@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import api from '../../services/api'
+import { getYangoLoyaltyPerformance } from '../../services/api'
 import DecisionPriorityStrip from '../operational/DecisionPriorityStrip'
 import { getDecisionSeverity } from '../../utils/operationalDecisionSeverity'
 import DiagnosticDominantFactor from '../diagnostics/DiagnosticDominantFactor'
@@ -195,8 +196,10 @@ function DrillableBlocker({ kpi, cities, expanded, onToggle }) {
 /* ── Main component ── */
 export default function YangoLoyaltyView() {
   const [summary, setSummary] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [summaryError, setSummaryError] = useState(null)
+  const [perfData, setPerfData] = useState(null)
+  const [perfError, setPerfError] = useState(null)
+  const [initialLoading, setInitialLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
   const [configCity, setConfigCity] = useState('')
   const [configTargets, setConfigTargets] = useState({})
@@ -206,18 +209,31 @@ export default function YangoLoyaltyView() {
   const [expandedBlocker, setExpandedBlocker] = useState(null)
   const [expandedCities, setExpandedCities] = useState({})
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    setError(null)
+  const fetchSummary = useCallback(async () => {
+    setSummaryError(null)
     try {
-      const res = await api.get('/yango-loyalty/summary', { timeout: 30000 })
+      const res = await api.get('/yango-loyalty/summary', { timeout: 15000 })
       setSummary(res.data)
     } catch (err) {
-      setError(err.response?.data?.detail || err.message || 'Error de conexion')
-    } finally {
-      setLoading(false)
+      setSummaryError(err.response?.data?.detail || err.message || 'Error de conexion')
     }
   }, [])
+
+  const fetchPerformance = useCallback(async () => {
+    setPerfError(null)
+    try {
+      const res = await getYangoLoyaltyPerformance({ country: 'peru', include_missing_targets: true })
+      setPerfData(res)
+    } catch (err) {
+      setPerfError(err?.response?.data?.detail || err?.message || 'Error al cargar performance')
+    }
+  }, [])
+
+  const fetchData = useCallback(async () => {
+    setInitialLoading(true)
+    await Promise.allSettled([fetchSummary(), fetchPerformance()])
+    setInitialLoading(false)
+  }, [fetchSummary, fetchPerformance])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -247,8 +263,8 @@ export default function YangoLoyaltyView() {
     }
   }
 
-  /* ── Loading skeleton ── */
-  if (loading && !summary) return (
+  /* ── Loading skeleton — only when nothing loaded at all ── */
+  if (initialLoading && !summary && !perfData) return (
     <div className="w-full space-y-4 p-1">
       <div className="flex items-center gap-3 mb-4"><Skeleton h={6} w="48" /><Skeleton h={4} w="64" /></div>
       <div className="grid grid-cols-4 gap-3">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="bg-ct-card rounded-xl p-4 border border-ct-border space-y-2"><Skeleton h={4} /><Skeleton h={8} /><Skeleton h={3} /></div>)}</div>
@@ -256,17 +272,18 @@ export default function YangoLoyaltyView() {
     </div>
   )
 
-  if (error && !summary) return (
+  /* ── Global error only if BOTH sections failed ── */
+  if (!summary && !perfData && !initialLoading && (summaryError || perfError)) return (
     <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400">
       <p className="font-medium">Error al cargar datos</p>
-      <p className="text-sm mt-1">{error}</p>
+      <p className="text-sm mt-1">{summaryError || perfError}</p>
       <button onClick={fetchData} className="mt-3 px-3 py-1 bg-red-500/20 rounded text-sm hover:bg-red-500/30">Reintentar</button>
     </div>
   )
 
-  if (!summary) return null
+  if (!summary && !perfData) return null
 
-  const { month, day_of_month, total_days, expected_progress_pct, data_complete, manual_kpis_pending, kpis, cities, city_categories, has_any_targets } = summary
+  const { month = perfData?.month || new Date().toISOString().slice(0, 7), day_of_month = new Date().getDate(), total_days = 30, expected_progress_pct = 0, data_complete = false, manual_kpis_pending = 0, kpis = [], cities = [], city_categories = {}, has_any_targets = false } = summary || {}
 
   /* ── Compute city ranking (safe) ── */
   const cityRanking = safeArr(cities).map(city => {
@@ -347,6 +364,203 @@ export default function YangoLoyaltyView() {
       {/* ═══ TAB: OVERVIEW ═══ */}
       {activeTab === 'overview' && (
         <>
+          {/* ── Per-section error ── */}
+          {perfError && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-3">
+              <p className="text-sm text-red-400">No se pudo cargar Performance. AD y SH no disponibles.</p>
+              <p className="text-xs text-red-400/70 mt-1">{perfError}</p>
+              <button onClick={fetchPerformance} className="mt-2 px-3 py-1 bg-red-500/20 rounded text-xs text-red-400 hover:bg-red-500/30">Reintentar</button>
+            </div>
+          )}
+          {summaryError && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-3">
+              <p className="text-sm text-red-400">No se pudo cargar el resumen de scoring.</p>
+              <p className="text-xs text-red-400/70 mt-1">{summaryError}</p>
+              <button onClick={fetchSummary} className="mt-2 px-3 py-1 bg-red-500/20 rounded text-xs text-red-400 hover:bg-red-500/30">Reintentar</button>
+            </div>
+          )}
+
+          {/* ── Piloto Lima — Performance Foundation ── */}
+          {perfData && (
+            <div className="space-y-3 mb-4">
+              {/* Pilot scope badge */}
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-500/20 text-blue-400 border border-blue-500/40">Lima only</span>
+                  <span className="text-sm font-medium text-ct-text">Piloto Lima</span>
+                </div>
+                <p className="text-xs text-ct-text3">La fuente actual de actividad diaria esta habilitada para Lima. Provincias se activaran cuando la tabla sea enriquecida.</p>
+              </div>
+
+              {/* Remediation / Reconciliation banner */}
+              {(perfData.remediation?.length > 0 || perfData.reconciliation) && (
+                <div className={`rounded-lg p-3 ${perfData.scoring_status === 'blocked_pending_reconciliation' ? 'bg-amber-500/10 border border-amber-500/30' : 'bg-amber-500/10 border border-amber-500/30'}`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`font-medium text-sm ${perfData.scoring_status === 'blocked_pending_reconciliation' ? 'text-amber-400' : 'text-amber-400'}`}>
+                      {perfData.scoring_status === 'blocked_pending_reconciliation'
+                        ? 'Abril Lima pendiente de reconciliacion. Scoring bloqueado.'
+                        : perfData.scoring_status === 'enabled'
+                          ? `Scoring activo: ${perfData.summary?.performance_category || ''} (${perfData.summary?.performance_goals_completed || 0}/3)`
+                          : 'Scoring bloqueado.'}
+                    </span>
+                  </div>
+                  {perfData.remediation?.map((r, i) => (
+                    <p key={i} className="text-xs text-amber-300/80">{r.message}</p>
+                  ))}
+                  {perfData.reconciliation?.guardrail_flags?.length > 0 && (
+                    <p className="text-xs text-amber-300/80 mt-1">
+                      Flags: {perfData.reconciliation.guardrail_flags.join(', ')}
+                    </p>
+                  )}
+                  {perfData.target_status !== 'configured' && (
+                    <button onClick={() => setActiveTab('config')} className="mt-2 text-xs text-ct-accent hover:underline">
+                      Configurar metas
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* KPI Cards — Lima (3 metrics + scoring status) */}
+              <div className="ct-kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+                <div className="ct-kpi-card border-ct-border bg-ct-card">
+                  <span className="ct-kpi-card-label">Active Drivers Lima MTD</span>
+                  <span className="ct-kpi-card-value text-ct-text">{fmtNum(perfData.summary?.active_drivers_mtd)}</span>
+                  {perfData.reconciliation && (
+                    <span className="text-2xs text-ct-text3">Yango: {fmtNum(perfData.reconciliation.ad_reference)} ({perfData.reconciliation.ad_drift_pct}% dif)</span>
+                  )}
+                </div>
+                <div className="ct-kpi-card border-ct-border bg-ct-card">
+                  <span className="ct-kpi-card-label">Supply Hours Lima MTD</span>
+                  <span className="ct-kpi-card-value text-ct-text">{fmtNum(perfData.summary?.supply_hours_mtd)}</span>
+                  {perfData.reconciliation && (
+                    <span className={`text-2xs ${perfData.reconciliation.sh_drift_pct > 5 ? 'text-amber-400' : 'text-ct-text3'}`}>
+                      Yango: {fmtNum(perfData.reconciliation.sh_reference)} ({perfData.reconciliation.sh_drift_pct}% dif)
+                    </span>
+                  )}
+                </div>
+                <div className="ct-kpi-card border-ct-border bg-ct-card">
+                  <span className="ct-kpi-card-label">Nuevos + Reactivados MTD</span>
+                  <span className="ct-kpi-card-value text-ct-text">{fmtNum(perfData.summary?.new_plus_reactivated_mtd)}</span>
+                  <span className="text-2xs text-amber-400">Definicion provisional</span>
+                  {perfData.reconciliation && (
+                    <span className="text-2xs text-amber-300/80">Yango: {fmtNum(perfData.reconciliation.nr_reference)} ({perfData.reconciliation.nr_drift_pct}% dif)</span>
+                  )}
+                </div>
+                <div className={`ct-kpi-card border-amber-500/30 ${perfData.scoring_status === 'blocked_pending_reconciliation' ? 'bg-amber-500/5' : 'bg-ct-card'}`}>
+                  <span className="ct-kpi-card-label">Scoring</span>
+                  <span className="ct-kpi-card-value text-amber-400">
+                    {perfData.scoring_status === 'blocked_pending_reconciliation' ? 'Pendiente Reconciliacion' :
+                     perfData.scoring_status === 'enabled' ? 'Activo' : 'Bloqueado'}
+                  </span>
+                  {perfData.reconciliation?.guardrail_flags?.length > 0 && (
+                    <span className="text-2xs text-amber-400 block mt-0.5">{perfData.reconciliation.guardrail_flags.join(', ')}</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Lima detail + gaps */}
+              {perfData.cities?.length > 0 && (
+                <div className="bg-ct-card border border-ct-border rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-ct-text">Piloto Lima — Detalle</h3>
+                    <span className="text-2xs text-ct-text3">Mes: {perfData.month}</span>
+                  </div>
+                  {perfData.cities.map(city => (
+                    <div key={city.city_norm} className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                      <div className="bg-ct-surface rounded-lg p-3">
+                        <p className="text-2xs text-ct-text3 mb-1">AD MTD</p>
+                        <p className="text-lg font-bold text-ct-text">{fmtNum(city.active_drivers_mtd)}</p>
+                        {city.target_active_drivers != null && (
+                          <p className={`text-2xs mt-0.5 ${city.gap_active_drivers_vs_target >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            Gap: {city.gap_active_drivers_vs_target >= 0 ? '+' : ''}{fmtNum(city.gap_active_drivers_vs_target)} vs meta {fmtNum(city.target_active_drivers)}
+                          </p>
+                        )}
+                      </div>
+                      <div className="bg-ct-surface rounded-lg p-3">
+                        <p className="text-2xs text-ct-text3 mb-1">Supply Hours MTD</p>
+                        <p className="text-lg font-bold text-ct-text">{fmtNum(city.supply_hours_mtd)}</p>
+                        {city.target_supply_hours != null && (
+                          <p className={`text-2xs mt-0.5 ${city.gap_supply_hours_vs_target >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            Gap: {city.gap_supply_hours_vs_target >= 0 ? '+' : ''}{fmtNum(city.gap_supply_hours_vs_target)} vs meta {fmtNum(city.target_supply_hours)}
+                          </p>
+                        )}
+                      </div>
+                      <div className="bg-ct-surface rounded-lg p-3">
+                        <p className="text-2xs text-ct-text3 mb-1">Proyeccion SH EOM</p>
+                        <p className="text-lg font-bold text-ct-text">{city.projected_supply_hours_eom != null ? fmtNum(city.projected_supply_hours_eom) : '—'}</p>
+                        <p className="text-2xs text-ct-text3 mt-0.5">Avance: {(safeNum(city.expected_progress_pct) * 100).toFixed(0)}%</p>
+                      </div>
+                      <div className="bg-ct-surface rounded-lg p-3">
+                        <p className="text-2xs text-ct-text3 mb-1">Trazabilidad</p>
+                        <p className="text-2xs text-ct-text2">{city.city_assignment_method || 'forced_lima_pilot'}</p>
+                        <p className="text-2xs text-emerald-400 mt-0.5">{city.city_assignment_confidence || 'high'}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Unsupported cities */}
+              {perfData.unsupported_cities?.length > 0 && (
+                <div className="bg-ct-surface/50 border border-ct-border rounded-lg p-3">
+                  <h4 className="text-xs font-medium text-ct-text3 mb-2">Ciudades pendientes de enriquecimiento</h4>
+                  <div className="flex gap-2">
+                    {perfData.unsupported_cities.map(c => (
+                      <span key={c.city_norm} className="px-2 py-1 rounded text-2xs bg-ct-border/20 text-ct-text3 border border-ct-border capitalize">
+                        {c.city_norm} — pendiente
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Metric Definition Status */}
+              <div className="bg-ct-surface/50 border border-ct-border rounded-lg p-3">
+                <h4 className="text-xs font-medium text-ct-text3 mb-1">Definiciones de Metricas</h4>
+                <p className="text-2xs text-ct-text3">
+                  AD: Auto regular (1.9% dif vs Yango) | SH: fleet_summary (13% dif, cobertura parcial) | N+R: provisional (+176% dif)
+                </p>
+                <p className="text-2xs text-amber-400 mt-1">
+                  Scoring bloqueado hasta validacion Yango de definicion N+R.
+                </p>
+              </div>
+
+              {/* YEGO Operational Flow — Enriched */}
+              <div className="bg-blue-500/5 border border-blue-500/30 rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <h4 className="text-xs font-medium text-blue-400">YEGO Operational Flow</h4>
+                  <span className="px-1 py-0.5 rounded text-2xs bg-green-500/20 text-green-400">Enriched</span>
+                </div>
+                <p className="text-2xs text-ct-text3 mb-2">
+                  Entrada y recuperacion de conductores en YEGO. Enriquecido con trips 2025/2026. No equivale al N+R oficial Yango.
+                </p>
+                <div className="grid grid-cols-4 gap-2">
+                  <div className="bg-ct-surface rounded p-2 text-center">
+                    <p className="text-2xs text-ct-text3">Nuevos YEGO</p>
+                    <p className="text-sm font-bold text-ct-text">{fmtNum(perfData.summary?.new_drivers_mtd || '—')}</p>
+                  </div>
+                  <div className="bg-ct-surface rounded p-2 text-center">
+                    <p className="text-2xs text-ct-text3">Reactivados</p>
+                    <p className="text-sm font-bold text-ct-text">{fmtNum(perfData.summary?.reactivated_drivers_mtd || '—')}</p>
+                  </div>
+                  <div className="bg-ct-surface rounded p-2 text-center">
+                    <p className="text-2xs text-ct-text3">Flujo Total</p>
+                    <p className="text-sm font-bold text-ct-text">{fmtNum(perfData.summary?.new_plus_reactivated_mtd || '—')}</p>
+                  </div>
+                  <div className="bg-ct-surface rounded p-2 text-center">
+                    <p className="text-2xs text-amber-400/80">Falsos Nuevos</p>
+                    <p className="text-sm font-bold text-orange-400">—</p>
+                  </div>
+                </div>
+                <div className="flex gap-1 mt-2">
+                  <span className="px-1.5 py-0.5 rounded text-2xs bg-blue-500/20 text-blue-400">Internal Mgmt</span>
+                  <span className="px-1.5 py-0.5 rounded text-2xs bg-amber-500/20 text-amber-400">Not Yango Scoring</span>
+                  <span className="px-1.5 py-0.5 rounded text-2xs bg-green-500/20 text-green-400">Hist Enrichment</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           <ExecutiveSummary {...{ cityRanking, kpiGaps, data_complete, manual_kpis_pending, expected_progress_pct, cities, has_any_targets }} />
 
           <div className="ct-kpi-grid">

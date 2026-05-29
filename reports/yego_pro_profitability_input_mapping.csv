@@ -1,0 +1,51 @@
+kpi_id,kpi_name,category,classification,source_table,formula,granularity_min,confidence,value_reference,unit,endpoint,risk
+1,trips_completed,OPERATIVO,REAL,public.trips_2026,"COUNT(*) WHERE condicion='Completado'",viaje,5/5,13951,trips,overview/weekly/daily,Ninguno
+2,trips_cancelled,OPERATIVO,REAL,public.trips_2026,"COUNT(*) WHERE condicion<>'Completado'",viaje,5/5,13647,trips,overview/weekly/daily,Ninguno
+3,revenue_gross,OPERATIVO,REAL,public.trips_2026,"SUM(precio_yango_pro) completados",viaje,5/5,142474,S/,overview/weekly/daily,Ninguno
+4,ticket_avg,OPERATIVO,DERIVADO,public.trips_2026,"AVG(precio_yango_pro) completados",dia,5/5,10.21,S/,overview/weekly/shift,Ninguno
+5,km_per_trip_passenger,OPERATIVO,REAL,public.trips_2026,"AVG(distancia_km)/1000 (campo en metros)",viaje,4/5,3.75,km,overview,Campo en metros
+6,km_per_trip_total,OPERATIVO,REAL,public.module_weekly_billing,"SUM(km_recorrido)/SUM(total_viajes)",semana,5/5,9.20,km,overview/waterfall,Solo 1 semana
+7,km_dead_per_trip,OPERATIVO,DERIVADO,billing + trips,"km_billing - km_trips",semana,3/5,5.45,km,inputs,Estimacion
+8,active_drivers,OPERATIVO,REAL,public.trips_2026,"COUNT(DISTINCT conductor_id)",dia,5/5,34,drivers,overview/daily,Ninguno
+9,active_vehicles,OPERATIVO,NO DISPONIBLE,N/A,"Sin asignacion vehiculo-conductor",N/A,0/5,N/A,vehicles,vehicle,Critico
+10,supply_hours_real,OPERATIVO,NO DISPONIBLE,public.module_ct_fleet_summary_daily,"fleet_summary vacia para park",N/A,0/5,N/A,horas,N/A,Critico
+11,work_hours_proxy,OPERATIVO,REAL,public.module_weekly_billing,"SUM(horas_trabajo)",semana,4/5,52.36,horas/sem,overview/driver,Proxy no supply real
+12,revenue_per_hour,OPERATIVO,DERIVADO,public.module_weekly_billing,"monto_total_producido / horas_trabajo",semana,4/5,28.97,S/h,overview/driver,Proxy horas
+13,trips_per_hour,OPERATIVO,DERIVADO,public.module_weekly_billing,"total_viajes / horas_trabajo",semana,4/5,2.32,trips/h,overview/driver,Proxy horas
+14,revenue_per_km,OPERATIVO,DERIVADO,public.trips_2026,"SUM(precio_yango_pro)/SUM(distancia_km/1000)",dia,4/5,2.72,S/km,overview,Solo km pasajero
+15,cancellation_rate,OPERATIVO,DERIVADO,public.trips_2026,"cancelados / total",dia,5/5,49.5,%,overview,Alta tasa
+16,duration_avg_min,OPERATIVO,DERIVADO,public.trips_2026,"AVG(EXTRACT(EPOCH FROM (fin-inicio))/60)",viaje,4/5,12.70,min,overview/shift,Ninguno
+17,fuel_total,FINANCIERO,REAL,public.module_weekly_billing,"SUM(gasto_combustible)",semana,5/5,4893,S/sem,weekly/waterfall,Solo 1 semana
+18,fuel_per_km,FINANCIERO,DERIVADO,public.module_weekly_billing,"gasto_combustible / km_recorrido",semana,5/5,0.1528,S/km,inputs/waterfall,Solo 1 semana
+19,fuel_per_trip,FINANCIERO,DERIVADO,public.module_weekly_billing,"gasto_combustible / total_viajes",semana,5/5,1.41,S/viaje,waterfall,Solo 1 semana
+20,maintenance_total,FINANCIERO,REAL,public.module_weekly_billing,"SUM(gasto_mantenimiento)",semana,5/5,4770,S/sem,weekly/waterfall,Solo 1 semana
+21,maintenance_per_km,FINANCIERO,DERIVADO,public.module_weekly_billing,"gasto_mantenimiento / km_recorrido",semana,5/5,0.1500,S/km,inputs/waterfall,Solo 1 semana
+22,maintenance_per_trip,FINANCIERO,DERIVADO,public.module_weekly_billing,"gasto_mantenimiento / total_viajes",semana,5/5,1.38,S/viaje,waterfall,Solo 1 semana
+23,driver_payment_total,FINANCIERO,REAL,public.module_weekly_billing,"SUM(pago_total)",semana,5/5,10180,S/sem,weekly/driver,Solo 1 semana
+24,driver_payment_pct,FINANCIERO,REAL,public.module_weekly_billing,"AVG(porcentaje_pago)",conductor-sem,5/5,47.69,%,driver/inputs,Solo 1 semana
+25,platform_commission_total,FINANCIERO,REAL,public.module_weekly_billing,"SUM(comision_app)",semana,5/5,5880,S/sem,weekly/waterfall,Solo 1 semana
+26,platform_commission_pct,FINANCIERO,DERIVADO,public.module_weekly_billing,"comision_app / monto_total_producido",semana,5/5,16.66,%,inputs/waterfall,Solo 1 semana
+27,yego_commission_pct,FINANCIERO,REAL,ops.yego_commission_proxy_config,"commission_pct WHERE country=Peru",config,3/5,3.00,%,inputs,No park-specific
+28,vehicle_quota_weekly,FINANCIERO,REAL,public.module_miauto_cronograma_rule,"cuotas_por_vehiculo",config,4/5,500-562.50,S/sem,vehicle/inputs,Cuota real cobrada no disponible
+29,insurance_gps_monthly,FINANCIERO,SUPUESTO,N/A (configurable),"Input manual",config,1/5,300,S/mes,inputs,No existe en BD
+30,bono_yango,FINANCIERO,REAL,public.module_weekly_billing,"SUM(bono_yango)",semana,5/5,5126.57,S/sem,weekly/waterfall,Solo 1 semana
+31,bono_additional,FINANCIERO,REAL,public.module_weekly_billing,"SUM(bono_adic_viajes)",semana,5/5,2125.00,S/sem,weekly/waterfall,Solo 1 semana
+32,bono_vehicle_reduction,FINANCIERO,REAL,public.module_miauto_cronograma_rule,"bono_auto por escalon trips",config,4/5,10/40/70,S/sem,vehicle/inputs,Ninguno
+33,profit_per_trip,FINANCIERO,REAL,public.module_weekly_billing,"utilidad / total_viajes",conductor-sem,5/5,-2.17,S/viaje,overview/driver/waterfall,Solo 1 semana
+34,weekly_profit_fleet,FINANCIERO,REAL,public.module_weekly_billing,"SUM(utilidad)",semana,5/5,-5509.90,S/sem,overview/weekly,Solo 1 semana
+35,monthly_profit_estimated,FINANCIERO,DERIVADO,public.module_weekly_billing,"SUM(utilidad) * 4",mes,3/5,-22040,S/mes,overview,Extrapolacion
+36,margin_gross_per_trip,FINANCIERO,DERIVADO,trips + billing,"ticket - costo_variable",semana,4/5,7.42,S/viaje,waterfall,Mezcla fuentes
+37,margin_net_per_trip,FINANCIERO,REAL,public.module_weekly_billing,"utilidad / viajes",semana,5/5,-2.17,S/viaje,waterfall,Solo 1 semana
+38,breakeven_trips_weekly,FINANCIERO,DERIVADO,billing observado,"172+ trips/sem (observado)",semana,4/5,172,trips/sem,overview,De 1 observacion
+39,pct_drivers_profitable,FINANCIERO,DERIVADO,public.module_weekly_billing,"COUNT(utilidad>0)/total",semana,5/5,3.8,%,overview/driver,Solo 1 semana
+40,revenue_day_shift,SEGMENTACION,DERIVADO,public.trips_2026,"SUM WHERE hora 6-17",dia,5/5,59349,S/30d,shift,Ninguno
+41,revenue_night_shift,SEGMENTACION,DERIVADO,public.trips_2026,"SUM WHERE hora 18-5",dia,5/5,83125,S/30d,shift,Ninguno
+42,revenue_per_hour_day,SEGMENTACION,DERIVADO,public.trips_2026,"rev dia / jornada estimada dia",dia,3/5,24.84,S/h,shift,Estimacion jornada
+43,revenue_per_hour_night,SEGMENTACION,DERIVADO,public.trips_2026,"rev noche / jornada estimada noche",dia,3/5,28.95,S/h,shift,Estimacion jornada
+44,trips_per_driver,SEGMENTACION,DERIVADO,public.trips_2026,"COUNT(*) GROUP BY conductor_id",conductor,5/5,410,trips/30d,driver,Ninguno
+45,revenue_per_driver,SEGMENTACION,DERIVADO,public.trips_2026,"SUM GROUP BY conductor_id",conductor,5/5,4190,S/30d,driver,Ninguno
+46,profit_per_driver,SEGMENTACION,REAL,public.module_weekly_billing,"utilidad per driver_id",conductor-sem,5/5,-212,S/sem avg,driver,Solo 1 semana
+47,trips_by_dow,SEGMENTACION,DERIVADO,public.trips_2026,"COUNT GROUP BY DOW",dia,5/5,varies,trips,daily,Ninguno
+48,trips_by_hour,SEGMENTACION,DERIVADO,public.trips_2026,"COUNT GROUP BY EXTRACT(HOUR)",hora,5/5,varies,trips,shift,Ninguno
+49,driver_consistency,SEGMENTACION,DERIVADO,public.trips_2026,"CV de trips semanales por conductor",conductor,4/5,varies,categoria,driver,Requiere 4+ semanas
+50,shift_type_driver,SEGMENTACION,DERIVADO,public.trips_2026,">=70% dia/noche = DIA/NOCHE else MIXTO",conductor,5/5,11/17/6,drivers,driver,Ninguno

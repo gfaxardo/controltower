@@ -1122,5 +1122,9 @@ export const postYangoLoyaltyTarget = async (payload) => {
   const response = await api.post('/yango-loyalty/target', payload)
   return response.data
 }
+export const getYangoLoyaltyPerformance = async (params = {}) => {
+  const response = await api.get('/yango-loyalty/performance', { params, timeout: 15000 })
+  return response.data
+}
 
 export default api

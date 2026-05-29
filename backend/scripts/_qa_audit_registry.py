@@ -1,0 +1,10 @@
+import sys,os;sys.path.insert(0,os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from app.db.connection import get_db,init_db_pool;init_db_pool()
+conn=get_db().__enter__();cur=conn.cursor()
+cur.execute("SELECT definition_set_id,status,validation_status FROM ops.yango_loyalty_metric_definition_sets ORDER BY 1")
+print("Def sets:");[print(f"  {r[0]:<30} {r[1]:<10} {r[2]}") for r in cur.fetchall()]
+cur.execute("SELECT COUNT(*) FROM ops.yango_loyalty_metric_rules");print(f"Rules: {cur.fetchone()[0]}")
+cur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema='ops' AND table_name='yango_loyalty_metric_definition_sets' ORDER BY ordinal_position")
+print("Def set cols:",[r[0] for r in cur.fetchall()])
+cur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema='ops' AND table_name='yango_loyalty_metric_rules' ORDER BY ordinal_position")
+print("Rule cols:",[r[0] for r in cur.fetchall()])

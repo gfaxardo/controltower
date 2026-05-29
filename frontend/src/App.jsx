@@ -59,6 +59,7 @@ import DriverSupervisorView from './components/driver/DriverSupervisorView.jsx'
 import DriverStrategyView from './components/driver/DriverStrategyView.jsx'
 import DriverAdminDataView from './components/driver/DriverAdminDataView.jsx'
 import { getPersistedRole, setPersistedRole } from './config/driverRoleViewsRegistry.js'
+import { getTabGuide } from './config/driverTabGuideRegistry.js'
 
 const DRIVER_CAPABILITY_GROUPS = [
   {
@@ -293,20 +294,24 @@ function ControlTowerApp () {
     )
   }
 
-  const subPillSimple = (id, label) => (
-    <button
-      key={id}
-      type="button"
-      onClick={() => setSubTab(id)}
-      className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
-        activeSub === id
-          ? 'bg-ct-accent text-white shadow-sm'
-          : 'text-ct-text2 hover:text-ct-text hover:bg-ct-border'
-      }`}
-    >
-      {label}
-    </button>
-  )
+  const subPillSimple = (id, label) => {
+    const guide = getTabGuide(id)
+    return (
+      <button
+        key={id}
+        type="button"
+        onClick={() => setSubTab(id)}
+        title={guide ? `${guide.oneLinePurpose}\n→ ${guide.decisionItSupports}` : label}
+        className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
+          activeSub === id
+            ? 'bg-ct-accent text-white shadow-sm'
+            : 'text-ct-text2 hover:text-ct-text hover:bg-ct-border'
+        }`}
+      >
+        {label}
+      </button>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-ct-bg">
