@@ -1127,4 +1127,43 @@ export const getYangoLoyaltyPerformance = async (params = {}) => {
   return response.data
 }
 
+// --- Fleet Project > Yego Pro > Profitability (P2) ---
+const PROFITABILITY_TIMEOUT_MS = 60000
+export const getYegoProProfitabilityOverview = async (params = {}) => {
+  const response = await api.get('/fleet-project/yego-pro/profitability/overview', { params, timeout: PROFITABILITY_TIMEOUT_MS })
+  return response.data
+}
+export const getYegoProProfitabilityWeekly = async (params = {}) => {
+  const response = await api.get('/fleet-project/yego-pro/profitability/weekly', { params, timeout: PROFITABILITY_TIMEOUT_MS })
+  return response.data
+}
+export const getYegoProProfitabilityDaily = async (params = {}) => {
+  const response = await api.get('/fleet-project/yego-pro/profitability/daily', { params, timeout: PROFITABILITY_TIMEOUT_MS })
+  return response.data
+}
+export const getYegoProProfitabilityDrivers = async (params = {}) => {
+  const response = await api.get('/fleet-project/yego-pro/profitability/drivers', { params, timeout: PROFITABILITY_TIMEOUT_MS })
+  return response.data
+}
+export const getYegoProProfitabilityVehicles = async (params = {}) => {
+  const response = await api.get('/fleet-project/yego-pro/profitability/vehicles', { params, timeout: PROFITABILITY_TIMEOUT_MS })
+  return response.data
+}
+export const getYegoProProfitabilityShifts = async (params = {}) => {
+  const response = await api.get('/fleet-project/yego-pro/profitability/shifts', { params, timeout: PROFITABILITY_TIMEOUT_MS })
+  return response.data
+}
+export const getYegoProProfitabilityInputMapping = async (params = {}) => {
+  const response = await api.get('/fleet-project/yego-pro/profitability/input-mapping', { params, timeout: PROFITABILITY_TIMEOUT_MS })
+  return response.data
+}
+export const getYegoProProfitabilityQuality = async (params = {}) => {
+  const response = await api.get('/fleet-project/yego-pro/profitability/quality', { params, timeout: PROFITABILITY_TIMEOUT_MS })
+  return response.data
+}
+export const getYegoProProfitabilityRootCause = async (params = {}) => {
+  const response = await api.get('/fleet-project/yego-pro/profitability/root-cause', { params, timeout: PROFITABILITY_TIMEOUT_MS })
+  return response.data
+}
+
 export default api

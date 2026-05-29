@@ -20,6 +20,7 @@ from app.services.yego_pro_profitability_service import (
     get_shifts,
     get_input_mapping,
     get_quality,
+    get_root_cause_audit,
     PARK_ID,
 )
 
@@ -123,3 +124,15 @@ def quality(
     Returns overall health status for the profitability module.
     """
     return get_quality(park_id=park_id)
+
+
+@router.get("/root-cause")
+def root_cause(
+    park_id: str = Query(default=PARK_ID),
+):
+    """
+    Root cause audit: identifies missing records (production without close,
+    close without production, missing plates, missing billing).
+    Returns detailed driver-level and shift-level gap analysis.
+    """
+    return get_root_cause_audit(park_id=park_id)

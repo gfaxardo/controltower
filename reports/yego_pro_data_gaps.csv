@@ -1,0 +1,3 @@
+gap_type,table,count,description,severity,impact
+CLOSE_WITHOUT_BILLING,module_driver_closes,49,49 driver-week records in closes without matching billing,MEDIUM,Daily settlement data exists but no weekly billing -- payout reconciliation incomplete
+PRODUCTION_WITHOUT_CLOSE,trips_2026 vs module_driver_closes,1017,1017 driver-day records with production but no daily close,HIGH,Drivers with trips but no settlement -- payout not tracked for these days

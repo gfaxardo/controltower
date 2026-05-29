@@ -1,0 +1,18 @@
+category,metric,source_of_truth,secondary_check,fallback,confidence,notes
+Production,trips,trips_2026,module_weekly_billing.total_viajes,N/A,HIGH,Trip-level granularity is the atomic source
+Production,revenue_gross,trips_2026 (precio_yango_pro),module_weekly_billing.monto_total_producido,N/A,HIGH,Trip-level pricing from Yango Pro platform
+Production,km,trips_2026 (distancia_km),module_weekly_billing.km_recorrido,N/A,HIGH,Trip distance (passenger km). billing km includes dead km
+Production,shift (day/night),DERIVED from trips_2026.fecha_inicio_viaje,N/A,N/A,HIGH,"06:00-17:59=DAY, 18:00-05:59=NIGHT. No native shift table."
+Production,vehicle_active,NOT_AVAILABLE,module_driver_closes.placa,N/A,LOW,No vehicle-to-driver assignment table. placa in closes is partial.
+Production,driver_active,trips_2026 (DISTINCT conductor_id),module_weekly_billing (DISTINCT driver_id),N/A,HIGH,
+Settlement,payout_driver,module_weekly_billing.pago_total,module_driver_closes (daily),N/A,HIGH,Weekly billing is the official payout. Daily close is operational settlement.
+Settlement,discounts,module_weekly_billing.comision_app,N/A,N/A,HIGH,Platform commission deducted from gross revenue
+Settlement,bonos,module_weekly_billing.bono_yango + bono_adic_viajes,N/A,N/A,HIGH,Yango bonus + additional trip bonus
+Settlement,advance_payments,NOT_AVAILABLE,module_driver_closes.liquida_efectivo + liquida_yape,N/A,LOW,Daily cash/yape settlements are in closes. No weekly aggregation.
+Settlement,final_amount_payable,module_weekly_billing.pago_total,module_driver_closes.resta (daily net),N/A,HIGH,pago_total = official weekly amount. resta = daily operational net.
+Billing,real_income,module_weekly_billing.monto_total_producido,trips_2026 revenue agg,N/A,HIGH,
+Billing,real_expenses,module_weekly_billing (fuel + maintenance + pago_total),module_driver_closes (gasoline + gnv + otros),N/A,HIGH,Billing has structured cost breakdown
+Billing,fuel,module_weekly_billing.gasto_combustible,module_driver_closes (gnv_soles + gasolina_soles),N/A,HIGH,Weekly is more reliable (structured). Daily has dual fuel types (GNV + gasoline).
+Billing,maintenance,module_weekly_billing.gasto_mantenimiento,N/A,N/A,HIGH,Only in weekly billing
+Billing,profit_loss,module_weekly_billing.utilidad,DERIVED (revenue - all costs),N/A,HIGH,utilidad is the official P&L per driver per week
+Billing,weekly_close,module_weekly_billing,N/A,N/A,HIGH,Each row is a closed week for a driver

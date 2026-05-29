@@ -1,0 +1,5 @@
+schema,table,exists,column_count,row_count,park_filtered_rows,min_date,max_date,has_driver_id,has_vehicle_id,has_park_id,money_columns,critical_nulls,notes
+public,module_weekly_billing,True,34,26,26,2026-05-18,2026-05-26 17:10:36.520993,True,False,False,total_viajes; monto_total_producido; comision_app; monto_neto; gasto_combustible; gasto_mantenimiento; bono_adic_viajes; bono; porcentaje_pago; pago; pago_total; utilidad; utilidad_por_viaje; pago_por_viaje; dias_liquidados; bono_yango,,
+public,module_driver_closes,True,23,349,349,2026-05-11,2026-05-28 13:48:05.615735,True,True,False,gnv_m3; gnv_soles; gasolina_galones; gasolina_soles; liquida_efectivo; liquida_yape; otros_gastos; otros_gastos_descripcion; total_ingresos; total_gastos; resta,"{""gasolina_galones"": 57, ""otros_gastos_descripcion"": 173}",
+public,module_calculated_shifts,True,17,1026,1026,2026-04-23,2026-05-28 08:11:46.981607,True,True,False,monto_total; produccion_total; comisiones_servicio,"{""placa"": 561}",
+public,trips_2026,True,25,81140,81140,2026-01-01,2026-05-27,True,False,True,precio_yango_pro,,84 distinct drivers for park

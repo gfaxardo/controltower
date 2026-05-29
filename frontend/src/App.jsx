@@ -44,6 +44,7 @@ import PlanTabs from './components/PlanTabs'
 import BacklogPlaceholder from './components/BacklogPlaceholder'
 import OperationalOpportunitiesView from './components/operacion/OperationalOpportunitiesView'
 import YangoLoyaltyView from './components/yangoLoyalty/YangoLoyaltyView'
+import YegoProProfitabilityPage from './components/YegoProProfitabilityPage'
 import { MaturityStatusBar } from './components/operational/MaturityIndicators.jsx'
 import { isProductionReady } from './config/operationalMaturityRegistry.js'
 import DriverOperatingHub from './components/driver/DriverOperatingHub.jsx'
@@ -90,6 +91,7 @@ const TAB_RISK = 'Riesgo'
 const TAB_OPERACION = 'Operación'
 const TAB_PLAN = 'Plan'
 const TAB_SYSTEM_HEALTH = 'Diagnósticos'
+const TAB_FLEET_PROJECT = 'Fleet Project'
 
 const VISIBLE_TABS = getVisibleTabs()
 
@@ -108,6 +110,7 @@ const SUBTABS_MAP = {
   [TAB_RISK]: getSubtabsForTab(TAB_RISK),
   [TAB_PLAN]: getSubtabsForTab(TAB_PLAN),
   [TAB_OPERACION]: getSubtabsForTab(TAB_OPERACION),
+  [TAB_FLEET_PROJECT]: getSubtabsForTab(TAB_FLEET_PROJECT),
 }
 
 const ROUTE_MAP = [
@@ -156,6 +159,8 @@ const ROUTE_MAP = [
   { path: '/plan/universo', tab: TAB_PLAN, sub: 'plan_universo' },
   { path: '/plan/validacion', tab: TAB_PLAN, sub: 'plan_validacion' },
   { path: '/diagnosticos', tab: TAB_SYSTEM_HEALTH, sub: 'system_health' },
+  { path: '/fleet-project', tab: TAB_FLEET_PROJECT, sub: 'fleet_yegopro_profitability' },
+  { path: '/fleet-project/yego-pro/profitability', tab: TAB_FLEET_PROJECT, sub: 'fleet_yegopro_profitability' },
 ]
 
 const SUB_URL = {
@@ -185,6 +190,7 @@ const SUB_URL = {
   plan_universo: '/plan/universo',
   plan_validacion: '/plan/validacion',
   system_health: '/diagnosticos',
+  fleet_yegopro_profitability: '/fleet-project/yego-pro/profitability',
 }
 
 const TAB_DEFAULT_PATH = {
@@ -194,6 +200,7 @@ const TAB_DEFAULT_PATH = {
   [TAB_OPERACION]: '/operacion/omniview-matrix',
   [TAB_PLAN]: '/plan/acciones',
   [TAB_SYSTEM_HEALTH]: '/diagnosticos',
+  [TAB_FLEET_PROJECT]: '/fleet-project/yego-pro/profitability',
 }
 
 function parseRoute (pathname) {
@@ -224,6 +231,7 @@ function ControlTowerApp () {
   const riskSubTab = activeTab === TAB_RISK ? (routeSub || 'riesgo_driver_behavior') : 'riesgo_driver_behavior'
   const operacionSubTab = activeTab === TAB_OPERACION ? (routeSub || 'operacion_omniview_matrix') : 'operacion_omniview_matrix'
   const planSubTab = activeTab === TAB_PLAN ? (routeSub || 'plan_acciones') : 'plan_acciones'
+  const fleetProjectSubTab = activeTab === TAB_FLEET_PROJECT ? (routeSub || 'fleet_yegopro_profitability') : 'fleet_yegopro_profitability'
 
   const setActiveTab = useCallback((tab) => { navigate(TAB_DEFAULT_PATH[tab] || '/'); setTabMenuOpen(false) }, [navigate])
   const setSubTab = useCallback((subKey) => { navigate(SUB_URL[subKey] || '/'); setTabMenuOpen(false) }, [navigate])
@@ -240,7 +248,7 @@ function ControlTowerApp () {
   }, [])
 
   const activeSubtabs = SUBTABS_MAP[activeTab] || []
-  const activeSub = [TAB_PERFORMANCE, TAB_DRIVERS, TAB_RISK, TAB_OPERACION, TAB_PLAN].includes(activeTab)
+  const activeSub = [TAB_PERFORMANCE, TAB_DRIVERS, TAB_RISK, TAB_OPERACION, TAB_PLAN, TAB_FLEET_PROJECT].includes(activeTab)
     ? routeSub
     : null
   const activeSubLabel = activeSubtabs.find((s) => s.id === activeSub)?.label || ''
@@ -525,6 +533,12 @@ function ControlTowerApp () {
                     <PlanTabs key={`plan-tabs-${refreshKey}-${planValidacionInner}`} filters={filters} activeTab={planValidacionInner} onTabChange={setPlanValidacionInner} />
                   </>
                 )}
+              </section>
+            )}
+
+            {activeTab === TAB_FLEET_PROJECT && (
+              <section aria-label="Fleet Project">
+                {fleetProjectSubTab === 'fleet_yegopro_profitability' && <YegoProProfitabilityPage key={`yegopro-profitability-${refreshKey}`} />}
               </section>
             )}
 

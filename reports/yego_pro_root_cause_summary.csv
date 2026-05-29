@@ -1,0 +1,5 @@
+finding,severity,impact
+6 de 36 conductores (16.7%) tienen produccion sin cierre.,MEDIUM,Liquidacion diaria no registrada para estos conductores.
+561 de 1026 shifts (54.7%) no tienen placa registrada.,HIGH,Asignacion vehiculo-conductor incompleta.
+5 semanas tienen produccion sin billing.,HIGH,Facturacion semanal incompleta para estas semanas.
+402 registros de shift no tienen cierre diario asociado.,HIGH,Proceso de cierre diario no cubre toda la produccion.

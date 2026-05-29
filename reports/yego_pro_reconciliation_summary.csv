@@ -1,0 +1,120 @@
+comparison,period,metric,value_source_a,value_source_b,difference,status
+trips_2026 vs module_weekly_billing,2026-05-25,trips,1365,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-05-25,revenue,13469.00,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-05-18,trips,3163,3163,0,MATCH
+trips_2026 vs module_weekly_billing,2026-05-18,revenue,33507.70,39440.27,-5932.57,MISMATCH
+trips_2026 vs module_weekly_billing,2026-05-11,trips,3369,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-05-11,revenue,33225.20,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-05-04,trips,3362,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-05-04,revenue,34534.50,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-04-27,trips,3079,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-04-27,revenue,31698.00,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-04-20,trips,3442,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-04-20,revenue,33863.00,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-04-13,trips,3197,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-04-13,revenue,32845.00,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-04-06,trips,3811,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-04-06,revenue,37654.70,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-03-30,trips,3617,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-03-30,revenue,37303.10,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-03-23,trips,4066,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-03-23,revenue,42248.60,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-03-16,trips,4135,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-03-16,revenue,43056.00,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-03-09,trips,3777,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-03-09,revenue,41469.80,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-03-02,trips,3624,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-03-02,revenue,41582.80,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-02-23,trips,4110,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-02-23,revenue,42781.90,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-02-16,trips,4462,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-02-16,revenue,44490.40,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-02-09,trips,4269,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-02-09,revenue,44229.80,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-02-02,trips,4219,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-02-02,revenue,43153.40,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-01-26,trips,4139,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-01-26,revenue,41510.70,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-01-19,trips,4060,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-01-19,revenue,39694.70,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-01-12,trips,3937,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-01-12,revenue,38260.90,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-01-05,trips,5283,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2026-01-05,revenue,53110.10,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2025-12-29,trips,2654,,,MISSING_SIDE
+trips_2026 vs module_weekly_billing,2025-12-29,revenue,29034.20,,,MISSING_SIDE
+module_driver_closes vs module_weekly_billing,2026-05-25 | 0b6e8a0ee3cf402aba02b5e68d8d9e74,income_vs_revenue,770.28,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-25 | 0e6603f4a61c4df78a61b6a6a0f595b9,income_vs_revenue,290.61,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-25 | 169fe9b89a4242b1a4dbf7db24fbffc8,income_vs_revenue,637.62,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-25 | 1e91148b37e54461a02a9c450a3dc577,income_vs_revenue,132.74,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-25 | 245743818ced4fa8ba10473fcf7a7f13,income_vs_revenue,748.69,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-25 | 248939a059ed428ca63e229751c58f46,income_vs_revenue,256.19,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-25 | 2ba10554b16343c7a19a1167a9954766,income_vs_revenue,457.65,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-25 | 2c4b252332dd42fc94dc0344257ddd9c,income_vs_revenue,124.00,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-25 | 35361f8580a44874bf9dab0e0ffe65a0,income_vs_revenue,159.10,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-25 | 471d5c59d1624a358ade09a83921f7ab,income_vs_revenue,436.11,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-25 | 520ccfd4f18e47a1b43f2a58c14b75fd,income_vs_revenue,1084.11,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-25 | 6f6f82bd30fe4fffbf01f82299740680,income_vs_revenue,360.03,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-25 | 80091ecf77bb4d90b299664a80591eb3,income_vs_revenue,172.40,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-25 | 94f6aca70a0746dc932ef2ec2b4de4e5,income_vs_revenue,41.40,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-25 | a53cb92fedaf44fd85bb028366cf855f,income_vs_revenue,223.59,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-25 | a74f95aee1f140be9bd2d455aca9489f,income_vs_revenue,564.35,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-25 | ac45b59b2f504e19a8fce80b7629cfc4,income_vs_revenue,167.30,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-25 | afdc5e70106a4de59f1a0f186b279325,income_vs_revenue,433.58,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-25 | b05cba5df4084fbbb2120b579de8c846,income_vs_revenue,88.30,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-25 | b174a8fd91434e92bb4bd4ff00501482,income_vs_revenue,773.36,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-25 | b63613895dbb4a97b896bfe12d4cc745,income_vs_revenue,433.03,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-25 | c3ade46b21074399ae77020b03866104,income_vs_revenue,102.80,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-25 | d125dba79d74433cb1e14bd49a9e0748,income_vs_revenue,641.15,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-25 | f1cdbbb61a5a42098e959073aee88c44,income_vs_revenue,503.49,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-18 | 0b6e8a0ee3cf402aba02b5e68d8d9e74,income_vs_revenue,1345.30,2208.32,-863.02,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | 0e6603f4a61c4df78a61b6a6a0f595b9,income_vs_revenue,516.70,647.40,-130.70,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | 169fe9b89a4242b1a4dbf7db24fbffc8,income_vs_revenue,1319.80,1950.40,-630.60,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | 1e91148b37e54461a02a9c450a3dc577,income_vs_revenue,228.40,505.63,-277.23,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | 248939a059ed428ca63e229751c58f46,income_vs_revenue,1169.00,1847.48,-678.48,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | 2ba10554b16343c7a19a1167a9954766,income_vs_revenue,811.20,1378.24,-567.04,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | 35361f8580a44874bf9dab0e0ffe65a0,income_vs_revenue,1253.10,1520.88,-267.78,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | 471d5c59d1624a358ade09a83921f7ab,income_vs_revenue,1212.30,1771.63,-559.33,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | 520ccfd4f18e47a1b43f2a58c14b75fd,income_vs_revenue,1854.60,2768.12,-913.52,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | 6f6f82bd30fe4fffbf01f82299740680,income_vs_revenue,978.10,1469.70,-491.60,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | 73ffe5abf820442697122497c6b48d1a,income_vs_revenue,956.80,1557.09,-600.29,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | 80091ecf77bb4d90b299664a80591eb3,income_vs_revenue,649.30,1138.02,-488.72,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | 8fae5a011f7b4c4b97eacbaf63c2f40f,income_vs_revenue,365.80,672.26,-306.46,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | 94f6aca70a0746dc932ef2ec2b4de4e5,income_vs_revenue,1346.60,1541.87,-195.27,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | 99a9242633404d9bb2f650fac5309152,income_vs_revenue,117.60,127.39,-9.79,MATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | a0bbb643f3ea4c3a9d8a3b135c0de027,income_vs_revenue,1107.20,1427.88,-320.68,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | a53cb92fedaf44fd85bb028366cf855f,income_vs_revenue,1417.60,2035.93,-618.33,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | a74f95aee1f140be9bd2d455aca9489f,income_vs_revenue,1268.90,1906.63,-637.73,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | afdc5e70106a4de59f1a0f186b279325,income_vs_revenue,1381.50,1660.67,-279.17,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | b05cba5df4084fbbb2120b579de8c846,income_vs_revenue,1097.10,1737.16,-640.06,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | b174a8fd91434e92bb4bd4ff00501482,income_vs_revenue,1433.30,2230.94,-797.64,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | b63613895dbb4a97b896bfe12d4cc745,income_vs_revenue,1017.90,1136.86,-118.96,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | c3ade46b21074399ae77020b03866104,income_vs_revenue,1454.70,1742.68,-287.98,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | d125dba79d74433cb1e14bd49a9e0748,income_vs_revenue,1381.80,2078.29,-696.49,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | f1cdbbb61a5a42098e959073aee88c44,income_vs_revenue,710.70,1057.59,-346.89,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-18 | f2bef33f4eca4c2389a8c7c5f07ddb45,income_vs_revenue,850.60,1321.21,-470.61,MISMATCH
+module_driver_closes vs module_weekly_billing,2026-05-11 | 0b6e8a0ee3cf402aba02b5e68d8d9e74,income_vs_revenue,1296.70,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | 169fe9b89a4242b1a4dbf7db24fbffc8,income_vs_revenue,1142.00,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | 1e91148b37e54461a02a9c450a3dc577,income_vs_revenue,969.80,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | 245743818ced4fa8ba10473fcf7a7f13,income_vs_revenue,1202.60,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | 248939a059ed428ca63e229751c58f46,income_vs_revenue,1037.30,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | 2ba10554b16343c7a19a1167a9954766,income_vs_revenue,821.20,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | 35361f8580a44874bf9dab0e0ffe65a0,income_vs_revenue,1238.60,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | 471d5c59d1624a358ade09a83921f7ab,income_vs_revenue,1081.90,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | 520ccfd4f18e47a1b43f2a58c14b75fd,income_vs_revenue,1356.60,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | 6f6f82bd30fe4fffbf01f82299740680,income_vs_revenue,945.20,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | 73ffe5abf820442697122497c6b48d1a,income_vs_revenue,935.10,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | 80091ecf77bb4d90b299664a80591eb3,income_vs_revenue,834.70,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | 8fae5a011f7b4c4b97eacbaf63c2f40f,income_vs_revenue,1229.20,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | 94f6aca70a0746dc932ef2ec2b4de4e5,income_vs_revenue,1334.30,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | a0bbb643f3ea4c3a9d8a3b135c0de027,income_vs_revenue,1165.60,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | a53cb92fedaf44fd85bb028366cf855f,income_vs_revenue,1250.80,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | a74f95aee1f140be9bd2d455aca9489f,income_vs_revenue,1002.20,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | b05cba5df4084fbbb2120b579de8c846,income_vs_revenue,1226.70,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | b174a8fd91434e92bb4bd4ff00501482,income_vs_revenue,1326.90,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | b5a8dcc8d92b47af9e2795320ac5feef,income_vs_revenue,430.20,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | b63613895dbb4a97b896bfe12d4cc745,income_vs_revenue,470.90,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | c3ade46b21074399ae77020b03866104,income_vs_revenue,1327.90,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | d125dba79d74433cb1e14bd49a9e0748,income_vs_revenue,1331.90,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | f1cdbbb61a5a42098e959073aee88c44,income_vs_revenue,602.80,,,CLOSE_ONLY
+module_driver_closes vs module_weekly_billing,2026-05-11 | f2bef33f4eca4c2389a8c7c5f07ddb45,income_vs_revenue,1028.00,,,CLOSE_ONLY

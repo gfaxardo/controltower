@@ -1,0 +1,9 @@
+mv,exists,row_count,min_date,max_date,null_park_id,status,notes
+ops.mv_yego_pro_profitability_week,True,1,2026-05-18,2026-05-18,0,OK,
+ops.mv_yego_pro_profitability_day,True,147,2026-01-01,2026-05-27,0,OK,
+ops.mv_yego_pro_driver_profitability_week,True,26,2026-05-18,2026-05-18,0,OK,
+ops.mv_yego_pro_shift_profitability_week,True,44,2025-12-29,2026-05-25,0,OK,
+ops.mv_yego_pro_shift_daily,True,1026,2026-04-23,2026-05-27,0,OK,
+ops.mv_yego_pro_driver_close_week,True,75,2026-05-11,2026-05-25,0,OK,
+ops.mv_yego_pro_weekly_financial_truth,True,1,2026-05-18,2026-05-18,0,OK,
+ops.mv_yego_pro_source_coverage,True,1,,,0,OK,

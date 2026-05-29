@@ -1,0 +1,4 @@
+table,total_rows,distinct_drivers,distinct_periods,distinct_grain_combos,grain,grain_keys,period_type,has_shift
+module_weekly_billing,26,26,1,26,driver + week,driver_id + fecha_inicio,"weekly (fecha_inicio, fecha_fin)",False
+module_driver_closes,349,30,17,349,driver + date,driver_id + fecha,daily (fecha),calculated_shift_ids references shifts
+trips_2026,81140,84,147,3869,individual trip,trip row (no explicit PK visible),timestamp (fecha_inicio_viaje),DERIVED from EXTRACT(HOUR FROM fecha_inicio_viaje)

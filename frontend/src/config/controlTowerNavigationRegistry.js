@@ -557,6 +557,33 @@ export const CONTROL_TOWER_NAVIGATION_REGISTRY = [
   },
 
   // ═══════════════════════════════════════════════════════════════════
+  // FLEET PROJECT — Yego Pro (ACTIVE)
+  // ═══════════════════════════════════════════════════════════════════
+  {
+    key: 'fleet_yegopro_profitability',
+    label: 'Profitability',
+    tab: 'Fleet Project',
+    component: 'YegoProProfitabilityPage',
+    route: '/fleet-project/yego-pro/profitability',
+    engine: ENGINE.CONTROL_FOUNDATION,
+    phaseStatus: PHASE_STATUS.ACTIVE,
+    visibility: VISIBILITY.KEEP_VISIBLE,
+    productionReady: true,
+    requiresValidation: false,
+    reason: 'Fleet Project: Yego Pro Profitability P2 — overview financiero parcial (billing 1 semana). Solo lectura, sin simulador.',
+    endpoints: [
+      '/fleet-project/yego-pro/profitability/overview',
+      '/fleet-project/yego-pro/profitability/weekly',
+      '/fleet-project/yego-pro/profitability/daily',
+      '/fleet-project/yego-pro/profitability/drivers',
+      '/fleet-project/yego-pro/profitability/vehicles',
+      '/fleet-project/yego-pro/profitability/shifts',
+      '/fleet-project/yego-pro/profitability/input-mapping',
+      '/fleet-project/yego-pro/profitability/quality',
+    ],
+  },
+
+  // ═══════════════════════════════════════════════════════════════════
   // HIDDEN / BACKLOG — No visibles en producción
   // ═══════════════════════════════════════════════════════════════════
   {
