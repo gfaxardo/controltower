@@ -9,6 +9,17 @@ export default defineConfig(({ mode }) => {
     optimizeDeps: {
       include: ['echarts', 'echarts-for-react', 'echarts-for-react/esm/core', 'tslib'],
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            vendor: ['react', 'react-dom', 'react-router-dom'],
+            echarts: ['echarts', 'echarts-for-react'],
+            axios: ['axios'],
+          },
+        },
+      },
+    },
     // Producción: build para raíz del dominio (ej. http://162.55.214.109/)
     base: '/',
     server: {

@@ -4,65 +4,66 @@
  * Solo se muestran vistas KEEP_VISIBLE + productionReady del motor ACTIVE o READY NEXT.
  * FASE 1H.4 — Operational Maturity Governance: badges de madurez en navegación.
  */
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react'
 import { useNavigate, useLocation, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext.jsx'
 import { CONTROL_TOWER_NAVIGATION_REGISTRY, VISIBILITY, getVisibleTabs } from './config/controlTowerNavigationRegistry'
 import { getMaturityBadgeInfo, OPERATIONAL_MATURITY_REGISTRY } from './config/operationalMaturityRegistry.js'
-import LoginView from './components/LoginView.jsx'
-import CollapsibleFilters from './components/CollapsibleFilters'
-import ExecutiveSnapshotView from './components/ExecutiveSnapshotView'
-import MonthlySplitView from './components/MonthlySplitView'
-import WeeklyPlanVsRealView from './components/WeeklyPlanVsRealView'
-import Phase2BActionsTrackingView from './components/Phase2BActionsTrackingView'
-import Phase2CAccountabilityView from './components/Phase2CAccountabilityView'
-import LobUniverseView from './components/LobUniverseView'
-import RealLOBDrillView from './components/RealLOBDrillView'
-import BusinessSliceView from './components/BusinessSliceView'
-import BusinessSliceOmniview from './components/BusinessSliceOmniview'
-import BusinessSliceOmniviewMatrix from './components/BusinessSliceOmniviewMatrix'
-import OmniviewErrorBoundary from './components/OmniviewErrorBoundary'
-import BusinessSliceOmniviewReports from './components/BusinessSliceOmniviewReports'
-import ControlLoopPlanVsRealView from './components/ControlLoopPlanVsRealView'
-import RealOperationalView from './components/RealOperationalView'
-import DriverLifecycleView from './components/DriverLifecycleView'
-import DriverLifecycleDashboard from './components/driverLifecycle/DriverLifecycleDashboard'
-import DriverBehaviorBenchmarkingDashboard from './components/driverBehavior/DriverBehaviorBenchmarkingDashboard'
-import SupplyView from './components/SupplyView'
-import BehavioralAlertsView from './components/BehavioralAlertsView'
-import FleetLeakageView from './components/FleetLeakageView'
-import BehavioralPatternDiagnosisDashboard from './components/behavioralPatterns/BehavioralPatternDiagnosisDashboard'
-import OperationalBehavioralIntelligenceDashboard from './components/operationalIntelligence/OperationalBehavioralIntelligenceDashboard'
-import RecoverabilityIntelligenceDashboard from './components/recoverability/RecoverabilityIntelligenceDashboard'
-import DriverBehaviorView from './components/DriverBehaviorView'
-import ActionEngineView from './components/ActionEngineView'
-import SystemHealthView from './components/SystemHealthView'
-import GlobalFreshnessBanner from './components/GlobalFreshnessBanner'
-import RealMarginQualityCard from './components/RealMarginQualityCard'
-import UploadPlan from './components/UploadPlan'
-import PlanTabs from './components/PlanTabs'
-import BacklogPlaceholder from './components/BacklogPlaceholder'
-import OperationalOpportunitiesView from './components/operacion/OperationalOpportunitiesView'
-import YangoLoyaltyView from './components/yangoLoyalty/YangoLoyaltyView'
-import YegoProProfitabilityPage from './components/YegoProProfitabilityPage'
 import { MaturityStatusBar } from './components/operational/MaturityIndicators.jsx'
 import { isProductionReady } from './config/operationalMaturityRegistry.js'
-import DriverOperatingHub from './components/driver/DriverOperatingHub.jsx'
-import DriverActionableLists from './components/driver/DriverActionableLists.jsx'
-import PilotWorkboard from './components/driver/PilotWorkboard.jsx'
-import DriverCapabilityPlaceholder from './components/driver/DriverCapabilityPlaceholder.jsx'
-import CampaignIntelligence from './components/driver/CampaignIntelligence.jsx'
-import CrmBridge from './components/driver/CrmBridge.jsx'
-import CampaignEffectiveness from './components/driver/CampaignEffectiveness.jsx'
-import OperationalPriorities from './components/driver/OperationalPriorities.jsx'
-import DriverDataFoundation from './components/driver/DriverDataFoundation.jsx'
-import DriverOperationalHealth from './components/driver/DriverOperationalHealth.jsx'
-import DriverOperatorView from './components/driver/DriverOperatorView.jsx'
-import DriverSupervisorView from './components/driver/DriverSupervisorView.jsx'
-import DriverStrategyView from './components/driver/DriverStrategyView.jsx'
-import DriverAdminDataView from './components/driver/DriverAdminDataView.jsx'
 import { getPersistedRole, setPersistedRole } from './config/driverRoleViewsRegistry.js'
 import { getTabGuide } from './config/driverTabGuideRegistry.js'
+
+const LoginView = lazy(() => import('./components/LoginView.jsx'))
+const CollapsibleFilters = lazy(() => import('./components/CollapsibleFilters'))
+const ExecutiveSnapshotView = lazy(() => import('./components/ExecutiveSnapshotView'))
+const MonthlySplitView = lazy(() => import('./components/MonthlySplitView'))
+const WeeklyPlanVsRealView = lazy(() => import('./components/WeeklyPlanVsRealView'))
+const Phase2BActionsTrackingView = lazy(() => import('./components/Phase2BActionsTrackingView'))
+const Phase2CAccountabilityView = lazy(() => import('./components/Phase2CAccountabilityView'))
+const LobUniverseView = lazy(() => import('./components/LobUniverseView'))
+const RealLOBDrillView = lazy(() => import('./components/RealLOBDrillView'))
+const BusinessSliceView = lazy(() => import('./components/BusinessSliceView'))
+const BusinessSliceOmniview = lazy(() => import('./components/BusinessSliceOmniview'))
+const BusinessSliceOmniviewMatrix = lazy(() => import('./components/BusinessSliceOmniviewMatrix'))
+const OmniviewErrorBoundary = lazy(() => import('./components/OmniviewErrorBoundary'))
+const BusinessSliceOmniviewReports = lazy(() => import('./components/BusinessSliceOmniviewReports'))
+const ControlLoopPlanVsRealView = lazy(() => import('./components/ControlLoopPlanVsRealView'))
+const RealOperationalView = lazy(() => import('./components/RealOperationalView'))
+const DriverLifecycleView = lazy(() => import('./components/DriverLifecycleView'))
+const DriverLifecycleDashboard = lazy(() => import('./components/driverLifecycle/DriverLifecycleDashboard'))
+const DriverBehaviorBenchmarkingDashboard = lazy(() => import('./components/driverBehavior/DriverBehaviorBenchmarkingDashboard'))
+const SupplyView = lazy(() => import('./components/SupplyView'))
+const BehavioralAlertsView = lazy(() => import('./components/BehavioralAlertsView'))
+const FleetLeakageView = lazy(() => import('./components/FleetLeakageView'))
+const BehavioralPatternDiagnosisDashboard = lazy(() => import('./components/behavioralPatterns/BehavioralPatternDiagnosisDashboard'))
+const OperationalBehavioralIntelligenceDashboard = lazy(() => import('./components/operationalIntelligence/OperationalBehavioralIntelligenceDashboard'))
+const RecoverabilityIntelligenceDashboard = lazy(() => import('./components/recoverability/RecoverabilityIntelligenceDashboard'))
+const DriverBehaviorView = lazy(() => import('./components/DriverBehaviorView'))
+const ActionEngineView = lazy(() => import('./components/ActionEngineView'))
+const SystemHealthView = lazy(() => import('./components/SystemHealthView'))
+const GlobalFreshnessBanner = lazy(() => import('./components/GlobalFreshnessBanner'))
+const RealMarginQualityCard = lazy(() => import('./components/RealMarginQualityCard'))
+const UploadPlan = lazy(() => import('./components/UploadPlan'))
+const PlanTabs = lazy(() => import('./components/PlanTabs'))
+const BacklogPlaceholder = lazy(() => import('./components/BacklogPlaceholder'))
+const OperationalOpportunitiesView = lazy(() => import('./components/operacion/OperationalOpportunitiesView'))
+const YangoLoyaltyView = lazy(() => import('./components/yangoLoyalty/YangoLoyaltyView'))
+const YegoProProfitabilityPage = lazy(() => import('./components/YegoProProfitabilityPage'))
+const DriverOperatingHub = lazy(() => import('./components/driver/DriverOperatingHub.jsx'))
+const DriverActionableLists = lazy(() => import('./components/driver/DriverActionableLists.jsx'))
+const PilotWorkboard = lazy(() => import('./components/driver/PilotWorkboard.jsx'))
+const DriverCapabilityPlaceholder = lazy(() => import('./components/driver/DriverCapabilityPlaceholder.jsx'))
+const CampaignIntelligence = lazy(() => import('./components/driver/CampaignIntelligence.jsx'))
+const CrmBridge = lazy(() => import('./components/driver/CrmBridge.jsx'))
+const CampaignEffectiveness = lazy(() => import('./components/driver/CampaignEffectiveness.jsx'))
+const OperationalPriorities = lazy(() => import('./components/driver/OperationalPriorities.jsx'))
+const DriverDataFoundation = lazy(() => import('./components/driver/DriverDataFoundation.jsx'))
+const DriverOperationalHealth = lazy(() => import('./components/driver/DriverOperationalHealth.jsx'))
+const DriverOperatorView = lazy(() => import('./components/driver/DriverOperatorView.jsx'))
+const DriverSupervisorView = lazy(() => import('./components/driver/DriverSupervisorView.jsx'))
+const DriverStrategyView = lazy(() => import('./components/driver/DriverStrategyView.jsx'))
+const DriverAdminDataView = lazy(() => import('./components/driver/DriverAdminDataView.jsx'))
 
 const DRIVER_CAPABILITY_GROUPS = [
   {
@@ -413,6 +414,7 @@ function ControlTowerApp () {
       </header>
 
       {/* ========== CONTENIDO ========== */}
+      <Suspense fallback={<div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-ct-accent"></div></div>}>
       <div className="ct-page w-full px-3 sm:px-4 py-2">
         {showAdminModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-ct-nav/60 p-4" role="dialog" aria-modal="true">
@@ -552,6 +554,7 @@ function ControlTowerApp () {
           </>
         )}
       </div>
+      </Suspense>
     </div>
   )
 }
@@ -563,7 +566,7 @@ function App () {
   if (authRequired && !isAuthenticated && location.pathname !== '/login') return <Navigate to="/login" replace state={{ from: location }} />
   if (location.pathname === '/login') {
     if (authRequired && isAuthenticated) return <Navigate to="/" replace />
-    return <LoginView />
+    return <Suspense fallback={null}><LoginView /></Suspense>
   }
   return <ControlTowerApp />
 }
