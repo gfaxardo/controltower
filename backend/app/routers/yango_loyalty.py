@@ -31,6 +31,8 @@ from app.services.yango_loyalty_service import (
 from app.services.yango_loyalty_performance_service import (
     get_loyalty_performance,
     get_loyalty_bootstrap,
+    get_loyalty_history,
+    get_loyalty_city_comparison,
 )
 from app.services.yango_loyalty_definition_service import (
     get_sources,
@@ -225,4 +227,29 @@ async def loyalty_operational_flow(
         return get_operational_flow(month or "2026-04", country, city)
     except Exception as e:
         logger.exception("yango-loyalty operational-flow: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/history")
+async def loyalty_history(
+    months: int = Query(3, ge=1, le=12, description="Number of closed months"),
+    city: str = Query("lima"),
+    country: str = Query("peru"),
+):
+    try:
+        return get_loyalty_history(months=months, city=city, country=country)
+    except Exception as e:
+        logger.exception("yango-loyalty history: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/city-comparison")
+async def loyalty_city_comparison(
+    month: Optional[str] = Query(None, description="YYYY-MM, default current"),
+    country: str = Query("peru"),
+):
+    try:
+        return get_loyalty_city_comparison(month=month, country=country)
+    except Exception as e:
+        logger.exception("yango-loyalty city-comparison: %s", e)
         raise HTTPException(status_code=500, detail=str(e))

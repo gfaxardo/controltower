@@ -24,16 +24,20 @@ export default function DriverOperatorView () {
   const loadMyWork = useCallback(async () => {
     setLoading(true)
     setError(null)
-    try {
-      const [wfRes, mRes] = await Promise.all([
-        api.get('/drivers/workflow', { params: { limit: 50, offset: 0 }, timeout: 15000 }),
-        api.get('/drivers/workflow-metrics', { timeout: 15000 }),
-      ])
-      setWorkflows(wfRes.data?.workflows || [])
-      setMetrics(mRes.data)
-    } catch (err) {
-      setError(err.code === 'ECONNABORTED' ? 'Timeout al cargar workflows' : (err.message || 'Error al cargar vista operador'))
-    } finally { setLoading(false) }
+    const [wfRes, mRes] = await Promise.allSettled([
+      api.get('/drivers/workflow', { params: { limit: 50, offset: 0 }, timeout: 15000 }),
+      api.get('/drivers/workflow-metrics', { timeout: 15000 }),
+    ])
+    if (wfRes.status === 'fulfilled') setWorkflows(wfRes.value.data?.workflows || [])
+    if (mRes.status === 'fulfilled') setMetrics(mRes.value.data)
+    const _failures = [wfRes, mRes].filter(r => r.status === 'rejected')
+    if (_failures.length === 2) {
+      const err = _failures[0].reason
+      setError(err?.code === 'ECONNABORTED' ? 'Timeout al cargar workflows' : (err?.message || 'Error al cargar vista operador'))
+    } else if (_failures.length > 0) {
+      setError('Carga parcial. Algunos datos no disponibles.')
+    }
+    setLoading(false)
   }, [])
 
   useEffect(() => { loadMyWork() }, [loadMyWork])

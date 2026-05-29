@@ -816,7 +816,7 @@ async def supply_overview_fact(
         from app.db.connection import get_db
         with get_db() as conn:
             cur = conn.cursor()
-            cur.execute("SET LOCAL statement_timeout = '15000'")
+            cur.execute("SET LOCAL statement_timeout = '8000'")
             conditions = ["1=1"]
             params = {}
             if country:
@@ -837,6 +837,17 @@ async def supply_overview_fact(
             """, {**params, "limit": limit, "offset": offset})
             rows = [dict(zip([c[0] for c in cur.description], r)) for r in cur.fetchall()]
 
+        if not rows:
+            return JSONResponse(content=sanitize_for_json({
+                "status": "ok",
+                "serving_source": "driver_supply_overview_weekly_fact",
+                "freshness_status": freshness["freshness_status"],
+                "refreshed_at": freshness.get("refreshed_at"),
+                "series": [],
+                "summary": {},
+                "message": "Sin datos para filtros actuales.",
+            }))
+
         return JSONResponse(content=sanitize_for_json({
             "status": "ok",
             "serving_source": "driver_supply_overview_weekly_fact",
@@ -846,10 +857,16 @@ async def supply_overview_fact(
             "summary": {},
         }))
     except Exception as e:
+        error_msg = str(e)[:200]
+        is_timeout = "cancel" in error_msg.lower() or "timeout" in error_msg.lower()
         return JSONResponse(content=sanitize_for_json({
-            "status": "blocked", "error": str(e)[:200],
+            "status": "blocked",
+            "error": error_msg,
+            "error_type": "query_timeout" if is_timeout else "db_error",
             "serving_source": "driver_supply_overview_weekly_fact",
-            "remediation": "Run refresh_driver_supply_facts.py and verify DB connectivity.",
+            "remediation": "Query cancelada por timeout. Verificar indices en driver_supply_overview_weekly_fact." if is_timeout else "Run refresh_driver_supply_facts.py and verify DB connectivity.",
+            "series": [],
+            "summary": {},
         }))
 
 
@@ -874,7 +891,7 @@ async def segment_composition_fact(
         from app.db.connection import get_db
         with get_db() as conn:
             cur = conn.cursor()
-            cur.execute("SET LOCAL statement_timeout = '15000'")
+            cur.execute("SET LOCAL statement_timeout = '10000'")
             conditions = ["1=1"]
             params = {}
             if country:
@@ -956,9 +973,9 @@ async def geo_options():
                     """, {"pids": parks_raw})
                     park_map = {r[0]: {"park_id": r[0], "park_name": r[1], "city": r[2], "country": r[3]} for r in cur.fetchall()}
                     for pid in parks_raw:
-                        parks.append(park_map.get(pid, {"park_id": pid, "park_name": pid, "city": "", "country": ""}))
+                        parks.append(park_map.get(pid, {"park_id": pid, "park_name": None, "city": "", "country": ""}))
                 except Exception:
-                    parks = [{"park_id": p, "park_name": p, "city": "", "country": ""} for p in parks_raw]
+                    parks = [{"park_id": p, "park_name": None, "city": "", "country": ""} for p in parks_raw]
 
             warnings_list = []
             if not countries and not cities:

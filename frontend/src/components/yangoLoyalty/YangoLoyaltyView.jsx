@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import api from '../../services/api'
-import { getYangoLoyaltyPerformance } from '../../services/api'
+import { getYangoLoyaltyPerformance, getYangoLoyaltyHistory, getYangoLoyaltyCityComparison } from '../../services/api'
 import DecisionPriorityStrip from '../operational/DecisionPriorityStrip'
 import { getDecisionSeverity } from '../../utils/operationalDecisionSeverity'
 import DiagnosticDominantFactor from '../diagnostics/DiagnosticDominantFactor'
+import { HISTORICAL_METRICS, METRIC_UNIVERSES, HISTORY_CONFIG } from './yangoLoyaltyMetricsConfig'
 
 /* ── Color system ── */
 const RC = {
@@ -212,6 +213,14 @@ export default function YangoLoyaltyView() {
   const [showRubric, setShowRubric] = useState(false)
   const [expandedBlocker, setExpandedBlocker] = useState(null)
   const [expandedCities, setExpandedCities] = useState({})
+  const [historyData, setHistoryData] = useState(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState(null)
+  const [historyMetric, setHistoryMetric] = useState('active_drivers')
+  const [cityCompData, setCityCompData] = useState(null)
+  const [cityCompLoading, setCityCompLoading] = useState(false)
+  const [cityCompError, setCityCompError] = useState(null)
+  const [cityCompMetric, setCityCompMetric] = useState('active_drivers')
 
   const fetchBootstrap = useCallback(async () => {
     setBootstrapLoading(true)
@@ -261,8 +270,35 @@ export default function YangoLoyaltyView() {
     }
   }, [])
 
+  const fetchHistory = useCallback(async () => {
+    setHistoryLoading(true)
+    setHistoryError(null)
+    try {
+      const res = await getYangoLoyaltyHistory({ months: HISTORY_CONFIG.default_months, city: 'lima', country: 'peru' })
+      setHistoryData(res)
+    } catch (err) {
+      setHistoryError(err?.response?.data?.detail || err?.message || 'Error al cargar historico')
+    } finally {
+      setHistoryLoading(false)
+    }
+  }, [])
+
+  const fetchCityComparison = useCallback(async () => {
+    setCityCompLoading(true)
+    setCityCompError(null)
+    try {
+      const res = await getYangoLoyaltyCityComparison({ country: 'peru' })
+      setCityCompData(res)
+    } catch (err) {
+      setCityCompError(err?.response?.data?.detail || err?.message || 'Error al cargar comparativo')
+    } finally {
+      setCityCompLoading(false)
+    }
+  }, [])
+
   useEffect(() => { fetchBootstrap() }, [fetchBootstrap])
   useEffect(() => { fetchPerformance(); fetchSummary() }, [fetchPerformance, fetchSummary])
+  useEffect(() => { const t = setTimeout(() => { fetchHistory(); fetchCityComparison() }, 800); return () => clearTimeout(t) }, [fetchHistory, fetchCityComparison])
 
   const handleBatchConfig = async (e) => {
     e.preventDefault()
@@ -306,7 +342,7 @@ export default function YangoLoyaltyView() {
       <div className="ct-workbench-header">
         <div className="ct-workbench-header-left">
           <h2 className="ct-workbench-title">Yango Loyalty Tracker</h2>
-          <p className="ct-workbench-subtitle">Datos no disponibles</p>
+          <p className="ct-workbench-subtitle">Algunas secciones no pudieron cargarse</p>
         </div>
       </div>
       <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
@@ -321,14 +357,14 @@ export default function YangoLoyaltyView() {
           Scoring oficial bloqueado — pendiente validacion Yango de definiciones.
         </span>
       </div>
-      <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400">
-        <p className="font-medium">Error al cargar datos</p>
-        <p className="text-sm mt-1">{bootstrapError || perfError || summaryError}</p>
-        <p className="text-xs mt-1 text-red-400/70">No se pudo cargar datos. El resto de la vista sigue disponible al reintentar.</p>
+      <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 text-amber-300">
+        <p className="font-medium text-amber-400">Datos parciales no disponibles temporalmente</p>
+        <p className="text-sm mt-1 text-ct-text3">{bootstrapError || perfError || summaryError}</p>
+        <p className="text-xs mt-1 text-ct-text3">Puedes reintentar cada seccion individualmente.</p>
         <div className="flex flex-wrap gap-2 mt-3">
-          <button onClick={fetchBootstrap} className="px-3 py-1 bg-red-500/20 rounded text-sm hover:bg-red-500/30">Reintentar Bootstrap</button>
-          <button onClick={fetchPerformance} className="px-3 py-1 bg-red-500/20 rounded text-sm hover:bg-red-500/30">Reintentar Performance</button>
-          <button onClick={fetchSummary} className="px-3 py-1 bg-red-500/20 rounded text-sm hover:bg-red-500/30">Reintentar Scoring</button>
+          <button onClick={fetchBootstrap} className="px-3 py-1 bg-amber-500/20 rounded text-sm text-amber-400 hover:bg-amber-500/30">Reintentar Bootstrap</button>
+          <button onClick={fetchPerformance} className="px-3 py-1 bg-amber-500/20 rounded text-sm text-amber-400 hover:bg-amber-500/30">Reintentar Performance</button>
+          <button onClick={fetchSummary} className="px-3 py-1 bg-amber-500/20 rounded text-sm text-amber-400 hover:bg-amber-500/30">Reintentar Scoring</button>
         </div>
       </div>
     </div>
@@ -415,12 +451,12 @@ export default function YangoLoyaltyView() {
       {/* ═══ TAB: OVERVIEW ═══ */}
       {activeTab === 'overview' && (
         <>
-          {/* ── Bootstrap error ── */}
+          {/* ── Bootstrap error (softened — partial data still visible) ── */}
           {bootstrapError && !bootstrap && !bootstrapLoading && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-3">
-              <p className="text-sm text-red-400">No se pudo cargar Bootstrap. Algunos datos pueden no estar disponibles.</p>
-              <p className="text-xs text-red-400/70 mt-1">{bootstrapError}</p>
-              <button onClick={fetchBootstrap} className="mt-2 px-3 py-1 bg-red-500/20 rounded text-xs text-red-400 hover:bg-red-500/30">Reintentar Bootstrap</button>
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 mb-3">
+              <p className="text-sm text-amber-400">Datos parciales disponibles — bootstrap no pudo cargarse completamente.</p>
+              <p className="text-xs text-ct-text3 mt-1">{bootstrapError}</p>
+              <button onClick={fetchBootstrap} className="mt-2 px-3 py-1 bg-amber-500/20 rounded text-xs text-amber-400 hover:bg-amber-500/30">Reintentar</button>
             </div>
           )}
 
@@ -488,13 +524,13 @@ export default function YangoLoyaltyView() {
             </div>
           </div>
 
-          {/* ── Performance error ── */}
+          {/* ── Performance error (softened) ── */}
           {perfError && !perfData && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-3">
-              <p className="text-sm text-red-400">No se pudo cargar Performance detallado.</p>
-              <p className="text-xs text-red-400/70 mt-1">{perfError}</p>
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 mb-3">
+              <p className="text-sm text-amber-400">Seccion Performance no disponible temporalmente.</p>
+              <p className="text-xs text-ct-text3 mt-1">{perfError}</p>
               <p className="text-xs text-ct-text3 mt-1">El resto de la vista sigue disponible.</p>
-              <button onClick={fetchPerformance} className="mt-2 px-3 py-1 bg-red-500/20 rounded text-xs text-red-400 hover:bg-red-500/30">Reintentar Performance</button>
+              <button onClick={fetchPerformance} className="mt-2 px-3 py-1 bg-amber-500/20 rounded text-xs text-amber-400 hover:bg-amber-500/30">Reintentar</button>
             </div>
           )}
 
@@ -617,6 +653,162 @@ export default function YangoLoyaltyView() {
             </div>
           </div>
 
+          {/* ═══ HISTORICAL 3M SECTION ═══ */}
+          <div className="bg-ct-card border border-ct-border rounded-lg p-4 mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-semibold text-ct-text">Evolucion ultimos 3 meses</h4>
+              <select value={historyMetric} onChange={e => setHistoryMetric(e.target.value)}
+                className="ct-select text-xs px-2 py-1">
+                {HISTORICAL_METRICS.filter(m => m.supports_history).map(m => (
+                  <option key={m.key} value={m.key}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+            {historyLoading && (
+              <div className="flex items-center gap-2 py-4">
+                <div className="animate-spin w-3 h-3 border-2 border-ct-accent border-t-transparent rounded-full" />
+                <span className="text-xs text-ct-text3">Cargando historico...</span>
+              </div>
+            )}
+            {historyError && !historyData && (
+              <div className="text-xs text-amber-400 py-2">
+                <span>No disponible: {historyError}</span>
+                <button onClick={fetchHistory} className="ml-2 underline hover:text-amber-300">Reintentar</button>
+              </div>
+            )}
+            {historyData && historyData.data?.length > 0 && (() => {
+              const metricCfg = HISTORICAL_METRICS.find(m => m.key === historyMetric)
+              const months = [...historyData.data].reverse()
+              const values = months.map(mo => mo.metrics?.[historyMetric])
+              const maxVal = Math.max(...values.map(v => Math.max(safeNum(v?.actual_value), safeNum(v?.target_value))), 1)
+              return (
+                <div className="space-y-2">
+                  {metricCfg?.internal && (
+                    <span className="inline-block px-1.5 py-0.5 rounded text-2xs bg-amber-500/20 text-amber-400 mb-1">Indicador interno</span>
+                  )}
+                  <div className="flex items-end gap-3 h-32">
+                    {months.map((mo, idx) => {
+                      const v = values[idx]
+                      const actual = safeNum(v?.actual_value)
+                      const target = safeNum(v?.target_value)
+                      const actualH = maxVal > 0 ? (actual / maxVal) * 100 : 0
+                      const targetH = maxVal > 0 && target > 0 ? (target / maxVal) * 100 : 0
+                      const monthLabel = mo.month_start?.slice(0, 7) || '—'
+                      return (
+                        <div key={idx} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
+                          <div className="flex items-end gap-1 w-full h-full justify-center">
+                            {target > 0 && (
+                              <div className="w-4 rounded-t transition-all" style={{ height: `${targetH}%`, backgroundColor: metricCfg?.target_color || '#94a3b8', opacity: 0.5 }} title={`Meta: ${fmtNum(target)}`} />
+                            )}
+                            <div className="w-4 rounded-t transition-all" style={{ height: `${actualH}%`, backgroundColor: metricCfg?.color || '#60a5fa' }} title={`Real: ${fmtNum(actual)}`} />
+                          </div>
+                          <span className="text-2xs text-ct-text3">{monthLabel}</span>
+                          <span className="text-2xs text-ct-text2 font-medium">{actual > 0 ? fmtNum(actual) : '—'}</span>
+                          {v?.status === 'below_target' && <span className="text-2xs text-red-400">-{fmtNum(target - actual)}</span>}
+                          {v?.status === 'above_target' && <span className="text-2xs text-emerald-400">+{fmtNum(actual - target)}</span>}
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div className="flex items-center gap-3 text-2xs text-ct-text3 mt-1">
+                    <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded" style={{ backgroundColor: metricCfg?.color || '#60a5fa' }} />Real</span>
+                    <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded" style={{ backgroundColor: metricCfg?.target_color || '#94a3b8', opacity: 0.5 }} />Meta</span>
+                  </div>
+                </div>
+              )
+            })()}
+            {historyData && (!historyData.data || historyData.data.length === 0) && (
+              <p className="text-xs text-ct-text3 py-2">No hay datos historicos disponibles para esta metrica.</p>
+            )}
+          </div>
+
+          {/* ═══ CITY COMPARISON SECTION ═══ */}
+          <div className="bg-ct-card border border-ct-border rounded-lg p-4 mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-semibold text-ct-text">Meta vs ejecucion por ciudad</h4>
+              <select value={cityCompMetric} onChange={e => setCityCompMetric(e.target.value)}
+                className="ct-select text-xs px-2 py-1">
+                {HISTORICAL_METRICS.filter(m => m.supports_city_chart).map(m => (
+                  <option key={m.key} value={m.key}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+            {cityCompLoading && (
+              <div className="flex items-center gap-2 py-4">
+                <div className="animate-spin w-3 h-3 border-2 border-ct-accent border-t-transparent rounded-full" />
+                <span className="text-xs text-ct-text3">Cargando comparativo...</span>
+              </div>
+            )}
+            {cityCompError && !cityCompData && (
+              <div className="text-xs text-amber-400 py-2">
+                <span>No disponible: {cityCompError}</span>
+                <button onClick={fetchCityComparison} className="ml-2 underline hover:text-amber-300">Reintentar</button>
+              </div>
+            )}
+            {cityCompData && (() => {
+              const metricData = cityCompData.metrics?.[cityCompMetric]
+              const metricCfg = HISTORICAL_METRICS.find(m => m.key === cityCompMetric)
+              if (!metricData || !metricData.cities?.length) return (
+                <p className="text-xs text-ct-text3 py-2">No hay datos de ciudades disponibles para esta metrica.</p>
+              )
+              if (metricData.lima_only) return (
+                <div className="space-y-2">
+                  <span className="inline-block px-1.5 py-0.5 rounded text-2xs bg-amber-500/20 text-amber-400">Lima-only</span>
+                  <p className="text-xs text-ct-text3">Comparativo por ciudad disponible progresivamente segun cobertura de fuente.</p>
+                  {metricData.cities.map(c => (
+                    <div key={c.city_norm} className="flex items-center gap-2 text-xs">
+                      <span className="text-ct-text2 w-16 capitalize">{c.city_norm}</span>
+                      <span className="text-ct-text font-medium">{c.actual_value != null ? fmtNum(c.actual_value) : '—'}</span>
+                      {c.target_value != null && <span className="text-ct-text3">/ meta {fmtNum(c.target_value)}</span>}
+                    </div>
+                  ))}
+                </div>
+              )
+              const cities = [...metricData.cities].sort((a, b) => safeNum(b.actual_value) - safeNum(a.actual_value))
+              const maxVal = Math.max(...cities.map(c => Math.max(safeNum(c.actual_value), safeNum(c.target_value))), 1)
+              return (
+                <div className="space-y-2">
+                  {!metricData.supports_city_comparison && (
+                    <p className="text-xs text-ct-text3">Comparativo por ciudad disponible progresivamente segun cobertura de fuente.</p>
+                  )}
+                  {cities.map(city => {
+                    const actual = safeNum(city.actual_value)
+                    const target = safeNum(city.target_value)
+                    const actualW = maxVal > 0 ? (actual / maxVal) * 100 : 0
+                    const targetW = maxVal > 0 && target > 0 ? (target / maxVal) * 100 : 0
+                    const gap = city.gap
+                    return (
+                      <div key={city.city_norm} className="space-y-0.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-ct-text2 capitalize w-20 truncate">{city.city_norm}</span>
+                          <div className="flex items-center gap-2 text-2xs">
+                            <span className="text-ct-text">{fmtNum(actual)}</span>
+                            {target > 0 && <span className="text-ct-text3">/ {fmtNum(target)}</span>}
+                            {gap != null && gap !== 0 && (
+                              <span className={gap >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                                {gap >= 0 ? '+' : ''}{fmtNum(gap)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="relative h-3 bg-ct-border/20 rounded-full overflow-hidden">
+                          {target > 0 && (
+                            <div className="absolute top-0 left-0 h-full rounded-full opacity-30" style={{ width: `${targetW}%`, backgroundColor: metricCfg?.target_color || '#94a3b8' }} />
+                          )}
+                          <div className="absolute top-0 left-0 h-full rounded-full" style={{ width: `${actualW}%`, backgroundColor: metricCfg?.color || '#60a5fa' }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                  <div className="flex items-center gap-3 text-2xs text-ct-text3 mt-2">
+                    <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded" style={{ backgroundColor: metricCfg?.color || '#60a5fa' }} />Real</span>
+                    <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded" style={{ backgroundColor: metricCfg?.target_color || '#94a3b8', opacity: 0.5 }} />Meta</span>
+                  </div>
+                </div>
+              )
+            })()}
+          </div>
+
           {/* ── Loading indicator ── */}
           {(perfLoading || summaryLoading) && (
             <div className="bg-ct-surface/50 border border-ct-border rounded-lg p-3 mb-3 flex items-center gap-2">
@@ -625,13 +817,13 @@ export default function YangoLoyaltyView() {
             </div>
           )}
 
-          {/* ── Summary error ── */}
+          {/* ── Summary error (softened) ── */}
           {summaryError && !summary && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-3">
-              <p className="text-sm text-red-400">No se pudo cargar el resumen de scoring.</p>
-              <p className="text-xs text-red-400/70 mt-1">{summaryError}</p>
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 mb-3">
+              <p className="text-sm text-amber-400">Seccion Scoring no disponible temporalmente.</p>
+              <p className="text-xs text-ct-text3 mt-1">{summaryError}</p>
               <p className="text-xs text-ct-text3 mt-1">El resto de la vista sigue disponible.</p>
-              <button onClick={fetchSummary} className="mt-2 px-3 py-1 bg-red-500/20 rounded text-xs text-red-400 hover:bg-red-500/30">Reintentar Scoring</button>
+              <button onClick={fetchSummary} className="mt-2 px-3 py-1 bg-amber-500/20 rounded text-xs text-amber-400 hover:bg-amber-500/30">Reintentar</button>
             </div>
           )}
 
@@ -763,10 +955,10 @@ export default function YangoLoyaltyView() {
         <div className="space-y-3"><div className="bg-ct-card border border-ct-border rounded-lg p-4"><Skeleton h={20} /></div></div>
       )}
       {activeTab === 'by_kpi' && summaryError && !summary && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
-          <p className="text-sm text-red-400">No se pudo cargar datos de KPIs.</p>
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+          <p className="text-sm text-amber-400">Seccion KPIs no disponible temporalmente.</p>
           <p className="text-xs text-ct-text3 mt-1">El resto de la vista sigue disponible.</p>
-          <button onClick={fetchSummary} className="mt-2 px-3 py-1 bg-red-500/20 rounded text-xs text-red-400 hover:bg-red-500/30">Reintentar</button>
+          <button onClick={fetchSummary} className="mt-2 px-3 py-1 bg-amber-500/20 rounded text-xs text-amber-400 hover:bg-amber-500/30">Reintentar</button>
         </div>
       )}
       {activeTab === 'by_kpi' && summary && (

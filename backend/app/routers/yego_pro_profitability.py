@@ -7,9 +7,9 @@ Control Foundation (serving layer). No forecast/suggestion/decision/action.
 
 Park: 64085dd85e124e2c808806f70d527ea8 (Lima)
 """
-from typing import Optional
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Body, Query
 
 from app.services.yego_pro_profitability_service import (
     get_overview,
@@ -18,9 +18,12 @@ from app.services.yego_pro_profitability_service import (
     get_drivers,
     get_vehicles,
     get_shifts,
+    get_waterfall,
     get_input_mapping,
     get_quality,
     get_root_cause_audit,
+    get_simulator_defaults,
+    run_simulation,
     PARK_ID,
 )
 
@@ -104,6 +107,17 @@ def shifts(
     return get_shifts(park_id=park_id, days=weeks * 7)
 
 
+@router.get("/waterfall")
+def waterfall(
+    park_id: str = Query(default=PARK_ID),
+):
+    """
+    P&L Waterfall with per-line confidence (REAL / ESTIMATED / LEGACY / NOT_AVAILABLE).
+    Shows partial data when full financial truth is unavailable.
+    """
+    return get_waterfall(park_id=park_id)
+
+
 @router.get("/input-mapping")
 def input_mapping(
     park_id: str = Query(default=PARK_ID),
@@ -136,3 +150,25 @@ def root_cause(
     Returns detailed driver-level and shift-level gap analysis.
     """
     return get_root_cause_audit(park_id=park_id)
+
+
+@router.get("/simulator/defaults")
+def simulator_defaults(
+    park_id: str = Query(default=PARK_ID),
+):
+    """
+    Simulator defaults: operational inputs + legacy/manual defaults.
+    Does NOT modify data. Read-only.
+    """
+    return get_simulator_defaults(park_id=park_id)
+
+
+@router.post("/simulator/run")
+def simulator_run(
+    params: Dict[str, Any] = Body(..., description="Simulation parameters"),
+):
+    """
+    Run deterministic simulation with given parameters.
+    Does NOT persist results. Stateless calculation.
+    """
+    return run_simulation(params)

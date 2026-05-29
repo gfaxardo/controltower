@@ -24,18 +24,22 @@ export default function DriverAdminDataView () {
   const loadAll = useCallback(async () => {
     setLoading(true)
     setError(null)
-    try {
-      const [hRes, sRes, fRes] = await Promise.all([
-        api.get('/drivers/health', { timeout: 30000 }),
-        api.get('/drivers/campaigns/sync-health', { timeout: 15000 }),
-        api.get('/drivers/raw-freshness', { timeout: 15000 }),
-      ])
-      setHealth(hRes.data)
-      setSyncHealth(sRes.data)
-      setFreshness(fRes.data)
-    } catch (err) {
-      setError(err.code === 'ECONNABORTED' ? 'Timeout al cargar health del sistema' : (err.message || 'Error al cargar vista admin'))
-    } finally { setLoading(false) }
+    const [hRes, sRes, fRes] = await Promise.allSettled([
+      api.get('/drivers/health', { timeout: 30000 }),
+      api.get('/drivers/campaigns/sync-health', { timeout: 15000 }),
+      api.get('/drivers/raw-freshness', { timeout: 15000 }),
+    ])
+    if (hRes.status === 'fulfilled') setHealth(hRes.value.data)
+    if (sRes.status === 'fulfilled') setSyncHealth(sRes.value.data)
+    if (fRes.status === 'fulfilled') setFreshness(fRes.value.data)
+    const _failures = [hRes, sRes, fRes].filter(r => r.status === 'rejected')
+    if (_failures.length === 3) {
+      const err = _failures[0].reason
+      setError(err?.code === 'ECONNABORTED' ? 'Timeout al cargar health del sistema' : (err?.message || 'Error al cargar vista admin'))
+    } else if (_failures.length > 0) {
+      setError(`${_failures.length} de 3 servicios con error. Datos parciales mostrados.`)
+    }
+    setLoading(false)
   }, [])
 
   useEffect(() => { loadAll() }, [loadAll])

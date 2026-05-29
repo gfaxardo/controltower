@@ -32,16 +32,20 @@ export default function DriverStrategyView () {
   const loadAll = useCallback(async () => {
     setLoading(true)
     setError(null)
-    try {
-      const [esRes, cRes] = await Promise.all([
-        api.get('/drivers/campaigns/effectiveness-summary', { timeout: 15000 }),
-        api.get('/drivers/campaigns', { params: { limit: 10 }, timeout: 15000 }),
-      ])
-      setEffSummary(esRes.data)
-      setCampaigns(cRes.data?.campaigns || [])
-    } catch (err) {
-      setError(err.code === 'ECONNABORTED' ? 'Timeout al cargar datos de estrategia' : (err.message || 'Error al cargar vista estrategia'))
-    } finally { setLoading(false) }
+    const [esRes, cRes] = await Promise.allSettled([
+      api.get('/drivers/campaigns/effectiveness-summary', { timeout: 15000 }),
+      api.get('/drivers/campaigns', { params: { limit: 10 }, timeout: 15000 }),
+    ])
+    if (esRes.status === 'fulfilled') setEffSummary(esRes.value.data)
+    if (cRes.status === 'fulfilled') setCampaigns(cRes.value.data?.campaigns || [])
+    const _failures = [esRes, cRes].filter(r => r.status === 'rejected')
+    if (_failures.length === 2) {
+      const err = _failures[0].reason
+      setError(err?.code === 'ECONNABORTED' ? 'Timeout al cargar datos de estrategia' : (err?.message || 'Error al cargar vista estrategia'))
+    } else if (_failures.length > 0) {
+      setError('Carga parcial. Algunos datos no disponibles.')
+    }
+    setLoading(false)
   }, [])
 
   useEffect(() => { loadAll() }, [loadAll])

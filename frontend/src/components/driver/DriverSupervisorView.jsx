@@ -30,25 +30,28 @@ export default function DriverSupervisorView () {
   const loadAll = useCallback(async () => {
     setLoading(true)
     setError(null)
-    try {
-      const [mRes, cRes, sRes, wRes] = await Promise.all([
-        api.get('/drivers/workflow-metrics', { timeout: 15000 }),
-        api.get('/drivers/campaigns', { params: { limit: 10 }, timeout: 15000 }),
-        api.get('/drivers/campaigns/sync-health', { timeout: 15000 }),
-        api.get('/drivers/workflow', { params: { limit: 100, offset: 0 }, timeout: 15000 }),
-      ])
-      setMetrics(mRes.data)
-      setCampaigns(cRes.data?.campaigns || [])
-      setSyncHealth(sRes.data)
-
-      const allWf = wRes.data?.workflows || []
-      const stuck = allWf.filter(w =>
-        ['ASSIGNED', 'IN_PROGRESS'].includes(w.workflow_status)
-      )
+    const [mRes, cRes, sRes, wRes] = await Promise.allSettled([
+      api.get('/drivers/workflow-metrics', { timeout: 15000 }),
+      api.get('/drivers/campaigns', { params: { limit: 10 }, timeout: 15000 }),
+      api.get('/drivers/campaigns/sync-health', { timeout: 15000 }),
+      api.get('/drivers/workflow', { params: { limit: 100, offset: 0 }, timeout: 15000 }),
+    ])
+    if (mRes.status === 'fulfilled') setMetrics(mRes.value.data)
+    if (cRes.status === 'fulfilled') setCampaigns(cRes.value.data?.campaigns || [])
+    if (sRes.status === 'fulfilled') setSyncHealth(sRes.value.data)
+    if (wRes.status === 'fulfilled') {
+      const allWf = wRes.value.data?.workflows || []
+      const stuck = allWf.filter(w => ['ASSIGNED', 'IN_PROGRESS'].includes(w.workflow_status))
       setStuckCases(stuck.slice(0, 20))
-    } catch (err) {
-      setError(err.code === 'ECONNABORTED' ? 'Timeout al cargar datos de supervisi\u00f3n' : (err.message || 'Error al cargar vista supervisor'))
-    } finally { setLoading(false) }
+    }
+    const _failures = [mRes, cRes, sRes, wRes].filter(r => r.status === 'rejected')
+    if (_failures.length === 4) {
+      const err = _failures[0].reason
+      setError(err?.code === 'ECONNABORTED' ? 'Timeout al cargar datos de supervisión' : (err?.message || 'Error al cargar vista supervisor'))
+    } else if (_failures.length > 0) {
+      setError(`${_failures.length} de 4 módulos con error parcial. Datos disponibles mostrados.`)
+    }
+    setLoading(false)
   }, [])
 
   useEffect(() => { loadAll() }, [loadAll])

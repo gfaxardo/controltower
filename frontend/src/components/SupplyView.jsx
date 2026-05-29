@@ -3,7 +3,7 @@
  * Filtros cascada country → city → park (park opcional). Datos agregados si no se selecciona park.
  * Siempre mostrar park_name, city, country (nunca solo IDs).
  */
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   getSupplyMigrationDrilldown,
   getSupplyAlerts,
@@ -82,6 +82,19 @@ function groupByMonthAndWeek (rows, getWeekKey = (r) => r.week_display || format
   return byMonth
 }
 
+function getParkName (park) {
+  if (!park) return 'Park sin nombre'
+  const name = park.park_name
+  if (!name || name === park.park_id) return 'Park sin nombre'
+  return name
+}
+
+function getParkLabel (park) {
+  const name = getParkName(park)
+  const parts = [name, park.city, park.country].filter(Boolean)
+  return parts.join(' · ')
+}
+
 const TABS = { overview: 'Overview', composition: 'Segment Composition', migration: 'Driver Migration', alerts: 'Segment Alerts' }
 
 // Fallback si el backend no devuelve segment config (orden operativo: dormant → legend)
@@ -97,6 +110,9 @@ export default function SupplyView () {
   const [city, setCity] = useState('')
   const [parkId, setParkId] = useState('')
   const [geo, setGeo] = useState({ countries: [], cities: [], parks: [] })
+  const [geoWarning, setGeoWarning] = useState(null)
+  const geoValidRef = useRef({ countries: [], cities: [], parks: [] })
+  const geoRequestIdRef = useRef(0)
   const [from, setFrom] = useState(fromDefault)
   const [to, setTo] = useState(today)
   const [grain, setGrain] = useState('weekly')
@@ -197,26 +213,67 @@ export default function SupplyView () {
     })
   }, [migrationWeeklySummary, migration])
 
+  const filteredCities = useMemo(() => {
+    if (!country) return geo.cities || []
+    const parksForCountry = (geo.parks || []).filter(p => p.country === country)
+    const citiesFromParks = [...new Set(parksForCountry.map(p => p.city).filter(Boolean))]
+    return citiesFromParks.length ? citiesFromParks.sort() : (geo.cities || [])
+  }, [geo, country])
+
+  const filteredParks = useMemo(() => {
+    let parks = geo.parks || []
+    if (country) parks = parks.filter(p => p.country === country)
+    if (city) parks = parks.filter(p => p.city === city)
+    return parks
+  }, [geo, country, city])
+
   const selectedPark = geo.parks.find(p => p.park_id === parkId)
-  const parkLabel = selectedPark ? [selectedPark.park_name, selectedPark.city, selectedPark.country].filter(Boolean).join(' · ') : ''
+  const parkLabel = selectedPark ? getParkLabel(selectedPark) : ''
 
   const loadGeo = useCallback(async () => {
+    const requestId = ++geoRequestIdRef.current
+    if (import.meta.env.DEV) console.debug('[geo] loadGeo start', { requestId })
+    setGeoWarning(null)
     try {
       const res = await getGeoOptions()
-      setGeo({
+      if (geoRequestIdRef.current !== requestId) {
+        if (import.meta.env.DEV) console.debug('[geo] stale response ignored', { requestId, current: geoRequestIdRef.current })
+        return
+      }
+      const newGeo = {
         countries: res.countries || [],
         cities: res.cities || [],
         parks: res.parks || []
-      })
-      if (res.warnings?.length) console.warn('Geo options:', res.warnings[0])
-      if (parkId && !(res.parks || []).some(p => p.park_id === parkId)) setParkId('')
+      }
+      const isValid = newGeo.countries.length > 0 || newGeo.cities.length > 0 || newGeo.parks.length > 0
+      if (isValid) {
+        geoValidRef.current = newGeo
+        setGeo(newGeo)
+        if (import.meta.env.DEV) console.debug('[geo] updated', { countries: newGeo.countries.length, cities: newGeo.cities.length, parks: newGeo.parks.length })
+      } else if (res.status === 'ok' && !res.warnings?.length) {
+        geoValidRef.current = newGeo
+        setGeo(newGeo)
+        if (import.meta.env.DEV) console.debug('[geo] legitimately empty (no data in DB)')
+      } else {
+        setGeoWarning(res.warnings?.[0] || 'Respuesta geo vacía. Usando última carga válida.')
+        if (geoValidRef.current.countries.length || geoValidRef.current.parks.length) {
+          setGeo(geoValidRef.current)
+        }
+        if (import.meta.env.DEV) console.debug('[geo] empty response, preserving last valid', geoValidRef.current)
+      }
+      if (res.warnings?.length) setGeoWarning(res.warnings[0])
     } catch (e) {
-      console.error('Geo options:', e)
-      if (!geo.countries.length) setGeo({ countries: [], cities: [], parks: [] })
+      if (geoRequestIdRef.current !== requestId) return
+      const detail = e?.response?.data?.warnings?.[0] || e?.message || 'No se pudo conectar al servicio de geo'
+      setGeoWarning(geoValidRef.current.countries.length ? `Geo desactualizada, usando última carga válida. (${detail})` : detail)
+      if (geoValidRef.current.countries.length || geoValidRef.current.parks.length) {
+        setGeo(geoValidRef.current)
+      }
+      if (import.meta.env.DEV) console.debug('[geo] error, preserving last valid', { detail, valid: geoValidRef.current })
     }
-  }, [country, city, parkId])
+  }, [])
 
-  useEffect(() => { loadGeo() }, [loadGeo])
+  useEffect(() => { loadGeo() }, [])
 
   const loadOverview = useCallback(async () => {
     setLoading(true)
@@ -227,6 +284,16 @@ export default function SupplyView () {
       if (country) params.country = country
       if (city) params.city = city
       const res = await getSupplyOverviewFact(params)
+
+      if (res.status === 'blocked') {
+        const msg = res.error_type === 'query_timeout'
+          ? 'Query timeout en base de datos. Intente con filtros más específicos (país/ciudad).'
+          : (res.remediation || res.error || 'Datos bloqueados')
+        setError(msg)
+        setOverviewData({ summary: {}, series: [], series_with_wow: [] })
+        return
+      }
+
       const raw = res.series || []
       const series = raw.map(r => ({ ...r, period_start: r.week_start || r.period_start }))
       setOverviewData({
@@ -234,16 +301,24 @@ export default function SupplyView () {
         series,
         series_with_wow: series
       })
-      if (res.freshness_status && res.freshness_status !== 'fresh') {
+
+      if (!series.length) {
+        setError(res.message || 'Sin datos para filtros actuales.')
+      } else if (res.freshness_status && res.freshness_status !== 'fresh') {
         setError(res.remediation || `Serving fact: ${res.freshness_status}`)
       }
+
       setFreshness({
         last_week_available: series[0]?.period_start || res.refreshed_at,
         last_refresh: res.refreshed_at,
         status: res.freshness_status || 'unknown'
       })
     } catch (e) {
-      setError(e?.response?.data?.detail || e?.message || 'Error al cargar overview')
+      const isTimeout = e?.code === 'ECONNABORTED' || e?.message?.includes('timeout')
+      const msg = isTimeout
+        ? 'Timeout de red. El servidor no respondió a tiempo. Verifique conectividad.'
+        : (e?.response?.data?.detail || e?.response?.data?.error || e?.message || 'Error al cargar overview')
+      setError(msg)
       setOverviewData({ summary: {}, series: [], series_with_wow: [] })
     } finally {
       setLoading(false)
@@ -563,7 +638,7 @@ export default function SupplyView () {
             className="border border-gray-300 rounded px-3 py-2 min-w-[140px]"
           >
             <option value="">Todas</option>
-            {(geo.cities || []).map(c => <option key={c} value={c}>{c}</option>)}
+            {filteredCities.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
         <div>
@@ -574,11 +649,20 @@ export default function SupplyView () {
             className="border border-gray-300 rounded px-3 py-2 min-w-[220px]"
           >
             <option value="">Todos</option>
-            {(geo.parks || []).map(p => (
-              <option key={p.park_id} value={p.park_id}>
-                {[p.park_name, p.city, p.country].filter(Boolean).join(' · ') || p.park_id}
-              </option>
-            ))}
+            {(() => {
+              const labels = filteredParks.map(p => getParkLabel(p))
+              const counts = {}
+              labels.forEach(l => { counts[l] = (counts[l] || 0) + 1 })
+              return filteredParks.map((p, i) => {
+                const label = labels[i]
+                const suffix = counts[label] > 1 ? ` #${p.park_id.slice(-4)}` : ''
+                return (
+                  <option key={p.park_id} value={p.park_id}>
+                    {label}{suffix}
+                  </option>
+                )
+              })
+            })()}
           </select>
         </div>
         <div>
@@ -1391,7 +1475,7 @@ export default function SupplyView () {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setDrilldownAlert(null)}>
           <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col m-4" onClick={e => e.stopPropagation()}>
             <div className="px-4 py-3 bg-gray-100 font-medium flex justify-between items-center">
-              <span>Drilldown: {drilldownAlert.segment_week} — {String(drilldownAlert.week_start).slice(0, 10)} · {drilldownAlert.park_name || drilldownAlert.park_id} · {drilldownAlert.city} · {drilldownAlert.country}</span>
+              <span>Drilldown: {drilldownAlert.segment_week} — {String(drilldownAlert.week_start).slice(0, 10)} · {getParkName(drilldownAlert)} · {drilldownAlert.city} · {drilldownAlert.country}</span>
               <div className="flex gap-2">
                 <a href={drilldownCsvUrl(drilldownAlert)} target="_blank" rel="noopener noreferrer" className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700">Export CSV</a>
                 <button type="button" className="px-3 py-1 text-sm bg-gray-400 text-white rounded hover:bg-gray-500" onClick={() => setDrilldownAlert(null)}>Cerrar</button>
@@ -1441,7 +1525,7 @@ export default function SupplyView () {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setMigrationDrilldown(null)}>
           <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col m-4" onClick={e => e.stopPropagation()}>
             <div className="px-4 py-3 bg-gray-100 font-medium flex justify-between items-center">
-              <span>Migración: {migrationDrilldown.from_segment ?? '—'} → {migrationDrilldown.to_segment ?? '—'} · {formatIsoWeek(migrationDrilldown.week_start)} · {parkLabel || `Park ${migrationDrilldown.park_id}`}</span>
+              <span>Migración: {migrationDrilldown.from_segment ?? '—'} → {migrationDrilldown.to_segment ?? '—'} · {formatIsoWeek(migrationDrilldown.week_start)} · {parkLabel || 'Park sin nombre'}</span>
               <button type="button" className="px-3 py-1 text-sm bg-gray-400 text-white rounded hover:bg-gray-500" onClick={() => setMigrationDrilldown(null)}>Cerrar</button>
             </div>
             <div className="p-4 overflow-auto flex-1">
@@ -1484,8 +1568,12 @@ export default function SupplyView () {
 
       {!parkId && geo.parks?.length === 0 && geo.countries?.length === 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded p-3 text-amber-800 text-sm flex items-center justify-between">
-          <span>Geo no disponible (dim.v_geo_park). Los filtros funcionan con opciones mínimas.</span>
-          <button type="button" onClick={loadGeo} className="px-3 py-1 bg-amber-500 text-white rounded text-xs hover:bg-amber-600">
+          <div>
+            <span className="font-medium">Geo no disponible.</span>
+            {geoWarning && <span className="ml-1 text-xs text-amber-700">Causa: {geoWarning}</span>}
+            {!geoWarning && <span className="ml-1 text-xs text-amber-700">Verificar driver_supply_overview_weekly_fact y conectividad DB.</span>}
+          </div>
+          <button type="button" onClick={loadGeo} className="px-3 py-1 bg-amber-500 text-white rounded text-xs hover:bg-amber-600 flex-shrink-0 ml-3">
             Reintentar
           </button>
         </div>

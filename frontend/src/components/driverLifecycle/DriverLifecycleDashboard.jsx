@@ -79,27 +79,28 @@ export default function DriverLifecycleDashboard() {
     if (country) params.country = country
     if (city) params.city = city
 
-    try {
-      const [s, f, r, c] = await Promise.all([
-        getDriverLifecycleDiagnosticSummary(params),
-        getDriverLifecycleDiagnosticFunnel(params),
-        getDriverLifecycleDiagnosticRiskList({
-          ...params,
-          risk_level: riskFilter || undefined,
-          lifecycle_state: stateFilter || undefined,
-          limit: 200,
-        }),
-        getDriverLifecycleDiagnosticCohortsBasic(params),
-      ])
-      setSummary(s)
-      setFunnel(f)
-      setRiskList(Array.isArray(r) ? r : [])
-      setCohorts(Array.isArray(c) ? c : [])
-    } catch (e) {
-      setError(e?.message || 'Error loading diagnostic data')
-    } finally {
-      setLoading(false)
+    const [sRes, fRes, rRes, cRes] = await Promise.allSettled([
+      getDriverLifecycleDiagnosticSummary(params),
+      getDriverLifecycleDiagnosticFunnel(params),
+      getDriverLifecycleDiagnosticRiskList({
+        ...params,
+        risk_level: riskFilter || undefined,
+        lifecycle_state: stateFilter || undefined,
+        limit: 200,
+      }),
+      getDriverLifecycleDiagnosticCohortsBasic(params),
+    ])
+    if (sRes.status === 'fulfilled') setSummary(sRes.value)
+    if (fRes.status === 'fulfilled') setFunnel(fRes.value)
+    if (rRes.status === 'fulfilled') setRiskList(Array.isArray(rRes.value) ? rRes.value : [])
+    if (cRes.status === 'fulfilled') setCohorts(Array.isArray(cRes.value) ? cRes.value : [])
+    const _failures = [sRes, fRes, rRes, cRes].filter(r => r.status === 'rejected')
+    if (_failures.length === 4) {
+      setError(_failures[0].reason?.message || 'Error loading diagnostic data')
+    } else if (_failures.length > 0) {
+      setError(`${_failures.length} de 4 módulos con carga parcial.`)
     }
+    setLoading(false)
   }, [country, city, riskFilter, stateFilter])
 
   useEffect(() => { loadData() }, [loadData])

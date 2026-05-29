@@ -95,28 +95,33 @@ export default function DriverLifecycleView () {
   const loadData = useCallback(async () => {
     setLoading(true)
     setError(null)
-    try {
-      const params = { from, to, grain }
-      if (parkId && parkId.trim() !== '') params.park_id = parkId
+    const params = { from, to, grain }
+    if (parkId && parkId.trim() !== '') params.park_id = parkId
 
-      const [summaryRes, seriesRes] = await Promise.all([
-        getDriverLifecycleSummary(params),
-        getDriverLifecycleSeries(params)
-      ])
-      setSummary(summaryRes)
-      setSeriesRows(seriesRes.rows || [])
+    const [summaryRes, seriesRes] = await Promise.allSettled([
+      getDriverLifecycleSummary(params),
+      getDriverLifecycleSeries(params)
+    ])
+    if (summaryRes.status === 'fulfilled') setSummary(summaryRes.value)
+    if (seriesRes.status === 'fulfilled') setSeriesRows(seriesRes.value.rows || [])
 
-      if (showBreakdownByPark) {
+    if (showBreakdownByPark) {
+      try {
         const psRes = await getDriverLifecycleParksSummary({ from, to, period_type: periodType })
         setParksSummary(psRes.parks || [])
-      } else {
-        setParksSummary([])
-      }
-    } catch (e) {
-      setError(e?.response?.data?.detail || e?.message || 'Error al cargar')
-    } finally {
-      setLoading(false)
+      } catch { setParksSummary([]) }
+    } else {
+      setParksSummary([])
     }
+
+    const _failures = [summaryRes, seriesRes].filter(r => r.status === 'rejected')
+    if (_failures.length === 2) {
+      const e = _failures[0].reason
+      setError(e?.response?.data?.detail || e?.message || 'Error al cargar')
+    } else if (_failures.length > 0) {
+      setError('Carga parcial. Algunos datos no disponibles.')
+    }
+    setLoading(false)
   }, [from, to, parkId, periodType, grain, showBreakdownByPark])
 
   useEffect(() => { loadData() }, [loadData])
