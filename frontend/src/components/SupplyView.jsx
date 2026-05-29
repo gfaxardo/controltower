@@ -5,22 +5,17 @@
  */
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
-  getSupplyGeo,
-  getSupplyOverviewEnhanced,
-  getSupplyComposition,
-  getSupplyMigration,
   getSupplyMigrationDrilldown,
-  getSupplyMigrationWeeklySummary,
-  getSupplyMigrationCritical,
   getSupplyAlerts,
   getSupplyAlertDrilldown,
   refreshSupplyAlerting,
-  getSupplyFreshness,
   getSupplyDefinitions,
   getSupplySegmentConfig,
   getGeoOptions,
   getSupplyOverviewFact,
   getSegmentCompositionFact,
+  getSegmentMigrationFact,
+  getServingFreshness,
 } from '../services/api'
 import DriverSupplyGlossary from './DriverSupplyGlossary'
 import { SEGMENT_LEGEND_MINIMAL } from '../constants/segmentSemantics'
@@ -232,7 +227,8 @@ export default function SupplyView () {
       if (country) params.country = country
       if (city) params.city = city
       const res = await getSupplyOverviewFact(params)
-      const series = res.series || []
+      const raw = res.series || []
+      const series = raw.map(r => ({ ...r, period_start: r.week_start || r.period_start }))
       setOverviewData({
         summary: {},
         series,
@@ -242,7 +238,7 @@ export default function SupplyView () {
         setError(res.remediation || `Serving fact: ${res.freshness_status}`)
       }
       setFreshness({
-        last_week_available: series[0]?.week_start || res.refreshed_at,
+        last_week_available: series[0]?.period_start || res.refreshed_at,
         last_refresh: res.refreshed_at,
         status: res.freshness_status || 'unknown'
       })
@@ -269,7 +265,7 @@ export default function SupplyView () {
         week_start: r.week_start,
         drivers_count: r.drivers_count,
         trips_sum: r.trips,
-        share_of_active: r.share_of_active / 100,
+        share_of_active: r.share_of_active,
         avg_trips_per_driver: r.avg_trips_per_driver,
         supply_contribution: r.share_of_active,
       }))
@@ -285,24 +281,58 @@ export default function SupplyView () {
   const loadMigration = useCallback(async () => {
     setMigrationLoading(true)
     try {
-      const params = { from, to }
+      const params = {}
       if (parkId?.trim()) params.park_id = parkId
-      const [res, summaryRes, criticalRes] = await Promise.all([
-        getSupplyMigration(params),
-        getSupplyMigrationWeeklySummary(params).catch(() => []),
-        getSupplyMigrationCritical(params).catch(() => [])
-      ])
-      setMigration(Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []))
-      setMigrationSummary(res?.summary ?? null)
-      setMigrationWeeklySummary(Array.isArray(summaryRes) ? summaryRes : (summaryRes?.data ?? []))
-      setMigrationCritical(Array.isArray(criticalRes) ? criticalRes : (criticalRes?.data ?? []))
+      if (country) params.country = country
+      if (city) params.city = city
+      const res = await getSegmentMigrationFact(params)
+
+      const typeMap = { UPGRADE: 'upgrade', DOWNGRADE: 'downgrade', REACTIVATED: 'revival', NEW_ACTIVE: 'revival', BECAME_DORMANT: 'drop', CHURNED: 'drop', SAME_SEGMENT: 'lateral' }
+      const matrix = res.matrix || []
+      const sample = res.drivers_sample || []
+      const periodStart = res.period_current || null
+
+      const migrationRows = matrix.map(r => ({
+        week_start: periodStart,
+        from_segment: r.from_segment,
+        to_segment: r.to_segment,
+        migration_type: r.from_segment === r.to_segment ? 'lateral' : (r.to_segment === 'DORMANT' ? 'drop' : (r.from_segment === 'DORMANT' ? 'revival' : (typeMap[r.movement_type] || 'upgrade'))),
+        drivers_migrated: r.drivers_count,
+        park_id: parkId || null,
+      }))
+
+      const summary = res.summary || {}
+      setMigration(migrationRows)
+      setMigrationSummary({
+        upgrades: summary.upgrades || 0,
+        downgrades: summary.downgrades || 0,
+        revivals: (summary.reactivated || 0) + (summary.new_active || 0),
+        drops: (summary.became_dormant || 0) + (summary.churned || 0),
+        stable: summary.same_segment || 0,
+      })
+
+      const weeklySummaryRows = matrix.filter(r => r.drivers_count > 0).map(r => ({
+        week_label: periodStart ? formatIsoWeek(periodStart) : '—',
+        week_start: periodStart,
+        segment: r.to_segment,
+        drivers: r.drivers_count,
+        drivers_prev_week: null,
+        wow_delta: null,
+        wow_percent: null,
+        upgrades: r.from_segment !== r.to_segment && r.to_segment !== 'DORMANT' && r.from_segment === 'DORMANT' ? 0 : (matrix.some(x => x.to_segment === r.to_segment && x.from_segment !== r.to_segment) ? r.drivers_count : 0),
+        downgrades: 0,
+      }))
+      setMigrationWeeklySummary(weeklySummaryRows)
+
+      const critical = matrix.filter(r => r.drivers_count >= 10).sort((a, b) => b.drivers_count - a.drivers_count).slice(0, 10)
+      setMigrationCritical(critical.map(r => ({ ...r, week_start: periodStart, migration_type: r.from_segment === r.to_segment ? 'lateral' : 'movement' })))
     } catch (e) {
       console.error('Supply migration:', e)
       setMigration([])
     } finally {
       setMigrationLoading(false)
     }
-  }, [parkId, from, to])
+  }, [parkId, from, to, country, city])
 
   const loadAlerts = useCallback(async () => {
     setAlertsLoading(true)
@@ -321,11 +351,13 @@ export default function SupplyView () {
 
   const loadFreshness = useCallback(async () => {
     try {
-      const res = await getSupplyFreshness()
+      const res = await getServingFreshness()
+      const facts = res?.facts || []
+      const overviewFact = facts.find(f => f.fact_name === 'driver_supply_overview_weekly_fact') || facts[0]
       setFreshness({
-        last_week_available: res?.last_week_available ?? null,
-        last_refresh: res?.last_refresh ?? null,
-        status: res?.status ?? 'unknown'
+        last_week_available: overviewFact?.max_operational_period ?? null,
+        last_refresh: overviewFact?.refreshed_at ?? null,
+        status: overviewFact?.freshness_status ?? res?.status ?? 'unknown'
       })
     } catch (e) {
       setFreshness({ last_week_available: null, last_refresh: null, status: 'unknown' })

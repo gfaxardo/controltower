@@ -6,7 +6,7 @@
  * Muestra distribución de lifecycle_stage con counts y phone coverage.
  * Compacto, enterprise.
  */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import api from '../../services/api'
 
 const STAGE_COLORS = {
@@ -44,22 +44,30 @@ function StageBar ({ stage, count, total, avgTrips }) {
 export default function DriverLifecycleSummary () {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [loadKey, setLoadKey] = useState(0)
+
+  const reload = useCallback(() => { setLoadKey(k => k + 1) }, [])
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
+    setError(null)
     api.get('/drivers/lifecycle-summary', { timeout: 25000 })
       .then((res) => {
-        if (!cancelled) setData(res.data)
+        if (!cancelled) { setData(res.data); setError(null) }
       })
-      .catch(() => {
-        if (!cancelled) setData(null)
+      .catch((err) => {
+        if (!cancelled) {
+          setData(null)
+          setError(err.code === 'ECONNABORTED' ? 'Timeout: el c\u00e1lculo de lifecycle tard\u00f3 demasiado' : (err.message || 'Error al cargar lifecycle'))
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [])
+  }, [loadKey])
 
   if (loading) {
     return (
@@ -75,8 +83,19 @@ export default function DriverLifecycleSummary () {
 
   if (!data) {
     return (
-      <div className='border border-amber-200 rounded-lg p-3 bg-amber-50/50'>
-        <span className='text-[11px] text-amber-700 font-medium'>Lifecycle: unavailable</span>
+      <div className='border border-red-200 rounded-lg p-3 bg-red-50/50'>
+        <div className='flex items-start justify-between gap-2'>
+          <div>
+            <span className='text-[11px] text-red-700 font-medium'>
+              {error ? 'Lifecycle: error t\u00e9cnico' : 'Lifecycle: fuente no disponible'}
+            </span>
+            {error && <div className='text-[10px] text-red-600 mt-0.5'>{error}</div>}
+            <div className='text-[10px] text-gray-500 mt-1'>
+              Remediaci\u00f3n: Verificar que ops.driver_daily_activity_fact est\u00e9 actualizada. Run refresh_driver_supply_facts.py.
+            </div>
+          </div>
+          <button type='button' onClick={reload} className='flex-shrink-0 px-2.5 py-1 text-[10px] font-medium rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50'>Reintentar</button>
+        </div>
       </div>
     )
   }

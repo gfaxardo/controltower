@@ -338,30 +338,30 @@ async def drivers_health():
             }
 
     probes = [
-        ("identity-endpoint",
-         lambda: search_driver_identities(limit=1, offset=0),
-         "Verify /drivers/identity endpoint and DB connectivity"),
-        ("raw-freshness",
-         lambda: get_raw_freshness_map(),
-         "Verify /drivers/raw-freshness and upstream source inspection"),
-        ("lifecycle-summary",
-         lambda: compute_lifecycle_summary(),
-         "Verify /drivers/lifecycle-summary and lifecycle state machine"),
-        ("activity-summary",
-         lambda: search_driver_activity(limit=1, offset=0),
-         "Verify /drivers/activity-summary and activity fact"),
-        ("actionable-summary",
-         lambda: generate_actionable_summary(),
-         "Verify /drivers/actionable-summary and priority engine"),
-        ("workflow-metrics",
-         lambda: get_accountability_metrics(),
-         "Verify /drivers/workflow-metrics and workflow tables"),
+        ("serving-facts",
+         lambda: _probe_serving_facts(),
+         "Run refresh_driver_supply_facts.py para crear/refrescar facts"),
         ("geo-parks-source",
          lambda: _probe_geo_parks(),
          "Verify geo/park dimension source (dim.dim_park)"),
-        ("serving-facts",
-         lambda: _probe_serving_facts(),
-         "Verify driver serving facts exist and are fresh"),
+        ("identity-probe",
+         lambda: _probe_table_rows("public.drivers", "Tabla drivers no encontrada"),
+         "Verify public.drivers table"),
+        ("activity-fact-probe",
+         lambda: _probe_table_rows("ops.driver_daily_activity_fact", "Fact de actividad no encontrada"),
+         "Verify ops.driver_daily_activity_fact exists. Run refresh_driver_supply_facts.py"),
+        ("lifecycle-mv-probe",
+         lambda: _probe_table_rows("ops.mv_driver_lifecycle_base", "MV de lifecycle no encontrada"),
+         "Verify ops.mv_driver_lifecycle_base exists"),
+        ("workflow-tables",
+         lambda: _probe_table_rows("ops.driver_supply_workflow", "Tabla de workflow no encontrada"),
+         "Verify ops.driver_supply_workflow exists"),
+        ("campaigns-table",
+         lambda: _probe_table_rows("ops.driver_campaigns", "Tabla de campañas no encontrada"),
+         "Verify ops.driver_campaigns exists"),
+        ("geo-options-probe",
+         lambda: _probe_table_rows("ops.driver_supply_overview_weekly_fact", "Fact de supply overview no encontrada"),
+         "Run refresh_driver_supply_facts.py"),
     ]
 
     results = []
@@ -385,35 +385,50 @@ async def drivers_health():
         "checks": checks,
         "blocking_gaps": blocking,
         "warnings": warnings_list,
+        "remediation": "Run: cd backend && python scripts/refresh_driver_supply_facts.py" if blocking else "",
     })
+
+
+def _probe_table_rows(table_name: str, fail_message: str = ""):
+    """Lightweight probe: check if a table exists and has at least 1 row."""
+    from app.db.connection import get_db
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("SET LOCAL statement_timeout = '5000'")
+            cur.execute(f"SELECT COUNT(*) FROM (SELECT 1 FROM {table_name} LIMIT 1) t")
+            row = cur.fetchone()
+            if row and row[0] > 0:
+                return {"exists": True, "has_rows": True}
+            return {"exists": True, "has_rows": False, "message": fail_message or f"{table_name} is empty"}
+    except Exception as e:
+        return None
 
 
 def _probe_geo_parks():
     """Lightweight probe: check dim.dim_park exists and has rows."""
     from app.db.connection import get_db
-    db = get_db()
     try:
-        with db.cursor() as cur:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("SET LOCAL statement_timeout = '5000'")
             cur.execute("SELECT 1 FROM dim.dim_park LIMIT 1")
             cur.fetchone()
         return {"exists": True}
     except Exception:
         return None
-    finally:
-        try:
-            db.close()
-        except Exception:
-            pass
 
 
 def _probe_serving_facts():
     """Check if driver serving facts exist and are fresh."""
     from app.db.connection import get_db
-    db = get_db()
     try:
-        with db.cursor() as cur:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("SET LOCAL statement_timeout = '5000'")
             cur.execute("""
-                SELECT fact_name, freshness_status, row_count
+                SELECT fact_name, freshness_status, row_count,
+                       refreshed_at, max_operational_period
                 FROM ops.driver_serving_freshness_fact
                 ORDER BY fact_name
                 LIMIT 10
@@ -423,7 +438,11 @@ def _probe_serving_facts():
                 return {"exists": False, "message": "No serving facts found. Run refresh_driver_supply_facts.py"}
             facts = []
             for r in rows:
-                facts.append({"name": r[0], "status": r[1], "rows": r[2]})
+                facts.append({
+                    "name": r[0], "status": r[1], "rows": r[2],
+                    "refreshed_at": r[3].isoformat() if r[3] else None,
+                    "max_period": r[4].isoformat()[:10] if r[4] and hasattr(r[4], 'isoformat') else str(r[4]) if r[4] else None,
+                })
             stale = [f for f in facts if f["status"] in ("stale", "blocked")]
             return {
                 "exists": True,
@@ -433,11 +452,6 @@ def _probe_serving_facts():
             }
     except Exception:
         return None
-    finally:
-        try:
-            db.close()
-        except Exception:
-            pass
 
 
 # ─── H2: Pilot Operations ─────────────────────────────────────────────────────

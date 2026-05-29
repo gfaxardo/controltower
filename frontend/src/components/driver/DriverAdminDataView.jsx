@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import api from '../../services/api'
 import DriverDataFoundation from './DriverDataFoundation.jsx'
+import { DriverRefreshHint } from './DriverLoadState'
 
 function formatNum (n) {
   if (n == null) return '—'
@@ -18,9 +19,11 @@ export default function DriverAdminDataView () {
   const [syncHealth, setSyncHealth] = useState(null)
   const [freshness, setFreshness] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
   const loadAll = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const [hRes, sRes, fRes] = await Promise.all([
         api.get('/drivers/health', { timeout: 30000 }),
@@ -30,7 +33,9 @@ export default function DriverAdminDataView () {
       setHealth(hRes.data)
       setSyncHealth(sRes.data)
       setFreshness(fRes.data)
-    } catch { /* ignore */ } finally { setLoading(false) }
+    } catch (err) {
+      setError(err.code === 'ECONNABORTED' ? 'Timeout al cargar health del sistema' : (err.message || 'Error al cargar vista admin'))
+    } finally { setLoading(false) }
   }, [])
 
   useEffect(() => { loadAll() }, [loadAll])
@@ -44,6 +49,19 @@ export default function DriverAdminDataView () {
         </div>
         <p className='text-xs text-ct-text3 mt-1'>Verifica que los datos estén frescos, las fuentes operativas y el sistema sin bloqueos.</p>
       </div>
+
+      {error && (
+        <div className='border border-red-200 rounded-lg p-3 bg-red-50/50'>
+          <div className='flex items-start justify-between gap-2'>
+            <div>
+              <span className='text-[11px] text-red-700 font-medium'>Error t\u00e9cnico</span>
+              <div className='text-[10px] text-red-600 mt-0.5'>{error}</div>
+              <div className='text-[10px] text-gray-500 mt-1'>Remediaci\u00f3n: Verificar conectividad con el backend y que el health check responda.</div>
+            </div>
+            <button type='button' onClick={loadAll} className='flex-shrink-0 px-2.5 py-1 text-[10px] font-medium rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50'>Reintentar</button>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className='animate-pulse space-y-2'><div className='h-4 bg-gray-100 rounded w-48' /><div className='h-3 bg-gray-50 rounded w-3/4' /></div>
@@ -65,7 +83,7 @@ export default function DriverAdminDataView () {
               </div>
               <div className='overflow-x-auto'>
                 <table className='w-full text-[11px]'>
-                  <thead><tr className='text-left text-gray-400 border-b'><th className='py-1 pr-2'>Check</th><th className='py-1 pr-2'>Status</th><th className='py-1'>Message</th></tr></thead>
+                  <thead><tr className='text-left text-gray-400 border-b'><th className='py-1 pr-2'>Check</th><th className='py-1 pr-2'>Status</th><th className='py-1 pr-2'>Message</th><th className='py-1'>Remediaci\u00f3n</th></tr></thead>
                   <tbody>
                     {(health.checks || []).map((c, i) => (
                       <tr key={i} className='border-b border-gray-50'>
@@ -76,7 +94,8 @@ export default function DriverAdminDataView () {
                             c.status === 'warning' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
                           }`}>{c.status}</span>
                         </td>
-                        <td className='py-1 text-ct-text2'>{c.message}</td>
+                        <td className='py-1 pr-2 text-ct-text2'>{c.message}</td>
+                        <td className='py-1 text-ct-text3 text-[10px]'>{c.remediation || ''}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -122,7 +141,8 @@ export default function DriverAdminDataView () {
             </div>
           )}
 
-          {/* Governance note */}
+          <DriverRefreshHint />
+
           <div className='bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-xs text-blue-800'>
             <strong>Governance:</strong> Esta vista muestra datos de salud del sistema. Para ver el mapa completo de capabilities, usar "Full Capability Map".
           </div>

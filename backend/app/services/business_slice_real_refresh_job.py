@@ -17,6 +17,7 @@ from app.services.business_slice_incremental_load import (
     load_business_slice_day_for_month,
     load_business_slice_month,
     load_business_slice_week_for_month,
+    _drop_enriched_temp,
 )
 from app.services.business_slice_service import FACT_DAILY
 from app.services.upstream_real_status_service import get_upstream_real_status
@@ -135,7 +136,7 @@ def run_business_slice_real_refresh_job(force: bool = False) -> Dict[str, Any]:
             logger.info("omniview_real_refresh_job day_fact month=%s", mo_label)
             with get_db() as conn:
                 cur = conn.cursor()
-                nd = load_business_slice_day_for_month(cur, mo, conn)
+                nd = load_business_slice_day_for_month(cur, mo, conn, keep_enriched=True)
                 conn.commit()
                 logger.info("omniview_real_refresh_job week_fact month=%s", mo_label)
                 nw = load_business_slice_week_for_month(cur, mo, conn)
@@ -145,6 +146,8 @@ def run_business_slice_real_refresh_job(force: bool = False) -> Dict[str, Any]:
                     logger.info("omniview_real_refresh_job month_fact month=%s", mo_label)
                     nm = load_business_slice_month(cur, mo, conn)
                     conn.commit()
+                _drop_enriched_temp(cur)
+                conn.commit()
                 cur.close()
             dt = time.perf_counter() - t_m
             if include_month_fact:

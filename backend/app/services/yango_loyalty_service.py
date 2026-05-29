@@ -224,48 +224,45 @@ def _get_manual_kpi_value(kpi_key: str, city: str, month: str) -> Optional[float
 
 
 def _prefetch_all_data(month: str, cities: list[str]) -> dict:
-    """Prefetch all auto KPIs, manual KPIs, and targets in 3 DB queries total."""
+    """Prefetch all auto KPIs, manual KPIs, and targets in 3 queries over 1 connection."""
     data = {"auto": {}, "manuals": {}, "targets": {}}
 
-    # 1. Auto KPIs (single query)
     try:
         with get_db() as conn:
-            cur = _cursor(conn, 15000)
-            cur.execute("SELECT COALESCE(SUM(active_drivers), 0) AS ad, COALESCE(SUM(activations), 0) AS n_r FROM ops.mv_driver_lifecycle_monthly_kpis WHERE TO_CHAR(month_start, 'YYYY-MM') = %(month)s", {"month": month})
-            row = cur.fetchone()
-            if row:
-                data["auto"]["ad"] = _safe_num(row["ad"])
-                data["auto"]["nuevos_reactivados"] = _safe_num(row["n_r"])
+            cur = _cursor(conn, 10000)
+
+            try:
+                cur.execute("SELECT COALESCE(SUM(active_drivers), 0) AS ad, COALESCE(SUM(activations), 0) AS n_r FROM ops.mv_driver_lifecycle_monthly_kpis WHERE TO_CHAR(month_start, 'YYYY-MM') = %(month)s", {"month": month})
+                row = cur.fetchone()
+                if row:
+                    data["auto"]["ad"] = _safe_num(row["ad"])
+                    data["auto"]["nuevos_reactivados"] = _safe_num(row["n_r"])
+            except Exception as e:
+                logger.warning("Prefetch auto KPIs failed: %s", e)
+
+            try:
+                cur.execute("SELECT kpi_key, city, kpi_value FROM ops.yango_loyalty_kpi_manual WHERE month_key = %(month)s", {"month": month})
+                for row in (cur.fetchall() or []):
+                    c = row["city"] or ""
+                    if c not in data["manuals"]:
+                        data["manuals"][c] = {}
+                    k = row["kpi_key"]
+                    if k not in data["manuals"][c]:
+                        data["manuals"][c][k] = _safe_num(row["kpi_value"])
+            except Exception:
+                pass
+
+            try:
+                cur.execute("SELECT kpi_key, city, target_value FROM ops.yango_loyalty_targets WHERE month_key = %(month)s", {"month": month})
+                for row in (cur.fetchall() or []):
+                    c = row["city"] or ""
+                    if c not in data["targets"]:
+                        data["targets"][c] = {}
+                    data["targets"][c][row["kpi_key"]] = _safe_num(row["target_value"])
+            except Exception:
+                pass
     except Exception as e:
-        logger.warning("Prefetch auto KPIs failed: %s", e)
-
-    # 2. Manual KPIs across all cities (single query)
-    try:
-        with get_db() as conn:
-            cur = _cursor(conn, 15000)
-            cur.execute("SELECT kpi_key, city, kpi_value FROM ops.yango_loyalty_kpi_manual WHERE month_key = %(month)s", {"month": month})
-            for row in (cur.fetchall() or []):
-                c = row["city"] or ""
-                if c not in data["manuals"]:
-                    data["manuals"][c] = {}
-                k = row["kpi_key"]
-                if k not in data["manuals"][c]:
-                    data["manuals"][c][k] = _safe_num(row["kpi_value"])
-    except Exception:
-        pass
-
-    # 3. Targets across all cities (single query)
-    try:
-        with get_db() as conn:
-            cur = _cursor(conn, 15000)
-            cur.execute("SELECT kpi_key, city, target_value FROM ops.yango_loyalty_targets WHERE month_key = %(month)s", {"month": month})
-            for row in (cur.fetchall() or []):
-                c = row["city"] or ""
-                if c not in data["targets"]:
-                    data["targets"][c] = {}
-                data["targets"][c][row["kpi_key"]] = _safe_num(row["target_value"])
-    except Exception:
-        pass
+        logger.warning("Prefetch all data connection failed: %s", e)
 
     return data
 

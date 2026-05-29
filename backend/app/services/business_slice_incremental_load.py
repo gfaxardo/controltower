@@ -483,6 +483,131 @@ DO UPDATE SET
     total_fare_completed_positive_sum = EXCLUDED.total_fare_completed_positive_sum
 """
 
+# ── CF-H1 WEEKLY DISTINCT HARDENING ──
+# Agregación semanal directa desde _bs_enriched_month (misma fuente que day_fact y month_fact).
+# Computa COUNT(DISTINCT driver_id) canónico, NO SUM(daily_counts).
+_RESOLVE_AND_AGG_WEEK_FROM_TEMP = """
+INSERT INTO {fact_week}
+SELECT
+    date_trunc('week', r.trip_date)::date AS week_start,
+    r.country,
+    r.city,
+    r.business_slice_name,
+    r.fleet_display_name,
+    r.is_subfleet,
+    r.subfleet_name,
+    r.parent_fleet_name,
+    count(*) FILTER (WHERE r.completed_flag) AS trips_completed,
+    count(*) FILTER (WHERE r.cancelled_flag) AS trips_cancelled,
+    count(DISTINCT r.driver_id) FILTER (WHERE r.completed_flag) AS active_drivers,
+    avg(r.ticket) FILTER (WHERE r.completed_flag AND r.ticket IS NOT NULL) AS avg_ticket,
+    CASE
+        WHEN sum(r.total_fare) FILTER (WHERE r.completed_flag AND r.total_fare IS NOT NULL AND r.total_fare > 0) > 0
+        THEN sum(r.revenue_yego_net) FILTER (WHERE r.completed_flag AND r.total_fare IS NOT NULL AND r.total_fare > 0)
+            / sum(r.total_fare) FILTER (WHERE r.completed_flag AND r.total_fare IS NOT NULL AND r.total_fare > 0)
+        ELSE NULL
+    END AS commission_pct,
+    CASE
+        WHEN count(DISTINCT r.driver_id) FILTER (WHERE r.completed_flag) > 0
+        THEN count(*) FILTER (WHERE r.completed_flag)::numeric
+            / count(DISTINCT r.driver_id) FILTER (WHERE r.completed_flag)
+        ELSE NULL
+    END AS trips_per_driver,
+    sum(r.revenue_yego_net) FILTER (WHERE r.completed_flag) AS revenue_yego_net,
+    CASE
+        WHEN (count(*) FILTER (WHERE r.completed_flag) + count(*) FILTER (WHERE r.cancelled_flag)) > 0
+        THEN count(*) FILTER (WHERE r.cancelled_flag)::numeric
+            / (count(*) FILTER (WHERE r.completed_flag) + count(*) FILTER (WHERE r.cancelled_flag))
+        ELSE NULL
+    END AS cancel_rate_pct,
+    now() AS refreshed_at,
+    now() AS loaded_at,
+    sum(r.revenue_yego_final) FILTER (WHERE r.completed_flag) AS revenue_yego_final,
+    CASE
+        WHEN count(*) FILTER (WHERE r.completed_flag) > 0
+        THEN ROUND(
+            100.0 * count(*) FILTER (WHERE r.completed_flag AND r.revenue_source = 'real')
+            / count(*) FILTER (WHERE r.completed_flag), 2
+        )
+        ELSE NULL
+    END AS revenue_real_coverage_pct,
+    count(*) FILTER (WHERE r.completed_flag AND r.revenue_source = 'proxy')::bigint AS revenue_proxy_trips,
+    count(*) FILTER (WHERE r.completed_flag AND r.revenue_source = 'real')::bigint AS revenue_real_trips,
+    sum(r.ticket) FILTER (
+        WHERE r.completed_flag AND r.ticket IS NOT NULL
+    ) AS ticket_sum_completed,
+    count(r.ticket) FILTER (
+        WHERE r.completed_flag AND r.ticket IS NOT NULL
+    )::bigint AS ticket_count_completed,
+    sum(r.total_fare) FILTER (
+        WHERE r.completed_flag
+          AND r.total_fare IS NOT NULL
+          AND r.total_fare > 0
+    ) AS total_fare_completed_positive_sum
+FROM (
+    WITH base AS (
+        SELECT * FROM _bs_enriched_month
+        WHERE country IS NOT DISTINCT FROM %s
+          AND city IS NOT DISTINCT FROM %s
+    ),
+    rules AS (
+        SELECT * FROM ops.business_slice_mapping_rules WHERE is_active
+    ),
+    m AS (
+        SELECT
+            b.trip_id, b.driver_id, b.park_id, b.park_name,
+            b.country, b.city, b.tipo_servicio, b.works_terms,
+            b.completed_flag, b.cancelled_flag, b.trip_date, b.trip_month,
+            b.trip_week, b.hour_of_day, b.trip_hour_start,
+            b.revenue_yego_real AS revenue_yego_net, b.ticket, b.km, b.duration_minutes,
+            b.gmv_passenger_paid, b.total_fare, b.condicion, b.source_table,
+            rl.id AS mapping_rule_id, rl.business_slice_name, rl.fleet_display_name,
+            rl.is_subfleet, rl.subfleet_name, rl.parent_fleet_name, rl.rule_type,
+            CASE rl.rule_type
+                WHEN 'park_plus_works_terms' THEN 3
+                WHEN 'park_plus_tipo_servicio' THEN 2
+                WHEN 'park_only' THEN 1 ELSE 0
+            END AS spec_score
+        FROM base b
+        INNER JOIN rules rl ON lower(trim(b.park_id::text)) = lower(trim(rl.park_id::text))
+        WHERE (rl.rule_type = 'park_only')
+        OR (rl.rule_type = 'park_plus_tipo_servicio'
+            AND EXISTS (SELECT 1 FROM unnest(rl.tipo_servicio_values) v
+                WHERE nullif(trim(v::text), '') IS NOT NULL
+                  AND ops.normalized_service_type(b.tipo_servicio::text) = ops.normalized_service_type(v::text)))
+        OR (rl.rule_type = 'park_plus_works_terms'
+            AND EXISTS (SELECT 1 FROM unnest(rl.works_terms_values) w
+                WHERE nullif(trim(w::text), '') IS NOT NULL
+                  AND (ops.normalized_works_terms(b.works_terms::text) = ops.normalized_works_terms(w::text)
+                       OR ops.normalized_works_terms(b.works_terms::text) LIKE '%%' || ops.normalized_works_terms(w::text) || '%%')))
+    ),
+    mx AS (SELECT trip_id, max(spec_score) AS max_spec FROM m GROUP BY trip_id),
+    best AS (SELECT m.* FROM m INNER JOIN mx ON m.trip_id = mx.trip_id AND m.spec_score = mx.max_spec),
+    outcome AS (
+        SELECT trip_id, count(DISTINCT business_slice_name) AS n_slices,
+            array_agg(DISTINCT mapping_rule_id) AS rule_ids,
+            array_agg(DISTINCT business_slice_name) AS slice_names
+        FROM best GROUP BY trip_id
+    ),
+    resolved AS (
+        SELECT b.*, o.n_slices, o.rule_ids, o.slice_names,
+            CASE WHEN b.revenue_yego_net IS NULL THEN 'proxy' ELSE 'real' END AS revenue_source,
+            'resolved' AS resolution_status
+        FROM best b
+        INNER JOIN outcome o ON b.trip_id = o.trip_id
+        WHERE o.n_slices = 1
+    )
+    SELECT * FROM resolved
+    WHERE resolution_status = 'resolved'
+      AND business_slice_name IS NOT NULL
+      AND trip_date IS NOT NULL
+) r
+GROUP BY
+    date_trunc('week', r.trip_date),
+    r.country, r.city, r.business_slice_name, r.fleet_display_name,
+    r.is_subfleet, r.subfleet_name, r.parent_fleet_name
+"""
+
 # ---------------------------------------------------------------------------
 # SQL: week_fact — agregado canónico desde resolved (mantiene DISTINCT drivers)
 # ---------------------------------------------------------------------------
@@ -565,6 +690,8 @@ GROUP BY
 
 # Misma forma canónica que week desde resolved, pero agregando desde day_fact ya materializado
 # (usado por backfill_runner tras cargar chunks diarios; evita V_RESOLVED).
+# DEPRECATED para active_drivers: SUM(daily distinct) ≠ COUNT(DISTINCT driver_id) semanal.
+# Usar _RESOLVE_AND_AGG_WEEK_FROM_TEMP en su lugar para definición canónica.
 _WEEK_ROLLUP_FROM_DAY_FACT = """
 INSERT INTO {fact_week}
 SELECT
@@ -1047,13 +1174,17 @@ def load_business_slice_day_for_month(
     target_month: date,
     conn: Optional[Any] = None,
     chunk_grain: Optional[str] = None,
+    keep_enriched: bool = False,
 ) -> int:
     """
     Calcula day_fact para un mes completo. Reutiliza la misma estrategia
     de materialización enriched del loader mensual.
-    
+
     Hace DELETE del rango mensual antes de INSERTAR para permitir re-ejecuciones
     sin errores de UniqueViolation.
+
+    Si keep_enriched=True, no droppea _bs_enriched_month al final (para que
+    week_fact pueda usarla con COUNT(DISTINCT driver_id) canónico).
     """
     if target_month.day != 1:
         target_month = target_month.replace(day=1)
@@ -1114,7 +1245,8 @@ def load_business_slice_day_for_month(
         dt = time.perf_counter() - t_chunk
         print(f"  [{i+1}/{n}] day_fact country={c_country!r} city={c_city!r} inserted={rows} {dt:.1f}s", flush=True)
 
-    _drop_enriched_temp(cur)
+    if not keep_enriched:
+        _drop_enriched_temp(cur)
     total_dt = time.perf_counter() - t0
     print(f"  TOTAL day_fact {target_month}: inserted={inserted_total} {total_dt:.1f}s", flush=True)
     return inserted_total
@@ -1129,13 +1261,14 @@ def load_business_slice_week_for_month(
     cur: Any,
     target_month: date,
     conn: Optional[Any] = None,
+    chunk_grain: Optional[str] = None,
 ) -> int:
     """
-    Calcula week_fact para todas las semanas que tocan el mes objetivo.
-    Usa _WEEK_ROLLUP_FROM_DAY_FACT (rápido, desde day_fact ya calculado)
-    en lugar de la vista global V_RESOLVED (lenta, scan completo).
+    CF-H1 HARDENING: Agrega week_fact desde _bs_enriched_month (misma fuente que
+    day_fact y month_fact). Computa COUNT(DISTINCT driver_id) canónico semanal.
 
-    Prerequisito: day_fact debe estar cargado para el mes antes de llamar a esta función.
+    La vista enriched ya debe estar materializada (normalmente por day_fact).
+    Procesa por chunks (country/city) para evitar escaneos masivos.
     """
     if target_month.day != 1:
         target_month = target_month.replace(day=1)
@@ -1154,18 +1287,47 @@ def load_business_slice_week_for_month(
         (first_monday, next_monday_after_end),
     )
     deleted = cur.rowcount
-
-    rollup_sql = _WEEK_ROLLUP_FROM_DAY_FACT.format(fact_week=FACT_WEEK, fact_day=FACT_DAY)
-    cur.execute(rollup_sql, (first_monday, next_monday_after_end))
-    inserted = cur.rowcount
-
     if conn is not None:
         conn.commit()
+
+    grain = _effective_chunk_grain(chunk_grain)
+    resolve_sql = _RESOLVE_AND_AGG_WEEK_FROM_TEMP.format(fact_week=FACT_WEEK)
+
+    t0 = __import__('time').perf_counter()
+    inserted_total = 0
+    use_country_only = grain == "country"
+
+    if use_country_only:
+        cur.execute("SELECT DISTINCT country FROM _bs_enriched_month ORDER BY 1 NULLS FIRST")
+        chunks = [(r[0], None) for r in cur.fetchall()]
+    else:
+        cur.execute("SELECT DISTINCT country, city FROM _bs_enriched_month ORDER BY 1 NULLS FIRST, 2 NULLS FIRST")
+        chunks = list(cur.fetchall())
+
+    n = len(chunks)
     print(
-        f"  week_fact [{first_monday}..{next_monday_after_end}): deleted={deleted} inserted={inserted}",
+        f"  {n} chunk(s) — week_fact resolución inline desde _bs_enriched_month (deleted={deleted})",
         flush=True,
     )
-    return inserted
+
+    for i, chunk in enumerate(chunks):
+        c_country, c_city = chunk[0], chunk[1] if len(chunk) > 1 else None
+        apply_business_slice_load_session_settings(cur)
+        try:
+            cur.execute(resolve_sql, (c_country, c_city))
+            rows = cur.rowcount
+        except Exception as e:
+            raise RuntimeError(f"week_fact load falló chunk [{i+1}/{n}] month={target_month}: {e}") from e
+        inserted_total += rows
+        if conn is not None:
+            conn.commit()
+
+    total_dt = __import__('time').perf_counter() - t0
+    print(
+        f"  week_fact [{first_monday}..{next_monday_after_end}): deleted={deleted} inserted={inserted_total} {total_dt:.1f}s",
+        flush=True,
+    )
+    return inserted_total
 
 
 # ---------------------------------------------------------------------------

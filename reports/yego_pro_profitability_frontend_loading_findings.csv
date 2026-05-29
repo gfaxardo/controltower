@@ -1,0 +1,11 @@
+finding,severity,category,detail,verification_status
+KPI mismatch backend_vs_frontend keys,P0,data_structure,Frontend extractNum() busca net_profit_weekly/net_profit/profit/weekly_profit pero el backend devuelve profit_weekly con formato {value:X source:...}. Ningun KPI del overview se muestra.,CONFIRMED
+KPI value extraction fails due to object wrapping,P0,data_structure,El backend devuelve {profit_weekly:{value:-5509.9,source:...}} pero el frontend espera profit_weekly:-5509.9 (valor plano). num() retorna null para objetos.,CONFIRMED
+/shifts endpoint returns 500 always,P0,backend_bug,Router llama get_shifts(weeks=weeks) pero el service define get_shifts(days=35). TypeError por keyword argument inesperado.,CONFIRMED
+/overview endpoint 21s on cold start,P1,performance,5 queries secuenciales en una conexion. La primera consulta despues de startup incluye establecimiento de conexion DB.,CONFIRMED
+/quality endpoint 7-11s due to sequential view checks,P1,performance,_check_view_exists llamado 9 veces secuencialmente (1 por cada MV). 10+ round-trips a DB en un solo request.,CONFIRMED
+Spinner disappears but page looks empty,P2,ux,Los KPIs del overview muestran No disponible porque el mismatch de estructura hace que extractNum retorne null para todos. El usuario percibe carga incompleta.,CONFIRMED
+No Promise.all blocking found,PASS,frontend_architecture,El frontend usa .forEach con .then()/.catch()/.finally() individuales. Renderizado parcial funciona correctamente.,VERIFIED_OK
+Error states properly handled,PASS,frontend_robustness,friendlyError() maneja 404/502/503/504/timeout. SectionError muestra mensajes claros. safeVal() previene crashes.,VERIFIED_OK
+AbortController correctly used,PASS,frontend_robustness,useEffect cleanup aborta requests al desmontar el componente. Cambio de tab cancela request anterior.,VERIFIED_OK
+60s timeout configured per endpoint,PASS,frontend_config,PROFITABILITY_TIMEOUT_MS=60000 en api.js. Suficiente pero no evita que el usuario espere.,VERIFIED_OK

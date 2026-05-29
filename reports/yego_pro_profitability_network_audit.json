@@ -1,0 +1,81 @@
+[
+  {
+    "endpoint": "overview",
+    "round_1": {"status": 200, "duration_ms": 21388, "size_bytes": 2947, "classification": "BLOCKING"},
+    "round_2": {"status": 200, "duration_ms": 3924, "size_bytes": 2947, "classification": "SLOW"},
+    "issues": ["data_structure_mismatch_with_frontend", "cold_start_slow"],
+    "details": "Frontend expects flat numeric values with keys like net_profit_weekly; backend returns {profit_weekly: {value: X, source:..., ...}}"
+  },
+  {
+    "endpoint": "weekly",
+    "round_1": {"status": 200, "duration_ms": 5414, "size_bytes": 628, "classification": "SLOW"},
+    "round_2": {"status": 200, "duration_ms": 1001, "size_bytes": 628, "classification": "FAST"},
+    "issues": ["cold_start_slow"],
+    "details": "1 week of billing data returned. Warm cache acceptable."
+  },
+  {
+    "endpoint": "daily",
+    "round_1": {"status": 200, "duration_ms": 4289, "size_bytes": 9848, "classification": "SLOW"},
+    "round_2": {"status": 200, "duration_ms": 1028, "size_bytes": 9458, "classification": "ACCEPTABLE"},
+    "issues": ["cold_start_slow"],
+    "details": "147 days of data. Warm cache acceptable."
+  },
+  {
+    "endpoint": "drivers",
+    "round_1": {"status": 200, "duration_ms": 3129, "size_bytes": 12181, "classification": "SLOW"},
+    "round_2": {"status": 200, "duration_ms": 1010, "size_bytes": 11583, "classification": "ACCEPTABLE"},
+    "issues": [],
+    "details": "26 driver records. Acceptable performance."
+  },
+  {
+    "endpoint": "vehicles",
+    "round_1": {"status": 200, "duration_ms": 3270, "size_bytes": 19625, "classification": "SLOW"},
+    "round_2": {"status": 200, "duration_ms": 1007, "size_bytes": 17955, "classification": "ACCEPTABLE"},
+    "issues": [],
+    "details": "102 vehicle records. Acceptable performance."
+  },
+  {
+    "endpoint": "shifts",
+    "round_1": {"status": 500, "duration_ms": 2303, "size_bytes": 0, "classification": "FAILED"},
+    "round_2": {"status": 500, "duration_ms": 7, "size_bytes": 0, "classification": "FAILED"},
+    "issues": ["parameter_name_mismatch_router_service", "always_fails"],
+    "details": "Router passes weeks=8; service expects days=35. TypeError: get_shifts() got an unexpected keyword argument 'weeks'"
+  },
+  {
+    "endpoint": "input-mapping",
+    "round_1": {"status": 200, "duration_ms": 2127, "size_bytes": 4888, "classification": "ACCEPTABLE"},
+    "round_2": {"status": 200, "duration_ms": 3, "size_bytes": 4564, "classification": "FAST"},
+    "issues": [],
+    "details": "Fastest endpoint. Waterfall data pre-computed."
+  },
+  {
+    "endpoint": "quality",
+    "round_1": {"status": 200, "duration_ms": 11052, "size_bytes": 2719, "classification": "BLOCKING"},
+    "round_2": {"status": 200, "duration_ms": 7270, "size_bytes": 2590, "classification": "SLOW"},
+    "issues": ["many_sequential_db_queries", "check_view_exists_per_mv"],
+    "details": "Calls _check_view_exists for 9 MVs sequentially + _get_coverage. 10+ DB round-trips."
+  },
+  {
+    "endpoint": "root-cause",
+    "round_1": {"status": 200, "duration_ms": 5590, "size_bytes": 23793, "classification": "SLOW"},
+    "round_2": {"status": 200, "duration_ms": 2058, "size_bytes": 22153, "classification": "ACCEPTABLE"},
+    "issues": [],
+    "details": "Largest payload. Acceptable warm performance."
+  },
+  {
+    "frontend_loading": {
+      "spa_shell_load_ms": 92,
+      "spinner_visible_duration_ms": "~1000 (warm) / ~3000 (cold)",
+      "overview_kpis_visible": "NEVER - data structure mismatch",
+      "first_data_visible_ms": "~1000",
+      "full_page_time_ms": "~7000 (warm) / ~21000 (cold)",
+      "blocking_pattern": "No Promise.all used. Individual .then().catch().finally() per endpoint. Correct.",
+      "render_partial": "Yes - overview renders with partial data once first endpoint responds",
+      "error_state_handled": "Yes - SectionError component for failed tabs",
+      "timeout_handled": "Yes - 60s timeout per endpoint via axios",
+      "undefined_or_nan_rendering": "No - safeVal() and num() guards handle all edge cases",
+      "stuck_on_secondary_endpoint": "No - spinner disappears when ANY data arrives",
+      "root_cause_frontend": "Data structure mismatch: backend returns {key: {value: X, source:, ...}}, frontend extractNum() expects flat numeric values with different key names"
+    }
+  }
+]

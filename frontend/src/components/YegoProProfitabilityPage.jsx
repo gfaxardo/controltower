@@ -196,6 +196,24 @@ function extractRows (data) { return data?.rows || data?.data || (Array.isArray(
 
 function extractNum (obj, ...keys) { for (const k of keys) { const v = num(obj?.[k]); if (v !== null) return v } return null }
 
+function getMetricValue (obj, ...keys) {
+  for (const key of keys) {
+    const raw = obj?.[key]
+    if (raw == null) continue
+    if (typeof raw === 'object' && raw !== null && 'value' in raw) return num(raw.value)
+    const n = Number(raw)
+    if (Number.isFinite(n)) return n
+  }
+  return null
+}
+
+function getMetricMeta (obj, key) {
+  const raw = obj?.[key]
+  if (raw == null) return null
+  if (typeof raw === 'object' && raw !== null) return { source: raw.source, confidence: raw.confidence, metric_type: raw.metric_type }
+  return null
+}
+
 function sortRows (rows, tabId) {
   if (!rows || rows.length === 0) return rows
   const sorted = [...rows]
@@ -596,11 +614,11 @@ function DiagnosticHeader ({ overview, drivers, vehicles }) {
   const ov = overview?.summary || overview?.kpis || overview || {}
   const ovFlat = Array.isArray(ov) ? Object.fromEntries(ov.map((k) => [k.key || k.label, k.value])) : ov
 
-  const netWeekly = extractNum(ovFlat, 'net_profit_weekly', 'net_profit', 'profit', 'weekly_profit')
-  const netMonthly = extractNum(ovFlat, 'net_profit_monthly', 'monthly_profit', 'estimated_monthly_profit')
-  const revWeekly = extractNum(ovFlat, 'revenue_weekly', 'revenue', 'weekly_revenue')
-  const revMonthly = extractNum(ovFlat, 'revenue_monthly', 'monthly_revenue', 'estimated_monthly_revenue')
-  const marginPct = extractNum(ovFlat, 'margin_pct', 'margin', 'margin_percent')
+  const netWeekly = getMetricValue(ovFlat, 'profit_weekly', 'net_profit_weekly', 'net_profit', 'profit', 'weekly_profit')
+  const netMonthly = getMetricValue(ovFlat, 'profit_monthly', 'net_profit_monthly', 'monthly_profit', 'estimated_monthly_profit')
+  const revWeekly = getMetricValue(ovFlat, 'revenue_gross_30d', 'revenue_weekly', 'revenue', 'weekly_revenue')
+  const revMonthly = getMetricValue(ovFlat, 'revenue_monthly', 'monthly_revenue', 'estimated_monthly_revenue')
+  const marginPct = getMetricValue(ovFlat, 'margin_pct', 'margin', 'margin_percent')
 
   const driverRows = extractRows(drivers)
   const vehicleRows = extractRows(vehicles)
@@ -720,13 +738,13 @@ function UtilizationDiagnostics ({ overview, drivers, vehicles }) {
   const driverRows = extractRows(drivers)
   const vehicleRows = extractRows(vehicles)
 
-  const totalDrivers = driverRows.length || num(ovFlat.total_drivers) || 0
-  const totalVehicles = vehicleRows.length || num(ovFlat.total_vehicles) || 0
-  const totalTrips = num(ovFlat.trips ?? ovFlat.total_trips) ?? driverRows.reduce((s, r) => s + (num(r.trips) ?? 0), 0)
-  const totalRevenue = num(ovFlat.revenue ?? ovFlat.total_revenue ?? ovFlat.revenue_weekly) ?? driverRows.reduce((s, r) => s + (num(r.revenue) ?? 0), 0)
-  const totalHours = num(ovFlat.hours ?? ovFlat.total_hours)
-  const totalKm = num(ovFlat.km ?? ovFlat.total_km)
-  const kmEmpty = num(ovFlat.km_empty ?? ovFlat.km_vacio)
+  const totalDrivers = driverRows.length || getMetricValue(ovFlat, 'active_drivers', 'total_drivers') || 0
+  const totalVehicles = vehicleRows.length || getMetricValue(ovFlat, 'total_vehicles') || 0
+  const totalTrips = getMetricValue(ovFlat, 'trips_completed_30d', 'trips', 'total_trips') ?? driverRows.reduce((s, r) => s + (num(r.trips) ?? 0), 0)
+  const totalRevenue = getMetricValue(ovFlat, 'revenue_gross_30d', 'revenue', 'total_revenue', 'revenue_weekly') ?? driverRows.reduce((s, r) => s + (num(r.revenue) ?? 0), 0)
+  const totalHours = getMetricValue(ovFlat, 'work_hours_weekly', 'hours', 'total_hours')
+  const totalKm = getMetricValue(ovFlat, 'km_total', 'total_km', 'km')
+  const kmEmpty = getMetricValue(ovFlat, 'km_empty', 'km_vacio')
 
   const tripsPerDriver = totalDrivers > 0 ? totalTrips / totalDrivers : null
   const revPerDriver = totalDrivers > 0 ? totalRevenue / totalDrivers : null
@@ -882,8 +900,8 @@ function KeyFindings ({ overview, drivers, vehicles, waterfall, shifts, diagData
 
   const ov = overview?.summary || overview?.kpis || overview || {}
   const ovFlat = Array.isArray(ov) ? Object.fromEntries(ov.map((k) => [k.key || k.label, k.value])) : ov
-  const totalTrips = num(ovFlat.trips ?? ovFlat.total_trips)
-  const totalD = driverRows.length || num(ovFlat.total_drivers) || 0
+  const totalTrips = getMetricValue(ovFlat, 'trips_completed_30d', 'trips_30d', 'trips', 'total_trips')
+  const totalD = driverRows.length || getMetricValue(ovFlat, 'active_drivers', 'total_drivers') || 0
   if (totalTrips !== null && totalD > 0 && totalTrips / totalD < 5) {
     findings.push({ text: 'La utilizacion promedio es baja (menos de 5 viajes por conductor).', severity: 'medium' })
   }

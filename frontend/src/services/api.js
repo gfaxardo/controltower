@@ -37,8 +37,27 @@ api.interceptors.request.use((config) => {
   } catch {
     /* ignore */
   }
+  if (import.meta.env.DEV) {
+    config._startTime = Date.now()
+  }
   return config
 })
+
+if (import.meta.env.DEV) {
+  api.interceptors.response.use(
+    (response) => {
+      const dur = response.config._startTime ? Date.now() - response.config._startTime : null
+      console.info('[API]', response.config.method?.toUpperCase(), resolveFinalUrl(response.config), { status: response.status, duration_ms: dur, params: response.config.params, source: 'response' })
+      return response
+    },
+    (error) => {
+      const cfg = error.config || {}
+      const dur = cfg._startTime ? Date.now() - cfg._startTime : null
+      console.warn('[API:ERROR]', cfg.method?.toUpperCase(), resolveFinalUrl(cfg), { status: error.response?.status, duration_ms: dur, params: cfg.params, error: error.message, source: 'error' })
+      return Promise.reject(error)
+    }
+  )
+}
 
 /**
  * Solo ruta relativa al mismo origen (nginx → FastAPI → api-int). Nunca https://api-int… en el bundle
@@ -725,6 +744,10 @@ export const getGeoOptions = async () => {
 }
 export const getServingFreshness = async (params = {}) => {
   const response = await api.get('/drivers/serving-freshness', { params, timeout: 10000 })
+  return response.data
+}
+export const getSegmentMigrationFact = async (params = {}) => {
+  const response = await api.get('/drivers/segment-migration', { params, timeout: 20000 })
   return response.data
 }
 

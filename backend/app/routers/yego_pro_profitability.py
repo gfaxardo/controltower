@@ -101,7 +101,7 @@ def shifts(
     Day vs Night shift profitability (weekly aggregation).
     Source: trips_2026 with EXTRACT(HOUR) classification.
     """
-    return get_shifts(park_id=park_id, weeks=weeks)
+    return get_shifts(park_id=park_id, days=weeks * 7)
 
 
 @router.get("/input-mapping")

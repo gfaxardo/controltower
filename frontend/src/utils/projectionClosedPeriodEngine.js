@@ -23,6 +23,8 @@
  * @param {string} params.grain - 'daily' | 'weekly' | 'monthly'
  * @param {Object|null} params.projectionMeta - Meta de la respuesta de proyección
  * @param {Map|null} [params.periodInfoMap] - Mapa opcional de periodKey → { weekState, comparisonBasis, hasReal }
+ * @param {string|null} [params.selectedKpi] - KPI activo seleccionado
+ * @param {Object|null} [params.kpiFreshness] - Per-KPI freshness map { kpi: { max_data_date, lag_days, status } }
  * @returns {Object}
  */
 export function resolveClosedPeriodAnchor({
@@ -30,6 +32,8 @@ export function resolveClosedPeriodAnchor({
   grain,
   projectionMeta,
   periodInfoMap = null,
+  selectedKpi = null,
+  kpiFreshness = null,
 }) {
   const now = new Date()
   const todayKey = formatDateKey(now)
@@ -37,8 +41,11 @@ export function resolveClosedPeriodAnchor({
   // ── Calendar current period ──
   const calendarCurrentPeriodKey = getCalendarCurrentPeriodKey(grain, now)
 
-  // ── Last data date from freshness ──
-  const maxDataDate = projectionMeta?.data_freshness?.max_data_date || null
+  // ── Last data date from freshness (per-KPI override if available) ──
+  const globalMaxDataDate = projectionMeta?.data_freshness?.max_data_date || null
+  const kpiSpecific = selectedKpi && kpiFreshness?.[selectedKpi]
+  const kpiMaxDataDate = kpiSpecific?.max_data_date || null
+  const maxDataDate = kpiMaxDataDate || globalMaxDataDate
   const maxDataKey = maxDataDate ? normalizeDateKey(maxDataDate, grain) : null
 
   // ── Find anchor: last closed/operational period ──
@@ -148,6 +155,8 @@ export function resolveClosedPeriodAnchor({
       allPeriods.includes(calMonthKey)
   }
 
+  const kpiFreshnessMismatch = kpiMaxDataDate && globalMaxDataDate && kpiMaxDataDate !== globalMaxDataDate
+  const kpiNoData = selectedKpi && globalMaxDataDate && !kpiMaxDataDate
   return {
     calendarCurrentPeriodKey,
     operationalClosedPeriodKey,
@@ -156,6 +165,11 @@ export function resolveClosedPeriodAnchor({
     isCalendarCurrentPartial,
     maxDataDate,
     maxDataKey,
+    globalMaxDataDate,
+    kpiMaxDataDate,
+    kpiFreshnessMismatch,
+    kpiNoData,
+    selectedKpi,
   }
 }
 

@@ -1310,6 +1310,93 @@ def compute_matrix_data_freshness(
     }
 
 
+_KPI_FRESHNESS_COLUMNS = {
+    "trips_completed": "trips_completed",
+    "revenue_yego_net": "revenue_yego_net",
+    "active_drivers": "active_drivers",
+    "avg_ticket": "avg_ticket",
+    "trips_per_driver": "trips_per_driver",
+}
+
+
+def compute_kpi_freshness(
+    grain: str,
+    *,
+    country: Optional[str] = None,
+    city: Optional[str] = None,
+    business_slice: Optional[str] = None,
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    conn: Any = None,
+) -> dict[str, Any]:
+    """
+    Per-KPI freshness: para cada KPI proyectable, obtiene la última fecha
+    con data real > 0.  Usa FACT_DAILY (trip_date) para daily, FACT_WEEKLY
+    (week_start) para weekly.
+    """
+    today = date.today()
+    g = (grain or "daily").strip().lower()
+    date_col = "trip_date" if g != "weekly" else "week_start"
+    table = FACT_DAILY if g != "weekly" else FACT_WEEKLY
+
+    base_clauses: list[str] = []
+    base_params: list[Any] = []
+    if country:
+        base_clauses.append("lower(trim(country)) = lower(trim(%s))")
+        base_params.append(country.strip().lower())
+    if city:
+        base_clauses.append("lower(trim(city)) = lower(trim(%s))")
+        base_params.append(city.strip().lower())
+    if business_slice:
+        base_clauses.append("lower(trim(business_slice_name)) = lower(trim(%s))")
+        base_params.append(business_slice.strip().lower())
+    if year:
+        base_clauses.append(f"EXTRACT(YEAR FROM {date_col}) = %s")
+        base_params.append(int(year))
+    if month:
+        base_clauses.append(f"EXTRACT(MONTH FROM {date_col}) = %s")
+        base_params.append(int(month))
+    base_clauses.append("(NOT is_subfleet OR is_subfleet IS NULL)")
+
+    result: dict[str, Any] = {}
+
+    def _run(c):
+        cur = c.cursor()
+        try:
+            for kpi_key, col in _KPI_FRESHNESS_COLUMNS.items():
+                clauses = list(base_clauses) + [f"COALESCE({col}, 0) > 0"]
+                where_sql = " AND ".join(clauses) if clauses else "TRUE"
+                sql = f"SELECT MAX({date_col}) FROM {table} WHERE {where_sql}"
+                try:
+                    cur.execute(sql, list(base_params))
+                    row = cur.fetchone()
+                    mx = row[0] if row else None
+                    max_date_str = None
+                    if mx is not None:
+                        max_date_str = mx.isoformat()[:10] if hasattr(mx, "isoformat") else str(mx)[:10]
+                    lag = (today - date.fromisoformat(max_date_str)).days if max_date_str else None
+                    result[kpi_key] = {
+                        "max_data_date": max_date_str,
+                        "lag_days": lag,
+                        "status": _data_freshness_status_from_lag(lag),
+                    }
+                except Exception:
+                    result[kpi_key] = {"max_data_date": None, "lag_days": None, "status": "broken"}
+        finally:
+            cur.close()
+
+    try:
+        if conn is not None:
+            _run(conn)
+        else:
+            with get_db() as c:
+                _run(c)
+    except Exception:
+        logger.warning("compute_kpi_freshness: falló", exc_info=True)
+
+    return result
+
+
 def get_business_slice_matrix_freshness_meta() -> dict[str, Any]:
     """MAX(trip_date) sobre day_fact — referencia global (contexto); el State Engine usa máximos por período."""
     try:

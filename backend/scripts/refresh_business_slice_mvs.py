@@ -51,6 +51,7 @@ from app.services.business_slice_incremental_load import (
     load_business_slice_hour_block,
     load_business_slice_month,
     load_business_slice_week_for_month,
+    _drop_enriched_temp,
     month_first_day,
 )
 
@@ -228,10 +229,12 @@ def main() -> int:
 
             if args.with_daily:
                 print(f"\n--- Cargando day_fact para {target} ---")
-                nd = load_business_slice_day_for_month(cur, target, conn, chunk_grain=args.chunk_grain)
+                nd = load_business_slice_day_for_month(cur, target, conn, chunk_grain=args.chunk_grain, keep_enriched=True)
                 conn.commit()
-                print(f"\n--- Cargando week_fact (rollup desde day_fact) ---")
-                nw = load_business_slice_week_for_month(cur, target, conn)
+                print(f"\n--- Cargando week_fact (desde enriched, COUNT DISTINCT canónico) ---")
+                nw = load_business_slice_week_for_month(cur, target, conn, chunk_grain=args.chunk_grain)
+                conn.commit()
+                _drop_enriched_temp(cur)
                 conn.commit()
                 print(f"OK: month_fact={n}, day_fact={nd}, week_fact={nw} para mes={target}")
             else:

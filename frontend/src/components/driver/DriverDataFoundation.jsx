@@ -11,8 +11,9 @@
  * Consume endpoints backend. NO calculos en frontend.
  * Compacto, enterprise, no consume mucho espacio.
  */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import api from '../../services/api'
+import { DriverRefreshHint } from './DriverLoadState'
 
 function FreshnessDot ({ status }) {
   const map = {
@@ -41,10 +42,14 @@ export default function DriverDataFoundation () {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [loadKey, setLoadKey] = useState(0)
+
+  const reload = useCallback(() => { setLoadKey(k => k + 1) }, [])
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
+    setError(null)
     api.get('/drivers/serving-freshness', { timeout: 10000 })
       .then((res) => {
         if (!cancelled) {
@@ -61,6 +66,9 @@ export default function DriverDataFoundation () {
               source_name: f.fact_name,
               role: 'serving_fact',
               freshness_status: f.freshness_status,
+              refreshed_at: f.refreshed_at,
+              max_period: f.max_operational_period,
+              row_count: f.row_count,
             })),
             blocking_gaps: d.blocked_facts?.length ? d.blocked_facts.map(n => ({ source_name: n, role: 'serving_fact', remediation: d.remediation })) : [],
             _freshCount: freshCount,
@@ -74,14 +82,15 @@ export default function DriverDataFoundation () {
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err.message || 'Failed to load serving freshness')
+          const msg = err.code === 'ECONNABORTED' ? 'Timeout al conectar con el servicio' : (err.message || 'Error al cargar freshness')
+          setError(msg)
         }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [])
+  }, [loadKey])
 
   if (loading) {
     return (
@@ -97,9 +106,15 @@ export default function DriverDataFoundation () {
 
   if (error) {
     return (
-      <div className='border border-amber-200 rounded-lg p-3 bg-amber-50/50'>
-        <span className='text-[11px] text-amber-700 font-medium'>Data Foundation: unavailable</span>
-        <span className='text-[10px] text-amber-600 ml-2'>{error}</span>
+      <div className='border border-red-200 rounded-lg p-3 bg-red-50/50'>
+        <div className='flex items-start justify-between gap-2'>
+          <div>
+            <span className='text-[11px] text-red-700 font-medium'>Data Foundation: error t\u00e9cnico</span>
+            <div className='text-[10px] text-red-600 mt-0.5'>{error}</div>
+            <div className='text-[10px] text-gray-500 mt-1'>Remediaci\u00f3n: Run refresh_driver_supply_facts.py o verificar conectividad DB.</div>
+          </div>
+          <button type='button' onClick={reload} className='flex-shrink-0 px-2.5 py-1 text-[10px] font-medium rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50'>Reintentar</button>
+        </div>
       </div>
     )
   }
@@ -141,6 +156,20 @@ export default function DriverDataFoundation () {
         </span>
       </div>
 
+      {sources.length > 0 && (
+        <div className='border-t border-gray-100 pt-2 mt-2'>
+          <div className='grid grid-cols-1 sm:grid-cols-2 gap-1'>
+            {sources.map(s => (
+              <div key={s.source_name} className='flex items-center gap-1.5 text-[10px]'>
+                <FreshnessDot status={s.freshness_status} />
+                <span className='text-gray-600 truncate'>{s.source_name}</span>
+                {s.refreshed_at && <span className='text-gray-300 ml-auto'>{s.refreshed_at.slice(0, 16).replace('T', ' ')}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {blocking.length > 0 && (
         <div className='border-t border-gray-100 pt-2 mt-1'>
           <span className='text-[10px] font-medium text-red-600 uppercase tracking-wide'>
@@ -151,6 +180,10 @@ export default function DriverDataFoundation () {
           </div>
         </div>
       )}
+
+      <div className='border-t border-gray-100 pt-2 mt-2'>
+        <DriverRefreshHint />
+      </div>
     </div>
   )
 }

@@ -598,3 +598,88 @@ def _build_remediation(target_status: str, freshness: dict, scoring: dict, nr_da
                        "message": "Sin datos disponibles para este periodo."})
 
     return items
+
+
+# ═══════════════════════════════════════════════════════════════
+# Bootstrap — ultra-lightweight initial render endpoint
+# ═══════════════════════════════════════════════════════════════
+
+def get_loyalty_bootstrap() -> dict[str, Any]:
+    """Ultra-lightweight endpoint for initial shell render (<1s).
+    Reads only from fast serving facts in a single SQL round-trip.
+    No trips. No preview. No MV refresh."""
+    today = date.today()
+    month_start = date(today.year, today.month, 1)
+    month_str = month_start.strftime("%Y-%m")
+    total_days = calendar.monthrange(today.year, today.month)[1]
+
+    result = {
+        "scope": {
+            "mode": "pilot",
+            "country": PILOT_COUNTRY,
+            "city_norm": PILOT_CITY_NORM,
+            "lima_only": True,
+        },
+        "status": {
+            "official_scoring_status": "blocked_pending_yango_definition_validation",
+            "performance_category": None,
+            "operational_flow_available": False,
+            "performance_available": False,
+        },
+        "cards": {
+            "active_drivers_mtd": None,
+            "supply_hours_mtd": None,
+            "yego_operational_new_plus_reactivated": None,
+        },
+        "month": month_str,
+        "day_of_month": today.day,
+        "total_days": total_days,
+        "remediation": [],
+    }
+
+    try:
+        with get_db() as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("SET LOCAL statement_timeout = '3000'")
+
+            cur.execute("""
+                SELECT
+                    (SELECT COALESCE(SUM(active_drivers), 0)::int
+                     FROM ops.real_business_slice_month_fact
+                     WHERE month = %(ms)s AND country = 'peru' AND city = 'lima'
+                       AND business_slice_name = 'Auto regular') AS ad,
+                    (SELECT COALESCE(SUM(work_time_hours), 0)
+                     FROM public.module_ct_fleet_summary_daily
+                     WHERE fecha >= %(ms)s AND fecha < (%(ms)s + interval '1 month')::date) AS sh,
+                    (SELECT yego_operational_new_plus_reactivated::int
+                     FROM ops.fct_yego_operational_flow_monthly_v2
+                     WHERE month_start = %(nr_ms)s AND country = 'PE' AND city_norm = 'lima'
+                     LIMIT 1) AS nr
+            """, {"ms": month_start, "nr_ms": f"{month_str}-01"})
+            row = cur.fetchone()
+
+            if row:
+                ad_val = int(row["ad"]) if row["ad"] is not None else None
+                sh_val = float(row["sh"]) if row["sh"] is not None else None
+                nr_val = int(row["nr"]) if row["nr"] is not None else None
+
+                if ad_val:
+                    result["cards"]["active_drivers_mtd"] = ad_val
+                    result["status"]["performance_available"] = True
+                else:
+                    result["remediation"].append({"type": "ad_unavailable", "message": "AD no disponible temporalmente."})
+
+                if sh_val:
+                    result["cards"]["supply_hours_mtd"] = round(sh_val, 1)
+                else:
+                    result["remediation"].append({"type": "sh_unavailable", "message": "Supply Hours no disponible temporalmente."})
+
+                if nr_val:
+                    result["cards"]["yego_operational_new_plus_reactivated"] = nr_val
+                    result["status"]["operational_flow_available"] = True
+
+    except Exception as e:
+        logger.warning("bootstrap failed: %s", e)
+        result["remediation"].append({"type": "connection_error", "message": "Conexion a base de datos no disponible."})
+
+    return result

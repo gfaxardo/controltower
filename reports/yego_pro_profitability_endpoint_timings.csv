@@ -1,0 +1,19 @@
+﻿endpoint,status,duration_ms,size_bytes,classification,error,missing_source,valid_payload,unexpected_structure
+overview,200,21388,118,BLOCKING,,false,true,true
+overview,200,3924,2947,SLOW,,false,true,true
+weekly,200,5414,651,SLOW,,false,true,false
+weekly,200,1001,628,FAST,,false,true,false
+daily,200,4289,9848,SLOW,,false,true,false
+daily,200,1028,9458,ACCEPTABLE,,false,true,false
+drivers,200,3129,12181,SLOW,,false,true,false
+drivers,200,1010,11583,ACCEPTABLE,,false,true,false
+vehicles,200,3270,19625,SLOW,,false,true,false
+vehicles,200,1007,17955,ACCEPTABLE,,false,true,false
+shifts,500,2303,0,FAILED,TypeError: unexpected keyword argument weeks,false,false,false
+shifts,500,7,0,FAILED,TypeError: unexpected keyword argument weeks,false,false,false
+input-mapping,200,2127,4888,ACCEPTABLE,,false,true,false
+input-mapping,200,3,4564,FAST,,false,true,false
+quality,200,11052,2719,BLOCKING,,false,true,false
+quality,200,7270,2590,SLOW,,false,true,false
+root-cause,200,5590,23793,SLOW,,false,true,false
+root-cause,200,2058,22153,ACCEPTABLE,,false,true,false

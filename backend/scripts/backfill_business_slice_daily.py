@@ -39,9 +39,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.db.connection import get_db_audit
 from app.services.business_slice_incremental_load import (
+    backfill_business_slice_months,
     load_business_slice_day_for_month,
     load_business_slice_month,
     load_business_slice_week_for_month,
+    _drop_enriched_temp,
     month_first_day,
 )
 
@@ -136,15 +138,17 @@ def main() -> int:
                     total_month += nm
                     conn.commit()
 
-                nd = load_business_slice_day_for_month(cur, mo, conn, chunk_grain=args.chunk_grain)
+                nd = load_business_slice_day_for_month(cur, mo, conn, chunk_grain=args.chunk_grain, keep_enriched=True)
                 total_day += nd
                 conn.commit()
 
                 nw = 0
                 if not args.no_week:
-                    nw = load_business_slice_week_for_month(cur, mo, conn)
+                    nw = load_business_slice_week_for_month(cur, mo, conn, chunk_grain=args.chunk_grain)
                     total_week += nw
                     conn.commit()
+                _drop_enriched_temp(cur)
+                conn.commit()
 
                 dt = time.perf_counter() - t_mo
                 print(f"  OK: day={nd} week={nw} duration={dt:.1f}s")

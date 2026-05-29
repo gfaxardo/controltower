@@ -56,6 +56,7 @@ import { detectInsights, buildInsightCellMap } from './omniview/insightEngine.js
 import { INSIGHT_CONFIG } from './omniview/insightConfig.js'
 import OmniviewPriorityPanel from './OmniviewPriorityPanel.jsx'
 import OmniviewProjectionDrill from './OmniviewProjectionDrill.jsx'
+import OperationalPriorityLayer from './omniview/priority/OperationalPriorityLayer.jsx'
 import BusinessSliceInsightsPanel from './BusinessSliceInsightsPanel.jsx'
 import BusinessSliceInsightSettings from './BusinessSliceInsightSettings.jsx'
 import MatrixExecutiveBanner from './MatrixExecutiveBanner.jsx'
@@ -737,6 +738,7 @@ export default function BusinessSliceOmniviewMatrix () {
       setProjectionRows(data)
       const pm = { ...(res?.meta ?? {}) }
       if (res?.data_freshness) pm.data_freshness = res.data_freshness
+      if (res?.kpi_freshness) pm.kpi_freshness = res.kpi_freshness
       setProjectionMeta(pm)
       setProjectionResolvedKey(requestKey)
       const contract = validateProjectionOmniviewContract(pm, data)
@@ -1095,8 +1097,10 @@ export default function BusinessSliceOmniviewMatrix () {
       allPeriods: displayProjMatrix.allPeriods,
       grain,
       projectionMeta,
+      selectedKpi: focusedKpi,
+      kpiFreshness: projectionMeta?.kpi_freshness || null,
     })
-  }, [isProjectionMode, displayProjMatrix?.allPeriods, grain, projectionMeta])
+  }, [isProjectionMode, displayProjMatrix?.allPeriods, grain, projectionMeta, focusedKpi])
 
   const operationalCurrentPeriodKey = useMemo(() => {
     if (isProjectionMode && closedPeriodAnchor?.anchorPeriodKey) {
@@ -1788,6 +1792,30 @@ export default function BusinessSliceOmniviewMatrix () {
           <ProjectionContextBar
             grain={grain} projMatrix={projMatrix} projectionMeta={projectionMeta}
             planVersion={planVersion} compact={compact}
+            focusedKpi={focusedKpi} closedPeriodAnchor={closedPeriodAnchor}
+          />
+        )}
+
+        {/* ── Operational Priority Layer (RC-1) ───────────────── */}
+        {!focusMode && heavyQueriesEnabled && isProjectionMode && projectionReady && (
+          <OperationalPriorityLayer
+            projMatrix={displayProjMatrix}
+            focusedKpi={focusedKpi}
+            grain={grain}
+            compact={compact}
+            onCellNavigate={(cellId, nav) => {
+              setSelectedCell(cellId)
+              setSelection({
+                id: cellId,
+                cityKey: nav.cityKey,
+                lineKey: nav.lineKey,
+                period: nav.period,
+                kpiKey: nav.kpiKey,
+                lineData: nav.lineData,
+                periodDeltas: nav.periodDeltas,
+                raw: nav.raw,
+              })
+            }}
           />
         )}
 
@@ -3635,7 +3663,7 @@ function ProjectionYtdSummaryBar ({ ytd, grain, compact }) {
   )
 }
 
-function ProjectionContextBar ({ grain, projMatrix, projectionMeta, planVersion, compact }) {
+function ProjectionContextBar ({ grain, projMatrix, projectionMeta, planVersion, compact, focusedKpi, closedPeriodAnchor }) {
   const py = compact ? 'py-1' : 'py-1.5'
   const allPeriods = projMatrix?.allPeriods || []
   const totals = projMatrix?.totals
@@ -3651,6 +3679,11 @@ function ProjectionContextBar ({ grain, projMatrix, projectionMeta, planVersion,
     : df?.status === 'warning' ? 'text-amber-800 font-semibold'
     : df?.status === 'stale' ? 'text-red-800 font-semibold'
     : 'text-ct-text font-semibold'
+
+  const kpiFresh = projectionMeta?.kpi_freshness
+  const kpiMaxDate = focusedKpi && kpiFresh?.[focusedKpi]?.max_data_date
+  const hasFreshnessMismatch = kpiMaxDate && df?.max_data_date && kpiMaxDate !== df.max_data_date
+  const hasKpiNoData = focusedKpi && df?.max_data_date && !kpiMaxDate
 
   const curveSummary = projectionMeta?.curve_summary || {}
 
@@ -3684,6 +3717,24 @@ function ProjectionContextBar ({ grain, projMatrix, projectionMeta, planVersion,
           <span className="ml-1.5 text-[9px] font-bold uppercase text-ct-text2">[{df.status}]</span>
         )}
       </span>
+
+      {hasFreshnessMismatch && (
+        <span
+          className="text-[10px] text-amber-700 font-medium border border-amber-200 bg-amber-50 rounded px-1.5 py-0.5"
+          title={`Freshness global: ${df.max_data_date} | ${focusedKpi}: ${kpiMaxDate}`}
+        >
+          {focusedKpi === 'active_drivers' ? 'Conductores' : focusedKpi} actualizado al {kpiMaxDate}
+        </span>
+      )}
+
+      {hasKpiNoData && (
+        <span
+          className="text-[10px] text-red-700 font-medium border border-red-200 bg-red-50 rounded px-1.5 py-0.5"
+          title={`Sin data real para ${focusedKpi}. Freshness global (trips): ${df.max_data_date}`}
+        >
+          Sin data real para {focusedKpi === 'active_drivers' ? 'conductores' : focusedKpi}
+        </span>
+      )}
 
       <span className="text-[10px] text-ct-text">
         Plan: <strong>{planVersion || '—'}</strong>

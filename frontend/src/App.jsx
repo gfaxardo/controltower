@@ -55,6 +55,8 @@ import CampaignIntelligence from './components/driver/CampaignIntelligence.jsx'
 import CrmBridge from './components/driver/CrmBridge.jsx'
 import CampaignEffectiveness from './components/driver/CampaignEffectiveness.jsx'
 import OperationalPriorities from './components/driver/OperationalPriorities.jsx'
+import DriverDataFoundation from './components/driver/DriverDataFoundation.jsx'
+import DriverOperationalHealth from './components/driver/DriverOperationalHealth.jsx'
 import DriverOperatorView from './components/driver/DriverOperatorView.jsx'
 import DriverSupervisorView from './components/driver/DriverSupervisorView.jsx'
 import DriverStrategyView from './components/driver/DriverStrategyView.jsx'
@@ -491,8 +493,8 @@ function ControlTowerApp () {
                   {driversSubTab === 'drivers_crm_bridge' && <CrmBridge key={`crm-bridge-${refreshKey}`} />}
                   {driversSubTab === 'drivers_campaign_effectiveness' && <CampaignEffectiveness key={`campaign-eff-${refreshKey}`} />}
                   {driversSubTab === 'drivers_operational_priorities' && <OperationalPriorities key={`ops-priorities-${refreshKey}`} />}
-                  {driversSubTab === 'drivers_data_foundation' && <DriverCapabilityPlaceholder moduleKey='drivers_data_foundation' />}
-                  {driversSubTab === 'drivers_operational_health' && <DriverCapabilityPlaceholder moduleKey='drivers_operational_health' />}
+                  {driversSubTab === 'drivers_data_foundation' && <DriverDataFoundation key={`data-foundation-${refreshKey}`} />}
+                  {driversSubTab === 'drivers_operational_health' && <DriverOperationalHealth key={`ops-health-${refreshKey}`} />}
                   {driversSubTab === 'drivers_capability_governance' && <DriverCapabilityPlaceholder moduleKey='drivers_capability_governance' />}
                 </DriverOperatingHub>
                 )}

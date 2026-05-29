@@ -19,18 +19,21 @@ export default function DriverOperatorView () {
   const [metrics, setMetrics] = useState(null)
   const [ownerFilter, setOwnerFilter] = useState('')
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
   const loadMyWork = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
-      // Load workflows (assigned to anyone)
       const [wfRes, mRes] = await Promise.all([
         api.get('/drivers/workflow', { params: { limit: 50, offset: 0 }, timeout: 15000 }),
         api.get('/drivers/workflow-metrics', { timeout: 15000 }),
       ])
       setWorkflows(wfRes.data?.workflows || [])
       setMetrics(mRes.data)
-    } catch { /* ignore */ } finally { setLoading(false) }
+    } catch (err) {
+      setError(err.code === 'ECONNABORTED' ? 'Timeout al cargar workflows' : (err.message || 'Error al cargar vista operador'))
+    } finally { setLoading(false) }
   }, [])
 
   useEffect(() => { loadMyWork() }, [loadMyWork])
@@ -52,6 +55,19 @@ export default function DriverOperatorView () {
         </div>
         <p className='text-xs text-ct-text3 mt-1'>Revisa tus casos asignados y contacta drivers en orden de prioridad.</p>
       </div>
+
+      {error && (
+        <div className='border border-red-200 rounded-lg p-3 bg-red-50/50'>
+          <div className='flex items-start justify-between gap-2'>
+            <div>
+              <span className='text-[11px] text-red-700 font-medium'>Error t\u00e9cnico</span>
+              <div className='text-[10px] text-red-600 mt-0.5'>{error}</div>
+              <div className='text-[10px] text-gray-500 mt-1'>Remediaci\u00f3n: Verificar conectividad con el backend y que las tablas de workflow existan.</div>
+            </div>
+            <button type='button' onClick={loadMyWork} className='flex-shrink-0 px-2.5 py-1 text-[10px] font-medium rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50'>Reintentar</button>
+          </div>
+        </div>
+      )}
 
       {/* Quick stats */}
       {metrics && (

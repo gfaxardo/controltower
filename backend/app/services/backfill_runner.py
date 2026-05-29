@@ -18,7 +18,7 @@ from app.services.business_slice_incremental_load import (
     _drop_enriched_temp,
     _RESOLVE_AND_AGG_DAY_FROM_TEMP,
     _RESOLVE_AND_AGG_FROM_TEMP,
-    _WEEK_ROLLUP_FROM_DAY_FACT,
+    _RESOLVE_AND_AGG_WEEK_FROM_TEMP,
     apply_business_slice_load_session_settings,
     _effective_chunk_grain,
     month_first_day,
@@ -95,7 +95,7 @@ def _run_backfill(months: list[date], with_week: bool, chunk_grain: str | None):
 
     grain = _effective_chunk_grain(chunk_grain)
     resolve_day_sql = _RESOLVE_AND_AGG_DAY_FROM_TEMP.format(fact_day=FACT_DAY)
-    resolve_week_sql = _WEEK_ROLLUP_FROM_DAY_FACT.format(fact_week=FACT_WEEK, fact_day=FACT_DAY)
+    resolve_week_sql = _RESOLVE_AND_AGG_WEEK_FROM_TEMP.format(fact_week=FACT_WEEK)
 
     try:
         for idx, target_month in enumerate(months):
@@ -110,6 +110,8 @@ def _run_backfill(months: list[date], with_week: bool, chunk_grain: str | None):
 
             last_day = calendar.monthrange(target_month.year, target_month.month)[1]
             end_date = date(target_month.year, target_month.month, last_day)
+            first_monday = target_month - __import__("datetime").timedelta(days=target_month.weekday())
+            next_monday = end_date + __import__("datetime").timedelta(days=(7 - end_date.weekday()) % 7 or 7)
 
             try:
                 with get_db_audit() as conn:
@@ -164,6 +166,7 @@ def _run_backfill(months: list[date], with_week: bool, chunk_grain: str | None):
                     _upd(phase="inserting_chunks", total_chunks=len(chunks), current_chunk_idx=0)
 
                     day_inserted = 0
+                    week_inserted = 0
                     for ci, chunk in enumerate(chunks):
                         with _lock:
                             if _state["cancelled"]:
@@ -191,28 +194,25 @@ def _run_backfill(months: list[date], with_week: bool, chunk_grain: str | None):
                         n_ins = cur.rowcount
                         day_inserted += n_ins if n_ins and n_ins > 0 else 0
                         conn.commit()
+
+                        # Week per-chunk (CF-H1: COUNT DISTINCT canónico desde enriched)
+                        if with_week:
+                            cur.execute(
+                                f"DELETE FROM {FACT_WEEK} WHERE week_start >= %s AND week_start < %s AND country IS NOT DISTINCT FROM %s"
+                                + (" AND city IS NOT DISTINCT FROM %s" if not use_country_only else ""),
+                                (first_monday, next_monday, c_country) if use_country_only else (first_monday, next_monday, c_country, c_city),
+                            )
+                            cur.execute(resolve_week_sql, (c_country, c_city))
+                            nw_ins = cur.rowcount
+                            week_inserted += nw_ins if nw_ins and nw_ins > 0 else 0
+                            conn.commit()
+
                         with _lock:
                             _state["day_inserted_total"] += n_ins if n_ins and n_ins > 0 else 0
+                            _state["week_inserted_total"] += nw_ins if nw_ins and nw_ins > 0 else 0
 
                     _drop_enriched_temp(cur)
                     conn.commit()
-
-                    # 4. Week rollup
-                    if with_week:
-                        _upd(phase="week_rollup")
-                        first_monday = target_month - __import__("datetime").timedelta(days=target_month.weekday())
-                        next_monday = end_date + __import__("datetime").timedelta(days=(7 - end_date.weekday()) % 7 or 7)
-                        apply_business_slice_load_session_settings(cur)
-                        cur.execute(
-                            f"DELETE FROM {FACT_WEEK} WHERE week_start >= %s AND week_start < %s",
-                            (first_monday, next_monday),
-                        )
-                        cur.execute(resolve_week_sql, (first_monday, next_monday))
-                        week_inserted = cur.rowcount
-                        wk = week_inserted if week_inserted and week_inserted > 0 else 0
-                        conn.commit()
-                        with _lock:
-                            _state["week_inserted_total"] += wk
 
                 with _lock:
                     _state["done_months"] = idx + 1

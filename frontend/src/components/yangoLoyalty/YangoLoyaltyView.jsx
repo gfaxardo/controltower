@@ -195,11 +195,15 @@ function DrillableBlocker({ kpi, cities, expanded, onToggle }) {
 
 /* ── Main component ── */
 export default function YangoLoyaltyView() {
+  const [bootstrap, setBootstrap] = useState(null)
+  const [bootstrapLoading, setBootstrapLoading] = useState(true)
+  const [bootstrapError, setBootstrapError] = useState(null)
   const [summary, setSummary] = useState(null)
+  const [summaryLoading, setSummaryLoading] = useState(true)
   const [summaryError, setSummaryError] = useState(null)
   const [perfData, setPerfData] = useState(null)
+  const [perfLoading, setPerfLoading] = useState(true)
   const [perfError, setPerfError] = useState(null)
-  const [initialLoading, setInitialLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
   const [configCity, setConfigCity] = useState('')
   const [configTargets, setConfigTargets] = useState({})
@@ -209,33 +213,56 @@ export default function YangoLoyaltyView() {
   const [expandedBlocker, setExpandedBlocker] = useState(null)
   const [expandedCities, setExpandedCities] = useState({})
 
+  const fetchBootstrap = useCallback(async () => {
+    setBootstrapLoading(true)
+    setBootstrapError(null)
+    try {
+      const res = await api.get('/yango-loyalty/bootstrap', { timeout: 4000 })
+      setBootstrap(res.data)
+    } catch (err) {
+      const isTimeout = err.code === 'ECONNABORTED' || /timeout/i.test(err.message)
+      setBootstrapError(isTimeout
+        ? 'La seccion tardo demasiado en responder. El resto de la vista sigue disponible.'
+        : (err.response?.data?.detail || err.message || 'Error de conexion'))
+    } finally {
+      setBootstrapLoading(false)
+    }
+  }, [])
+
   const fetchSummary = useCallback(async () => {
+    setSummaryLoading(true)
     setSummaryError(null)
     try {
-      const res = await api.get('/yango-loyalty/summary', { timeout: 15000 })
+      const res = await api.get('/yango-loyalty/summary', { timeout: 10000 })
       setSummary(res.data)
     } catch (err) {
-      setSummaryError(err.response?.data?.detail || err.message || 'Error de conexion')
+      const isTimeout = err.code === 'ECONNABORTED' || /timeout/i.test(err.message)
+      setSummaryError(isTimeout
+        ? 'La seccion tardo demasiado en responder. Reintenta o verifica el backend.'
+        : (err.response?.data?.detail || err.message || 'Error de conexion'))
+    } finally {
+      setSummaryLoading(false)
     }
   }, [])
 
   const fetchPerformance = useCallback(async () => {
+    setPerfLoading(true)
     setPerfError(null)
     try {
       const res = await getYangoLoyaltyPerformance({ country: 'peru', include_missing_targets: true })
       setPerfData(res)
     } catch (err) {
-      setPerfError(err?.response?.data?.detail || err?.message || 'Error al cargar performance')
+      const isTimeout = err.code === 'ECONNABORTED' || /timeout/i.test(err.message)
+      setPerfError(isTimeout
+        ? 'La seccion tardo demasiado en responder. Reintenta o verifica el backend.'
+        : (err?.response?.data?.detail || err?.message || 'Error al cargar performance'))
+    } finally {
+      setPerfLoading(false)
     }
   }, [])
 
-  const fetchData = useCallback(async () => {
-    setInitialLoading(true)
-    await Promise.allSettled([fetchSummary(), fetchPerformance()])
-    setInitialLoading(false)
-  }, [fetchSummary, fetchPerformance])
-
-  useEffect(() => { fetchData() }, [fetchData])
+  useEffect(() => { fetchBootstrap() }, [fetchBootstrap])
+  useEffect(() => { fetchPerformance(); fetchSummary() }, [fetchPerformance, fetchSummary])
 
   const handleBatchConfig = async (e) => {
     e.preventDefault()
@@ -255,7 +282,8 @@ export default function YangoLoyaltyView() {
       }, { timeout: 15000 })
       setSaveMsg({ type: 'success', text: `Metas guardadas para ${configCity}` })
       setConfigTargets({})
-      await fetchData()
+      fetchSummary()
+      fetchPerformance()
     } catch (err) {
       setSaveMsg({ type: 'error', text: err.response?.data?.detail || err.message || 'Error al guardar' })
     } finally {
@@ -263,8 +291,9 @@ export default function YangoLoyaltyView() {
     }
   }
 
-  /* ── Loading skeleton — only when nothing loaded at all ── */
-  if (initialLoading && !summary && !perfData) return (
+  const allFailed = !bootstrapLoading && !summaryLoading && !perfLoading && !bootstrap && !summary && !perfData
+
+  if (bootstrapLoading && !bootstrap && !perfData && !summary) return (
     <div className="w-full space-y-4 p-1">
       <div className="flex items-center gap-3 mb-4"><Skeleton h={6} w="48" /><Skeleton h={4} w="64" /></div>
       <div className="grid grid-cols-4 gap-3">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="bg-ct-card rounded-xl p-4 border border-ct-border space-y-2"><Skeleton h={4} /><Skeleton h={8} /><Skeleton h={3} /></div>)}</div>
@@ -272,18 +301,16 @@ export default function YangoLoyaltyView() {
     </div>
   )
 
-  /* ── Global error only if BOTH sections failed ── */
-  if (!summary && !perfData && !initialLoading && (summaryError || perfError)) return (
+  if (allFailed) return (
     <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400">
       <p className="font-medium">Error al cargar datos</p>
-      <p className="text-sm mt-1">{summaryError || perfError}</p>
-      <button onClick={fetchData} className="mt-3 px-3 py-1 bg-red-500/20 rounded text-sm hover:bg-red-500/30">Reintentar</button>
+      <p className="text-sm mt-1">{bootstrapError || perfError || summaryError}</p>
+      <p className="text-xs mt-1 text-red-400/70">No se pudo cargar ninguna seccion. El resto de la vista sigue disponible al reintentar.</p>
+      <button onClick={() => { fetchBootstrap(); fetchPerformance(); fetchSummary() }} className="mt-3 px-3 py-1 bg-red-500/20 rounded text-sm hover:bg-red-500/30">Reintentar</button>
     </div>
   )
 
-  if (!summary && !perfData) return null
-
-  const { month = perfData?.month || new Date().toISOString().slice(0, 7), day_of_month = new Date().getDate(), total_days = 30, expected_progress_pct = 0, data_complete = false, manual_kpis_pending = 0, kpis = [], cities = [], city_categories = {}, has_any_targets = false } = summary || {}
+  const { month = perfData?.month || bootstrap?.month || new Date().toISOString().slice(0, 7), day_of_month = bootstrap?.day_of_month || new Date().getDate(), total_days = bootstrap?.total_days || 30, expected_progress_pct = 0, data_complete = false, manual_kpis_pending = 0, kpis = [], cities = [], city_categories = {}, has_any_targets = false } = summary || {}
 
   /* ── Compute city ranking (safe) ── */
   const cityRanking = safeArr(cities).map(city => {
@@ -364,19 +391,88 @@ export default function YangoLoyaltyView() {
       {/* ═══ TAB: OVERVIEW ═══ */}
       {activeTab === 'overview' && (
         <>
-          {/* ── Per-section error ── */}
-          {perfError && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-3">
-              <p className="text-sm text-red-400">No se pudo cargar Performance. AD y SH no disponibles.</p>
-              <p className="text-xs text-red-400/70 mt-1">{perfError}</p>
-              <button onClick={fetchPerformance} className="mt-2 px-3 py-1 bg-red-500/20 rounded text-xs text-red-400 hover:bg-red-500/30">Reintentar</button>
+          {/* ── Bootstrap shell — immediate useful content ── */}
+          {bootstrap && !perfData && (
+            <div className="space-y-3 mb-4">
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-500/20 text-blue-400 border border-blue-500/40">Lima only</span>
+                  <span className="text-sm font-medium text-ct-text">Piloto Lima</span>
+                </div>
+                <p className="text-xs text-ct-text3">Fuente de actividad diaria habilitada para Lima. Provincias pendientes de enriquecimiento.</p>
+              </div>
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+                <span className="font-medium text-sm text-amber-400">
+                  Scoring oficial bloqueado — pendiente validacion Yango de definiciones.
+                </span>
+                {bootstrap.remediation?.length > 0 && bootstrap.remediation.map((r, i) => (
+                  <p key={i} className="text-xs text-amber-300/80 mt-1">{r.message}</p>
+                ))}
+              </div>
+              <div className="ct-kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+                <div className="ct-kpi-card border-ct-border bg-ct-card">
+                  <span className="ct-kpi-card-label">Active Drivers Lima MTD</span>
+                  <span className="ct-kpi-card-value text-ct-text">{bootstrap.cards?.active_drivers_mtd != null ? fmtNum(bootstrap.cards.active_drivers_mtd) : '—'}</span>
+                </div>
+                <div className="ct-kpi-card border-ct-border bg-ct-card">
+                  <span className="ct-kpi-card-label">Supply Hours Lima MTD</span>
+                  <span className="ct-kpi-card-value text-ct-text">{bootstrap.cards?.supply_hours_mtd != null ? fmtNum(bootstrap.cards.supply_hours_mtd) : '—'}</span>
+                </div>
+                <div className="ct-kpi-card border-ct-border bg-ct-card">
+                  <span className="ct-kpi-card-label">Nuevos + Reactivados MTD</span>
+                  <span className="ct-kpi-card-value text-ct-text">{bootstrap.cards?.yego_operational_new_plus_reactivated != null ? fmtNum(bootstrap.cards.yego_operational_new_plus_reactivated) : '—'}</span>
+                  <span className="text-2xs text-amber-400">Operacional YEGO (no oficial)</span>
+                </div>
+                <div className="ct-kpi-card border-amber-500/30 bg-amber-500/5">
+                  <span className="ct-kpi-card-label">Scoring</span>
+                  <span className="ct-kpi-card-value text-amber-400">Bloqueado</span>
+                </div>
+              </div>
+              {bootstrap.status?.operational_flow_available && (
+                <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-2">
+                  <span className="text-xs text-green-400">Operational Flow disponible</span>
+                </div>
+              )}
+              {(perfLoading || summaryLoading) && (
+                <div className="bg-ct-surface/50 border border-ct-border rounded-lg p-3 flex items-center gap-2">
+                  <div className="animate-spin w-3 h-3 border-2 border-ct-accent border-t-transparent rounded-full" />
+                  <span className="text-xs text-ct-text3">Cargando detalle completo...</span>
+                </div>
+              )}
             </div>
           )}
-          {summaryError && (
+
+          {/* ── Per-section error ── */}
+          {perfError && !perfData && !bootstrapLoading && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-3">
+              <p className="text-sm text-red-400">No se pudo cargar Performance detallado.</p>
+              <p className="text-xs text-red-400/70 mt-1">{perfError}</p>
+              <p className="text-xs text-ct-text3 mt-1">El resto de la vista sigue disponible.</p>
+              <button onClick={fetchPerformance} className="mt-2 px-3 py-1 bg-red-500/20 rounded text-xs text-red-400 hover:bg-red-500/30">Reintentar Performance</button>
+            </div>
+          )}
+          {perfLoading && !perfData && !perfError && !bootstrap && (
+            <div className="space-y-3 mb-4">
+              <div className="bg-ct-card border border-ct-border rounded-lg p-4 space-y-2">
+                <Skeleton h={4} w="200" />
+                <div className="grid grid-cols-4 gap-3">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="space-y-2"><Skeleton h={3} /><Skeleton h={6} /></div>)}</div>
+              </div>
+            </div>
+          )}
+          {summaryError && !summary && !bootstrapLoading && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-3">
               <p className="text-sm text-red-400">No se pudo cargar el resumen de scoring.</p>
               <p className="text-xs text-red-400/70 mt-1">{summaryError}</p>
-              <button onClick={fetchSummary} className="mt-2 px-3 py-1 bg-red-500/20 rounded text-xs text-red-400 hover:bg-red-500/30">Reintentar</button>
+              <p className="text-xs text-ct-text3 mt-1">El resto de la vista sigue disponible.</p>
+              <button onClick={fetchSummary} className="mt-2 px-3 py-1 bg-red-500/20 rounded text-xs text-red-400 hover:bg-red-500/30">Reintentar Scoring</button>
+            </div>
+          )}
+          {summaryLoading && !summary && !summaryError && !bootstrap && (
+            <div className="space-y-3 mb-4">
+              <div className="bg-ct-card border border-ct-border rounded-lg p-4 space-y-2">
+                <Skeleton h={4} w="160" />
+                <Skeleton h={20} />
+              </div>
             </div>
           )}
 
@@ -561,9 +657,9 @@ export default function YangoLoyaltyView() {
             </div>
           )}
 
-          <ExecutiveSummary {...{ cityRanking, kpiGaps, data_complete, manual_kpis_pending, expected_progress_pct, cities, has_any_targets }} />
+          {summary && <ExecutiveSummary {...{ cityRanking, kpiGaps, data_complete, manual_kpis_pending, expected_progress_pct, cities, has_any_targets }} />}
 
-          <div className="ct-kpi-grid">
+          {summary && <div className="ct-kpi-grid">
             {['ORO','PLATA','BRONCE'].map(cat => {
               const cs = CAT[cat]
               const count = cat === 'ORO' ? totalOroCities : cat === 'PLATA' ? totalPlataCities : Math.max(0, cities.length - totalOroCities - totalPlataCities)
@@ -574,8 +670,9 @@ export default function YangoLoyaltyView() {
                 </div>
               )
             })}
-          </div>
+          </div>}
 
+          {summary && <>
           {/* ── City ranking (worst → best, collapsible) ── */}
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
@@ -693,11 +790,22 @@ export default function YangoLoyaltyView() {
               })}
             </div>
           </div>
+          </>}
         </>
       )}
 
       {/* ═══ TAB: BY KPI (detail) ═══ */}
-      {activeTab === 'by_kpi' && (
+      {activeTab === 'by_kpi' && summaryLoading && !summary && (
+        <div className="space-y-3"><div className="bg-ct-card border border-ct-border rounded-lg p-4"><Skeleton h={20} /></div></div>
+      )}
+      {activeTab === 'by_kpi' && summaryError && !summary && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
+          <p className="text-sm text-red-400">No se pudo cargar datos de KPIs.</p>
+          <p className="text-xs text-ct-text3 mt-1">El resto de la vista sigue disponible.</p>
+          <button onClick={fetchSummary} className="mt-2 px-3 py-1 bg-red-500/20 rounded text-xs text-red-400 hover:bg-red-500/30">Reintentar</button>
+        </div>
+      )}
+      {activeTab === 'by_kpi' && summary && (
         <div className="space-y-3">
           {Object.entries(KPI_GROUPS).map(([groupKey, group]) => {
             const groupKpis = safeArr(kpis).filter(k => k.group === groupKey)

@@ -34,6 +34,7 @@ from app.services.business_slice_service import (
     FACT_MONTHLY_RAW,
     FACT_WEEKLY,
     compute_matrix_data_freshness,
+    compute_kpi_freshness,
     explicit_day_temporal_fields,
 )
 from app.services.control_loop_business_slice_resolve import (
@@ -1499,11 +1500,24 @@ def get_omniview_projection(
         month=month,
     )
 
+    try:
+        kpi_fresh = compute_kpi_freshness(
+            grain,
+            country=country,
+            city=city,
+            business_slice=business_slice,
+            year=year,
+            month=month,
+        )
+    except Exception:
+        kpi_fresh = {}
+
     return {
         "granularity": grain,
         "plan_version": plan_version,
         "data": display_rows,
         "data_freshness": df_fresh,
+        "kpi_freshness": kpi_fresh,
         "meta": {
             "plan_version": plan_version,
             "plan_loaded_at": last_loaded,
@@ -1569,6 +1583,7 @@ def get_omniview_projection(
                 "kpis": ["trips_completed", "revenue_yego_net", "active_drivers", "avg_ticket"],
             },
             "data_freshness": df_fresh,
+            "kpi_freshness": kpi_fresh,
             "integrity_status": integrity_status,
             "suggestions": projection_suggestions,
             "suggestions_status": suggestions_status,
@@ -1649,12 +1664,20 @@ def _try_load_from_serving_fact(
             year=year,
             month=month,
         )
+        try:
+            kpi_fresh_fact = compute_kpi_freshness(
+                grain, country=country, city=city,
+                business_slice=business_slice, year=year, month=month,
+            )
+        except Exception:
+            kpi_fresh_fact = {}
 
         return {
             "granularity": grain,
             "plan_version": plan_version,
             "data": display_rows,
             "data_freshness": df_fresh,
+            "kpi_freshness": kpi_fresh_fact,
             "meta": {
                 "plan_version": plan_version,
                 "plan_loaded_at": None,
@@ -1671,6 +1694,7 @@ def _try_load_from_serving_fact(
                     "total_display_rows": len(display_rows),
                 },
                 "data_freshness": df_fresh,
+                "kpi_freshness": kpi_fresh_fact,
                 "period_over_period": {
                     "kind": meta_period_over_period_kind(grain),
                     "per_row_key": "period_over_period",

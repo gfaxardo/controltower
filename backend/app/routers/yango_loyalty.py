@@ -30,6 +30,7 @@ from app.services.yango_loyalty_service import (
 )
 from app.services.yango_loyalty_performance_service import (
     get_loyalty_performance,
+    get_loyalty_bootstrap,
 )
 from app.services.yango_loyalty_definition_service import (
     get_sources,
@@ -136,6 +137,15 @@ async def loyalty_ensure_tables():
         return ensure_loyalty_tables()
     except Exception as e:
         logger.exception("yango-loyalty ensure-tables: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/bootstrap")
+async def loyalty_bootstrap():
+    try:
+        return get_loyalty_bootstrap()
+    except Exception as e:
+        logger.exception("yango-loyalty bootstrap: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

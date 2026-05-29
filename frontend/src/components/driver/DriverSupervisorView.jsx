@@ -25,9 +25,11 @@ export default function DriverSupervisorView () {
   const [syncHealth, setSyncHealth] = useState(null)
   const [stuckCases, setStuckCases] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
   const loadAll = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const [mRes, cRes, sRes, wRes] = await Promise.all([
         api.get('/drivers/workflow-metrics', { timeout: 15000 }),
@@ -39,13 +41,14 @@ export default function DriverSupervisorView () {
       setCampaigns(cRes.data?.campaigns || [])
       setSyncHealth(sRes.data)
 
-      // Find stuck cases (assigned but no recent action)
       const allWf = wRes.data?.workflows || []
       const stuck = allWf.filter(w =>
         ['ASSIGNED', 'IN_PROGRESS'].includes(w.workflow_status)
       )
       setStuckCases(stuck.slice(0, 20))
-    } catch { /* ignore */ } finally { setLoading(false) }
+    } catch (err) {
+      setError(err.code === 'ECONNABORTED' ? 'Timeout al cargar datos de supervisi\u00f3n' : (err.message || 'Error al cargar vista supervisor'))
+    } finally { setLoading(false) }
   }, [])
 
   useEffect(() => { loadAll() }, [loadAll])
@@ -59,6 +62,19 @@ export default function DriverSupervisorView () {
         </div>
         <p className='text-xs text-ct-text3 mt-1'>Monitorea avance del equipo, identifica bloqueos y verifica sync CRM.</p>
       </div>
+
+      {error && (
+        <div className='border border-red-200 rounded-lg p-3 bg-red-50/50'>
+          <div className='flex items-start justify-between gap-2'>
+            <div>
+              <span className='text-[11px] text-red-700 font-medium'>Error t\u00e9cnico</span>
+              <div className='text-[10px] text-red-600 mt-0.5'>{error}</div>
+              <div className='text-[10px] text-gray-500 mt-1'>Remediaci\u00f3n: Verificar conectividad con backend y tablas de workflow/campaigns.</div>
+            </div>
+            <button type='button' onClick={loadAll} className='flex-shrink-0 px-2.5 py-1 text-[10px] font-medium rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50'>Reintentar</button>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className='animate-pulse space-y-2'><div className='h-4 bg-gray-100 rounded w-48' /></div>

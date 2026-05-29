@@ -184,12 +184,21 @@ def compute_lifecycle_summary(
         conditions.append("d.park_id = %(park_id)s")
         params["park_id"] = park_id
 
+    has_geo = bool(conditions)
     where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+    geo_joins = ""
+    if has_geo:
+        geo_joins = """
+            LEFT JOIN dim.dim_park dp ON d.park_id = dp.park_id
+            LEFT JOIN ops.v_dim_park_resolved prk ON d.park_id = prk.park_id"""
+
+    activity_horizon = (datetime.now(timezone.utc) - timedelta(days=365)).strftime("%Y-%m-%d")
 
     try:
         with get_db() as conn:
             c = conn.cursor(cursor_factory=RealDictCursor)
-            c.execute("SET LOCAL statement_timeout = %s", ("20000",))
+            c.execute("SET LOCAL statement_timeout = %s", ("45000",))
 
             identity_sql = f"""
             SELECT
@@ -198,8 +207,7 @@ def compute_lifecycle_summary(
                 COUNT(*) FILTER (WHERE vr.driver_name IS NOT NULL) AS with_name
             FROM public.drivers d
             LEFT JOIN ops.v_dim_driver_resolved vr ON d.driver_id = vr.driver_id
-            LEFT JOIN dim.dim_park dp ON d.park_id = dp.park_id
-            LEFT JOIN ops.v_dim_park_resolved prk ON d.park_id = prk.park_id
+            {geo_joins}
             WHERE {where_clause}
             """
             c.execute(identity_sql, params)
@@ -218,26 +226,34 @@ def compute_lifecycle_summary(
             activity_sql = f"""
             SELECT
                 d.driver_id,
-                COALESCE(SUM(CASE WHEN adf.activity_date >= %(s30)s AND adf.activity_date <= %(ref)s
-                    THEN COALESCE(adf.trips, adf.completed_trips, 0) END), 0) AS trips_30d,
-                COALESCE(SUM(CASE WHEN adf.activity_date >= %(s7)s AND adf.activity_date <= %(ref)s
-                    THEN COALESCE(adf.trips, adf.completed_trips, 0) END), 0) AS trips_7d,
-                MAX(adf.activity_date) AS latest_activity,
-                COUNT(DISTINCT CASE WHEN adf.activity_date < %(s60)s THEN adf.activity_date END) AS had_prior_activity,
+                COALESCE(a.trips_30d, 0) AS trips_30d,
+                COALESCE(a.trips_7d, 0) AS trips_7d,
+                a.latest_activity,
+                COALESCE(a.had_prior_activity, 0) AS had_prior_activity,
                 CASE WHEN lb.activation_ts IS NULL THEN false ELSE true END AS has_first_trip
             FROM public.drivers d
-            LEFT JOIN ops.driver_daily_activity_fact adf ON d.driver_id = adf.driver_id
+            LEFT JOIN (
+                SELECT driver_id,
+                    SUM(CASE WHEN activity_date >= %(s30)s AND activity_date <= %(ref)s
+                        THEN COALESCE(completed_trips, 0) END) AS trips_30d,
+                    SUM(CASE WHEN activity_date >= %(s7)s AND activity_date <= %(ref)s
+                        THEN COALESCE(completed_trips, 0) END) AS trips_7d,
+                    MAX(activity_date) AS latest_activity,
+                    COUNT(DISTINCT CASE WHEN activity_date < %(s60)s THEN activity_date END) AS had_prior_activity
+                FROM ops.driver_daily_activity_fact
+                WHERE activity_date >= %(activity_horizon)s
+                GROUP BY driver_id
+            ) a ON d.driver_id = a.driver_id
             LEFT JOIN ops.mv_driver_lifecycle_base lb ON d.driver_id = lb.driver_key
-            LEFT JOIN dim.dim_park dp ON d.park_id = dp.park_id
-            LEFT JOIN ops.v_dim_park_resolved prk ON d.park_id = prk.park_id
+            {geo_joins}
             WHERE {where_clause}
-            GROUP BY d.driver_id, lb.activation_ts
             """
             params.update({
                 "ref": ref,
                 "s7": (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d"),
                 "s30": s30,
                 "s60": s60,
+                "activity_horizon": activity_horizon,
             })
             c.execute(activity_sql, params)
             rows = c.fetchall() or []

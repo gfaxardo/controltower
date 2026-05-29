@@ -24,22 +24,24 @@ function formatPct (n) {
 
 export default function DriverStrategyView () {
   const [effSummary, setEffSummary] = useState(null)
-  const [lifecycleData, setLifecycleData] = useState(null)
   const [campaigns, setCampaigns] = useState([])
   const [loading, setLoading] = useState(true)
 
+  const [error, setError] = useState(null)
+
   const loadAll = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
-      const [esRes, lsRes, cRes] = await Promise.all([
+      const [esRes, cRes] = await Promise.all([
         api.get('/drivers/campaigns/effectiveness-summary', { timeout: 15000 }),
-        api.get('/drivers/lifecycle-summary', { timeout: 15000 }),
         api.get('/drivers/campaigns', { params: { limit: 10 }, timeout: 15000 }),
       ])
       setEffSummary(esRes.data)
-      setLifecycleData(lsRes.data)
       setCampaigns(cRes.data?.campaigns || [])
-    } catch { /* ignore */ } finally { setLoading(false) }
+    } catch (err) {
+      setError(err.code === 'ECONNABORTED' ? 'Timeout al cargar datos de estrategia' : (err.message || 'Error al cargar vista estrategia'))
+    } finally { setLoading(false) }
   }, [])
 
   useEffect(() => { loadAll() }, [loadAll])
@@ -58,6 +60,19 @@ export default function DriverStrategyView () {
       <div className='bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-[11px] text-amber-800'>
         <strong>Observed lift, not causal.</strong> Los datos muestran correlación, no causalidad. No tomar decisiones de inversión solo con estas métricas.
       </div>
+
+      {error && (
+        <div className='border border-red-200 rounded-lg p-3 bg-red-50/50'>
+          <div className='flex items-start justify-between gap-2'>
+            <div>
+              <span className='text-[11px] text-red-700 font-medium'>Error t\u00e9cnico</span>
+              <div className='text-[10px] text-red-600 mt-0.5'>{error}</div>
+              <div className='text-[10px] text-gray-500 mt-1'>Remediaci\u00f3n: Verificar conectividad con backend y que los endpoints de lifecycle/campaigns est\u00e9n operativos.</div>
+            </div>
+            <button type='button' onClick={loadAll} className='flex-shrink-0 px-2.5 py-1 text-[10px] font-medium rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50'>Reintentar</button>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className='animate-pulse space-y-2'><div className='h-4 bg-gray-100 rounded w-48' /></div>
