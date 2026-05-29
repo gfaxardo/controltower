@@ -53,14 +53,14 @@ export default function DriverLifecycleSummary () {
     let cancelled = false
     setLoading(true)
     setError(null)
-    api.get('/drivers/lifecycle-summary', { timeout: 25000 })
+    api.get('/drivers/lifecycle-distribution', { timeout: 10000 })
       .then((res) => {
         if (!cancelled) { setData(res.data); setError(null) }
       })
       .catch((err) => {
         if (!cancelled) {
           setData(null)
-          setError(err.code === 'ECONNABORTED' ? 'Timeout: el c\u00e1lculo de lifecycle tard\u00f3 demasiado' : (err.message || 'Error al cargar lifecycle'))
+          setError(err.code === 'ECONNABORTED' ? 'Timeout: lifecycle distribution tard\u00f3 demasiado' : (err.message || 'Error al cargar lifecycle'))
         }
       })
       .finally(() => {
@@ -102,14 +102,19 @@ export default function DriverLifecycleSummary () {
 
   const summary = data.summary || []
   const total = summary.reduce((s, item) => s + item.drivers_count, 0)
-  const quality = data.quality || {}
   const warnings = data.warnings || []
+  const kpis = data.kpis || {}
 
   return (
     <div className='border border-ct-border rounded-lg p-3 bg-white/40 mb-4'>
       <div className='flex items-baseline gap-2 mb-2'>
         <h3 className='text-xs font-semibold text-ct-text'>Lifecycle Distribution</h3>
         <span className='text-[10px] text-gray-400'>{total} drivers</span>
+        {data.freshness_status && (
+          <span className={`text-[9px] px-1 py-px rounded ${data.freshness_status === 'fresh' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+            {data.freshness_status}
+          </span>
+        )}
       </div>
 
       <div className='space-y-1.5'>
@@ -125,20 +130,22 @@ export default function DriverLifecycleSummary () {
       </div>
 
       <div className='flex items-center gap-3 mt-2 pt-2 border-t border-gray-100 text-[10px] text-gray-400'>
-        <span>Identity: {quality.identity_coverage != null ? `${quality.identity_coverage}%` : '—'}</span>
-        <span>Phone: {quality.phone_coverage != null ? `${quality.phone_coverage}%` : '—'}</span>
-        <span>Activity: {quality.activity_coverage != null ? `${quality.activity_coverage}%` : '—'}</span>
+        {kpis.latest_active != null && <span>Active: {kpis.latest_active.toLocaleString()}</span>}
+        {kpis.total_activations != null && <span>Activations: {kpis.total_activations.toLocaleString()}</span>}
+        {kpis.total_churned != null && <span>Churned: {kpis.total_churned.toLocaleString()}</span>}
+        {kpis.total_reactivated != null && <span>Reactivated: {kpis.total_reactivated.toLocaleString()}</span>}
+        {kpis.net_growth != null && <span>Net: {kpis.net_growth >= 0 ? '+' : ''}{kpis.net_growth.toLocaleString()}</span>}
       </div>
 
       {warnings.length > 0 && (
         <div className='mt-2 text-[10px] text-amber-600'>
-          {warnings[0].message}
+          {typeof warnings[0] === 'string' ? warnings[0] : warnings[0].message || warnings[0]}
         </div>
       )}
 
-      {data.blocking_gaps && data.blocking_gaps.length > 0 && (
+      {data.remediation && data.status !== 'ok' && (
         <div className='mt-1 text-[10px] text-red-500'>
-          Blocking: {data.blocking_gaps[0].message}
+          {data.remediation}
         </div>
       )}
     </div>

@@ -28,6 +28,17 @@ MV_CLOSE_WEEK = "ops.mv_yego_pro_driver_close_week"
 MV_FINANCIAL_TRUTH = "ops.mv_yego_pro_weekly_financial_truth"
 MV_SOURCE_COVERAGE = "ops.mv_yego_pro_source_coverage"
 
+# Module-level view existence cache — avoids repeated to_regclass calls per request
+_VIEWS_CACHE: Dict[str, bool] = {}
+
+
+def _ensure_view_exists_cached(cur, view_name: str) -> bool:
+    if view_name in _VIEWS_CACHE:
+        return _VIEWS_CACHE[view_name]
+    exists = _check_view_exists(cur, view_name)
+    _VIEWS_CACHE[view_name] = exists
+    return exists
+
 
 def _safe_float(v) -> Optional[float]:
     if v is None:
@@ -58,7 +69,7 @@ def _check_view_exists(cur, view_name: str) -> bool:
 
 
 def _get_coverage(cur) -> dict:
-    if not _check_view_exists(cur, MV_SOURCE_COVERAGE):
+    if not _ensure_view_exists_cached(cur, MV_SOURCE_COVERAGE):
         return {
             "billing_weeks": 0,
             "billing_drivers": 0,
@@ -115,8 +126,17 @@ def get_overview(park_id: str = PARK_ID) -> Dict[str, Any]:
         with get_db_quick(timeout_ms=15000) as conn:
             cur = conn.cursor(cursor_factory=RealDictCursor)
             try:
-                if not _check_view_exists(cur, MV_WEEK):
+                cur.execute(
+                    "SELECT "
+                    "to_regclass(%s) IS NOT NULL AS _wk, "
+                    "to_regclass(%s) IS NOT NULL AS _cov",
+                    (MV_WEEK, MV_SOURCE_COVERAGE),
+                )
+                vc = cur.fetchone()
+                if not vc.get("_wk"):
                     return _missing_source_response(MV_WEEK, "Run yego_pro_profitability_serving_views.sql")
+                _VIEWS_CACHE[MV_WEEK] = True
+                _VIEWS_CACHE[MV_SOURCE_COVERAGE] = bool(vc.get("_cov"))
 
                 cur.execute(f"SELECT * FROM {MV_WEEK} ORDER BY week_start DESC LIMIT 1")
                 week_row = cur.fetchone()
@@ -161,12 +181,9 @@ def get_overview(park_id: str = PARK_ID) -> Dict[str, Any]:
                     })
 
                 billing_weeks = 0
-                cur.execute(f"SELECT COUNT(*) AS cnt FROM {MV_WEEK}")
-                cnt_row = cur.fetchone()
-                if cnt_row:
-                    billing_weeks = _safe_int(cnt_row.get("cnt")) or 0
 
                 coverage = _get_coverage(cur)
+                billing_weeks = coverage.get("billing_weeks", 0)
 
                 return {
                     "status": "OK",

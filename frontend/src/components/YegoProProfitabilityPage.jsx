@@ -1235,6 +1235,8 @@ const DIAG_ENDPOINTS = [
 ]
 
 export default function YegoProProfitabilityPage () {
+  console.log('PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s')
+
   const [activeTab, setActiveTab] = useState('overview')
   const [tabData, setTabData] = useState(null)
   const [tabLoading, setTabLoading] = useState(false)
@@ -1244,14 +1246,14 @@ export default function YegoProProfitabilityPage () {
   const [diagData, setDiagData] = useState({})
   const [diagLoading, setDiagLoading] = useState({})
   const [diagErrors, setDiagErrors] = useState({})
-  const [diagLoaded, setDiagLoaded] = useState(false)
 
   const abortRef = useRef(null)
   const diagAbortRef = useRef(null)
+  const requestIdRef = useRef(0)
+  const forceShowRef = useRef(null)
 
   useEffect(() => {
-    if (diagLoaded) return
-    setDiagLoaded(true)
+    const requestId = ++requestIdRef.current
     if (diagAbortRef.current) diagAbortRef.current.abort()
     const controller = new AbortController()
     diagAbortRef.current = controller
@@ -1260,9 +1262,19 @@ export default function YegoProProfitabilityPage () {
     DIAG_ENDPOINTS.forEach((e) => { initial[e.key] = null; initLoading[e.key] = true; initErrors[e.key] = null })
     setDiagData(initial); setDiagLoading(initLoading); setDiagErrors(initErrors)
 
+    if (forceShowRef.current) clearTimeout(forceShowRef.current)
+    forceShowRef.current = setTimeout(() => {
+      if (requestId !== requestIdRef.current) return
+      if (process.env.NODE_ENV === 'development') console.debug('[Profitability] force show after 8s timeout')
+      setDiagLoading({})
+    }, 8000)
+
     DIAG_ENDPOINTS.forEach(({ key, fetcher }) => {
+      if (process.env.NODE_ENV === 'development') console.debug('[Profitability] request start', key)
       fetcher().then((result) => {
+        if (requestId !== requestIdRef.current) return
         if (controller.signal.aborted) return
+        if (process.env.NODE_ENV === 'development') console.debug('[Profitability] request done', key)
         setDiagData((prev) => ({ ...prev, [key]: result }))
         if (key === 'quality' && result) {
           const w = result.billing_weeks ?? result.summary?.billing_weeks
@@ -1273,15 +1285,21 @@ export default function YegoProProfitabilityPage () {
           if (typeof w === 'number' && w > 0) setBillingWeeks(w)
         }
       }).catch((err) => {
+        if (requestId !== requestIdRef.current) return
         if (controller.signal.aborted) return
+        if (process.env.NODE_ENV === 'development') console.debug('[Profitability] request error', key, err.code || err.message?.slice(0, 50))
         setDiagErrors((prev) => ({ ...prev, [key]: true }))
       }).finally(() => {
+        if (requestId !== requestIdRef.current) return
         if (!controller.signal.aborted) setDiagLoading((prev) => ({ ...prev, [key]: false }))
+        if (process.env.NODE_ENV === 'development') console.debug('[Profitability] request final', key)
       })
     })
 
-    return () => controller.abort()
-  }, [diagLoaded])
+    return () => {
+      controller.abort()
+    }
+  }, [])
 
   const loadTab = useCallback(async (tabId) => {
     if (tabId === 'overview' || tabId === 'coverage') return
@@ -1308,6 +1326,27 @@ export default function YegoProProfitabilityPage () {
     if (activeTab !== 'overview') loadTab(activeTab)
     return () => { if (abortRef.current) abortRef.current.abort() }
   }, [activeTab, loadTab])
+
+  const anyLoading = Object.values(diagLoading).some(Boolean)
+  const hasAnyData = Object.values(diagData).some((v) => v != null)
+  const allDone = Object.values(diagLoading).every((v) => !v)
+  const loadingKeys = Object.entries(diagLoading).filter(([, v]) => v).map(([k]) => k)
+  const dataKeys = Object.entries(diagData).filter(([, v]) => v != null).map(([k]) => k)
+  const errorKeys = Object.entries(diagErrors).filter(([, v]) => v).map(([k]) => k)
+
+  console.log('[DIAG] ====== RENDER ======')
+  console.log('[DIAG] diagLoading', JSON.parse(JSON.stringify(diagLoading)))
+  console.log('[DIAG] diagData keys', dataKeys)
+  console.log('[DIAG] diagErrors keys', errorKeys)
+  console.log('[DIAG] anyLoading', anyLoading, 'hasAnyData', hasAnyData, 'allDone', allDone)
+  console.log('[DIAG] loadingKeys', loadingKeys)
+  console.log('[DIAG] spinner condition (anyLoading && !hasAnyData) =', anyLoading && !hasAnyData)
+  console.log('[DIAG] allDone && !hasAnyData =', allDone && !hasAnyData)
+  console.log('[DIAG] requestIdRef.current', requestIdRef.current)
+
+  if (typeof window !== 'undefined') {
+    window.__profitabilityState = { diagLoading, diagData, diagErrors, anyLoading, hasAnyData, allDone, loadingKeys, dataKeys, errorKeys }
+  }
 
   return (
     <div className="space-y-3">

@@ -1,0 +1,1255 @@
+{
+  "url": "http://localhost:5173/fleet-project/yego-pro/profitability",
+  "timestamp": "2026-05-29T21:00:30.650Z",
+  "timeline": [
+    {
+      "label": "T0_navigation_complete",
+      "ms": 328
+    }
+  ],
+  "diagState": {
+    "anyLoading": false,
+    "hasAnyData": true,
+    "allDone": true,
+    "loadingKeys": [],
+    "dataKeys": [
+      "overview",
+      "weekly",
+      "daily",
+      "drivers",
+      "vehicles",
+      "shifts",
+      "waterfall",
+      "quality",
+      "rootCause"
+    ],
+    "errorKeys": []
+  },
+  "consoleLogs": [
+    {
+      "type": "log",
+      "text": "PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s",
+      "time": 1780088385737
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] ====== RENDER ======",
+      "time": 1780088385737
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagLoading {}",
+      "time": 1780088385738
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagData keys []",
+      "time": 1780088385738
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagErrors keys []",
+      "time": 1780088385738
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] anyLoading false hasAnyData false allDone true",
+      "time": 1780088385738
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] loadingKeys []",
+      "time": 1780088385738
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] spinner condition (anyLoading && !hasAnyData) = false",
+      "time": 1780088385738
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] allDone && !hasAnyData = true",
+      "time": 1780088385738
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] requestIdRef.current 0",
+      "time": 1780088385738
+    },
+    {
+      "type": "log",
+      "text": "PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s",
+      "time": 1780088385738
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] ====== RENDER ======",
+      "time": 1780088385738
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagLoading {}",
+      "time": 1780088385738
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagData keys []",
+      "time": 1780088385738
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagErrors keys []",
+      "time": 1780088385738
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] anyLoading false hasAnyData false allDone true",
+      "time": 1780088385739
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] loadingKeys []",
+      "time": 1780088385739
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] spinner condition (anyLoading && !hasAnyData) = false",
+      "time": 1780088385739
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] allDone && !hasAnyData = true",
+      "time": 1780088385739
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] requestIdRef.current 0",
+      "time": 1780088385739
+    },
+    {
+      "type": "log",
+      "text": "PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s",
+      "time": 1780088385783
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] ====== RENDER ======",
+      "time": 1780088385783
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagLoading {overview: true, weekly: true, daily: true, drivers: true, vehicles: true}",
+      "time": 1780088385783
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagData keys []",
+      "time": 1780088385784
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagErrors keys []",
+      "time": 1780088385784
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] anyLoading true hasAnyData false allDone false",
+      "time": 1780088385784
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] loadingKeys [overview, weekly, daily, drivers, vehicles, shifts, waterfall, quality, rootCause]",
+      "time": 1780088385784
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] spinner condition (anyLoading && !hasAnyData) = true",
+      "time": 1780088385784
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] allDone && !hasAnyData = false",
+      "time": 1780088385784
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] requestIdRef.current 2",
+      "time": 1780088385784
+    },
+    {
+      "type": "log",
+      "text": "PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s",
+      "time": 1780088385785
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] ====== RENDER ======",
+      "time": 1780088385785
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagLoading {overview: true, weekly: true, daily: true, drivers: true, vehicles: true}",
+      "time": 1780088385785
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagData keys []",
+      "time": 1780088385785
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagErrors keys []",
+      "time": 1780088385785
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] anyLoading true hasAnyData false allDone false",
+      "time": 1780088385785
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] loadingKeys [overview, weekly, daily, drivers, vehicles, shifts, waterfall, quality, rootCause]",
+      "time": 1780088385785
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] spinner condition (anyLoading && !hasAnyData) = true",
+      "time": 1780088385785
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] allDone && !hasAnyData = false",
+      "time": 1780088385785
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] requestIdRef.current 2",
+      "time": 1780088385785
+    },
+    {
+      "type": "log",
+      "text": "PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s",
+      "time": 1780088393789
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] ====== RENDER ======",
+      "time": 1780088393789
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagLoading {}",
+      "time": 1780088393789
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagData keys []",
+      "time": 1780088393789
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagErrors keys []",
+      "time": 1780088393789
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] anyLoading false hasAnyData false allDone true",
+      "time": 1780088393789
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] loadingKeys []",
+      "time": 1780088393789
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] spinner condition (anyLoading && !hasAnyData) = false",
+      "time": 1780088393789
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] allDone && !hasAnyData = true",
+      "time": 1780088393789
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] requestIdRef.current 2",
+      "time": 1780088393789
+    },
+    {
+      "type": "log",
+      "text": "PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s",
+      "time": 1780088393790
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] ====== RENDER ======",
+      "time": 1780088393790
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagLoading {}",
+      "time": 1780088393790
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagData keys []",
+      "time": 1780088393790
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagErrors keys []",
+      "time": 1780088393790
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] anyLoading false hasAnyData false allDone true",
+      "time": 1780088393790
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] loadingKeys []",
+      "time": 1780088393790
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] spinner condition (anyLoading && !hasAnyData) = false",
+      "time": 1780088393791
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] allDone && !hasAnyData = true",
+      "time": 1780088393791
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] requestIdRef.current 2",
+      "time": 1780088393791
+    },
+    {
+      "type": "log",
+      "text": "PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s",
+      "time": 1780088395664
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] ====== RENDER ======",
+      "time": 1780088395664
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagLoading {waterfall: false}",
+      "time": 1780088395664
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagData keys [waterfall]",
+      "time": 1780088395664
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagErrors keys []",
+      "time": 1780088395664
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] anyLoading false hasAnyData true allDone true",
+      "time": 1780088395664
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] loadingKeys []",
+      "time": 1780088395665
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] spinner condition (anyLoading && !hasAnyData) = false",
+      "time": 1780088395665
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] allDone && !hasAnyData = false",
+      "time": 1780088395665
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] requestIdRef.current 2",
+      "time": 1780088395665
+    },
+    {
+      "type": "log",
+      "text": "PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s",
+      "time": 1780088395665
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] ====== RENDER ======",
+      "time": 1780088395665
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagLoading {waterfall: false}",
+      "time": 1780088395665
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagData keys [waterfall]",
+      "time": 1780088395665
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagErrors keys []",
+      "time": 1780088395665
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] anyLoading false hasAnyData true allDone true",
+      "time": 1780088395665
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] loadingKeys []",
+      "time": 1780088395665
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] spinner condition (anyLoading && !hasAnyData) = false",
+      "time": 1780088395665
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] allDone && !hasAnyData = false",
+      "time": 1780088395666
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] requestIdRef.current 2",
+      "time": 1780088395666
+    },
+    {
+      "type": "log",
+      "text": "PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s",
+      "time": 1780088396808
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] ====== RENDER ======",
+      "time": 1780088396808
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagLoading {waterfall: false, overview: false, weekly: false}",
+      "time": 1780088396808
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagData keys [overview, weekly, waterfall]",
+      "time": 1780088396808
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagErrors keys []",
+      "time": 1780088396808
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] anyLoading false hasAnyData true allDone true",
+      "time": 1780088396808
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] loadingKeys []",
+      "time": 1780088396808
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] spinner condition (anyLoading && !hasAnyData) = false",
+      "time": 1780088396809
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] allDone && !hasAnyData = false",
+      "time": 1780088396809
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] requestIdRef.current 2",
+      "time": 1780088396809
+    },
+    {
+      "type": "log",
+      "text": "PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s",
+      "time": 1780088396809
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] ====== RENDER ======",
+      "time": 1780088396810
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagLoading {waterfall: false, overview: false, weekly: false}",
+      "time": 1780088396810
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagData keys [overview, weekly, waterfall]",
+      "time": 1780088396810
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagErrors keys []",
+      "time": 1780088396810
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] anyLoading false hasAnyData true allDone true",
+      "time": 1780088396810
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] loadingKeys []",
+      "time": 1780088396810
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] spinner condition (anyLoading && !hasAnyData) = false",
+      "time": 1780088396810
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] allDone && !hasAnyData = false",
+      "time": 1780088396810
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] requestIdRef.current 2",
+      "time": 1780088396810
+    },
+    {
+      "type": "log",
+      "text": "PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s",
+      "time": 1780088396840
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] ====== RENDER ======",
+      "time": 1780088396841
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagLoading {waterfall: false, overview: false, weekly: false, daily: false}",
+      "time": 1780088396841
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagData keys [overview, weekly, daily, waterfall]",
+      "time": 1780088396841
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagErrors keys []",
+      "time": 1780088396841
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] anyLoading false hasAnyData true allDone true",
+      "time": 1780088396842
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] loadingKeys []",
+      "time": 1780088396842
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] spinner condition (anyLoading && !hasAnyData) = false",
+      "time": 1780088396842
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] allDone && !hasAnyData = false",
+      "time": 1780088396842
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] requestIdRef.current 2",
+      "time": 1780088396842
+    },
+    {
+      "type": "log",
+      "text": "PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s",
+      "time": 1780088396843
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] ====== RENDER ======",
+      "time": 1780088396843
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagLoading {waterfall: false, overview: false, weekly: false, daily: false}",
+      "time": 1780088396843
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagData keys [overview, weekly, daily, waterfall]",
+      "time": 1780088396843
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagErrors keys []",
+      "time": 1780088396843
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] anyLoading false hasAnyData true allDone true",
+      "time": 1780088396843
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] loadingKeys []",
+      "time": 1780088396843
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] spinner condition (anyLoading && !hasAnyData) = false",
+      "time": 1780088396843
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] allDone && !hasAnyData = false",
+      "time": 1780088396843
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] requestIdRef.current 2",
+      "time": 1780088396843
+    },
+    {
+      "type": "log",
+      "text": "PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s",
+      "time": 1780088398019
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] ====== RENDER ======",
+      "time": 1780088398019
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagLoading {waterfall: false, overview: false, weekly: false, daily: false, drivers: false}",
+      "time": 1780088398019
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagData keys [overview, weekly, daily, drivers, waterfall]",
+      "time": 1780088398019
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagErrors keys []",
+      "time": 1780088398020
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] anyLoading false hasAnyData true allDone true",
+      "time": 1780088398020
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] loadingKeys []",
+      "time": 1780088398020
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] spinner condition (anyLoading && !hasAnyData) = false",
+      "time": 1780088398020
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] allDone && !hasAnyData = false",
+      "time": 1780088398020
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] requestIdRef.current 2",
+      "time": 1780088398020
+    },
+    {
+      "type": "log",
+      "text": "PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s",
+      "time": 1780088398020
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] ====== RENDER ======",
+      "time": 1780088398021
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagLoading {waterfall: false, overview: false, weekly: false, daily: false, drivers: false}",
+      "time": 1780088398021
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagData keys [overview, weekly, daily, drivers, waterfall]",
+      "time": 1780088398021
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagErrors keys []",
+      "time": 1780088398021
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] anyLoading false hasAnyData true allDone true",
+      "time": 1780088398021
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] loadingKeys []",
+      "time": 1780088398021
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] spinner condition (anyLoading && !hasAnyData) = false",
+      "time": 1780088398021
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] allDone && !hasAnyData = false",
+      "time": 1780088398021
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] requestIdRef.current 2",
+      "time": 1780088398021
+    },
+    {
+      "type": "log",
+      "text": "PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s",
+      "time": 1780088398022
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] ====== RENDER ======",
+      "time": 1780088398022
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagLoading {waterfall: false, overview: false, weekly: false, daily: false, drivers: false}",
+      "time": 1780088398024
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagData keys [overview, weekly, daily, drivers, vehicles, waterfall]",
+      "time": 1780088398024
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagErrors keys []",
+      "time": 1780088398024
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] anyLoading false hasAnyData true allDone true",
+      "time": 1780088398024
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] loadingKeys []",
+      "time": 1780088398026
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] spinner condition (anyLoading && !hasAnyData) = false",
+      "time": 1780088398026
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] allDone && !hasAnyData = false",
+      "time": 1780088398026
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] requestIdRef.current 2",
+      "time": 1780088398026
+    },
+    {
+      "type": "log",
+      "text": "PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s",
+      "time": 1780088398026
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] ====== RENDER ======",
+      "time": 1780088398026
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagLoading {waterfall: false, overview: false, weekly: false, daily: false, drivers: false}",
+      "time": 1780088398026
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagData keys [overview, weekly, daily, drivers, vehicles, waterfall]",
+      "time": 1780088398026
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagErrors keys []",
+      "time": 1780088398026
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] anyLoading false hasAnyData true allDone true",
+      "time": 1780088398026
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] loadingKeys []",
+      "time": 1780088398026
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] spinner condition (anyLoading && !hasAnyData) = false",
+      "time": 1780088398026
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] allDone && !hasAnyData = false",
+      "time": 1780088398026
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] requestIdRef.current 2",
+      "time": 1780088398026
+    },
+    {
+      "type": "log",
+      "text": "PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s",
+      "time": 1780088398127
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] ====== RENDER ======",
+      "time": 1780088398127
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagLoading {waterfall: false, overview: false, weekly: false, daily: false, drivers: false}",
+      "time": 1780088398128
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagData keys [overview, weekly, daily, drivers, vehicles, shifts, waterfall]",
+      "time": 1780088398128
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagErrors keys []",
+      "time": 1780088398128
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] anyLoading false hasAnyData true allDone true",
+      "time": 1780088398128
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] loadingKeys []",
+      "time": 1780088398128
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] spinner condition (anyLoading && !hasAnyData) = false",
+      "time": 1780088398128
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] allDone && !hasAnyData = false",
+      "time": 1780088398128
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] requestIdRef.current 2",
+      "time": 1780088398128
+    },
+    {
+      "type": "log",
+      "text": "PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s",
+      "time": 1780088398128
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] ====== RENDER ======",
+      "time": 1780088398128
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagLoading {waterfall: false, overview: false, weekly: false, daily: false, drivers: false}",
+      "time": 1780088398128
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagData keys [overview, weekly, daily, drivers, vehicles, shifts, waterfall]",
+      "time": 1780088398128
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagErrors keys []",
+      "time": 1780088398128
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] anyLoading false hasAnyData true allDone true",
+      "time": 1780088398128
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] loadingKeys []",
+      "time": 1780088398128
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] spinner condition (anyLoading && !hasAnyData) = false",
+      "time": 1780088398128
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] allDone && !hasAnyData = false",
+      "time": 1780088398128
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] requestIdRef.current 2",
+      "time": 1780088398128
+    },
+    {
+      "type": "log",
+      "text": "PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s",
+      "time": 1780088400204
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] ====== RENDER ======",
+      "time": 1780088400204
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagLoading {waterfall: false, overview: false, weekly: false, daily: false, drivers: false}",
+      "time": 1780088400205
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagData keys [overview, weekly, daily, drivers, vehicles, shifts, waterfall, rootCause]",
+      "time": 1780088400205
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagErrors keys []",
+      "time": 1780088400205
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] anyLoading false hasAnyData true allDone true",
+      "time": 1780088400206
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] loadingKeys []",
+      "time": 1780088400206
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] spinner condition (anyLoading && !hasAnyData) = false",
+      "time": 1780088400206
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] allDone && !hasAnyData = false",
+      "time": 1780088400206
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] requestIdRef.current 2",
+      "time": 1780088400206
+    },
+    {
+      "type": "log",
+      "text": "PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s",
+      "time": 1780088400207
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] ====== RENDER ======",
+      "time": 1780088400207
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagLoading {waterfall: false, overview: false, weekly: false, daily: false, drivers: false}",
+      "time": 1780088400207
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagData keys [overview, weekly, daily, drivers, vehicles, shifts, waterfall, rootCause]",
+      "time": 1780088400207
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagErrors keys []",
+      "time": 1780088400207
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] anyLoading false hasAnyData true allDone true",
+      "time": 1780088400207
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] loadingKeys []",
+      "time": 1780088400207
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] spinner condition (anyLoading && !hasAnyData) = false",
+      "time": 1780088400207
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] allDone && !hasAnyData = false",
+      "time": 1780088400207
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] requestIdRef.current 2",
+      "time": 1780088400208
+    },
+    {
+      "type": "log",
+      "text": "PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s",
+      "time": 1780088406927
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] ====== RENDER ======",
+      "time": 1780088406927
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagLoading {waterfall: false, overview: false, weekly: false, daily: false, drivers: false}",
+      "time": 1780088406928
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagData keys [overview, weekly, daily, drivers, vehicles, shifts, waterfall, quality, rootCause]",
+      "time": 1780088406928
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagErrors keys []",
+      "time": 1780088406928
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] anyLoading false hasAnyData true allDone true",
+      "time": 1780088406928
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] loadingKeys []",
+      "time": 1780088406928
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] spinner condition (anyLoading && !hasAnyData) = false",
+      "time": 1780088406928
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] allDone && !hasAnyData = false",
+      "time": 1780088406928
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] requestIdRef.current 2",
+      "time": 1780088406928
+    },
+    {
+      "type": "log",
+      "text": "PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s",
+      "time": 1780088406929
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] ====== RENDER ======",
+      "time": 1780088406929
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagLoading {waterfall: false, overview: false, weekly: false, daily: false, drivers: false}",
+      "time": 1780088406929
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagData keys [overview, weekly, daily, drivers, vehicles, shifts, waterfall, quality, rootCause]",
+      "time": 1780088406929
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] diagErrors keys []",
+      "time": 1780088406929
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] anyLoading false hasAnyData true allDone true",
+      "time": 1780088406929
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] loadingKeys []",
+      "time": 1780088406929
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] spinner condition (anyLoading && !hasAnyData) = false",
+      "time": 1780088406929
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] allDone && !hasAnyData = false",
+      "time": 1780088406929
+    },
+    {
+      "type": "log",
+      "text": "[DIAG] requestIdRef.current 2",
+      "time": 1780088406929
+    }
+  ],
+  "networkLog": [
+    {
+      "url": "profitability",
+      "status": 200,
+      "duration": 0,
+      "time": 1780088385410
+    },
+    {
+      "url": "overview",
+      "status": 200,
+      "duration": 0,
+      "time": 1780088391597
+    },
+    {
+      "url": "weekly",
+      "status": 200,
+      "duration": 0,
+      "time": 1780088391602
+    },
+    {
+      "url": "daily",
+      "status": 200,
+      "duration": 0,
+      "time": 1780088391604
+    },
+    {
+      "url": "drivers",
+      "status": 200,
+      "duration": 0,
+      "time": 1780088391606
+    },
+    {
+      "url": "input-mapping",
+      "status": 200,
+      "duration": 0,
+      "time": 1780088391607
+    },
+    {
+      "url": "vehicles",
+      "status": 200,
+      "duration": 0,
+      "time": 1780088395652
+    },
+    {
+      "url": "shifts",
+      "status": 200,
+      "duration": 0,
+      "time": 1780088395657
+    },
+    {
+      "url": "root-cause",
+      "status": 200,
+      "duration": 0,
+      "time": 1780088395658
+    },
+    {
+      "url": "input-mapping",
+      "status": 200,
+      "duration": 0,
+      "time": 1780088395663
+    },
+    {
+      "url": "overview",
+      "status": 200,
+      "duration": 0,
+      "time": 1780088396805
+    },
+    {
+      "url": "weekly",
+      "status": 200,
+      "duration": 0,
+      "time": 1780088396808
+    },
+    {
+      "url": "daily",
+      "status": 200,
+      "duration": 0,
+      "time": 1780088396828
+    },
+    {
+      "url": "drivers",
+      "status": 200,
+      "duration": 0,
+      "time": 1780088398018
+    },
+    {
+      "url": "vehicles",
+      "status": 200,
+      "duration": 0,
+      "time": 1780088398022
+    },
+    {
+      "url": "shifts",
+      "status": 200,
+      "duration": 0,
+      "time": 1780088398127
+    },
+    {
+      "url": "quality",
+      "status": 200,
+      "duration": 0,
+      "time": 1780088399879
+    },
+    {
+      "url": "root-cause",
+      "status": 200,
+      "duration": 0,
+      "time": 1780088400203
+    },
+    {
+      "url": "quality",
+      "status": 200,
+      "duration": 0,
+      "time": 1780088406927
+    }
+  ],
+  "summary": {
+    "T0_navigation_complete_ms": 328,
+    "T1_spinner_disappears_ms": null,
+    "T2_first_KPI_visible_ms": null,
+    "T3_first_table_visible_ms": null,
+    "T4_dashboard_usable_ms": null,
+    "T5_dashboard_fully_loaded_ms": null
+  },
+  "total_wait_ms": 45253
+}

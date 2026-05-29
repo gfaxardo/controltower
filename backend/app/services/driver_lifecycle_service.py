@@ -397,6 +397,138 @@ from datetime import timedelta
 # Estos stubs evitan que el router falle en startup.
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def compute_lifecycle_distribution(country=None, city=None, park_id=None):
+    """
+    Lightweight lifecycle distribution from serving facts.
+    Uses driver_weekly_segment_fact for segment breakdown (maps to lifecycle stages).
+    Uses driver_supply_overview_weekly_fact for weekly KPIs.
+    SLA: <2s (pre-aggregated facts).
+    """
+    from app.db.connection import get_db
+    from app.services.driver_serving_freshness_service import require_fact
+
+    seg_fresh = require_fact("driver_weekly_segment_fact")
+    ov_fresh = require_fact("driver_supply_overview_weekly_fact")
+
+    if not seg_fresh["ready"] and not ov_fresh["ready"]:
+        return {
+            "status": "blocked",
+            "freshness_status": "blocked",
+            "source": None,
+            "refreshed_at": None,
+            "summary": [],
+            "kpis": {},
+            "remediation": seg_fresh.get("remediation") or ov_fresh.get("remediation"),
+            "warnings": ["Both segment and overview facts are unavailable."],
+        }
+
+    result = {
+        "status": "ok",
+        "freshness_status": "fresh" if seg_fresh["ready"] and ov_fresh["ready"] else "stale",
+        "source": "driver_weekly_segment_fact + driver_supply_overview_weekly_fact",
+        "refreshed_at": seg_fresh.get("refreshed_at") or ov_fresh.get("refreshed_at"),
+        "summary": [],
+        "kpis": {},
+        "remediation": "",
+        "warnings": [],
+    }
+
+    segment_to_stage = {
+        "DORMANT": "CHURNED_RECENT",
+        "OCCASIONAL": "AT_RISK",
+        "CASUAL": "DECLINING",
+        "PT": "ACTIVE_LOW",
+        "FT": "ACTIVE",
+        "ELITE": "ACTIVE",
+        "LEGEND": "ACTIVE",
+    }
+
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("SET LOCAL statement_timeout = '5000'")
+
+            where = ["1=1"]
+            params = {}
+            if country:
+                where.append("country = %(country)s"); params["country"] = country
+            if city:
+                where.append("city = %(city)s"); params["city"] = city
+            if park_id:
+                where.append("park_id = %(park_id)s"); params["park_id"] = park_id
+            where_clause = " AND ".join(where)
+
+            cur.execute(f"""
+                SELECT segment,
+                       COUNT(DISTINCT driver_id) as drivers_count,
+                       SUM(trips_completed) as trips,
+                       ROUND(COUNT(DISTINCT driver_id) * 100.0 / NULLIF(SUM(COUNT(DISTINCT driver_id)) OVER (), 0), 1) as share_of_active,
+                       ROUND(AVG(trips_completed), 1) as avg_trips_per_driver,
+                       MAX(week_start) as week_start
+                FROM ops.driver_weekly_segment_fact
+                WHERE {where_clause} AND week_start = (
+                    SELECT MAX(week_start) FROM ops.driver_weekly_segment_fact WHERE {where_clause}
+                )
+                GROUP BY segment
+                ORDER BY drivers_count DESC
+            """, params)
+            seg_rows = [dict(zip([c[0] for c in cur.description], r)) for r in cur.fetchall()]
+
+            total_drivers = sum(int(r["drivers_count"]) for r in seg_rows)
+            for r in seg_rows:
+                stage = segment_to_stage.get(r["segment"], "NO_ACTIVITY_DATA")
+                result["summary"].append({
+                    "lifecycle_stage": stage,
+                    "segment": r["segment"],
+                    "drivers_count": int(r["drivers_count"]),
+                    "avg_trips_30d": round(float(r.get("avg_trips_per_driver") or 0), 1),
+                    "share_pct": round(float(r.get("share_of_active") or 0), 1),
+                    "period": str(r.get("week_start", ""))[:10],
+                })
+
+            cur.execute(f"""
+                SELECT
+                    SUM(activations) as total_activations,
+                    SUM(active_drivers) as latest_active,
+                    SUM(churned) as total_churned,
+                    SUM(reactivated) as total_reactivated,
+                    SUM(net_growth) as net_growth,
+                    COUNT(*) as weeks
+                FROM ops.driver_supply_overview_weekly_fact
+                WHERE {where_clause} AND week_start >= (
+                    SELECT MAX(week_start) - INTERVAL '8 weeks' FROM ops.driver_supply_overview_weekly_fact
+                )
+            """, params)
+            kpi_row = cur.fetchone()
+            if kpi_row:
+                result["kpis"] = {
+                    "total_activations": int(kpi_row[0] or 0),
+                    "latest_active": int(kpi_row[1] or 0),
+                    "total_churned": int(kpi_row[2] or 0),
+                    "total_reactivated": int(kpi_row[3] or 0),
+                    "net_growth": int(kpi_row[4] or 0),
+                    "weeks_analyzed": int(kpi_row[5] or 0),
+                }
+
+            if not seg_rows and not total_drivers:
+                result["status"] = "warning"
+                result["warnings"].append("No segment data in serving facts. Verify refresh_driver_supply_facts.py.")
+
+            if not seg_fresh["ready"]:
+                result["warnings"].append(f"Segment fact is {seg_fresh['freshness_status']}.")
+            if not ov_fresh["ready"]:
+                result["warnings"].append(f"Overview fact is {ov_fresh['freshness_status']}.")
+
+            if result["warnings"]:
+                result["status"] = "warning"
+
+    except Exception as e:
+        result["status"] = "blocked"
+        result["error"] = str(e)[:200]
+        result["remediation"] = "Run refresh_driver_supply_facts.py and verify DB connectivity."
+
+    return result
+
 def get_weekly(from_date=None, to_date=None, park_id=None):
     return {"data": [], "total": 0}
 

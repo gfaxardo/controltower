@@ -23,6 +23,7 @@ from app.services.driver_identity_service import search_driver_identities, get_d
 from app.services.driver_activity_service import search_driver_activity, compute_driver_activity
 from app.services.driver_lifecycle_service import (
     classify_lifecycle_from_identity, compute_lifecycle_summary,
+    compute_lifecycle_distribution,
 )
 from app.services.driver_actionable_supply_service import (
     generate_actionable_list, generate_actionable_summary,
@@ -54,6 +55,7 @@ from app.services.driver_operational_loop_service import (
 from app.services.driver_segment_migration_service import compute_segment_migration
 from app.services.driver_operational_priority_service import get_actionable_movements
 from app.services.driver_serving_freshness_service import check_all_facts, check_fact_freshness
+from app.utils.json_sanitizer import sanitize_for_json
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +221,17 @@ async def lifecycle_summary(
 async def driver_lifecycle(driver_id: str):
     identity = get_driver_identity(driver_id)
     return JSONResponse(content=classify_lifecycle_from_identity(driver_id, identity))
+
+
+@router.get("/lifecycle-distribution")
+async def lifecycle_distribution(
+    country: Optional[str] = Query(None), city: Optional[str] = Query(None),
+    park_id: Optional[str] = Query(None),
+):
+    """Lightweight lifecycle distribution from serving facts. <2s SLA."""
+    return JSONResponse(content=sanitize_for_json(compute_lifecycle_distribution(
+        country=country, city=city, park_id=park_id,
+    )))
 
 
 # ─── D4: Actionable Supply ───────────────────────────────────────────────────
@@ -581,6 +594,18 @@ async def campaign_list(
     ))
 
 
+@router.get("/campaigns/effectiveness-summary")
+async def campaign_effectiveness_summary():
+    """Get effectiveness summary across all campaigns with measurements."""
+    return JSONResponse(content=get_effectiveness_summary())
+
+
+@router.get("/campaigns/sync-health")
+async def campaigns_sync_health(campaign_id: str = Query("")):
+    """Get overall CRM sync health status."""
+    return JSONResponse(content=get_sync_health(campaign_id=campaign_id or None))
+
+
 @router.get("/campaigns/{campaign_id}")
 async def campaign_detail(campaign_id: str):
     """Get campaign detail with member summary and sample."""
@@ -654,11 +679,6 @@ async def campaign_sync_history(campaign_id: str, limit: int = Query(50, ge=1, l
     return JSONResponse(content=get_sync_history(campaign_id=campaign_id, limit=limit, offset=offset))
 
 
-@router.get("/campaigns/sync-health")
-async def campaigns_sync_health(campaign_id: str = Query("")):
-    """Get overall CRM sync health status."""
-    return JSONResponse(content=get_sync_health(campaign_id=campaign_id or None))
-
 
 @router.get("/crm-bridge/health")
 async def crm_bridge_health():
@@ -685,12 +705,6 @@ async def campaign_effectiveness(
         include_members=include_members,
         group_by=group_by if group_by else None,
     ))
-
-
-@router.get("/campaigns/effectiveness-summary")
-async def campaign_effectiveness_summary():
-    """Get effectiveness summary across all campaigns with measurements."""
-    return JSONResponse(content=get_effectiveness_summary())
 
 
 # ─── OLM1: Operational Loop ───────────────────────────────────────────────────
@@ -823,26 +837,20 @@ async def supply_overview_fact(
             """, {**params, "limit": limit, "offset": offset})
             rows = [dict(zip([c[0] for c in cur.description], r)) for r in cur.fetchall()]
 
-            for r in rows:
-                if r.get("week_start"):
-                    r["week_start"] = r["week_start"].isoformat()[:10] if hasattr(r["week_start"], 'isoformat') else str(r["week_start"])
-                if r.get("refreshed_at"):
-                    r["refreshed_at"] = r["refreshed_at"].isoformat() if hasattr(r["refreshed_at"], 'isoformat') else str(r["refreshed_at"])
-
-        return JSONResponse(content={
+        return JSONResponse(content=sanitize_for_json({
             "status": "ok",
             "serving_source": "driver_supply_overview_weekly_fact",
             "freshness_status": freshness["freshness_status"],
             "refreshed_at": freshness.get("refreshed_at"),
             "series": rows,
             "summary": {},
-        })
+        }))
     except Exception as e:
-        return JSONResponse(content={
+        return JSONResponse(content=sanitize_for_json({
             "status": "blocked", "error": str(e)[:200],
             "serving_source": "driver_supply_overview_weekly_fact",
             "remediation": "Run refresh_driver_supply_facts.py and verify DB connectivity.",
-        })
+        }))
 
 
 @router.get("/segment-composition-fact")
@@ -890,23 +898,20 @@ async def segment_composition_fact(
                 LIMIT %(limit)s OFFSET %(offset)s
             """, {**params, "limit": limit, "offset": offset})
             rows = [dict(zip([c[0] for c in cur.description], r)) for r in cur.fetchall()]
-            for r in rows:
-                if r.get("week_start"):
-                    r["week_start"] = r["week_start"].isoformat()[:10] if hasattr(r["week_start"], 'isoformat') else str(r["week_start"])
 
-        return JSONResponse(content={
+        return JSONResponse(content=sanitize_for_json({
             "status": "ok",
             "serving_source": "driver_weekly_segment_fact",
             "freshness_status": freshness["freshness_status"],
             "refreshed_at": freshness.get("refreshed_at"),
             "data": rows,
-        })
+        }))
     except Exception as e:
-        return JSONResponse(content={
+        return JSONResponse(content=sanitize_for_json({
             "status": "blocked", "error": str(e)[:200],
             "serving_source": "driver_weekly_segment_fact",
             "remediation": "Run refresh_driver_supply_facts.py and verify DB connectivity.",
-        })
+        }))
 
 
 @router.get("/serving-freshness")

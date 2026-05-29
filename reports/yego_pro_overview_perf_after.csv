@@ -1,0 +1,6 @@
+﻿"run","label","status","duration_ms","size_bytes","kpis_present","profit_present","coverage_present"
+"1","COLD","OK","3923","2947","True","True","True"
+"2","WARM","OK","1795","2947","True","True","True"
+"3","WARM","OK","1785","2947","True","True","True"
+"4","WARM","OK","2098","2947","True","True","True"
+"5","WARM","OK","1791","2947","True","True","True"

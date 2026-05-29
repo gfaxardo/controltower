@@ -67,6 +67,10 @@ def sanitize_for_json(obj: Any) -> Any:  # noqa: C901 (función necesariamente g
         except (InvalidOperation, OverflowError):
             return None
 
+    # ── date / datetime ──────────────────────────────────────────────────────
+    if hasattr(obj, 'isoformat'):
+        return obj.isoformat()
+
     # ── Contenedores ─────────────────────────────────────────────────────────
     if isinstance(obj, dict):
         return {k: sanitize_for_json(v) for k, v in obj.items()}

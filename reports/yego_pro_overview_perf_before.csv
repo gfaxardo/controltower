@@ -1,0 +1,6 @@
+run,label,status,total_ms,db_connection_ms,check_view_MV_WEEK_ms,query_MV_WEEK_ms,query_MV_DAY_ms,query_COUNT_weeks_ms,get_coverage_total_ms,payload_bytes
+1,COLD,ERROR,0.0,0.0,,,,,,93
+2,WARM #1,ERROR,0.0,0.0,,,,,,93
+3,WARM #2,ERROR,0.0,0.0,,,,,,93
+4,WARM #3,ERROR,0.0,0.0,,,,,,93
+5,WARM #4,ERROR,0.0,0.0,,,,,,93

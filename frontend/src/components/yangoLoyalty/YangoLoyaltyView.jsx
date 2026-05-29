@@ -302,11 +302,35 @@ export default function YangoLoyaltyView() {
   )
 
   if (allFailed) return (
-    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400">
-      <p className="font-medium">Error al cargar datos</p>
-      <p className="text-sm mt-1">{bootstrapError || perfError || summaryError}</p>
-      <p className="text-xs mt-1 text-red-400/70">No se pudo cargar ninguna seccion. El resto de la vista sigue disponible al reintentar.</p>
-      <button onClick={() => { fetchBootstrap(); fetchPerformance(); fetchSummary() }} className="mt-3 px-3 py-1 bg-red-500/20 rounded text-sm hover:bg-red-500/30">Reintentar</button>
+    <div className="w-full ct-page-section" style={{gap: 'var(--ct-space-3)'}}>
+      <div className="ct-workbench-header">
+        <div className="ct-workbench-header-left">
+          <h2 className="ct-workbench-title">Yango Loyalty Tracker</h2>
+          <p className="ct-workbench-subtitle">Datos no disponibles</p>
+        </div>
+      </div>
+      <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-500/20 text-blue-400 border border-blue-500/40">Lima only</span>
+          <span className="text-sm font-medium text-ct-text">Piloto Lima</span>
+        </div>
+        <p className="text-xs text-ct-text3">Fuente de actividad diaria habilitada para Lima.</p>
+      </div>
+      <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+        <span className="font-medium text-sm text-amber-400">
+          Scoring oficial bloqueado — pendiente validacion Yango de definiciones.
+        </span>
+      </div>
+      <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400">
+        <p className="font-medium">Error al cargar datos</p>
+        <p className="text-sm mt-1">{bootstrapError || perfError || summaryError}</p>
+        <p className="text-xs mt-1 text-red-400/70">No se pudo cargar datos. El resto de la vista sigue disponible al reintentar.</p>
+        <div className="flex flex-wrap gap-2 mt-3">
+          <button onClick={fetchBootstrap} className="px-3 py-1 bg-red-500/20 rounded text-sm hover:bg-red-500/30">Reintentar Bootstrap</button>
+          <button onClick={fetchPerformance} className="px-3 py-1 bg-red-500/20 rounded text-sm hover:bg-red-500/30">Reintentar Performance</button>
+          <button onClick={fetchSummary} className="px-3 py-1 bg-red-500/20 rounded text-sm hover:bg-red-500/30">Reintentar Scoring</button>
+        </div>
+      </div>
     </div>
   )
 
@@ -391,59 +415,81 @@ export default function YangoLoyaltyView() {
       {/* ═══ TAB: OVERVIEW ═══ */}
       {activeTab === 'overview' && (
         <>
-          {/* ── Bootstrap shell — immediate useful content ── */}
-          {bootstrap && !perfData && (
-            <div className="space-y-3 mb-4">
-              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-500/20 text-blue-400 border border-blue-500/40">Lima only</span>
-                  <span className="text-sm font-medium text-ct-text">Piloto Lima</span>
-                </div>
-                <p className="text-xs text-ct-text3">Fuente de actividad diaria habilitada para Lima. Provincias pendientes de enriquecimiento.</p>
-              </div>
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
-                <span className="font-medium text-sm text-amber-400">
-                  Scoring oficial bloqueado — pendiente validacion Yango de definiciones.
-                </span>
-                {bootstrap.remediation?.length > 0 && bootstrap.remediation.map((r, i) => (
-                  <p key={i} className="text-xs text-amber-300/80 mt-1">{r.message}</p>
-                ))}
-              </div>
-              <div className="ct-kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
-                <div className="ct-kpi-card border-ct-border bg-ct-card">
-                  <span className="ct-kpi-card-label">Active Drivers Lima MTD</span>
-                  <span className="ct-kpi-card-value text-ct-text">{bootstrap.cards?.active_drivers_mtd != null ? fmtNum(bootstrap.cards.active_drivers_mtd) : '—'}</span>
-                </div>
-                <div className="ct-kpi-card border-ct-border bg-ct-card">
-                  <span className="ct-kpi-card-label">Supply Hours Lima MTD</span>
-                  <span className="ct-kpi-card-value text-ct-text">{bootstrap.cards?.supply_hours_mtd != null ? fmtNum(bootstrap.cards.supply_hours_mtd) : '—'}</span>
-                </div>
-                <div className="ct-kpi-card border-ct-border bg-ct-card">
-                  <span className="ct-kpi-card-label">Nuevos + Reactivados MTD</span>
-                  <span className="ct-kpi-card-value text-ct-text">{bootstrap.cards?.yego_operational_new_plus_reactivated != null ? fmtNum(bootstrap.cards.yego_operational_new_plus_reactivated) : '—'}</span>
-                  <span className="text-2xs text-amber-400">Operacional YEGO (no oficial)</span>
-                </div>
-                <div className="ct-kpi-card border-amber-500/30 bg-amber-500/5">
-                  <span className="ct-kpi-card-label">Scoring</span>
-                  <span className="ct-kpi-card-value text-amber-400">Bloqueado</span>
-                </div>
-              </div>
-              {bootstrap.status?.operational_flow_available && (
-                <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-2">
-                  <span className="text-xs text-green-400">Operational Flow disponible</span>
-                </div>
-              )}
-              {(perfLoading || summaryLoading) && (
-                <div className="bg-ct-surface/50 border border-ct-border rounded-lg p-3 flex items-center gap-2">
-                  <div className="animate-spin w-3 h-3 border-2 border-ct-accent border-t-transparent rounded-full" />
-                  <span className="text-xs text-ct-text3">Cargando detalle completo...</span>
-                </div>
-              )}
+          {/* ── Bootstrap error ── */}
+          {bootstrapError && !bootstrap && !bootstrapLoading && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-3">
+              <p className="text-sm text-red-400">No se pudo cargar Bootstrap. Algunos datos pueden no estar disponibles.</p>
+              <p className="text-xs text-red-400/70 mt-1">{bootstrapError}</p>
+              <button onClick={fetchBootstrap} className="mt-2 px-3 py-1 bg-red-500/20 rounded text-xs text-red-400 hover:bg-red-500/30">Reintentar Bootstrap</button>
             </div>
           )}
 
-          {/* ── Per-section error ── */}
-          {perfError && !perfData && !bootstrapLoading && (
+          {/* ═══ UNCONDITIONAL SHELL ═══ */}
+          <div className="space-y-3 mb-4">
+            {/* Pilot scope badge */}
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-500/20 text-blue-400 border border-blue-500/40">Lima only</span>
+                <span className="text-sm font-medium text-ct-text">Piloto Lima</span>
+              </div>
+              <p className="text-xs text-ct-text3">Fuente de actividad diaria habilitada para Lima. Provincias pendientes de enriquecimiento.</p>
+            </div>
+
+            {/* Scoring blocked banner */}
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+              <span className="font-medium text-sm text-amber-400">
+                Scoring oficial bloqueado — pendiente validacion Yango de definiciones.
+              </span>
+              {(bootstrap?.remediation?.length > 0) && bootstrap.remediation.map((r, i) => (
+                <p key={i} className="text-xs text-amber-300/80 mt-1">{r.message}</p>
+              ))}
+            </div>
+
+            {/* KPI Cards — ALWAYS visible */}
+            <div className="ct-kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+              <div className="ct-kpi-card border-ct-border bg-ct-card">
+                <span className="ct-kpi-card-label">Active Drivers Lima MTD</span>
+                <span className="ct-kpi-card-value text-ct-text">
+                  {perfData?.summary?.active_drivers_mtd != null ? fmtNum(perfData.summary.active_drivers_mtd)
+                    : bootstrap?.cards?.active_drivers_mtd != null ? fmtNum(bootstrap.cards.active_drivers_mtd)
+                    : bootstrapLoading ? <Skeleton h={5} w="72" />
+                    : 'No disponible'}
+                </span>
+                {perfData?.reconciliation && (
+                  <span className="text-2xs text-ct-text3">Yango: {fmtNum(perfData.reconciliation.ad_reference)} ({perfData.reconciliation.ad_drift_pct}% dif)</span>
+                )}
+              </div>
+              <div className="ct-kpi-card border-ct-border bg-ct-card">
+                <span className="ct-kpi-card-label">Supply Hours Lima MTD</span>
+                <span className="ct-kpi-card-value text-ct-text">
+                  {perfData?.summary?.supply_hours_mtd != null ? fmtNum(perfData.summary.supply_hours_mtd)
+                    : bootstrap?.cards?.supply_hours_mtd != null ? fmtNum(bootstrap.cards.supply_hours_mtd)
+                    : bootstrapLoading ? <Skeleton h={5} w="72" />
+                    : 'No disponible'}
+                </span>
+                {perfData?.reconciliation && (
+                  <span className="text-2xs text-ct-text3">Yango: {fmtNum(perfData.reconciliation.sh_reference)} ({perfData.reconciliation.sh_drift_pct}% dif)</span>
+                )}
+              </div>
+              <div className="ct-kpi-card border-ct-border bg-ct-card">
+                <span className="ct-kpi-card-label">Nuevos + Reactivados MTD</span>
+                <span className="ct-kpi-card-value text-ct-text">
+                  {perfData?.summary?.new_plus_reactivated_mtd != null ? fmtNum(perfData.summary.new_plus_reactivated_mtd)
+                    : bootstrap?.cards?.yego_operational_new_plus_reactivated != null ? fmtNum(bootstrap.cards.yego_operational_new_plus_reactivated)
+                    : bootstrapLoading ? <Skeleton h={5} w="72" />
+                    : 'No disponible'}
+                </span>
+                <span className="text-2xs text-amber-400">Operacional YEGO (no oficial)</span>
+              </div>
+              <div className="ct-kpi-card border-amber-500/30 bg-amber-500/5">
+                <span className="ct-kpi-card-label">Scoring</span>
+                <span className="ct-kpi-card-value text-amber-400">Bloqueado</span>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Performance error ── */}
+          {perfError && !perfData && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-3">
               <p className="text-sm text-red-400">No se pudo cargar Performance detallado.</p>
               <p className="text-xs text-red-400/70 mt-1">{perfError}</p>
@@ -451,110 +497,28 @@ export default function YangoLoyaltyView() {
               <button onClick={fetchPerformance} className="mt-2 px-3 py-1 bg-red-500/20 rounded text-xs text-red-400 hover:bg-red-500/30">Reintentar Performance</button>
             </div>
           )}
-          {perfLoading && !perfData && !perfError && !bootstrap && (
-            <div className="space-y-3 mb-4">
-              <div className="bg-ct-card border border-ct-border rounded-lg p-4 space-y-2">
-                <Skeleton h={4} w="200" />
-                <div className="grid grid-cols-4 gap-3">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="space-y-2"><Skeleton h={3} /><Skeleton h={6} /></div>)}</div>
-              </div>
-            </div>
-          )}
-          {summaryError && !summary && !bootstrapLoading && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-3">
-              <p className="text-sm text-red-400">No se pudo cargar el resumen de scoring.</p>
-              <p className="text-xs text-red-400/70 mt-1">{summaryError}</p>
-              <p className="text-xs text-ct-text3 mt-1">El resto de la vista sigue disponible.</p>
-              <button onClick={fetchSummary} className="mt-2 px-3 py-1 bg-red-500/20 rounded text-xs text-red-400 hover:bg-red-500/30">Reintentar Scoring</button>
-            </div>
-          )}
-          {summaryLoading && !summary && !summaryError && !bootstrap && (
-            <div className="space-y-3 mb-4">
-              <div className="bg-ct-card border border-ct-border rounded-lg p-4 space-y-2">
-                <Skeleton h={4} w="160" />
-                <Skeleton h={20} />
-              </div>
-            </div>
-          )}
 
-          {/* ── Piloto Lima — Performance Foundation ── */}
+          {/* ── Performance detail (only when data loaded) ── */}
           {perfData && (
             <div className="space-y-3 mb-4">
-              {/* Pilot scope badge */}
-              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-500/20 text-blue-400 border border-blue-500/40">Lima only</span>
-                  <span className="text-sm font-medium text-ct-text">Piloto Lima</span>
-                </div>
-                <p className="text-xs text-ct-text3">La fuente actual de actividad diaria esta habilitada para Lima. Provincias se activaran cuando la tabla sea enriquecida.</p>
-              </div>
-
-              {/* Remediation / Reconciliation banner */}
               {(perfData.remediation?.length > 0 || perfData.reconciliation) && (
-                <div className={`rounded-lg p-3 ${perfData.scoring_status === 'blocked_pending_reconciliation' ? 'bg-amber-500/10 border border-amber-500/30' : 'bg-amber-500/10 border border-amber-500/30'}`}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`font-medium text-sm ${perfData.scoring_status === 'blocked_pending_reconciliation' ? 'text-amber-400' : 'text-amber-400'}`}>
-                      {perfData.scoring_status === 'blocked_pending_reconciliation'
-                        ? 'Abril Lima pendiente de reconciliacion. Scoring bloqueado.'
-                        : perfData.scoring_status === 'enabled'
-                          ? `Scoring activo: ${perfData.summary?.performance_category || ''} (${perfData.summary?.performance_goals_completed || 0}/3)`
-                          : 'Scoring bloqueado.'}
-                    </span>
-                  </div>
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+                  <span className="font-medium text-sm text-amber-400">
+                    {perfData.scoring_status === 'blocked_pending_reconciliation'
+                      ? 'Abril Lima pendiente de reconciliacion. Scoring bloqueado.'
+                      : perfData.scoring_status === 'enabled'
+                        ? `Scoring activo: ${perfData.summary?.performance_category || ''} (${perfData.summary?.performance_goals_completed || 0}/3)`
+                        : 'Scoring bloqueado.'}
+                  </span>
                   {perfData.remediation?.map((r, i) => (
                     <p key={i} className="text-xs text-amber-300/80">{r.message}</p>
                   ))}
                   {perfData.reconciliation?.guardrail_flags?.length > 0 && (
-                    <p className="text-xs text-amber-300/80 mt-1">
-                      Flags: {perfData.reconciliation.guardrail_flags.join(', ')}
-                    </p>
-                  )}
-                  {perfData.target_status !== 'configured' && (
-                    <button onClick={() => setActiveTab('config')} className="mt-2 text-xs text-ct-accent hover:underline">
-                      Configurar metas
-                    </button>
+                    <p className="text-xs text-amber-300/80 mt-1">Flags: {perfData.reconciliation.guardrail_flags.join(', ')}</p>
                   )}
                 </div>
               )}
 
-              {/* KPI Cards — Lima (3 metrics + scoring status) */}
-              <div className="ct-kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
-                <div className="ct-kpi-card border-ct-border bg-ct-card">
-                  <span className="ct-kpi-card-label">Active Drivers Lima MTD</span>
-                  <span className="ct-kpi-card-value text-ct-text">{fmtNum(perfData.summary?.active_drivers_mtd)}</span>
-                  {perfData.reconciliation && (
-                    <span className="text-2xs text-ct-text3">Yango: {fmtNum(perfData.reconciliation.ad_reference)} ({perfData.reconciliation.ad_drift_pct}% dif)</span>
-                  )}
-                </div>
-                <div className="ct-kpi-card border-ct-border bg-ct-card">
-                  <span className="ct-kpi-card-label">Supply Hours Lima MTD</span>
-                  <span className="ct-kpi-card-value text-ct-text">{fmtNum(perfData.summary?.supply_hours_mtd)}</span>
-                  {perfData.reconciliation && (
-                    <span className={`text-2xs ${perfData.reconciliation.sh_drift_pct > 5 ? 'text-amber-400' : 'text-ct-text3'}`}>
-                      Yango: {fmtNum(perfData.reconciliation.sh_reference)} ({perfData.reconciliation.sh_drift_pct}% dif)
-                    </span>
-                  )}
-                </div>
-                <div className="ct-kpi-card border-ct-border bg-ct-card">
-                  <span className="ct-kpi-card-label">Nuevos + Reactivados MTD</span>
-                  <span className="ct-kpi-card-value text-ct-text">{fmtNum(perfData.summary?.new_plus_reactivated_mtd)}</span>
-                  <span className="text-2xs text-amber-400">Definicion provisional</span>
-                  {perfData.reconciliation && (
-                    <span className="text-2xs text-amber-300/80">Yango: {fmtNum(perfData.reconciliation.nr_reference)} ({perfData.reconciliation.nr_drift_pct}% dif)</span>
-                  )}
-                </div>
-                <div className={`ct-kpi-card border-amber-500/30 ${perfData.scoring_status === 'blocked_pending_reconciliation' ? 'bg-amber-500/5' : 'bg-ct-card'}`}>
-                  <span className="ct-kpi-card-label">Scoring</span>
-                  <span className="ct-kpi-card-value text-amber-400">
-                    {perfData.scoring_status === 'blocked_pending_reconciliation' ? 'Pendiente Reconciliacion' :
-                     perfData.scoring_status === 'enabled' ? 'Activo' : 'Bloqueado'}
-                  </span>
-                  {perfData.reconciliation?.guardrail_flags?.length > 0 && (
-                    <span className="text-2xs text-amber-400 block mt-0.5">{perfData.reconciliation.guardrail_flags.join(', ')}</span>
-                  )}
-                </div>
-              </div>
-
-              {/* Lima detail + gaps */}
               {perfData.cities?.length > 0 && (
                 <div className="bg-ct-card border border-ct-border rounded-lg p-4">
                   <div className="flex items-center justify-between mb-3">
@@ -584,213 +548,213 @@ export default function YangoLoyaltyView() {
                       <div className="bg-ct-surface rounded-lg p-3">
                         <p className="text-2xs text-ct-text3 mb-1">Proyeccion SH EOM</p>
                         <p className="text-lg font-bold text-ct-text">{city.projected_supply_hours_eom != null ? fmtNum(city.projected_supply_hours_eom) : '—'}</p>
-                        <p className="text-2xs text-ct-text3 mt-0.5">Avance: {(safeNum(city.expected_progress_pct) * 100).toFixed(0)}%</p>
                       </div>
                       <div className="bg-ct-surface rounded-lg p-3">
                         <p className="text-2xs text-ct-text3 mb-1">Trazabilidad</p>
                         <p className="text-2xs text-ct-text2">{city.city_assignment_method || 'forced_lima_pilot'}</p>
-                        <p className="text-2xs text-emerald-400 mt-0.5">{city.city_assignment_confidence || 'high'}</p>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* Unsupported cities */}
-              {perfData.unsupported_cities?.length > 0 && (
-                <div className="bg-ct-surface/50 border border-ct-border rounded-lg p-3">
-                  <h4 className="text-xs font-medium text-ct-text3 mb-2">Ciudades pendientes de enriquecimiento</h4>
-                  <div className="flex gap-2">
-                    {perfData.unsupported_cities.map(c => (
-                      <span key={c.city_norm} className="px-2 py-1 rounded text-2xs bg-ct-border/20 text-ct-text3 border border-ct-border capitalize">
-                        {c.city_norm} — pendiente
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Metric Definition Status */}
               <div className="bg-ct-surface/50 border border-ct-border rounded-lg p-3">
                 <h4 className="text-xs font-medium text-ct-text3 mb-1">Definiciones de Metricas</h4>
                 <p className="text-2xs text-ct-text3">
-                  AD: Auto regular (1.9% dif vs Yango) | SH: fleet_summary (13% dif, cobertura parcial) | N+R: provisional (+176% dif)
+                  AD: Auto regular | SH: fleet_summary | N+R: provisional
                 </p>
                 <p className="text-2xs text-amber-400 mt-1">
                   Scoring bloqueado hasta validacion Yango de definicion N+R.
                 </p>
               </div>
-
-              {/* YEGO Operational Flow — Enriched */}
-              <div className="bg-blue-500/5 border border-blue-500/30 rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <h4 className="text-xs font-medium text-blue-400">YEGO Operational Flow</h4>
-                  <span className="px-1 py-0.5 rounded text-2xs bg-green-500/20 text-green-400">Enriched</span>
-                </div>
-                <p className="text-2xs text-ct-text3 mb-2">
-                  Entrada y recuperacion de conductores en YEGO. Enriquecido con trips 2025/2026. No equivale al N+R oficial Yango.
-                </p>
-                <div className="grid grid-cols-4 gap-2">
-                  <div className="bg-ct-surface rounded p-2 text-center">
-                    <p className="text-2xs text-ct-text3">Nuevos YEGO</p>
-                    <p className="text-sm font-bold text-ct-text">{fmtNum(perfData.summary?.new_drivers_mtd || '—')}</p>
-                  </div>
-                  <div className="bg-ct-surface rounded p-2 text-center">
-                    <p className="text-2xs text-ct-text3">Reactivados</p>
-                    <p className="text-sm font-bold text-ct-text">{fmtNum(perfData.summary?.reactivated_drivers_mtd || '—')}</p>
-                  </div>
-                  <div className="bg-ct-surface rounded p-2 text-center">
-                    <p className="text-2xs text-ct-text3">Flujo Total</p>
-                    <p className="text-sm font-bold text-ct-text">{fmtNum(perfData.summary?.new_plus_reactivated_mtd || '—')}</p>
-                  </div>
-                  <div className="bg-ct-surface rounded p-2 text-center">
-                    <p className="text-2xs text-amber-400/80">Falsos Nuevos</p>
-                    <p className="text-sm font-bold text-orange-400">—</p>
-                  </div>
-                </div>
-                <div className="flex gap-1 mt-2">
-                  <span className="px-1.5 py-0.5 rounded text-2xs bg-blue-500/20 text-blue-400">Internal Mgmt</span>
-                  <span className="px-1.5 py-0.5 rounded text-2xs bg-amber-500/20 text-amber-400">Not Yango Scoring</span>
-                  <span className="px-1.5 py-0.5 rounded text-2xs bg-green-500/20 text-green-400">Hist Enrichment</span>
-                </div>
-              </div>
             </div>
           )}
 
-          {summary && <ExecutiveSummary {...{ cityRanking, kpiGaps, data_complete, manual_kpis_pending, expected_progress_pct, cities, has_any_targets }} />}
-
-          {summary && <div className="ct-kpi-grid">
-            {['ORO','PLATA','BRONCE'].map(cat => {
-              const cs = CAT[cat]
-              const count = cat === 'ORO' ? totalOroCities : cat === 'PLATA' ? totalPlataCities : Math.max(0, cities.length - totalOroCities - totalPlataCities)
-              return (
-                <div key={cat} className={`ct-kpi-card ${cs.border} ${cs.bg}`}>
-                  <span className="ct-kpi-card-label">Ciudades {cat === 'ORO' ? 'Oro' : cat === 'PLATA' ? 'Plata' : 'Bronce'}</span>
-                  <span className={`ct-kpi-card-value ${cs.text}`}>{count}</span>
-                </div>
-              )
-            })}
-          </div>}
-
-          {summary && <>
-          {/* ── City ranking (worst → best, collapsible) ── */}
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-ct-text">Ranking por ciudad (peor → mejor)</h3>
-              <DecisionPriorityStrip
-                items={cityRanking}
-                signalExtractor={(city) => ({
-                  meets_oro: city.cat?.category === 'ORO',
-                  data_complete,
-                  has_any_targets,
-                  attainment_pct: city.avgScore,
-                  __signals: { city: city.city, category: city.cat?.category },
-                })}
-              />
+          {/* ── YEGO Operational Flow — ALWAYS visible ── */}
+          <div className="bg-blue-500/5 border border-blue-500/30 rounded-lg p-3 mb-4">
+            <div className="flex items-center gap-2 mb-1">
+              <h4 className="text-xs font-medium text-blue-400">Flujo operativo YEGO</h4>
+              <span className="px-1 py-0.5 rounded text-2xs bg-green-500/20 text-green-400">Enriched</span>
             </div>
-            {cityRanking.map((city, idx) => {
-              const cs = CAT[city.cat.category] || CAT.BRONCE
-              const isOpen = expandedCities[city.city] !== undefined ? expandedCities[city.city] : idx === 0
-              return (
-                <div key={city.city} className={`ct-collapsible ${isOpen ? 'ct-collapsible--open' : ''}`}>
-                  <button onClick={() => setExpandedCities(p => ({ ...p, [city.city]: !isOpen }))}
-                    className="ct-collapsible-header">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <span className="text-xs font-semibold text-ct-text">{city.city}</span>
-                      {has_any_targets ? (
-                        <span className={`ct-badge ${city.cat.category === 'ORO' ? 'ct-badge--ok' : city.cat.category === 'PLATA' ? 'ct-badge--neutral' : 'ct-badge--warn'}`}>
-                          {city.cat.category} ({safeNum(city.oroCount)}O/{safeNum(city.cat.plata_kpis)}P)
-                        </span>
-                      ) : (
-                        <span className="text-xs text-ct-text3">Sin metas</span>
-                      )}
-                      {city.blockers.length > 0 && city.cat.category !== 'ORO' && (
-                        <span className="text-xs text-ct-text2 truncate max-w-[200px] hidden sm:inline">
-                          {city.blockers[0]?.kpiLabel} ({safeNum(city.blockers[0]?.gap_pct).toFixed(0)}%)
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-ct-text3">{safeNum(city.avgScore).toFixed(0)}%</span>
-                      <svg className="ct-collapsible-header-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </div>
-                  </button>
-                  {isOpen && (
-                    <div className="ct-collapsible-content">
-                      {city.cityKpis.filter(k => k.group === 'performance').map(kpi => {
-                        const pct = safeNum(kpi.attainment_pct)
-                        const barColor = kpi.meets_oro ? 'bg-amber-500' : kpi.meets_plata ? 'bg-slate-400' : pct > 0 ? 'bg-orange-700' : 'bg-ct-border/40'
-                        return (
-                          <div key={kpi.kpiKey} className="flex items-center gap-2">
-                            <span className="text-xs text-ct-text3 w-20 truncate">{kpi.kpiLabel}</span>
-                            <ProgressBar pct={pct} color={barColor} height={2} showLabel />
-                            <span className="text-xs text-ct-text3 w-10 text-right">{fmtNum(kpi.real)}</span>
-                            <span className={`text-xs w-14 text-right ${kpi.meets_oro ? 'text-amber-400' : kpi.meets_plata ? 'text-slate-400' : kpi.target ? 'text-orange-400' : 'text-ct-text3'}`}>
-                              {kpi.target ? fmtPct(kpi.attainment_pct) : '—'}
-                            </span>
-                          </div>
-                        )
-                      })}
-                      {city.blockers.length > 0 && city.cat.category !== 'ORO' && (
-                        <p className="text-xs text-ct-text2 pt-1">
-                          Impide Oro: {city.blockers.map(b => `${b.kpiLabel} (${safeNum(b.gap_pct).toFixed(0)}%)`).join(', ')}
-                        </p>
-                      )}
-                      {!has_any_targets && (
-                        <p className="text-xs text-ct-text3 pt-1">Configura metas para ver scoring de categoria.</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
+            <p className="text-2xs text-ct-text3 mb-2">
+              Indicador interno. No equivale al N+R oficial Yango. Enriquecido con historial de viajes. Para gestion propia.
+            </p>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+              <div className="bg-ct-surface rounded p-2 text-center">
+                <p className="text-2xs text-ct-text3">Nuevos YEGO</p>
+                <p className="text-sm font-bold text-ct-text">
+                  {perfData?.summary?.new_drivers_mtd != null ? fmtNum(perfData.summary.new_drivers_mtd)
+                    : bootstrapLoading ? <Skeleton h={4} w="40" />
+                    : 'No disponible'}
+                </p>
+              </div>
+              <div className="bg-ct-surface rounded p-2 text-center">
+                <p className="text-2xs text-ct-text3">Reactivados</p>
+                <p className="text-sm font-bold text-ct-text">
+                  {perfData?.summary?.reactivated_drivers_mtd != null ? fmtNum(perfData.summary.reactivated_drivers_mtd)
+                    : bootstrapLoading ? <Skeleton h={4} w="40" />
+                    : 'No disponible'}
+                </p>
+              </div>
+              <div className="bg-ct-surface rounded p-2 text-center">
+                <p className="text-2xs text-ct-text3">Flujo Total</p>
+                <p className="text-sm font-bold text-ct-text">
+                  {perfData?.summary?.new_plus_reactivated_mtd != null ? fmtNum(perfData.summary.new_plus_reactivated_mtd)
+                    : bootstrap?.cards?.yego_operational_new_plus_reactivated != null ? fmtNum(bootstrap.cards.yego_operational_new_plus_reactivated)
+                    : bootstrapLoading ? <Skeleton h={4} w="40" />
+                    : 'No disponible'}
+                </p>
+              </div>
+              <div className="bg-ct-surface rounded p-2 text-center">
+                <p className="text-2xs text-amber-400/80">Falsos Nuevos</p>
+                <p className="text-sm font-bold text-orange-400">—</p>
+              </div>
+            </div>
+            <div className="flex gap-1 mt-2">
+              <span className="px-1.5 py-0.5 rounded text-2xs bg-blue-500/20 text-blue-400">Internal Mgmt</span>
+              <span className="px-1.5 py-0.5 rounded text-2xs bg-amber-500/20 text-amber-400">Not Yango Scoring</span>
+              <span className="px-1.5 py-0.5 rounded text-2xs bg-green-500/20 text-green-400">Hist Enrichment</span>
+            </div>
           </div>
 
-          {/* ── KPI Blocker Section (drillable) ── */}
-          {has_any_targets && (
-            <div className="bg-ct-card border border-ct-border rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-ct-text mb-3">Que impide ser Oro</h3>
-              <div className="space-y-1">
-                {kpiGaps.filter(k => safeNum(k.avgGap) > 5 && k.totalWithTarget > 0).slice(0, 5).map(kpi => {
-                  const cityValues = safeArr(kpis.find(x => x.kpi_key === kpi.key)?.values).filter(v => v.target)
+          {/* ── Loading indicator ── */}
+          {(perfLoading || summaryLoading) && (
+            <div className="bg-ct-surface/50 border border-ct-border rounded-lg p-3 mb-3 flex items-center gap-2">
+              <div className="animate-spin w-3 h-3 border-2 border-ct-accent border-t-transparent rounded-full" />
+              <span className="text-xs text-ct-text3">Cargando detalle completo...</span>
+            </div>
+          )}
+
+          {/* ── Summary error ── */}
+          {summaryError && !summary && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-3">
+              <p className="text-sm text-red-400">No se pudo cargar el resumen de scoring.</p>
+              <p className="text-xs text-red-400/70 mt-1">{summaryError}</p>
+              <p className="text-xs text-ct-text3 mt-1">El resto de la vista sigue disponible.</p>
+              <button onClick={fetchSummary} className="mt-2 px-3 py-1 bg-red-500/20 rounded text-xs text-red-400 hover:bg-red-500/30">Reintentar Scoring</button>
+            </div>
+          )}
+
+          {/* ── Scoring & KPI detail (only when summary loaded) ── */}
+          {summary && (
+            <>
+              <ExecutiveSummary {...{ cityRanking, kpiGaps, data_complete, manual_kpis_pending, expected_progress_pct, cities, has_any_targets }} />
+
+              <div className="ct-kpi-grid">
+                {['ORO','PLATA','BRONCE'].map(cat => {
+                  const cs = CAT[cat]
+                  const count = cat === 'ORO' ? totalOroCities : cat === 'PLATA' ? totalPlataCities : Math.max(0, cities.length - totalOroCities - totalPlataCities)
                   return (
-                    <DrillableBlocker key={kpi.key} kpi={kpi}
-                      cities={cityValues}
-                      expanded={expandedBlocker === kpi.key}
-                      onToggle={() => setExpandedBlocker(expandedBlocker === kpi.key ? null : kpi.key)} />
+                    <div key={cat} className={`ct-kpi-card ${cs.border} ${cs.bg}`}>
+                      <span className="ct-kpi-card-label">Ciudades {cat === 'ORO' ? 'Oro' : cat === 'PLATA' ? 'Plata' : 'Bronce'}</span>
+                      <span className={`ct-kpi-card-value ${cs.text}`}>{count}</span>
+                    </div>
                   )
                 })}
-                {kpiGaps.filter(k => safeNum(k.avgGap) > 5 && k.totalWithTarget > 0).length === 0 && (
-                  <p className="text-xs text-ct-text3">Todos los KPIs estan en rango. No hay bloqueos detectados.</p>
-                )}
               </div>
-            </div>
-          )}
 
-          {/* ── Data completeness panel ── */}
-          <div className="bg-ct-card border border-ct-border rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-ct-text mb-3">Completitud de datos</h3>
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
-              {safeArr(kpis).map(kpi => {
-                const totalVals = safeArr(kpi.values).length
-                const withData = safeArr(kpi.values).filter(v => v.real != null).length
-                const withTarget = safeArr(kpi.values).filter(v => v.target != null).length
-                const pct = totalVals ? Math.round((withData / totalVals) * 100) : 0
-                const icon = pct === 100 ? '✓' : pct > 0 ? '~' : '—'
-                const color = pct === 100 ? 'text-emerald-400' : pct > 0 ? 'text-amber-400' : 'text-red-400'
-                return (
-                  <div key={kpi.kpi_key} className="bg-ct-surface rounded-lg p-2.5 text-center">
-                    <p className={`text-lg font-bold ${color}`}>{icon}</p>
-                    <p className="text-2xs text-ct-text3">{kpi.kpi_label}</p>
-                    <p className="text-2xs text-ct-text3">{withData}/{totalVals} data &middot; {withTarget} metas</p>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-ct-text">Ranking por ciudad (peor → mejor)</h3>
+                  <DecisionPriorityStrip
+                    items={cityRanking}
+                    signalExtractor={(city) => ({
+                      meets_oro: city.cat?.category === 'ORO',
+                      data_complete,
+                      has_any_targets,
+                      attainment_pct: city.avgScore,
+                      __signals: { city: city.city, category: city.cat?.category },
+                    })}
+                  />
+                </div>
+                {cityRanking.map((city, idx) => {
+                  const cs = CAT[city.cat.category] || CAT.BRONCE
+                  const isOpen = expandedCities[city.city] !== undefined ? expandedCities[city.city] : idx === 0
+                  return (
+                    <div key={city.city} className={`ct-collapsible ${isOpen ? 'ct-collapsible--open' : ''}`}>
+                      <button onClick={() => setExpandedCities(p => ({ ...p, [city.city]: !isOpen }))} className="ct-collapsible-header">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <span className="text-xs font-semibold text-ct-text">{city.city}</span>
+                          {has_any_targets ? (
+                            <span className={`ct-badge ${city.cat.category === 'ORO' ? 'ct-badge--ok' : city.cat.category === 'PLATA' ? 'ct-badge--neutral' : 'ct-badge--warn'}`}>
+                              {city.cat.category} ({safeNum(city.oroCount)}O/{safeNum(city.cat.plata_kpis)}P)
+                            </span>
+                          ) : (
+                            <span className="text-xs text-ct-text3">Sin metas</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-ct-text3">{safeNum(city.avgScore).toFixed(0)}%</span>
+                          <svg className="ct-collapsible-header-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+                      </button>
+                      {isOpen && (
+                        <div className="ct-collapsible-content">
+                          {city.cityKpis.filter(k => k.group === 'performance').map(kpi => {
+                            const pct = safeNum(kpi.attainment_pct)
+                            const barColor = kpi.meets_oro ? 'bg-amber-500' : kpi.meets_plata ? 'bg-slate-400' : pct > 0 ? 'bg-orange-700' : 'bg-ct-border/40'
+                            return (
+                              <div key={kpi.kpiKey} className="flex items-center gap-2">
+                                <span className="text-xs text-ct-text3 w-20 truncate">{kpi.kpiLabel}</span>
+                                <ProgressBar pct={pct} color={barColor} height={2} showLabel />
+                                <span className="text-xs text-ct-text3 w-10 text-right">{fmtNum(kpi.real)}</span>
+                                <span className={`text-xs w-14 text-right ${kpi.meets_oro ? 'text-amber-400' : kpi.meets_plata ? 'text-slate-400' : kpi.target ? 'text-orange-400' : 'text-ct-text3'}`}>
+                                  {kpi.target ? fmtPct(kpi.attainment_pct) : '—'}
+                                </span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              {has_any_targets && (
+                <div className="bg-ct-card border border-ct-border rounded-lg p-4">
+                  <h3 className="text-sm font-semibold text-ct-text mb-3">Que impide ser Oro</h3>
+                  <div className="space-y-1">
+                    {kpiGaps.filter(k => safeNum(k.avgGap) > 5 && k.totalWithTarget > 0).slice(0, 5).map(kpi => {
+                      const cityValues = safeArr(kpis.find(x => x.kpi_key === kpi.key)?.values).filter(v => v.target)
+                      return (
+                        <DrillableBlocker key={kpi.key} kpi={kpi}
+                          cities={cityValues}
+                          expanded={expandedBlocker === kpi.key}
+                          onToggle={() => setExpandedBlocker(expandedBlocker === kpi.key ? null : kpi.key)} />
+                      )
+                    })}
+                    {kpiGaps.filter(k => safeNum(k.avgGap) > 5 && k.totalWithTarget > 0).length === 0 && (
+                      <p className="text-xs text-ct-text3">Todos los KPIs estan en rango.</p>
+                    )}
                   </div>
-                )
-              })}
-            </div>
-          </div>
-          </>}
+                </div>
+              )}
+
+              <div className="bg-ct-card border border-ct-border rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-ct-text mb-3">Completitud de datos</h3>
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+                  {safeArr(kpis).map(kpi => {
+                    const totalVals = safeArr(kpi.values).length
+                    const withData = safeArr(kpi.values).filter(v => v.real != null).length
+                    const withTarget = safeArr(kpi.values).filter(v => v.target != null).length
+                    const pct = totalVals ? Math.round((withData / totalVals) * 100) : 0
+                    const icon = pct === 100 ? '✓' : pct > 0 ? '~' : '—'
+                    const color = pct === 100 ? 'text-emerald-400' : pct > 0 ? 'text-amber-400' : 'text-red-400'
+                    return (
+                      <div key={kpi.kpi_key} className="bg-ct-surface rounded-lg p-2.5 text-center">
+                        <p className={`text-lg font-bold ${color}`}>{icon}</p>
+                        <p className="text-2xs text-ct-text3">{kpi.kpi_label}</p>
+                        <p className="text-2xs text-ct-text3">{withData}/{totalVals} data · {withTarget} metas</p>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </>
+          )}
         </>
       )}
 
