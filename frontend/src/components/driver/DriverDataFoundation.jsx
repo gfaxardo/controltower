@@ -106,16 +106,16 @@ export default function DriverDataFoundation () {
 
   if (error) {
     return (
-      <div className='border border-red-200 rounded-lg p-3 bg-red-50/50'>
-        <div className='flex items-start justify-between gap-2'>
-          <div>
-            <span className='text-[11px] text-red-700 font-medium'>Data Foundation: error t\u00e9cnico</span>
-            <div className='text-[10px] text-red-600 mt-0.5'>{error}</div>
-            <div className='text-[10px] text-gray-500 mt-1'>Remediaci\u00f3n: Run refresh_driver_supply_facts.py o verificar conectividad DB.</div>
-          </div>
-          <button type='button' onClick={reload} className='flex-shrink-0 px-2.5 py-1 text-[10px] font-medium rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50'>Reintentar</button>
+      <details className='border border-amber-200 rounded-lg bg-amber-50/50 mb-2'>
+        <summary className='flex items-center justify-between gap-2 px-3 py-1.5 cursor-pointer text-[11px]'>
+          <span className='text-amber-700 font-medium'>Data Foundation: degradado</span>
+          <button type='button' onClick={(e) => { e.preventDefault(); reload() }} className='flex-shrink-0 px-2 py-0.5 text-[10px] font-medium rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50'>Reintentar</button>
+        </summary>
+        <div className='px-3 pb-2'>
+          <div className='text-[10px] text-amber-600'>{error}</div>
+          <div className='text-[10px] text-gray-400 mt-0.5'>Supply funciona normalmente. Este panel es informativo.</div>
         </div>
-      </div>
+      </details>
     )
   }
 

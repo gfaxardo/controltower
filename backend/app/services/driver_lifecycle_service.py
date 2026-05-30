@@ -446,16 +446,29 @@ def compute_lifecycle_distribution(country=None, city=None, park_id=None):
     try:
         with get_db() as conn:
             cur = conn.cursor()
-            cur.execute("SET LOCAL statement_timeout = '5000'")
+            cur.execute("SET LOCAL statement_timeout = '12000'")
 
             where = ["1=1"]
             params = {}
-            if country:
-                where.append("country = %(country)s"); params["country"] = country
-            if city:
-                where.append("city = %(city)s"); params["city"] = city
             if park_id:
                 where.append("park_id = %(park_id)s"); params["park_id"] = park_id
+            elif country or city:
+                try:
+                    gc, gp = [], {}
+                    if country:
+                        gc.append("country = %(gc)s"); gp["gc"] = country
+                    if city:
+                        gc.append("city = %(gci)s"); gp["gci"] = city
+                    cur.execute(f"SELECT ARRAY_AGG(DISTINCT park_id) FILTER (WHERE park_id IS NOT NULL) FROM dim.dim_park WHERE {' AND '.join(gc)}", gp)
+                    rg = cur.fetchone()
+                    if rg and rg[0]:
+                        where.append("park_id = ANY(%(rp)s)"); params["rp"] = rg[0]
+                    else:
+                        if country: where.append("country = %(country)s"); params["country"] = country
+                        if city: where.append("city = %(city)s"); params["city"] = city
+                except Exception:
+                    if country: where.append("country = %(country)s"); params["country"] = country
+                    if city: where.append("city = %(city)s"); params["city"] = city
             where_clause = " AND ".join(where)
 
             cur.execute(f"""

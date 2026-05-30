@@ -137,18 +137,44 @@ def _migration_from_fact(country, city, park_id, include_same_segment, limit, of
             current_period_val = str(fresh["max_operational_period"])[:10] if fresh["max_operational_period"] else None
             freshness_status = fresh["freshness_status"]
 
-            # Build query from fact
             conditions = ["1=1"]
             params = {}
-            if country:
-                conditions.append("country = %(country)s")
-                params["country"] = country
-            if city:
-                conditions.append("city = %(city)s")
-                params["city"] = city
             if park_id:
                 conditions.append("park_id = %(park_id)s")
                 params["park_id"] = park_id
+            elif country or city:
+                try:
+                    geo_conds = []
+                    geo_params = {}
+                    if country:
+                        geo_conds.append("country = %(geo_country)s")
+                        geo_params["geo_country"] = country
+                    if city:
+                        geo_conds.append("city = %(geo_city)s")
+                        geo_params["geo_city"] = city
+                    cur.execute(f"""
+                        SELECT ARRAY_AGG(DISTINCT park_id) FILTER (WHERE park_id IS NOT NULL)
+                        FROM dim.dim_park WHERE {' AND '.join(geo_conds)}
+                    """, geo_params)
+                    row_g = cur.fetchone()
+                    resolved = row_g[0] if row_g and row_g[0] else None
+                    if resolved:
+                        conditions.append("park_id = ANY(%(resolved_pids)s)")
+                        params["resolved_pids"] = resolved
+                    else:
+                        if country:
+                            conditions.append("country = %(country)s")
+                            params["country"] = country
+                        if city:
+                            conditions.append("city = %(city)s")
+                            params["city"] = city
+                except Exception:
+                    if country:
+                        conditions.append("country = %(country)s")
+                        params["country"] = country
+                    if city:
+                        conditions.append("city = %(city)s")
+                        params["city"] = city
             if not include_same_segment:
                 conditions.append("movement_type != 'SAME_SEGMENT'")
 

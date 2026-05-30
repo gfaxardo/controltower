@@ -59,6 +59,58 @@ from app.utils.json_sanitizer import sanitize_for_json
 
 logger = logging.getLogger(__name__)
 
+
+def _resolve_geo_filters(cur, country, city, park_id):
+    """Resolve country/city to park_ids via dim.dim_park for fact queries.
+
+    Facts may store 'Unknown' for country/city, so filtering by country/city
+    directly on the fact misses rows. Instead, resolve to park_ids from dim_park
+    and filter by park_id.
+    """
+    conditions = ["1=1"]
+    params = {}
+    if park_id:
+        conditions.append("park_id = %(park_id)s")
+        params["park_id"] = park_id
+        return " AND ".join(conditions), params
+    if not country and not city:
+        return " AND ".join(conditions), params
+    try:
+        geo_conds = []
+        geo_params = {}
+        if country:
+            geo_conds.append("country = %(geo_country)s")
+            geo_params["geo_country"] = country
+        if city:
+            geo_conds.append("city = %(geo_city)s")
+            geo_params["geo_city"] = city
+        cur.execute(f"""
+            SELECT ARRAY_AGG(DISTINCT park_id) FILTER (WHERE park_id IS NOT NULL)
+            FROM dim.dim_park
+            WHERE {' AND '.join(geo_conds)}
+        """, geo_params)
+        row = cur.fetchone()
+        resolved_pids = row[0] if row and row[0] else None
+        if resolved_pids:
+            conditions.append("park_id = ANY(%(resolved_pids)s)")
+            params["resolved_pids"] = resolved_pids
+        else:
+            if country:
+                conditions.append("country = %(country)s")
+                params["country"] = country
+            if city:
+                conditions.append("city = %(city)s")
+                params["city"] = city
+    except Exception:
+        if country:
+            conditions.append("country = %(country)s")
+            params["country"] = country
+        if city:
+            conditions.append("city = %(city)s")
+            params["city"] = city
+    return " AND ".join(conditions), params
+
+
 router = APIRouter(prefix="/drivers", tags=["drivers-foundation"])
 
 # Ensure workflow tables exist on first request
@@ -816,22 +868,21 @@ async def supply_overview_fact(
         from app.db.connection import get_db
         with get_db() as conn:
             cur = conn.cursor()
-            cur.execute("SET LOCAL statement_timeout = '8000'")
-            conditions = ["1=1"]
-            params = {}
-            if country:
-                conditions.append("country = %(country)s"); params["country"] = country
-            if city:
-                conditions.append("city = %(city)s"); params["city"] = city
-            if park_id:
-                conditions.append("park_id = %(park_id)s"); params["park_id"] = park_id
-            where = " AND ".join(conditions)
+            cur.execute("SET LOCAL statement_timeout = '15000'")
+            where, params = _resolve_geo_filters(cur, country, city, park_id)
 
             cur.execute(f"""
-                SELECT week_start, activations, active_drivers, trips, churned,
-                       reactivated, net_growth, refreshed_at
+                SELECT week_start,
+                       SUM(activations) as activations,
+                       SUM(active_drivers) as active_drivers,
+                       SUM(trips) as trips,
+                       SUM(churned) as churned,
+                       SUM(reactivated) as reactivated,
+                       SUM(net_growth) as net_growth,
+                       MAX(refreshed_at) as refreshed_at
                 FROM ops.driver_supply_overview_weekly_fact
                 WHERE {where}
+                GROUP BY week_start
                 ORDER BY week_start DESC
                 LIMIT %(limit)s OFFSET %(offset)s
             """, {**params, "limit": limit, "offset": offset})
@@ -891,16 +942,8 @@ async def segment_composition_fact(
         from app.db.connection import get_db
         with get_db() as conn:
             cur = conn.cursor()
-            cur.execute("SET LOCAL statement_timeout = '10000'")
-            conditions = ["1=1"]
-            params = {}
-            if country:
-                conditions.append("country = %(country)s"); params["country"] = country
-            if city:
-                conditions.append("city = %(city)s"); params["city"] = city
-            if park_id:
-                conditions.append("park_id = %(park_id)s"); params["park_id"] = park_id
-            where = " AND ".join(conditions)
+            cur.execute("SET LOCAL statement_timeout = '15000'")
+            where, params = _resolve_geo_filters(cur, country, city, park_id)
 
             cur.execute(f"""
                 SELECT week_start, segment,
@@ -962,7 +1005,6 @@ async def geo_options():
             cities = row[1] if row and row[1] else []
             parks_raw = row[2] if row and row[2] else []
 
-            # Enrich parks with park_name from dim_park (optional, graceful)
             parks = []
             if parks_raw:
                 try:
@@ -976,10 +1018,39 @@ async def geo_options():
                         parks.append(park_map.get(pid, {"park_id": pid, "park_name": None, "city": "", "country": ""}))
                 except Exception:
                     parks = [{"park_id": p, "park_name": None, "city": "", "country": ""} for p in parks_raw]
+            if not parks_raw:
+                try:
+                    cur.execute("""
+                        SELECT park_id, park_name, city, country
+                        FROM dim.dim_park
+                        WHERE park_id IS NOT NULL AND park_name IS NOT NULL
+                        ORDER BY country, city, park_name
+                    """)
+                    parks = [{"park_id": r[0], "park_name": r[1], "city": r[2], "country": r[3]} for r in cur.fetchall()]
+                except Exception:
+                    pass
+
+            if parks:
+                enriched_countries = sorted(set(
+                    p["country"] for p in parks
+                    if p.get("country") and p["country"] not in ("", "Unknown")
+                ))
+                enriched_cities = sorted(set(
+                    p["city"] for p in parks
+                    if p.get("city") and p["city"] not in ("", "Unknown")
+                ))
+                if enriched_countries and not countries:
+                    countries = enriched_countries
+                elif enriched_countries:
+                    countries = sorted(set(countries) | set(enriched_countries))
+                if enriched_cities and not cities:
+                    cities = enriched_cities
+                elif enriched_cities:
+                    cities = sorted(set(cities) | set(enriched_cities))
 
             warnings_list = []
-            if not countries and not cities:
-                warnings_list.append("No geo data in supply facts. Verify driver_daily_activity_fact refresh.")
+            if not countries and not cities and not parks:
+                warnings_list.append("No geo data in supply facts or dim_park. Verify data load.")
 
         return JSONResponse(content={
             "status": "warning" if warnings_list else "ok",

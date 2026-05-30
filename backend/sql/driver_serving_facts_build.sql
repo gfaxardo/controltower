@@ -13,8 +13,8 @@ CREATE MATERIALIZED VIEW ops.driver_weekly_segment_fact AS
 SELECT
     adf.driver_id,
     date_trunc('week', adf.activity_date)::date AS week_start,
-    MAX(adf.country) AS country,
-    MAX(adf.city) AS city,
+    COALESCE(NULLIF(MAX(adf.country), ''), MAX(p.country)) AS country,
+    COALESCE(NULLIF(MAX(adf.city), ''), MAX(p.city)) AS city,
     MAX(adf.park_id) AS park_id,
     MAX(p.park_name) AS park_name,
     COALESCE(SUM(adf.completed_trips), 0) AS trips_completed,

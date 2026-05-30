@@ -64,9 +64,11 @@ def check_fact_freshness(fact_name: str) -> dict:
                 }
 
             status = row["freshness_status"]
-            ready = status == "fresh"
+            ready = status in ("fresh", "warning", "stale")
             remediation = ""
-            if not ready:
+            if status in ("warning", "stale"):
+                remediation = f"Fact is {status}. Data may be outdated. Run refresh_driver_supply_facts.py to refresh."
+            elif not ready:
                 remediation = f"Fact is {status}. Run refresh_driver_supply_facts.py to refresh."
 
             return {
