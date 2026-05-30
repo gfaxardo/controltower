@@ -1,5 +1,5 @@
-"""
-Yango Loyalty Performance Service — Lima-Only Pilot
+﻿"""
+Yango Loyalty Performance Service ÔÇö Lima-Only Pilot
 Control Foundation Hardening / Phase 1H.4
 
 PILOT SCOPE: Lima only.
@@ -48,7 +48,7 @@ NR_DEFINITION_STATUS = "provisional_pending_business_validation"
 NR_SOURCE_CONFIDENCE = "medium_derived_from_trip_history"
 NR_REACTIVATION_WINDOW_DAYS = 30
 
-# Yango official reference values — used for guardrail drift detection, NOT as targets
+# Yango official reference values ÔÇö used for guardrail drift detection, NOT as targets
 REF_AD_YANGO = 5601
 REF_SH_YANGO = 357000
 REF_NR_YANGO = 1064
@@ -155,9 +155,9 @@ def get_loyalty_performance(
         return _error_response(month_str, country, str(e))
 
 
-# ═══════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 # Response builders
-# ═══════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 
 def _unsupported_city_response(month_str: str, country: str, city_norm: str) -> dict:
     return {
@@ -216,9 +216,9 @@ def _empty_summary(with_nr: bool = False) -> dict:
     return s
 
 
-# ═══════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 # Data fetchers
-# ═══════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 
 def _fetch_lima_performance(cur, month_start: date) -> dict:
     cur.execute("""
@@ -250,7 +250,7 @@ def _fetch_lima_performance(cur, month_start: date) -> dict:
 
 
 def _fetch_nr_lazy_stub(month_start: date) -> dict:
-    """Fast stub — N+R is loaded lazily from operational-flow endpoint (serving fact v2)."""
+    """Fast stub ÔÇö N+R is loaded lazily from operational-flow endpoint (serving fact v2)."""
     return {
         "new_drivers_mtd": 0,
         "reactivated_drivers_mtd": 0,
@@ -367,9 +367,9 @@ def _fetch_targets(cur, month_str: str) -> dict:
     return targets
 
 
-# ═══════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 # Freshness
-# ═══════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 
 def _compute_freshness(lima_data: dict, today: date) -> dict:
     data_until = lima_data.get("data_until")
@@ -382,9 +382,9 @@ def _compute_freshness(lima_data: dict, today: date) -> dict:
     return {"data_until": data_until.isoformat(), "status": status}
 
 
-# ═══════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 # City response builder
-# ═══════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 
 def _build_lima_city(lima_data: dict, nr_data: dict, targets: dict,
                      month_start: date, total_days: int, today: date) -> Optional[dict]:
@@ -449,9 +449,9 @@ def _build_lima_city(lima_data: dict, nr_data: dict, targets: dict,
     }
 
 
-# ═══════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 # Summary builder
-# ═══════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 
 def _build_summary(city_result: Optional[dict], nr_data: dict, targets: dict) -> dict:
     if not city_result:
@@ -479,9 +479,9 @@ def _build_summary(city_result: Optional[dict], nr_data: dict, targets: dict) ->
     }
 
 
-# ═══════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 # Targets & Scoring
-# ═══════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 
 def _compute_target_status(targets: dict) -> str:
     has_ad = "AD" in targets
@@ -560,9 +560,9 @@ def _compute_scoring(city_result: Optional[dict], nr_data: dict, targets: dict) 
     }
 
 
-# ═══════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 # Remediation
-# ═══════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 
 def _build_remediation(target_status: str, freshness: dict, scoring: dict, nr_data: dict) -> list[dict]:
     items = []
@@ -600,9 +600,9 @@ def _build_remediation(target_status: str, freshness: dict, scoring: dict, nr_da
     return items
 
 
-# ═══════════════════════════════════════════════════════════════
-# Bootstrap — ultra-lightweight initial render endpoint
-# ═══════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# Bootstrap ÔÇö ultra-lightweight initial render endpoint
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 
 def get_loyalty_bootstrap() -> dict[str, Any]:
     """Ultra-lightweight endpoint for initial shell render (<1s).
@@ -681,5 +681,350 @@ def get_loyalty_bootstrap() -> dict[str, Any]:
     except Exception as e:
         logger.warning("bootstrap failed: %s", e)
         result["remediation"].append({"type": "connection_error", "message": "Conexion a base de datos no disponible."})
+
+    return result
+
+
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# Loyalty History ÔÇö multi-month serving-fact readout
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+
+HISTORY_TIMEOUT_MS = 3000
+
+
+def _cursor_history(conn):
+    c = conn.cursor(cursor_factory=RealDictCursor)
+    c.execute("SET LOCAL statement_timeout = %s", (str(HISTORY_TIMEOUT_MS),))
+    return c
+
+
+_COUNTRY_NORM_MAP = {"peru": "PE", "pe": "PE"}
+
+
+def _build_history_month(conn, month_start: date, month_str: str, city_norm: str, country: str) -> dict:
+    cur = _cursor_history(conn)
+
+    metrics = {
+        "active_drivers": {
+            "actual_value": None,
+            "target_value": None,
+            "metric_universe": "official_yango_aligned",
+            "source_confidence": "high",
+            "status": "no_data",
+        },
+        "supply_hours": {
+            "actual_value": None,
+            "target_value": None,
+            "metric_universe": "official_yango_aligned",
+            "source_confidence": "high",
+            "status": "no_data",
+        },
+        "operational_flow": {
+            "actual_value": None,
+            "target_value": None,
+            "metric_universe": "yego_operational_internal",
+            "source_confidence": "medium",
+            "status": "no_data",
+            "detail": {
+                "new_drivers": None,
+                "reactivated_drivers": None,
+            },
+        },
+    }
+
+    try:
+        cur.execute("""
+            SELECT
+                COALESCE(active_drivers_mtd, 0)::int AS active_drivers,
+                COALESCE(supply_hours_mtd, 0) AS supply_hours
+            FROM ops.mv_yango_loyalty_performance_monthly_v1
+            WHERE month_start = %(ms)s
+              AND LOWER(country) = LOWER(%(co)s)
+              AND LOWER(city_norm) = LOWER(%(ci)s)
+            LIMIT 1
+        """, {"ms": month_start, "co": country, "ci": city_norm})
+        mv_row = cur.fetchone()
+        if mv_row:
+            if mv_row["active_drivers"] is not None:
+                metrics["active_drivers"]["actual_value"] = int(mv_row["active_drivers"])
+            if mv_row["supply_hours"] is not None:
+                metrics["supply_hours"]["actual_value"] = float(mv_row["supply_hours"])
+    except Exception:
+        metrics["active_drivers"]["source_confidence"] = "error"
+        metrics["supply_hours"]["source_confidence"] = "error"
+
+    country_flow = _COUNTRY_NORM_MAP.get(country.lower(), country.upper())
+    try:
+        cur.execute("""
+            SELECT
+                COALESCE(yego_operational_new_plus_reactivated, 0)::int AS nr,
+                COALESCE(yego_new_drivers, 0)::int AS new_d,
+                COALESCE(yego_reactivated_drivers, 0)::int AS react_d
+            FROM ops.fct_yego_operational_flow_monthly_v2
+            WHERE month_start = %(ms)s
+              AND country = %(co)s
+              AND LOWER(city_norm) = LOWER(%(ci)s)
+            LIMIT 1
+        """, {"ms": month_start, "co": country_flow, "ci": city_norm})
+        flow_row = cur.fetchone()
+        if flow_row:
+            nr_val = int(flow_row["nr"]) if flow_row["nr"] is not None else None
+            if nr_val is not None:
+                metrics["operational_flow"]["actual_value"] = nr_val
+            if flow_row.get("new_d") is not None:
+                metrics["operational_flow"]["detail"]["new_drivers"] = int(flow_row["new_d"])
+            if flow_row.get("react_d") is not None:
+                metrics["operational_flow"]["detail"]["reactivated_drivers"] = int(flow_row["react_d"])
+    except Exception:
+        metrics["operational_flow"]["source_confidence"] = "error"
+
+    targets = {}
+    try:
+        cur.execute("""
+            SELECT kpi_code, target_value
+            FROM ops.yango_loyalty_monthly_goals
+            WHERE month = %(m)s AND LOWER(city) = LOWER(%(ci)s)
+              AND kpi_code IN ('AD', 'SH', 'N_R')
+        """, {"m": month_str, "ci": city_norm})
+        for row in cur.fetchall():
+            targets[row["kpi_code"]] = float(row["target_value"])
+    except Exception:
+        pass
+
+    t_ad = targets.get("AD")
+    t_sh = targets.get("SH")
+    t_nr = targets.get("N_R")
+
+    metrics["active_drivers"]["target_value"] = t_ad
+    metrics["supply_hours"]["target_value"] = t_sh
+    metrics["operational_flow"]["target_value"] = t_nr
+
+    _set_history_metric_status(metrics["active_drivers"])
+    _set_history_metric_status(metrics["supply_hours"])
+    _set_history_metric_status(metrics["operational_flow"])
+
+    return {
+        "month_start": month_start.isoformat(),
+        "metrics": metrics,
+    }
+
+
+def _set_history_metric_status(metric: dict) -> None:
+    if metric.get("source_confidence") == "error":
+        metric["status"] = "no_data"
+        return
+    actual = metric.get("actual_value")
+    if actual is None:
+        metric["status"] = "no_data"
+        return
+    target = metric.get("target_value")
+    if target is None:
+        metric["status"] = "no_target"
+        return
+    if actual > target:
+        metric["status"] = "above_target"
+    elif actual < target:
+        metric["status"] = "below_target"
+    else:
+        metric["status"] = "on_target"
+
+
+def get_loyalty_history(
+    months: int = 3,
+    city: str = "lima",
+    country: str = "peru",
+) -> dict[str, Any]:
+    today = date.today()
+    current_month_start = date(today.year, today.month, 1)
+
+    last_closed = date(current_month_start.year, current_month_start.month, 1) - timedelta(days=1)
+    last_closed_start = date(last_closed.year, last_closed.month, 1)
+
+    closed_months = []
+    m = last_closed_start
+    for _ in range(months):
+        closed_months.append(m)
+        m = date(m.year, m.month, 1) - timedelta(days=1)
+        m = date(m.year, m.month, 1)
+
+    city_norm = city.lower().strip()
+
+    data = []
+    try:
+        with get_db() as conn:
+            for month_start in closed_months:
+                month_str = month_start.strftime("%Y-%m")
+                month_data = _build_history_month(conn, month_start, month_str, city_norm, country)
+                data.append(month_data)
+    except Exception as e:
+        logger.exception("get_loyalty_history: %s", e)
+
+    return {
+        "months_requested": months,
+        "city": city_norm,
+        "country": country,
+        "data": data,
+        "serving_sources": {
+            "active_drivers": "ops.mv_yango_loyalty_performance_monthly_v1",
+            "supply_hours": "ops.mv_yango_loyalty_performance_monthly_v1",
+            "operational_flow": "ops.fct_yego_operational_flow_monthly_v2",
+            "targets": "ops.yango_loyalty_monthly_goals",
+        },
+    }
+
+
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# Loyalty City Comparison ÔÇö multi-city same-month readout
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+
+def get_loyalty_city_comparison(
+    month: Optional[str] = None,
+    country: str = "peru",
+) -> dict[str, Any]:
+    today = date.today()
+    if month:
+        try:
+            parts = month.split("-")
+            month_start = date(int(parts[0]), int(parts[1]), 1)
+        except (ValueError, IndexError):
+            month_start = date(today.year, today.month, 1)
+    else:
+        month_start = date(today.year, today.month, 1)
+
+    month_str = month_start.strftime("%Y-%m")
+
+    result = {
+        "month": month_str,
+        "country": country,
+        "metrics": {
+            "active_drivers": {
+                "metric_universe": "official_yango_aligned",
+                "source_confidence": "high",
+                "supports_city_comparison": True,
+                "cities": [],
+            },
+            "supply_hours": {
+                "metric_universe": "official_yango_aligned",
+                "source_confidence": "high",
+                "supports_city_comparison": True,
+                "cities": [],
+            },
+            "operational_flow": {
+                "metric_universe": "yego_operational_internal",
+                "source_confidence": "medium",
+                "supports_city_comparison": False,
+                "lima_only": True,
+                "reason": "source_only_available_for_lima_pilot",
+                "cities": [],
+            },
+        },
+    }
+
+    try:
+        with get_db() as conn:
+            cur = _cursor_history(conn)
+
+            try:
+                cur.execute("""
+                    SELECT
+                        LOWER(city_norm) AS city_norm,
+                        COALESCE(active_drivers_mtd, 0)::int AS active_drivers,
+                        COALESCE(supply_hours_mtd, 0) AS supply_hours
+                    FROM ops.mv_yango_loyalty_performance_monthly_v1
+                    WHERE month_start = %(ms)s
+                      AND LOWER(country) = LOWER(%(co)s)
+                """, {"ms": month_start, "co": country})
+                for row in cur.fetchall():
+                    cn = row["city_norm"]
+                    ad = int(row["active_drivers"]) if row["active_drivers"] is not None else None
+                    sh = float(row["supply_hours"]) if row["supply_hours"] is not None else None
+
+                    result["metrics"]["active_drivers"]["cities"].append({
+                        "city_norm": cn,
+                        "actual_value": ad,
+                        "target_value": None,
+                        "gap": None,
+                        "gap_pct": None,
+                    })
+                    result["metrics"]["supply_hours"]["cities"].append({
+                        "city_norm": cn,
+                        "actual_value": sh,
+                        "target_value": None,
+                        "gap": None,
+                        "gap_pct": None,
+                    })
+            except Exception:
+                result["metrics"]["active_drivers"]["source_confidence"] = "error"
+                result["metrics"]["supply_hours"]["source_confidence"] = "error"
+
+            country_flow = _COUNTRY_NORM_MAP.get(country.lower(), country.upper())
+            try:
+                cur.execute("""
+                    SELECT
+                        COALESCE(yego_operational_new_plus_reactivated, 0)::int AS nr
+                    FROM ops.fct_yego_operational_flow_monthly_v2
+                    WHERE month_start = %(ms)s
+                      AND country = %(co)s
+                      AND LOWER(city_norm) = 'lima'
+                    LIMIT 1
+                """, {"ms": month_start, "co": country_flow})
+                flow_row = cur.fetchone()
+                nr_val = int(flow_row["nr"]) if flow_row and flow_row["nr"] is not None else None
+                result["metrics"]["operational_flow"]["cities"].append({
+                    "city_norm": "lima",
+                    "actual_value": nr_val,
+                    "target_value": None,
+                    "gap": None,
+                    "gap_pct": None,
+                })
+            except Exception:
+                result["metrics"]["operational_flow"]["source_confidence"] = "error"
+
+            targets_by_city: dict = {}
+            try:
+                cur.execute("""
+                    SELECT LOWER(city) AS city_norm, kpi_code, target_value
+                    FROM ops.yango_loyalty_monthly_goals
+                    WHERE month = %(m)s
+                      AND kpi_code IN ('AD', 'SH', 'N_R')
+                """, {"m": month_str})
+                for row in cur.fetchall():
+                    cn = row["city_norm"]
+                    kpi = row["kpi_code"]
+                    if cn not in targets_by_city:
+                        targets_by_city[cn] = {}
+                    targets_by_city[cn][kpi] = float(row["target_value"])
+            except Exception:
+                pass
+
+            for city_entry in result["metrics"]["active_drivers"]["cities"]:
+                cn = city_entry["city_norm"]
+                t = targets_by_city.get(cn, {}).get("AD")
+                if t is not None:
+                    city_entry["target_value"] = t
+                    if city_entry["actual_value"] is not None:
+                        city_entry["gap"] = city_entry["actual_value"] - t
+                        city_entry["gap_pct"] = round(city_entry["gap"] / t * 100, 2) if t != 0 else None
+
+            for city_entry in result["metrics"]["supply_hours"]["cities"]:
+                cn = city_entry["city_norm"]
+                t = targets_by_city.get(cn, {}).get("SH")
+                if t is not None:
+                    city_entry["target_value"] = t
+                    if city_entry["actual_value"] is not None:
+                        city_entry["gap"] = round(city_entry["actual_value"] - t, 1)
+                        city_entry["gap_pct"] = round(city_entry["gap"] / t * 100, 2) if t != 0 else None
+
+            for city_entry in result["metrics"]["operational_flow"]["cities"]:
+                cn = city_entry["city_norm"]
+                t = targets_by_city.get(cn, {}).get("N_R")
+                if t is not None:
+                    city_entry["target_value"] = t
+                    if city_entry["actual_value"] is not None:
+                        city_entry["gap"] = city_entry["actual_value"] - t
+                        city_entry["gap_pct"] = round(city_entry["gap"] / t * 100, 2) if t != 0 else None
+
+    except Exception as e:
+        logger.exception("get_loyalty_city_comparison: %s", e)
 
     return result

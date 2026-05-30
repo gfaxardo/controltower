@@ -9,10 +9,15 @@ import {
   getYegoProProfitabilityInputMapping,
   getYegoProProfitabilityQuality,
   getYegoProProfitabilityRootCause,
+  getYegoProDiagnosticsDrivers,
+  getYegoProDiagnosticsVehicles,
+  getYegoProDiagnosticsShifts,
+  getYegoProDiagnosticsPortfolio,
 } from '../services/api'
 
 const TABS = [
   { id: 'overview', label: 'Overview', fetcher: getYegoProProfitabilityOverview },
+  { id: 'diagnostics', label: 'Diagnostics', fetcher: null },
   { id: 'weekly', label: 'Weekly Closed', fetcher: getYegoProProfitabilityWeekly },
   { id: 'daily', label: 'Last Closed Day', fetcher: getYegoProProfitabilityDaily },
   { id: 'drivers', label: 'Drivers', fetcher: getYegoProProfitabilityDrivers },
@@ -25,6 +30,7 @@ const TABS = [
 
 const EMPTY_STATES = {
   overview: 'No hay datos de resumen disponibles para este periodo. Fuente financiera pendiente.',
+  diagnostics: 'No hay datos diagnosticos disponibles. Verifica que las fuentes de billing y shifts esten cargadas.',
   weekly: 'No hay semanas cerradas disponibles. Data operativa disponible, data financiera parcial.',
   daily: 'No hay datos del ultimo dia cerrado. Fuente financiera pendiente.',
   drivers: 'No hay datos de conductores disponibles. Data operativa disponible, data financiera parcial.',
@@ -580,6 +586,518 @@ function CoverageAuditPanel ({ diagData }) {
           <div><strong className="text-ct-text">trips_2026</strong> = viajes completados ({cov.trip_days || '?'} dias)</div>
         </div>
       </div>
+    </div>
+  )
+}
+
+const DIAG_SUBTABS = [
+  { id: 'portfolio', label: 'Portfolio' },
+  { id: 'diag-drivers', label: 'Drivers' },
+  { id: 'diag-vehicles', label: 'Vehicles' },
+  { id: 'diag-shifts', label: 'Shifts' },
+  { id: 'root-causes', label: 'Root Causes' },
+]
+
+const SEVERITY_COLORS = {
+  HIGH: 'bg-red-100 text-red-700 border-red-200',
+  MEDIUM: 'bg-amber-100 text-amber-700 border-amber-200',
+  LOW: 'bg-blue-100 text-blue-700 border-blue-200',
+}
+
+const STATUS_COLORS = {
+  PROFITABLE: 'bg-emerald-100 text-emerald-700',
+  RISKY: 'bg-amber-100 text-amber-700',
+  LOSS: 'bg-red-100 text-red-700',
+  UNKNOWN: 'bg-gray-100 text-gray-500',
+}
+
+const CONFIDENCE_COLORS = {
+  REAL: 'bg-emerald-50 text-emerald-600',
+  ESTIMATED: 'bg-amber-50 text-amber-600',
+  LEGACY: 'bg-gray-100 text-gray-500',
+}
+
+const CAUSE_LABELS = {
+  LOW_TRIPS: 'Bajo volumen de viajes',
+  LOW_TICKET: 'Ticket promedio bajo',
+  HIGH_KM_PER_TRIP: 'Km por viaje elevado',
+  HIGH_COST_PER_TRIP: 'Costo por viaje alto',
+  HIGH_PAYOUT_RATIO: 'Payout alto',
+  LOW_MARGIN: 'Margen bajo',
+  MISSING_CLOSE: 'Falta cierre diario',
+  MISSING_PLATE: 'Falta placa',
+  LOW_UTILIZATION: 'Baja utilizacion',
+  LOW_REVENUE_PER_DAY: 'Ingreso diario bajo',
+  LOW_TRIPS_PER_DAY: 'Pocos viajes/dia',
+  MANY_DRIVERS_LOW_CONTROL: 'Muchos conductores',
+  NEGATIVE_MARGIN: 'Margen negativo',
+  FIXED_COST_NOT_COVERED: 'Costo fijo no cubierto',
+  NONE: 'Sin causas',
+}
+
+function DiagBadge ({ label, colorClass }) {
+  return <span className={`inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded ${colorClass}`}>{label}</span>
+}
+
+function DiagPortfolioPanel ({ data }) {
+  if (!data || data.status !== 'OK') return <EmptyState tabId="diagnostics" />
+  const p = data.portfolio || {}
+  const hyp = data.hypothetical_impact || {}
+  const rc = data.root_causes || []
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <SectionTitle>Resumen ejecutivo del portafolio</SectionTitle>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mt-2">
+          <DiagKpi label="Utilidad total est. (drivers)" value={p.total_estimated_margin_drivers} />
+          <DiagKpi label="Utilidad total est. (vehiculos)" value={p.total_estimated_margin_vehicles} />
+          <DiagKpi label="% Drivers en perdida" value={p.pct_drivers_in_loss} type="pct" />
+          <DiagKpi label="% Vehiculos en perdida" value={p.pct_vehicles_in_loss} type="pct" />
+        </div>
+      </div>
+
+      {p.top5_losses && p.top5_losses.length > 0 && (
+        <div>
+          <SectionTitle>Top 5 perdidas</SectionTitle>
+          <div className="bg-ct-card rounded-lg border border-ct-border divide-y divide-ct-border/50 mt-2">
+            {p.top5_losses.map((item, i) => (
+              <div key={i} className="px-3 py-2 flex items-center gap-3 text-xs">
+                <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold bg-red-100 text-red-700">{i + 1}</span>
+                <span className="flex-1 truncate font-medium text-ct-text font-mono text-[10px]">{item.entity_id?.slice(0, 16)}...</span>
+                <DiagBadge label={item.entity_type} colorClass="bg-gray-100 text-gray-600" />
+                <span className="text-red-600 font-semibold w-24 text-right">{fmt(item.impact_amount, 'currency')}</span>
+                <DiagBadge label={CAUSE_LABELS[item.main_driver] || item.main_driver} colorClass={SEVERITY_COLORS[item.severity] || SEVERITY_COLORS.LOW} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {p.top5_gains && p.top5_gains.length > 0 && (
+        <div>
+          <SectionTitle>Top 5 ganancias</SectionTitle>
+          <div className="bg-ct-card rounded-lg border border-ct-border divide-y divide-ct-border/50 mt-2">
+            {p.top5_gains.map((item, i) => (
+              <div key={i} className="px-3 py-2 flex items-center gap-3 text-xs">
+                <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold bg-emerald-100 text-emerald-700">{i + 1}</span>
+                <span className="flex-1 truncate font-medium text-ct-text font-mono text-[10px]">{item.entity_id?.slice(0, 16)}...</span>
+                <span className="text-emerald-600 font-semibold w-24 text-right">{fmt(item.impact_amount, 'currency')}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <SectionTitle>Concentracion de perdida</SectionTitle>
+        <div className="bg-ct-card rounded-lg border border-ct-border p-3 mt-2 text-xs text-ct-text2">
+          Top 3 conductores en perdida concentran <span className="font-semibold text-ct-text">{fmt(p.loss_concentration_top3, 'pct')}</span> de la perdida total.
+        </div>
+      </div>
+
+      {hyp.remove_bottom5_vehicles && (
+        <div>
+          <SectionTitle>Impacto hipotetico: retirar bottom 5 vehiculos</SectionTitle>
+          <div className="bg-ct-card rounded-lg border border-ct-border p-3 mt-2 text-xs space-y-1">
+            <div className="text-ct-text2">Perdida removida: <span className="font-semibold text-emerald-600">{fmt(hyp.remove_bottom5_vehicles.loss_removed, 'currency')}</span></div>
+            <div className="text-ct-text2">Nuevo margen estimado: <span className="font-semibold text-ct-text">{fmt(hyp.remove_bottom5_vehicles.new_estimated_margin, 'currency')}</span></div>
+            <div className="text-[10px] text-ct-text3 mt-1">Hipotetico. NO se ejecuta accion.</div>
+          </div>
+        </div>
+      )}
+
+      {hyp.remove_bottom5_drivers && (
+        <div>
+          <SectionTitle>Impacto hipotetico: retirar bottom 5 conductores</SectionTitle>
+          <div className="bg-ct-card rounded-lg border border-ct-border p-3 mt-2 text-xs space-y-1">
+            <div className="text-ct-text2">Perdida removida: <span className="font-semibold text-emerald-600">{fmt(hyp.remove_bottom5_drivers.loss_removed, 'currency')}</span></div>
+            <div className="text-ct-text2">Nuevo margen estimado: <span className="font-semibold text-ct-text">{fmt(hyp.remove_bottom5_drivers.new_estimated_margin, 'currency')}</span></div>
+            <div className="text-[10px] text-ct-text3 mt-1">Hipotetico. NO se ejecuta accion.</div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DiagDriversPanel ({ data }) {
+  if (!data || data.status !== 'OK') return <EmptyState tabId="diagnostics" />
+  const diags = data.diagnostics || []
+  const summary = data.summary || {}
+  if (diags.length === 0) return <EmptyState tabId="diagnostics" />
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <SectionTitle>Resumen conductores</SectionTitle>
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 mt-2">
+          <DiagCountKpi label="Total" value={summary.total_drivers} />
+          <DiagCountKpi label="Rentables" value={summary.profitable} total={summary.total_drivers} />
+          <DiagCountKpi label="Riesgo" value={summary.risky} total={summary.total_drivers} bad={summary.risky > 0} />
+          <DiagCountKpi label="En perdida" value={summary.loss} total={summary.total_drivers} bad />
+          <DiagCountKpi label="Criticos" value={summary.critico} total={summary.total_drivers} bad />
+          <DiagCountKpi label="Recuperables" value={summary.recuperable} total={summary.total_drivers} bad={summary.recuperable > 0} />
+        </div>
+      </div>
+
+      <div>
+        <SectionTitle>Diagnostico por conductor</SectionTitle>
+        <div className="bg-ct-card rounded-lg border border-ct-border overflow-x-auto mt-2">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="border-b border-ct-border bg-gray-50/50">
+                <th className="px-2 py-1.5 text-left font-medium text-ct-text2">Conductor</th>
+                <th className="px-2 py-1.5 text-left font-medium text-ct-text2">Estado</th>
+                <th className="px-2 py-1.5 text-left font-medium text-ct-text2">Clasificacion</th>
+                <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Impacto</th>
+                <th className="px-2 py-1.5 text-left font-medium text-ct-text2">Causa principal</th>
+                <th className="px-2 py-1.5 text-left font-medium text-ct-text2">Severidad</th>
+                <th className="px-2 py-1.5 text-left font-medium text-ct-text2">Confianza</th>
+                <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Revenue</th>
+                <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Viajes</th>
+                <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Margen/viaje</th>
+              </tr>
+            </thead>
+            <tbody>
+              {diags.map((d, i) => (
+                <tr key={i} className="border-b border-ct-border/50 hover:bg-ct-surface/50">
+                  <td className="px-2 py-1.5">
+                    <div className="font-medium text-ct-text truncate max-w-[120px]" title={d.evidence?.driver_name || d.entity_id}>{d.evidence?.driver_name || d.entity_id?.slice(0, 12) + '...'}</div>
+                  </td>
+                  <td className="px-2 py-1.5"><DiagBadge label={d.status} colorClass={STATUS_COLORS[d.status] || STATUS_COLORS.UNKNOWN} /></td>
+                  <td className="px-2 py-1.5"><span className="text-[10px] text-ct-text2">{d.evidence?.classification}</span></td>
+                  <td className="px-2 py-1.5 text-right"><span className={`font-semibold ${(num(d.impact_amount) ?? 0) < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{fmt(d.impact_amount, 'currency')}</span></td>
+                  <td className="px-2 py-1.5"><DiagBadge label={CAUSE_LABELS[d.main_driver] || d.main_driver} colorClass={SEVERITY_COLORS[d.severity] || SEVERITY_COLORS.LOW} /></td>
+                  <td className="px-2 py-1.5"><DiagBadge label={d.severity} colorClass={SEVERITY_COLORS[d.severity] || SEVERITY_COLORS.LOW} /></td>
+                  <td className="px-2 py-1.5"><DiagBadge label={d.confidence} colorClass={CONFIDENCE_COLORS[d.confidence] || CONFIDENCE_COLORS.LEGACY} /></td>
+                  <td className="px-2 py-1.5 text-right">{fmt(d.kpis?.revenue, 'currency')}</td>
+                  <td className="px-2 py-1.5 text-right">{fmt(d.kpis?.trips, 'number')}</td>
+                  <td className="px-2 py-1.5 text-right">{fmt(d.kpis?.margin_per_trip, 'currency')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {diags.filter((d) => d.explanation).length > 0 && (
+        <div>
+          <SectionTitle>Explicaciones</SectionTitle>
+          <div className="space-y-1.5 mt-2">
+            {diags.filter((d) => d.status === 'LOSS' || d.status === 'RISKY').slice(0, 10).map((d, i) => {
+              const sevColor = { HIGH: 'border-l-red-500 bg-red-50/40', MEDIUM: 'border-l-amber-500 bg-amber-50/40', LOW: 'border-l-blue-400 bg-blue-50/40' }
+              return (
+                <div key={i} className={`border-l-4 rounded-r px-3 py-2 text-xs text-ct-text ${sevColor[d.severity] || sevColor.LOW}`}>
+                  <span className="font-medium">{d.evidence?.driver_name || d.entity_id?.slice(0, 16)}: </span>
+                  {d.explanation}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DiagVehiclesPanel ({ data }) {
+  if (!data || data.status !== 'OK') return <EmptyState tabId="diagnostics" />
+  const diags = data.diagnostics || []
+  const summary = data.summary || {}
+  if (diags.length === 0) return <EmptyState tabId="diagnostics" />
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <SectionTitle>Resumen vehiculos</SectionTitle>
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-2 mt-2">
+          <DiagCountKpi label="Total placas" value={summary.total_vehicles} />
+          <DiagCountKpi label="Rentables" value={summary.profitable} total={summary.total_vehicles} />
+          <DiagCountKpi label="Riesgo" value={summary.risky} total={summary.total_vehicles} bad={summary.risky > 0} />
+          <DiagCountKpi label="En perdida" value={summary.loss} total={summary.total_vehicles} bad />
+          <DiagCountKpi label="Shifts sin placa" value={summary.shifts_without_plate} bad={summary.shifts_without_plate > 0} />
+        </div>
+      </div>
+
+      <div>
+        <SectionTitle>Diagnostico por vehiculo</SectionTitle>
+        <div className="bg-ct-card rounded-lg border border-ct-border overflow-x-auto mt-2">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="border-b border-ct-border bg-gray-50/50">
+                <th className="px-2 py-1.5 text-left font-medium text-ct-text2">Placa</th>
+                <th className="px-2 py-1.5 text-left font-medium text-ct-text2">Estado</th>
+                <th className="px-2 py-1.5 text-left font-medium text-ct-text2">Clasificacion</th>
+                <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Margen est.</th>
+                <th className="px-2 py-1.5 text-left font-medium text-ct-text2">Causa principal</th>
+                <th className="px-2 py-1.5 text-left font-medium text-ct-text2">Severidad</th>
+                <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Revenue</th>
+                <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Viajes</th>
+                <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Dias activos</th>
+                <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Rev/dia</th>
+                <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Conductores</th>
+              </tr>
+            </thead>
+            <tbody>
+              {diags.map((d, i) => (
+                <tr key={i} className="border-b border-ct-border/50 hover:bg-ct-surface/50">
+                  <td className="px-2 py-1.5 font-mono font-medium text-ct-text">{d.entity_id}</td>
+                  <td className="px-2 py-1.5"><DiagBadge label={d.status} colorClass={STATUS_COLORS[d.status] || STATUS_COLORS.UNKNOWN} /></td>
+                  <td className="px-2 py-1.5"><span className="text-[10px] text-ct-text2">{d.evidence?.classification}</span></td>
+                  <td className="px-2 py-1.5 text-right"><span className={`font-semibold ${(num(d.impact_amount) ?? 0) < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{fmt(d.impact_amount, 'currency')}</span></td>
+                  <td className="px-2 py-1.5"><DiagBadge label={CAUSE_LABELS[d.main_driver] || d.main_driver} colorClass={SEVERITY_COLORS[d.severity] || SEVERITY_COLORS.LOW} /></td>
+                  <td className="px-2 py-1.5"><DiagBadge label={d.severity} colorClass={SEVERITY_COLORS[d.severity] || SEVERITY_COLORS.LOW} /></td>
+                  <td className="px-2 py-1.5 text-right">{fmt(d.kpis?.revenue, 'currency')}</td>
+                  <td className="px-2 py-1.5 text-right">{fmt(d.kpis?.trips, 'number')}</td>
+                  <td className="px-2 py-1.5 text-right">{fmt(d.kpis?.active_days, 'number')}</td>
+                  <td className="px-2 py-1.5 text-right">{fmt(d.kpis?.revenue_per_day, 'currency')}</td>
+                  <td className="px-2 py-1.5 text-right">{fmt(d.kpis?.drivers_count, 'number')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {diags.filter((d) => d.status === 'LOSS').length > 0 && (
+        <div>
+          <SectionTitle>Vehiculos en perdida - explicaciones</SectionTitle>
+          <div className="space-y-1.5 mt-2">
+            {diags.filter((d) => d.status === 'LOSS').map((d, i) => (
+              <div key={i} className="border-l-4 border-l-red-500 bg-red-50/40 rounded-r px-3 py-2 text-xs text-ct-text">
+                <span className="font-medium">{d.entity_id}: </span>{d.explanation}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="bg-ct-card rounded-lg border border-ct-border p-3 text-[10px] text-ct-text3">
+        Margen por vehiculo es estimado usando el margen % del parque aplicado al revenue operativo por placa. No es margen real por vehiculo.
+      </div>
+    </div>
+  )
+}
+
+function DiagShiftsPanel ({ data }) {
+  if (!data || data.status !== 'OK') return <EmptyState tabId="diagnostics" />
+  const comp = data.shift_comparison || {}
+  const diag = (data.diagnostics || [])[0] || {}
+
+  const dayK = comp.day || {}
+  const nightK = comp.night || {}
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <SectionTitle>Comparacion dia vs noche</SectionTitle>
+        <div className="bg-ct-card rounded-lg border border-ct-border p-3 mt-2">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <div className="text-xs font-medium text-ct-text mb-2">Turno dia <span className="text-amber-400">&#9728;</span></div>
+              <div className="space-y-1 text-[11px]">
+                <div className="flex justify-between"><span className="text-ct-text3">Revenue</span><span className="font-semibold text-ct-text">{fmt(dayK.revenue, 'currency')}</span></div>
+                <div className="flex justify-between"><span className="text-ct-text3">Viajes</span><span className="font-semibold text-ct-text">{fmt(dayK.trips, 'number')}</span></div>
+                <div className="flex justify-between"><span className="text-ct-text3">Ticket avg</span><span className="font-semibold text-ct-text">{fmt(dayK.ticket_avg, 'currency')}</span></div>
+                <div className="flex justify-between"><span className="text-ct-text3">Rev/viaje</span><span className="font-semibold text-ct-text">{fmt(dayK.revenue_per_trip, 'currency')}</span></div>
+                <div className="flex justify-between"><span className="text-ct-text3">Viajes/dia</span><span className="font-semibold text-ct-text">{fmt(dayK.trips_per_day, 'number')}</span></div>
+                <div className="flex justify-between"><span className="text-ct-text3">Margen est.</span><span className={`font-semibold ${(num(dayK.estimated_margin) ?? 0) < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{fmt(dayK.estimated_margin, 'currency')}</span></div>
+              </div>
+            </div>
+            <div>
+              <div className="text-xs font-medium text-ct-text mb-2">Turno noche <span className="text-indigo-400">&#9790;</span></div>
+              <div className="space-y-1 text-[11px]">
+                <div className="flex justify-between"><span className="text-ct-text3">Revenue</span><span className="font-semibold text-ct-text">{fmt(nightK.revenue, 'currency')}</span></div>
+                <div className="flex justify-between"><span className="text-ct-text3">Viajes</span><span className="font-semibold text-ct-text">{fmt(nightK.trips, 'number')}</span></div>
+                <div className="flex justify-between"><span className="text-ct-text3">Ticket avg</span><span className="font-semibold text-ct-text">{fmt(nightK.ticket_avg, 'currency')}</span></div>
+                <div className="flex justify-between"><span className="text-ct-text3">Rev/viaje</span><span className="font-semibold text-ct-text">{fmt(nightK.revenue_per_trip, 'currency')}</span></div>
+                <div className="flex justify-between"><span className="text-ct-text3">Viajes/dia</span><span className="font-semibold text-ct-text">{fmt(nightK.trips_per_day, 'number')}</span></div>
+                <div className="flex justify-between"><span className="text-ct-text3">Margen est.</span><span className={`font-semibold ${(num(nightK.estimated_margin) ?? 0) < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{fmt(nightK.estimated_margin, 'currency')}</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <SectionTitle>Diagnostico de brecha</SectionTitle>
+        <div className="bg-ct-card rounded-lg border border-ct-border p-3 mt-2 space-y-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            <div>
+              <span className="text-ct-text3 text-[10px]">Brecha dia/noche</span>
+              <div className="font-semibold text-ct-text">{comp.gap_day_vs_night_pct != null ? `${(comp.gap_day_vs_night_pct * 100).toFixed(1)}%` : 'N/D'}</div>
+            </div>
+            <div>
+              <span className="text-ct-text3 text-[10px]">Intensidad</span>
+              <div className="font-semibold text-ct-text capitalize">{comp.gap_label || 'N/D'}</div>
+            </div>
+            <div>
+              <span className="text-ct-text3 text-[10px]">Dia peor que noche?</span>
+              <div className="font-semibold text-ct-text">{comp.day_is_worse === true ? 'Si' : comp.day_is_worse === false ? 'No' : 'N/D'}</div>
+            </div>
+            <div>
+              <span className="text-ct-text3 text-[10px]">Incentivo para igualar</span>
+              <div className="font-semibold text-ct-text">{comp.incentive_day_to_equalize_night != null ? fmt(comp.incentive_day_to_equalize_night, 'currency') : 'N/D'}</div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div>
+              <span className="text-ct-text3 text-[10px]">Payout max dia soporta</span>
+              <div className="font-semibold text-ct-text">{comp.max_payout_day_supports != null ? fmt(comp.max_payout_day_supports, 'currency') : 'N/D'}</div>
+            </div>
+            <div>
+              <span className="text-ct-text3 text-[10px]">Payout max noche soporta</span>
+              <div className="font-semibold text-ct-text">{comp.max_payout_night_supports != null ? fmt(comp.max_payout_night_supports, 'currency') : 'N/D'}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {diag.explanation && (
+        <div className={`border-l-4 rounded-r px-3 py-2 text-xs text-ct-text ${diag.severity === 'HIGH' ? 'border-l-red-500 bg-red-50/40' : diag.severity === 'MEDIUM' ? 'border-l-amber-500 bg-amber-50/40' : 'border-l-blue-400 bg-blue-50/40'}`}>
+          {diag.explanation}
+        </div>
+      )}
+
+      <div className="bg-ct-card rounded-lg border border-ct-border p-3 text-[10px] text-ct-text3">
+        Solo diagnostico. NO se recomienda cambio. Margen estimado usando margen % del parque.
+      </div>
+    </div>
+  )
+}
+
+function DiagRootCausesPanel ({ data }) {
+  const rc = data?.root_causes || []
+  if (rc.length === 0) return <EmptyState tabId="diagnostics" />
+
+  return (
+    <div className="space-y-4">
+      <SectionTitle>Principales causas de perdida</SectionTitle>
+      <div className="bg-ct-card rounded-lg border border-ct-border overflow-x-auto mt-2">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="border-b border-ct-border bg-gray-50/50">
+              <th className="px-3 py-2 text-left font-medium text-ct-text2">Causa</th>
+              <th className="px-3 py-2 text-right font-medium text-ct-text2">Casos</th>
+              <th className="px-3 py-2 text-right font-medium text-ct-text2">Impacto estimado</th>
+              <th className="px-3 py-2 text-left font-medium text-ct-text2">Severidad</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rc.map((c, i) => (
+              <tr key={i} className="border-b border-ct-border/50 hover:bg-ct-surface/50">
+                <td className="px-3 py-2 font-medium text-ct-text">{CAUSE_LABELS[c.cause] || c.cause}</td>
+                <td className="px-3 py-2 text-right">{fmt(c.count, 'number')}</td>
+                <td className="px-3 py-2 text-right"><span className={`font-semibold ${(num(c.estimated_impact) ?? 0) < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{fmt(c.estimated_impact, 'currency')}</span></td>
+                <td className="px-3 py-2"><DiagBadge label={c.severity} colorClass={SEVERITY_COLORS[c.severity] || SEVERITY_COLORS.LOW} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="space-y-1.5">
+        {rc.filter((c) => (num(c.estimated_impact) ?? 0) < 0).map((c, i) => {
+          const causeExplanations = {
+            LOW_TRIPS: 'Bajo volumen: conductores o vehiculos con pocos viajes. La produccion no cubre los costos fijos.',
+            LOW_TICKET: 'Ticket bajo: el ingreso promedio por viaje es menor al promedio del parque.',
+            HIGH_KM_PER_TRIP: 'Km alto por viaje: recorridos largos o ineficientes que incrementan el costo de combustible.',
+            HIGH_COST_PER_TRIP: 'Costo alto por viaje: el costo operativo por viaje esta cerca o supera el ingreso.',
+            HIGH_PAYOUT_RATIO: 'Payout elevado: el porcentaje de pago al conductor es alto respecto al ingreso.',
+            LOW_MARGIN: 'Margen bajo: la diferencia entre ingreso y costo es insuficiente.',
+            MISSING_CLOSE: 'Falta de cierre: no hay liquidacion diaria registrada para estos conductores.',
+            MISSING_PLATE: 'Falta de placa: los turnos no tienen placa asignada, impidiendo trazabilidad vehicular.',
+            LOW_UTILIZATION: 'Baja utilizacion: el vehiculo opera pocos dias a la semana.',
+            LOW_REVENUE_PER_DAY: 'Ingreso diario bajo: el vehiculo no genera suficiente revenue por dia operativo.',
+            LOW_TRIPS_PER_DAY: 'Pocos viajes/dia: el vehiculo tiene baja densidad de viajes.',
+            MANY_DRIVERS_LOW_CONTROL: 'Muchos conductores por vehiculo: dificulta el control operativo.',
+            NEGATIVE_MARGIN: 'Margen negativo estimado en la operacion vehicular.',
+            FIXED_COST_NOT_COVERED: 'Costo fijo no cubierto: el revenue del vehiculo no cubre la cuota semanal estimada.',
+          }
+          return (
+            <div key={i} className="border-l-4 border-l-red-500 bg-red-50/40 rounded-r px-3 py-2 text-xs text-ct-text">
+              <span className="font-medium">{CAUSE_LABELS[c.cause] || c.cause}: </span>
+              {causeExplanations[c.cause] || 'Causa de perdida detectada.'} ({c.count} caso{c.count !== 1 ? 's' : ''}, impacto: {fmt(c.estimated_impact, 'currency')})
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function DiagnosticsPanel () {
+  const [subTab, setSubTab] = useState('portfolio')
+  const [dData, setDData] = useState({})
+  const [dLoading, setDLoading] = useState(true)
+  const [dError, setDError] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setDLoading(true)
+    setDError(null)
+
+    const fetchers = [
+      { key: 'portfolio', fn: getYegoProDiagnosticsPortfolio },
+      { key: 'drivers', fn: getYegoProDiagnosticsDrivers },
+      { key: 'vehicles', fn: getYegoProDiagnosticsVehicles },
+      { key: 'shifts', fn: getYegoProDiagnosticsShifts },
+    ]
+
+    const results = {}
+    let done = 0
+    fetchers.forEach(({ key, fn }) => {
+      fn().then((res) => {
+        if (cancelled) return
+        results[key] = res
+      }).catch((err) => {
+        if (cancelled) return
+        console.warn('[Diagnostics]', key, 'error:', err.message)
+      }).finally(() => {
+        done++
+        if (done === fetchers.length && !cancelled) {
+          setDData(results)
+          setDLoading(false)
+          if (Object.keys(results).length === 0) setDError('No se pudieron cargar los diagnosticos.')
+        }
+      })
+    })
+
+    return () => { cancelled = true }
+  }, [])
+
+  if (dLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="w-5 h-5 border-2 border-ct-accent border-t-transparent rounded-full animate-spin" />
+        <span className="ml-2 text-xs text-ct-text3">Cargando diagnosticos...</span>
+      </div>
+    )
+  }
+
+  if (dError) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-xs text-red-700">{dError}</div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-0.5 border-b border-ct-border/50 overflow-x-auto">
+        {DIAG_SUBTABS.map(({ id, label }) => (
+          <button key={id} type="button" onClick={() => setSubTab(id)}
+            className={`px-3 py-1.5 text-[11px] font-medium whitespace-nowrap transition-all border-b-2 ${subTab === id ? 'border-ct-accent text-ct-accent' : 'border-transparent text-ct-text3 hover:text-ct-text hover:border-ct-border'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {subTab === 'portfolio' && <DiagPortfolioPanel data={dData.portfolio} />}
+      {subTab === 'diag-drivers' && <DiagDriversPanel data={dData.drivers} />}
+      {subTab === 'diag-vehicles' && <DiagVehiclesPanel data={dData.vehicles} />}
+      {subTab === 'diag-shifts' && <DiagShiftsPanel data={dData.shifts} />}
+      {subTab === 'root-causes' && <DiagRootCausesPanel data={dData.portfolio} />}
     </div>
   )
 }
@@ -1302,7 +1820,7 @@ export default function YegoProProfitabilityPage () {
   }, [])
 
   const loadTab = useCallback(async (tabId) => {
-    if (tabId === 'overview' || tabId === 'coverage') return
+    if (tabId === 'overview' || tabId === 'coverage' || tabId === 'diagnostics') return
     if (abortRef.current) abortRef.current.abort()
     const controller = new AbortController()
     abortRef.current = controller
@@ -1378,26 +1896,30 @@ export default function YegoProProfitabilityPage () {
           <OverviewDiagnostic diagData={diagData} diagLoading={diagLoading} diagErrors={diagErrors} billingWeeks={billingWeeks} />
         )}
 
+        {activeTab === 'diagnostics' && (
+          <DiagnosticsPanel />
+        )}
+
         {activeTab === 'coverage' && (
           <CoverageAuditPanel diagData={diagData} />
         )}
 
-        {activeTab !== 'overview' && activeTab !== 'coverage' && tabLoading && (
+        {activeTab !== 'overview' && activeTab !== 'coverage' && activeTab !== 'diagnostics' && tabLoading && (
           <div className="flex items-center justify-center py-12">
             <div className="w-5 h-5 border-2 border-ct-accent border-t-transparent rounded-full animate-spin" />
             <span className="ml-2 text-xs text-ct-text3">Cargando {TABS.find((t) => t.id === activeTab)?.label}...</span>
           </div>
         )}
 
-        {activeTab !== 'overview' && activeTab !== 'coverage' && tabError && !tabLoading && (
+        {activeTab !== 'overview' && activeTab !== 'coverage' && activeTab !== 'diagnostics' && tabError && !tabLoading && (
           <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-xs text-red-700 flex items-center gap-2">
             <span>{tabError}</span>
             <button type="button" onClick={() => loadTab(activeTab)} className="ml-auto px-2 py-0.5 rounded bg-red-100 hover:bg-red-200 text-red-700 text-[11px] font-medium transition-colors">Reintentar</button>
           </div>
         )}
 
-        {activeTab !== 'overview' && activeTab !== 'coverage' && !tabLoading && !tabError && tabData && renderTabPanel(activeTab, tabData)}
-        {activeTab !== 'overview' && activeTab !== 'coverage' && !tabLoading && !tabError && !tabData && <EmptyState tabId={activeTab} />}
+        {activeTab !== 'overview' && activeTab !== 'coverage' && activeTab !== 'diagnostics' && !tabLoading && !tabError && tabData && renderTabPanel(activeTab, tabData)}
+        {activeTab !== 'overview' && activeTab !== 'coverage' && activeTab !== 'diagnostics' && !tabLoading && !tabError && !tabData && <EmptyState tabId={activeTab} />}
       </div>
     </div>
   )

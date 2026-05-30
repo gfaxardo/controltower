@@ -1149,6 +1149,14 @@ export const getYangoLoyaltyPerformance = async (params = {}) => {
   const response = await api.get('/yango-loyalty/performance', { params, timeout: 15000 })
   return response.data
 }
+export const getYangoLoyaltyHistory = async (params = {}) => {
+  const response = await api.get('/yango-loyalty/history', { params, timeout: 30000 })
+  return response.data
+}
+export const getYangoLoyaltyCityComparison = async (params = {}) => {
+  const response = await api.get('/yango-loyalty/city-comparison', { params, timeout: 30000 })
+  return response.data
+}
 
 // --- Fleet Project > Yego Pro > Profitability (P2) ---
 const PROFITABILITY_TIMEOUT_MS = 60000
@@ -1186,6 +1194,22 @@ export const getYegoProProfitabilityQuality = async (params = {}) => {
 }
 export const getYegoProProfitabilityRootCause = async (params = {}) => {
   const response = await api.get('/fleet-project/yego-pro/profitability/root-cause', { params, timeout: PROFITABILITY_TIMEOUT_MS })
+  return response.data
+}
+export const getYegoProDiagnosticsDrivers = async (params = {}) => {
+  const response = await api.get('/fleet-project/yego-pro/profitability/diagnostics/drivers', { params, timeout: PROFITABILITY_TIMEOUT_MS })
+  return response.data
+}
+export const getYegoProDiagnosticsVehicles = async (params = {}) => {
+  const response = await api.get('/fleet-project/yego-pro/profitability/diagnostics/vehicles', { params, timeout: PROFITABILITY_TIMEOUT_MS })
+  return response.data
+}
+export const getYegoProDiagnosticsShifts = async (params = {}) => {
+  const response = await api.get('/fleet-project/yego-pro/profitability/diagnostics/shifts', { params, timeout: PROFITABILITY_TIMEOUT_MS })
+  return response.data
+}
+export const getYegoProDiagnosticsPortfolio = async (params = {}) => {
+  const response = await api.get('/fleet-project/yego-pro/profitability/diagnostics/portfolio', { params, timeout: PROFITABILITY_TIMEOUT_MS })
   return response.data
 }
 export default api

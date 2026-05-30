@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+﻿import { useState, useEffect, useCallback, useMemo } from 'react'
 import api from '../../services/api'
-import { getYangoLoyaltyPerformance } from '../../services/api'
+import { getYangoLoyaltyPerformance, getYangoLoyaltyHistory, getYangoLoyaltyCityComparison } from '../../services/api'
 import DecisionPriorityStrip from '../operational/DecisionPriorityStrip'
 import { getDecisionSeverity } from '../../utils/operationalDecisionSeverity'
 import DiagnosticDominantFactor from '../diagnostics/DiagnosticDominantFactor'
+import { HISTORICAL_METRICS, METRIC_UNIVERSES, HISTORY_CONFIG } from './yangoLoyaltyMetricsConfig'
 
-/* ── Color system ── */
+/* ÔöÇÔöÇ Color system ÔöÇÔöÇ */
 const RC = {
   ON_TRACK:       { dot: 'bg-emerald-500', bg: 'bg-emerald-500/10', text: 'text-emerald-400', label: 'On Track' },
   SLIGHTLY_BEHIND:{ dot: 'bg-blue-500',    bg: 'bg-blue-500/10',    text: 'text-blue-400',    label: 'Behind' },
@@ -43,18 +44,18 @@ const LOYALTY_KPIS_LIST = [
   { key:'social', label:'Social', source:'manual', tooltip:'Interacciones sociales' },
 ]
 
-/* ── Safe helpers ── */
+/* ÔöÇÔöÇ Safe helpers ÔöÇÔöÇ */
 function safeNum(n, fallback = 0) { if (n == null || n === '') return fallback; const v = Number(n); return Number.isNaN(v) ? fallback : v }
-function fmtNum(n) { if (n == null || n === '') return '—'; const v = Number(n); return Number.isNaN(v) ? '—' : v.toLocaleString('es-ES', { maximumFractionDigits: 1 }) }
-function fmtPct(n) { if (n == null || n === '') return '—'; const v = safeNum(n); if (v === 0 && n === 0) return '0%'; return v ? `${v.toFixed(0)}%` : '—' }
+function fmtNum(n) { if (n == null || n === '') return 'ÔÇö'; const v = Number(n); return Number.isNaN(v) ? 'ÔÇö' : v.toLocaleString('es-ES', { maximumFractionDigits: 1 }) }
+function fmtPct(n) { if (n == null || n === '') return 'ÔÇö'; const v = safeNum(n); if (v === 0 && n === 0) return '0%'; return v ? `${v.toFixed(0)}%` : 'ÔÇö' }
 function safeArr(arr) { return Array.isArray(arr) ? arr : [] }
 
-/* ── Skeleton loader ── */
+/* ÔöÇÔöÇ Skeleton loader ÔöÇÔöÇ */
 function Skeleton({ h = 4, w = 'full', className = '' }) {
   return <div className={`animate-pulse bg-ct-border/30 rounded ${className}`} style={{ height: h * 4, width: w === 'full' ? '100%' : w }} />
 }
 
-/* ── Progress bar (safe) ── */
+/* ÔöÇÔöÇ Progress bar (safe) ÔöÇÔöÇ */
 function ProgressBar({ pct, color = 'bg-ct-accent', height = 3, showLabel }) {
   const w = Math.max(0, Math.min(100, safeNum(pct, 0)))
   return (
@@ -71,17 +72,17 @@ function Badge({ label, color }) {
   return <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${color?.bg || ''} ${color?.text || ''}`}>{label}</span>
 }
 
-/* ── KPI Status badge ── */
+/* ÔöÇÔöÇ KPI Status badge ÔöÇÔöÇ */
 function KpiStatusBadge({ hasReal, hasTarget, meetsOro, meetsPlata, source }) {
   if (source === 'manual' && !hasReal) return <span className="text-xs text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">Pendiente</span>
   if (hasReal && !hasTarget) return <span className="text-xs text-ct-text3 bg-ct-surface px-1.5 py-0.5 rounded border border-ct-border">Sin meta</span>
   if (meetsOro) return <Badge label="Oro" color={CAT.ORO} />
   if (meetsPlata) return <Badge label="Plata" color={CAT.PLATA} />
   if (hasTarget) return <Badge label="Bronce" color={CAT.BRONCE} />
-  return <span className="text-xs text-ct-text3">—</span>
+  return <span className="text-xs text-ct-text3">ÔÇö</span>
 }
 
-/* ── Executive Summary Hero ── */
+/* ÔöÇÔöÇ Executive Summary Hero ÔöÇÔöÇ */
 function ExecutiveSummary({ cityRanking, kpiGaps, data_complete, manual_kpis_pending, expected_progress_pct, cities, has_any_targets }) {
   const totalCities = Math.max(cities.length, 1)
   const oroCount = cityRanking.filter(c => c.cat.category === 'ORO').length
@@ -125,18 +126,18 @@ function ExecutiveSummary({ cityRanking, kpiGaps, data_complete, manual_kpis_pen
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           <div className="text-center">
             <p className="text-xs text-ct-text3 mb-1">Vamos a Oro?</p>
-            <p className={`text-3xl font-black ${domCat.text}`}>{dominant === 'ORO' ? 'SI' : dominant === 'PLATA' ? 'CASI' : dominant === 'SIN_METAS' ? '—' : 'NO'}</p>
+            <p className={`text-3xl font-black ${domCat.text}`}>{dominant === 'ORO' ? 'SI' : dominant === 'PLATA' ? 'CASI' : dominant === 'SIN_METAS' ? 'ÔÇö' : 'NO'}</p>
             <p className="text-xs text-ct-text3 mt-0.5">{has_any_targets ? `${oroPct}% ciudades en Oro` : 'Sin metas'}</p>
           </div>
           <div className="text-center">
             <p className="text-xs text-ct-text3 mb-1">KPI Bloqueador</p>
-            <p className="text-lg font-bold text-red-400">{worstKpi?.label || '—'}</p>
+            <p className="text-lg font-bold text-red-400">{worstKpi?.label || 'ÔÇö'}</p>
             <p className="text-xs text-ct-text3">{worstKpi && safeNum(worstKpi.avgGap) > 0 ? `${safeNum(worstKpi.avgGap).toFixed(0)}% de gap` : 'Sin bloqueos'}</p>
           </div>
           <div className="text-center">
             <p className="text-xs text-ct-text3 mb-1">Ciudad Critica</p>
-            <p className="text-lg font-bold text-ct-text">{worstCity?.city || '—'}</p>
-            <p className="text-xs text-ct-text3">{worstCity ? `${worstCity.cat?.category || '—'} · ${safeNum(worstCity.oroCount)} KPIs Oro` : ''}</p>
+            <p className="text-lg font-bold text-ct-text">{worstCity?.city || 'ÔÇö'}</p>
+            <p className="text-xs text-ct-text3">{worstCity ? `${worstCity.cat?.category || 'ÔÇö'} ┬À ${safeNum(worstCity.oroCount)} KPIs Oro` : ''}</p>
           </div>
           <div className="text-center">
             <p className="text-xs text-ct-text3 mb-1">Avance vs Esperado</p>
@@ -158,7 +159,7 @@ function ExecutiveSummary({ cityRanking, kpiGaps, data_complete, manual_kpis_pen
   )
 }
 
-/* ── Drillable Blocker ── */
+/* ÔöÇÔöÇ Drillable Blocker ÔöÇÔöÇ */
 function DrillableBlocker({ kpi, cities, expanded, onToggle }) {
   const worstCities = safeArr(cities)
     .filter(c => c.target && !c.meets_oro)
@@ -173,7 +174,7 @@ function DrillableBlocker({ kpi, cities, expanded, onToggle }) {
           <ProgressBar pct={100 - Math.min(safeNum(kpi.avgGap), 100)} color={safeNum(kpi.avgGap) > 30 ? 'bg-red-500' : safeNum(kpi.avgGap) > 15 ? 'bg-amber-500' : 'bg-blue-500'} height={2} />
           <span className={`text-2xs font-mono ${safeNum(kpi.avgGap) > 30 ? 'text-red-400' : safeNum(kpi.avgGap) > 15 ? 'text-amber-400' : 'text-blue-400'}`}>{safeNum(kpi.avgGap).toFixed(0)}% gap</span>
         </div>
-        <span className="text-2xs text-ct-text3">{expanded ? '▲' : '▼'}</span>
+        <span className="text-2xs text-ct-text3">{expanded ? 'Ôû▓' : 'Ôû╝'}</span>
       </button>
       {expanded && worstCities.length > 0 && (
         <div className="px-3 pb-2 space-y-1">
@@ -193,7 +194,7 @@ function DrillableBlocker({ kpi, cities, expanded, onToggle }) {
   )
 }
 
-/* ── Main component ── */
+/* ÔöÇÔöÇ Main component ÔöÇÔöÇ */
 export default function YangoLoyaltyView() {
   const [bootstrap, setBootstrap] = useState(null)
   const [bootstrapLoading, setBootstrapLoading] = useState(true)
@@ -212,6 +213,14 @@ export default function YangoLoyaltyView() {
   const [showRubric, setShowRubric] = useState(false)
   const [expandedBlocker, setExpandedBlocker] = useState(null)
   const [expandedCities, setExpandedCities] = useState({})
+  const [historyData, setHistoryData] = useState(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState(null)
+  const [historyMetric, setHistoryMetric] = useState('active_drivers')
+  const [cityCompData, setCityCompData] = useState(null)
+  const [cityCompLoading, setCityCompLoading] = useState(false)
+  const [cityCompError, setCityCompError] = useState(null)
+  const [cityCompMetric, setCityCompMetric] = useState('active_drivers')
 
   const fetchBootstrap = useCallback(async () => {
     setBootstrapLoading(true)
@@ -261,8 +270,51 @@ export default function YangoLoyaltyView() {
     }
   }, [])
 
+  const fetchHistory = useCallback(async () => {
+    setHistoryLoading(true)
+    setHistoryError(null)
+    try {
+      const res = await getYangoLoyaltyHistory({ months: HISTORY_CONFIG.default_months, city: 'lima', country: 'peru' })
+      setHistoryData(res)
+      if (!res?.data || res.data.length === 0) {
+        setHistoryError('Sin datos historicos disponibles. Verifica que las fuentes esten refrescadas.')
+      }
+    } catch (err) {
+      const isTimeout = err?.code === 'ECONNABORTED' || /timeout/i.test(err?.message || '')
+      setHistoryError(isTimeout
+        ? 'Timeout al cargar historico. El backend tardo demasiado.'
+        : (err?.response?.data?.detail || err?.message || 'Error al cargar historico'))
+    } finally {
+      setHistoryLoading(false)
+    }
+  }, [])
+
+  const fetchCityComparison = useCallback(async () => {
+    setCityCompLoading(true)
+    setCityCompError(null)
+    try {
+      const res = await getYangoLoyaltyCityComparison({ country: 'peru' })
+      setCityCompData(res)
+      let hasData = false
+      for (const key of Object.keys(res?.metrics || {})) {
+        if ((res.metrics[key]?.cities || []).length > 0) { hasData = true; break }
+      }
+      if (!hasData) {
+        setCityCompError('Sin datos de comparacion por ciudad. Posiblemente las fuentes no estan refrescadas.')
+      }
+    } catch (err) {
+      const isTimeout = err?.code === 'ECONNABORTED' || /timeout/i.test(err?.message || '')
+      setCityCompError(isTimeout
+        ? 'Timeout al cargar comparativo. El backend tardo demasiado.'
+        : (err?.response?.data?.detail || err?.message || 'Error al cargar comparativo'))
+    } finally {
+      setCityCompLoading(false)
+    }
+  }, [])
+
   useEffect(() => { fetchBootstrap() }, [fetchBootstrap])
   useEffect(() => { fetchPerformance(); fetchSummary() }, [fetchPerformance, fetchSummary])
+  useEffect(() => { const t = setTimeout(() => { fetchHistory(); fetchCityComparison() }, 800); return () => clearTimeout(t) }, [fetchHistory, fetchCityComparison])
 
   const handleBatchConfig = async (e) => {
     e.preventDefault()
@@ -306,7 +358,7 @@ export default function YangoLoyaltyView() {
       <div className="ct-workbench-header">
         <div className="ct-workbench-header-left">
           <h2 className="ct-workbench-title">Yango Loyalty Tracker</h2>
-          <p className="ct-workbench-subtitle">Datos no disponibles</p>
+          <p className="ct-workbench-subtitle">Algunas secciones no pudieron cargarse</p>
         </div>
       </div>
       <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
@@ -318,17 +370,17 @@ export default function YangoLoyaltyView() {
       </div>
       <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
         <span className="font-medium text-sm text-amber-400">
-          Scoring oficial bloqueado — pendiente validacion Yango de definiciones.
+          Scoring oficial bloqueado ÔÇö pendiente validacion Yango de definiciones.
         </span>
       </div>
-      <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400">
-        <p className="font-medium">Error al cargar datos</p>
-        <p className="text-sm mt-1">{bootstrapError || perfError || summaryError}</p>
-        <p className="text-xs mt-1 text-red-400/70">No se pudo cargar datos. El resto de la vista sigue disponible al reintentar.</p>
+      <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 text-amber-300">
+        <p className="font-medium text-amber-400">Datos parciales no disponibles temporalmente</p>
+        <p className="text-sm mt-1 text-ct-text3">{bootstrapError || perfError || summaryError}</p>
+        <p className="text-xs mt-1 text-ct-text3">Puedes reintentar cada seccion individualmente.</p>
         <div className="flex flex-wrap gap-2 mt-3">
-          <button onClick={fetchBootstrap} className="px-3 py-1 bg-red-500/20 rounded text-sm hover:bg-red-500/30">Reintentar Bootstrap</button>
-          <button onClick={fetchPerformance} className="px-3 py-1 bg-red-500/20 rounded text-sm hover:bg-red-500/30">Reintentar Performance</button>
-          <button onClick={fetchSummary} className="px-3 py-1 bg-red-500/20 rounded text-sm hover:bg-red-500/30">Reintentar Scoring</button>
+          <button onClick={fetchBootstrap} className="px-3 py-1 bg-amber-500/20 rounded text-sm text-amber-400 hover:bg-amber-500/30">Reintentar Bootstrap</button>
+          <button onClick={fetchPerformance} className="px-3 py-1 bg-amber-500/20 rounded text-sm text-amber-400 hover:bg-amber-500/30">Reintentar Performance</button>
+          <button onClick={fetchSummary} className="px-3 py-1 bg-amber-500/20 rounded text-sm text-amber-400 hover:bg-amber-500/30">Reintentar Scoring</button>
         </div>
       </div>
     </div>
@@ -336,7 +388,7 @@ export default function YangoLoyaltyView() {
 
   const { month = perfData?.month || bootstrap?.month || new Date().toISOString().slice(0, 7), day_of_month = bootstrap?.day_of_month || new Date().getDate(), total_days = bootstrap?.total_days || 30, expected_progress_pct = 0, data_complete = false, manual_kpis_pending = 0, kpis = [], cities = [], city_categories = {}, has_any_targets = false } = summary || {}
 
-  /* ── Compute city ranking (safe) ── */
+  /* ÔöÇÔöÇ Compute city ranking (safe) ÔöÇÔöÇ */
   const cityRanking = safeArr(cities).map(city => {
     const cat = city_categories?.[city] || { category:'BRONCE', oro_kpis:0, plata_kpis:0 }
     const cityKpis = safeArr(kpis).flatMap(k => {
@@ -356,7 +408,7 @@ export default function YangoLoyaltyView() {
   const totalOroCities = cityRanking.filter(c => c.cat.category === 'ORO').length
   const totalPlataCities = cityRanking.filter(c => c.cat.category === 'PLATA').length
 
-  /* ── Compute KPI gaps (include KPIs without targets) ── */
+  /* ÔöÇÔöÇ Compute KPI gaps (include KPIs without targets) ÔöÇÔöÇ */
   const kpiGaps = LOYALTY_KPIS_LIST.map(k => {
     const kpiData = kpis.find(x => x.kpi_key === k.key)
     const vals = safeArr(kpiData?.values)
@@ -368,7 +420,7 @@ export default function YangoLoyaltyView() {
 
   return (
     <div className="w-full ct-page-section" style={{gap: 'var(--ct-space-3)'}}>
-      {/* ═══ HEADER ═══ */}
+      {/* ÔòÉÔòÉÔòÉ HEADER ÔòÉÔòÉÔòÉ */}
       <div className="ct-workbench-header">
         <div className="ct-workbench-header-left">
           <h2 className="ct-workbench-title">Yango Loyalty Tracker</h2>
@@ -388,7 +440,7 @@ export default function YangoLoyaltyView() {
         </div>
       </div>
 
-      {/* ═══ NON-BLOCKING BANNERS ═══ */}
+      {/* ÔòÉÔòÉÔòÉ NON-BLOCKING BANNERS ÔòÉÔòÉÔòÉ */}
       {(!has_any_targets || !data_complete || manual_kpis_pending > 0) && (
         <DiagnosticDominantFactor
           signals={{
@@ -400,7 +452,7 @@ export default function YangoLoyaltyView() {
         />
       )}
 
-      {/* ═══ TAB: RUBRIC ═══ */}
+      {/* ÔòÉÔòÉÔòÉ TAB: RUBRIC ÔòÉÔòÉÔòÉ */}
       {showRubric && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
           {Object.entries(KPI_GROUPS).map(([key, g]) => (
@@ -412,19 +464,19 @@ export default function YangoLoyaltyView() {
         </div>
       )}
 
-      {/* ═══ TAB: OVERVIEW ═══ */}
+      {/* ÔòÉÔòÉÔòÉ TAB: OVERVIEW ÔòÉÔòÉÔòÉ */}
       {activeTab === 'overview' && (
         <>
-          {/* ── Bootstrap error ── */}
+          {/* ÔöÇÔöÇ Bootstrap error (softened ÔÇö partial data still visible) ÔöÇÔöÇ */}
           {bootstrapError && !bootstrap && !bootstrapLoading && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-3">
-              <p className="text-sm text-red-400">No se pudo cargar Bootstrap. Algunos datos pueden no estar disponibles.</p>
-              <p className="text-xs text-red-400/70 mt-1">{bootstrapError}</p>
-              <button onClick={fetchBootstrap} className="mt-2 px-3 py-1 bg-red-500/20 rounded text-xs text-red-400 hover:bg-red-500/30">Reintentar Bootstrap</button>
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 mb-3">
+              <p className="text-sm text-amber-400">Datos parciales disponibles ÔÇö bootstrap no pudo cargarse completamente.</p>
+              <p className="text-xs text-ct-text3 mt-1">{bootstrapError}</p>
+              <button onClick={fetchBootstrap} className="mt-2 px-3 py-1 bg-amber-500/20 rounded text-xs text-amber-400 hover:bg-amber-500/30">Reintentar</button>
             </div>
           )}
 
-          {/* ═══ UNCONDITIONAL SHELL ═══ */}
+          {/* ÔòÉÔòÉÔòÉ UNCONDITIONAL SHELL ÔòÉÔòÉÔòÉ */}
           <div className="space-y-3 mb-4">
             {/* Pilot scope badge */}
             <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
@@ -438,14 +490,14 @@ export default function YangoLoyaltyView() {
             {/* Scoring blocked banner */}
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
               <span className="font-medium text-sm text-amber-400">
-                Scoring oficial bloqueado — pendiente validacion Yango de definiciones.
+                Scoring oficial bloqueado ÔÇö pendiente validacion Yango de definiciones.
               </span>
               {(bootstrap?.remediation?.length > 0) && bootstrap.remediation.map((r, i) => (
                 <p key={i} className="text-xs text-amber-300/80 mt-1">{r.message}</p>
               ))}
             </div>
 
-            {/* KPI Cards — ALWAYS visible */}
+            {/* KPI Cards ÔÇö ALWAYS visible */}
             <div className="ct-kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
               <div className="ct-kpi-card border-ct-border bg-ct-card">
                 <span className="ct-kpi-card-label">Active Drivers Lima MTD</span>
@@ -488,17 +540,17 @@ export default function YangoLoyaltyView() {
             </div>
           </div>
 
-          {/* ── Performance error ── */}
+          {/* ÔöÇÔöÇ Performance error (softened) ÔöÇÔöÇ */}
           {perfError && !perfData && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-3">
-              <p className="text-sm text-red-400">No se pudo cargar Performance detallado.</p>
-              <p className="text-xs text-red-400/70 mt-1">{perfError}</p>
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 mb-3">
+              <p className="text-sm text-amber-400">Seccion Performance no disponible temporalmente.</p>
+              <p className="text-xs text-ct-text3 mt-1">{perfError}</p>
               <p className="text-xs text-ct-text3 mt-1">El resto de la vista sigue disponible.</p>
-              <button onClick={fetchPerformance} className="mt-2 px-3 py-1 bg-red-500/20 rounded text-xs text-red-400 hover:bg-red-500/30">Reintentar Performance</button>
+              <button onClick={fetchPerformance} className="mt-2 px-3 py-1 bg-amber-500/20 rounded text-xs text-amber-400 hover:bg-amber-500/30">Reintentar</button>
             </div>
           )}
 
-          {/* ── Performance detail (only when data loaded) ── */}
+          {/* ÔöÇÔöÇ Performance detail (only when data loaded) ÔöÇÔöÇ */}
           {perfData && (
             <div className="space-y-3 mb-4">
               {(perfData.remediation?.length > 0 || perfData.reconciliation) && (
@@ -522,7 +574,7 @@ export default function YangoLoyaltyView() {
               {perfData.cities?.length > 0 && (
                 <div className="bg-ct-card border border-ct-border rounded-lg p-4">
                   <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-semibold text-ct-text">Piloto Lima — Detalle</h3>
+                    <h3 className="text-sm font-semibold text-ct-text">Piloto Lima ÔÇö Detalle</h3>
                     <span className="text-2xs text-ct-text3">Mes: {perfData.month}</span>
                   </div>
                   {perfData.cities.map(city => (
@@ -547,7 +599,7 @@ export default function YangoLoyaltyView() {
                       </div>
                       <div className="bg-ct-surface rounded-lg p-3">
                         <p className="text-2xs text-ct-text3 mb-1">Proyeccion SH EOM</p>
-                        <p className="text-lg font-bold text-ct-text">{city.projected_supply_hours_eom != null ? fmtNum(city.projected_supply_hours_eom) : '—'}</p>
+                        <p className="text-lg font-bold text-ct-text">{city.projected_supply_hours_eom != null ? fmtNum(city.projected_supply_hours_eom) : 'ÔÇö'}</p>
                       </div>
                       <div className="bg-ct-surface rounded-lg p-3">
                         <p className="text-2xs text-ct-text3 mb-1">Trazabilidad</p>
@@ -570,7 +622,7 @@ export default function YangoLoyaltyView() {
             </div>
           )}
 
-          {/* ── YEGO Operational Flow — ALWAYS visible ── */}
+          {/* ÔöÇÔöÇ YEGO Operational Flow ÔÇö ALWAYS visible ÔöÇÔöÇ */}
           <div className="bg-blue-500/5 border border-blue-500/30 rounded-lg p-3 mb-4">
             <div className="flex items-center gap-2 mb-1">
               <h4 className="text-xs font-medium text-blue-400">Flujo operativo YEGO</h4>
@@ -607,7 +659,7 @@ export default function YangoLoyaltyView() {
               </div>
               <div className="bg-ct-surface rounded p-2 text-center">
                 <p className="text-2xs text-amber-400/80">Falsos Nuevos</p>
-                <p className="text-sm font-bold text-orange-400">—</p>
+                <p className="text-sm font-bold text-orange-400">ÔÇö</p>
               </div>
             </div>
             <div className="flex gap-1 mt-2">
@@ -617,7 +669,163 @@ export default function YangoLoyaltyView() {
             </div>
           </div>
 
-          {/* ── Loading indicator ── */}
+          {/* ÔòÉÔòÉÔòÉ HISTORICAL 3M SECTION ÔòÉÔòÉÔòÉ */}
+          <div className="bg-ct-card border border-ct-border rounded-lg p-4 mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-semibold text-ct-text">Evolucion ultimos 3 meses</h4>
+              <select value={historyMetric} onChange={e => setHistoryMetric(e.target.value)}
+                className="ct-select text-xs px-2 py-1">
+                {HISTORICAL_METRICS.filter(m => m.supports_history).map(m => (
+                  <option key={m.key} value={m.key}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+            {historyLoading && (
+              <div className="flex items-center gap-2 py-4">
+                <div className="animate-spin w-3 h-3 border-2 border-ct-accent border-t-transparent rounded-full" />
+                <span className="text-xs text-ct-text3">Cargando historico...</span>
+              </div>
+            )}
+            {historyError && !historyData && (
+              <div className="text-xs text-amber-400 py-2">
+                <span>No disponible: {historyError}</span>
+                <button onClick={fetchHistory} className="ml-2 underline hover:text-amber-300">Reintentar</button>
+              </div>
+            )}
+            {historyData && historyData.data?.length > 0 && (() => {
+              const metricCfg = HISTORICAL_METRICS.find(m => m.key === historyMetric)
+              const months = [...historyData.data].reverse()
+              const values = months.map(mo => mo.metrics?.[historyMetric])
+              const maxVal = Math.max(...values.map(v => Math.max(safeNum(v?.actual_value), safeNum(v?.target_value))), 1)
+              return (
+                <div className="space-y-2">
+                  {metricCfg?.internal && (
+                    <span className="inline-block px-1.5 py-0.5 rounded text-2xs bg-amber-500/20 text-amber-400 mb-1">Indicador interno</span>
+                  )}
+                  <div className="flex items-end gap-3 h-32">
+                    {months.map((mo, idx) => {
+                      const v = values[idx]
+                      const actual = safeNum(v?.actual_value)
+                      const target = safeNum(v?.target_value)
+                      const actualH = maxVal > 0 ? (actual / maxVal) * 100 : 0
+                      const targetH = maxVal > 0 && target > 0 ? (target / maxVal) * 100 : 0
+                      const monthLabel = mo.month_start?.slice(0, 7) || 'ÔÇö'
+                      return (
+                        <div key={idx} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
+                          <div className="flex items-end gap-1 w-full h-full justify-center">
+                            {target > 0 && (
+                              <div className="w-4 rounded-t transition-all" style={{ height: `${targetH}%`, backgroundColor: metricCfg?.target_color || '#94a3b8', opacity: 0.5 }} title={`Meta: ${fmtNum(target)}`} />
+                            )}
+                            <div className="w-4 rounded-t transition-all" style={{ height: `${actualH}%`, backgroundColor: metricCfg?.color || '#60a5fa' }} title={`Real: ${fmtNum(actual)}`} />
+                          </div>
+                          <span className="text-2xs text-ct-text3">{monthLabel}</span>
+                          <span className="text-2xs text-ct-text2 font-medium">{actual > 0 ? fmtNum(actual) : 'ÔÇö'}</span>
+                          {v?.status === 'below_target' && <span className="text-2xs text-red-400">-{fmtNum(target - actual)}</span>}
+                          {v?.status === 'above_target' && <span className="text-2xs text-emerald-400">+{fmtNum(actual - target)}</span>}
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div className="flex items-center gap-3 text-2xs text-ct-text3 mt-1">
+                    <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded" style={{ backgroundColor: metricCfg?.color || '#60a5fa' }} />Real</span>
+                    <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded" style={{ backgroundColor: metricCfg?.target_color || '#94a3b8', opacity: 0.5 }} />Meta</span>
+                  </div>
+                </div>
+              )
+            })()}
+            {historyData && (!historyData.data || historyData.data.length === 0) && (
+              <p className="text-xs text-ct-text3 py-2">No hay datos historicos disponibles para esta metrica.</p>
+            )}
+          </div>
+
+          {/* ÔòÉÔòÉÔòÉ CITY COMPARISON SECTION ÔòÉÔòÉÔòÉ */}
+          <div className="bg-ct-card border border-ct-border rounded-lg p-4 mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-semibold text-ct-text">Meta vs ejecucion por ciudad</h4>
+              <select value={cityCompMetric} onChange={e => setCityCompMetric(e.target.value)}
+                className="ct-select text-xs px-2 py-1">
+                {HISTORICAL_METRICS.filter(m => m.supports_city_chart).map(m => (
+                  <option key={m.key} value={m.key}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+            {cityCompLoading && (
+              <div className="flex items-center gap-2 py-4">
+                <div className="animate-spin w-3 h-3 border-2 border-ct-accent border-t-transparent rounded-full" />
+                <span className="text-xs text-ct-text3">Cargando comparativo...</span>
+              </div>
+            )}
+            {cityCompError && !cityCompData && (
+              <div className="text-xs text-amber-400 py-2">
+                <span>No disponible: {cityCompError}</span>
+                <button onClick={fetchCityComparison} className="ml-2 underline hover:text-amber-300">Reintentar</button>
+              </div>
+            )}
+            {cityCompData && (() => {
+              const metricData = cityCompData.metrics?.[cityCompMetric]
+              const metricCfg = HISTORICAL_METRICS.find(m => m.key === cityCompMetric)
+              if (!metricData || !metricData.cities?.length) return (
+                <p className="text-xs text-ct-text3 py-2">No hay datos de ciudades disponibles para esta metrica.</p>
+              )
+              if (metricData.lima_only) return (
+                <div className="space-y-2">
+                  <span className="inline-block px-1.5 py-0.5 rounded text-2xs bg-amber-500/20 text-amber-400">Lima-only</span>
+                  <p className="text-xs text-ct-text3">Comparativo por ciudad disponible progresivamente segun cobertura de fuente.</p>
+                  {metricData.cities.map(c => (
+                    <div key={c.city_norm} className="flex items-center gap-2 text-xs">
+                      <span className="text-ct-text2 w-16 capitalize">{c.city_norm}</span>
+                      <span className="text-ct-text font-medium">{c.actual_value != null ? fmtNum(c.actual_value) : 'ÔÇö'}</span>
+                      {c.target_value != null && <span className="text-ct-text3">/ meta {fmtNum(c.target_value)}</span>}
+                    </div>
+                  ))}
+                </div>
+              )
+              const cities = [...metricData.cities].sort((a, b) => safeNum(b.actual_value) - safeNum(a.actual_value))
+              const maxVal = Math.max(...cities.map(c => Math.max(safeNum(c.actual_value), safeNum(c.target_value))), 1)
+              return (
+                <div className="space-y-2">
+                  {!metricData.supports_city_comparison && (
+                    <p className="text-xs text-ct-text3">Comparativo por ciudad disponible progresivamente segun cobertura de fuente.</p>
+                  )}
+                  {cities.map(city => {
+                    const actual = safeNum(city.actual_value)
+                    const target = safeNum(city.target_value)
+                    const actualW = maxVal > 0 ? (actual / maxVal) * 100 : 0
+                    const targetW = maxVal > 0 && target > 0 ? (target / maxVal) * 100 : 0
+                    const gap = city.gap
+                    return (
+                      <div key={city.city_norm} className="space-y-0.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-ct-text2 capitalize w-20 truncate">{city.city_norm}</span>
+                          <div className="flex items-center gap-2 text-2xs">
+                            <span className="text-ct-text">{fmtNum(actual)}</span>
+                            {target > 0 && <span className="text-ct-text3">/ {fmtNum(target)}</span>}
+                            {gap != null && gap !== 0 && (
+                              <span className={gap >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                                {gap >= 0 ? '+' : ''}{fmtNum(gap)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="relative h-3 bg-ct-border/20 rounded-full overflow-hidden">
+                          {target > 0 && (
+                            <div className="absolute top-0 left-0 h-full rounded-full opacity-30" style={{ width: `${targetW}%`, backgroundColor: metricCfg?.target_color || '#94a3b8' }} />
+                          )}
+                          <div className="absolute top-0 left-0 h-full rounded-full" style={{ width: `${actualW}%`, backgroundColor: metricCfg?.color || '#60a5fa' }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                  <div className="flex items-center gap-3 text-2xs text-ct-text3 mt-2">
+                    <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded" style={{ backgroundColor: metricCfg?.color || '#60a5fa' }} />Real</span>
+                    <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded" style={{ backgroundColor: metricCfg?.target_color || '#94a3b8', opacity: 0.5 }} />Meta</span>
+                  </div>
+                </div>
+              )
+            })()}
+          </div>
+
+          {/* ÔöÇÔöÇ Loading indicator ÔöÇÔöÇ */}
           {(perfLoading || summaryLoading) && (
             <div className="bg-ct-surface/50 border border-ct-border rounded-lg p-3 mb-3 flex items-center gap-2">
               <div className="animate-spin w-3 h-3 border-2 border-ct-accent border-t-transparent rounded-full" />
@@ -625,17 +833,17 @@ export default function YangoLoyaltyView() {
             </div>
           )}
 
-          {/* ── Summary error ── */}
+          {/* ÔöÇÔöÇ Summary error (softened) ÔöÇÔöÇ */}
           {summaryError && !summary && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-3">
-              <p className="text-sm text-red-400">No se pudo cargar el resumen de scoring.</p>
-              <p className="text-xs text-red-400/70 mt-1">{summaryError}</p>
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 mb-3">
+              <p className="text-sm text-amber-400">Seccion Scoring no disponible temporalmente.</p>
+              <p className="text-xs text-ct-text3 mt-1">{summaryError}</p>
               <p className="text-xs text-ct-text3 mt-1">El resto de la vista sigue disponible.</p>
-              <button onClick={fetchSummary} className="mt-2 px-3 py-1 bg-red-500/20 rounded text-xs text-red-400 hover:bg-red-500/30">Reintentar Scoring</button>
+              <button onClick={fetchSummary} className="mt-2 px-3 py-1 bg-amber-500/20 rounded text-xs text-amber-400 hover:bg-amber-500/30">Reintentar</button>
             </div>
           )}
 
-          {/* ── Scoring & KPI detail (only when summary loaded) ── */}
+          {/* ÔöÇÔöÇ Scoring & KPI detail (only when summary loaded) ÔöÇÔöÇ */}
           {summary && (
             <>
               <ExecutiveSummary {...{ cityRanking, kpiGaps, data_complete, manual_kpis_pending, expected_progress_pct, cities, has_any_targets }} />
@@ -655,7 +863,7 @@ export default function YangoLoyaltyView() {
 
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-ct-text">Ranking por ciudad (peor → mejor)</h3>
+                  <h3 className="text-sm font-semibold text-ct-text">Ranking por ciudad (peor ÔåÆ mejor)</h3>
                   <DecisionPriorityStrip
                     items={cityRanking}
                     signalExtractor={(city) => ({
@@ -701,7 +909,7 @@ export default function YangoLoyaltyView() {
                                 <ProgressBar pct={pct} color={barColor} height={2} showLabel />
                                 <span className="text-xs text-ct-text3 w-10 text-right">{fmtNum(kpi.real)}</span>
                                 <span className={`text-xs w-14 text-right ${kpi.meets_oro ? 'text-amber-400' : kpi.meets_plata ? 'text-slate-400' : kpi.target ? 'text-orange-400' : 'text-ct-text3'}`}>
-                                  {kpi.target ? fmtPct(kpi.attainment_pct) : '—'}
+                                  {kpi.target ? fmtPct(kpi.attainment_pct) : 'ÔÇö'}
                                 </span>
                               </div>
                             )
@@ -741,13 +949,13 @@ export default function YangoLoyaltyView() {
                     const withData = safeArr(kpi.values).filter(v => v.real != null).length
                     const withTarget = safeArr(kpi.values).filter(v => v.target != null).length
                     const pct = totalVals ? Math.round((withData / totalVals) * 100) : 0
-                    const icon = pct === 100 ? '✓' : pct > 0 ? '~' : '—'
+                    const icon = pct === 100 ? 'Ô£ô' : pct > 0 ? '~' : 'ÔÇö'
                     const color = pct === 100 ? 'text-emerald-400' : pct > 0 ? 'text-amber-400' : 'text-red-400'
                     return (
                       <div key={kpi.kpi_key} className="bg-ct-surface rounded-lg p-2.5 text-center">
                         <p className={`text-lg font-bold ${color}`}>{icon}</p>
                         <p className="text-2xs text-ct-text3">{kpi.kpi_label}</p>
-                        <p className="text-2xs text-ct-text3">{withData}/{totalVals} data · {withTarget} metas</p>
+                        <p className="text-2xs text-ct-text3">{withData}/{totalVals} data ┬À {withTarget} metas</p>
                       </div>
                     )
                   })}
@@ -758,15 +966,15 @@ export default function YangoLoyaltyView() {
         </>
       )}
 
-      {/* ═══ TAB: BY KPI (detail) ═══ */}
+      {/* ÔòÉÔòÉÔòÉ TAB: BY KPI (detail) ÔòÉÔòÉÔòÉ */}
       {activeTab === 'by_kpi' && summaryLoading && !summary && (
         <div className="space-y-3"><div className="bg-ct-card border border-ct-border rounded-lg p-4"><Skeleton h={20} /></div></div>
       )}
       {activeTab === 'by_kpi' && summaryError && !summary && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
-          <p className="text-sm text-red-400">No se pudo cargar datos de KPIs.</p>
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+          <p className="text-sm text-amber-400">Seccion KPIs no disponible temporalmente.</p>
           <p className="text-xs text-ct-text3 mt-1">El resto de la vista sigue disponible.</p>
-          <button onClick={fetchSummary} className="mt-2 px-3 py-1 bg-red-500/20 rounded text-xs text-red-400 hover:bg-red-500/30">Reintentar</button>
+          <button onClick={fetchSummary} className="mt-2 px-3 py-1 bg-amber-500/20 rounded text-xs text-amber-400 hover:bg-amber-500/30">Reintentar</button>
         </div>
       )}
       {activeTab === 'by_kpi' && summary && (
@@ -816,7 +1024,7 @@ export default function YangoLoyaltyView() {
                             <td className="px-3 py-1.5 text-right text-ct-text text-2xs">
                               {row.real != null ? fmtNum(row.real)
                                 : row.kpiSource === 'manual' ? <span className="text-amber-400 italic">pendiente</span>
-                                : <span className="text-ct-text3">—</span>}
+                                : <span className="text-ct-text3">ÔÇö</span>}
                             </td>
                             <td className="px-3 py-1.5 text-right">
                               {row.target ? (
@@ -827,7 +1035,7 @@ export default function YangoLoyaltyView() {
                                   <span className="text-2xs w-8 text-right">{fmtPct(row.attainment_pct)}</span>
                                 </div>
                               ) : (
-                                <span className="text-2xs text-ct-text3">—</span>
+                                <span className="text-2xs text-ct-text3">ÔÇö</span>
                               )}
                             </td>
                             <td className="px-3 py-1.5 text-center">
@@ -849,19 +1057,19 @@ export default function YangoLoyaltyView() {
         </div>
       )}
 
-      {/* ═══ TAB: CONFIG ═══ */}
+      {/* ÔòÉÔòÉÔòÉ TAB: CONFIG ÔòÉÔòÉÔòÉ */}
       {activeTab === 'config' && (
         <div className="ct-compact-config-panel">
           <div className="ct-panel-header">
             <div>
-              <h3 className="text-sm font-semibold text-ct-text">Configurar metas del mes — {month}</h3>
+              <h3 className="text-sm font-semibold text-ct-text">Configurar metas del mes ÔÇö {month}</h3>
               <p className="text-2xs text-ct-text3 mt-0.5">Define los targets mensuales por ciudad. No es necesario cargar todos los KPIs.</p>
             </div>
           </div>
           <div className="ct-panel-body">
             {saveMsg && (
               <div className={`rounded p-2 mb-3 text-xs flex items-center gap-2 ${saveMsg.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/10 text-red-400 border border-red-500/30'}`}>
-                <span>{saveMsg.type === 'success' ? '✓' : '✗'}</span>
+                <span>{saveMsg.type === 'success' ? 'Ô£ô' : 'Ô£ù'}</span>
                 <span>{saveMsg.text}</span>
                 <button type="button" onClick={() => setSaveMsg(null)} className="ml-auto text-ct-text3 hover:text-ct-text">&times;</button>
               </div>

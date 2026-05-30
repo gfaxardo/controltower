@@ -1,0 +1,9 @@
+scenario,trips_day,days_week,ticket,km_trip,payout_pct,fuel_km,maint_km,fixed_day,bono_dia,bono_noche,guarantee,quota_vehicle,insur_gps,capital,payback_target,wear_pct,utilidad_sem,utilidad_mes,margen,ingreso_conductor_sem,ingreso_conductor_mes,payback_meses,break_even_trips,status
+Conservador,15,6,16,9,45,0.20,0.15,15,0,0,0,0,0,0,60,0,220.50,954.77,15.31,486.00,2104.38,0.0,2.3,VIABLE
+Actual,12,6,14,8,45,0.20,0.15,15,0,0,0,0,0,0,60,0,124.20,537.79,12.32,340.20,1473.07,0.0,1.6,VIABLE
+Optimista,20,6,18,9,40,0.20,0.15,15,0,0,0,0,0,0,60,0,504.00,2182.32,23.33,648.00,2805.84,0.0,3.1,VIABLE
+Dia Incentivado,8,6,16,9,50,0.20,0.15,15,50,0,300,0,0,0,60,0,-15.20,-65.87,-1.98,350.00,1515.50,N/A,N/A,LOSS
+Turno Noche,6,5,18,10,45,0.20,0.15,15,0,60,0,0,0,0,60,0,-17.25,-74.69,-3.19,242.25,1048.94,N/A,N/A,LOSS
+Capital Recuperable,15,6,16,9,45,0.20,0.15,15,0,0,0,0,0,12000,60,0,220.50,954.77,15.31,486.00,2104.38,12.6,2.3,VIABLE
+Payout 40% low,15,6,16,9,40,0.20,0.15,15,0,0,0,0,0,0,60,0,288.00,1247.04,20.00,432.00,1870.56,0.0,2.3,VIABLE
+Payout 55% high,15,6,16,9,55,0.20,0.15,15,0,0,0,0,0,0,60,0,90.00,389.70,6.25,594.00,2572.02,0.0,2.3,RISKY

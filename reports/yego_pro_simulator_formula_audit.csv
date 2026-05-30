@@ -1,0 +1,25 @@
+output_key,excel_formula,simulator_formula,match,risk,difference_notes
+gross_revenue_week,trips * ticket_avg,trips_per_day * days_per_week * ticket_avg,YES,NONE,Identica
+platform_commission,gross_revenue * commission_pct,gross_revenue_week * platform_commission_pct,YES,NONE,Identica
+net_revenue_week,gross_revenue - commission,gross_revenue_week - platform_commission,YES,NONE,Identica
+fuel_cost,km * fuel_rate,km_week * fuel_cost_per_km,YES,NONE,"km_week = trips_week * km_per_trip. Identica."
+maintenance_cost,km * maintenance_rate,km_week * maintenance_cost_per_km,YES,NONE,Identica
+fixed_cost,daily_fixed * days,fixed_daily_cost * days_per_week,YES,NONE,Identica
+vehicle_weekly_cost,monthly_quota / 4,vehicle_monthly_quota / 4.33,MINOR,LOW,"Simulator usa 4.33 (semanas reales/mes) vs 4 (simplificacion Excel). Diferencia ~8%."
+insurance_weekly_cost,monthly_insurance / 4,insurance_gps_monthly / 4.33,MINOR,LOW,"Igual que vehicle. 4.33 vs 4."
+driver_payout,net_revenue * driver_pct,net_revenue * driver_payout_pct,YES,NONE,Identica
+bonuses,sum(bono_dia + bono_noche),weekly_bonus_day + weekly_bonus_night,YES,NONE,Identica
+guarantee_adjustment,max(0; guarantee - payout),max(0; guarantee_weekly - driver_payout),YES,NONE,"Excel usa max(). Simulator usa if. Resultado identico."
+wear_reserve,revenue * wear_pct,gross_revenue_week * wear_reserve_pct,YES,NONE,"Excel puede no tenerlo. Agregado como extension."
+total_costs,sum(all costs),sum of all cost items,YES,NONE,Identica
+net_profit_week,gross - total_costs,gross_revenue_week - total_costs,YES,NONE,Identica
+net_profit_month,profit_week * 4,net_profit_week * 4.33,MINOR,LOW,"Simulator usa 4.33 vs Excel 4. Diferencia ~8%."
+margin_pct,profit / revenue,net_profit_week / gross_revenue_week,YES,NONE,Identica
+driver_income_week,payout + bonuses + guarantee,payout + bonuses + guarantee_adjustment,YES,NONE,Identica
+driver_income_month,income_week * 4,driver_income_week * 4.33,MINOR,LOW,Misma diferencia 4.33 vs 4
+company_recovery_months,capital / monthly_profit,capital_to_recover / net_profit_month,YES,NONE,Identica (depende de monthly_profit que difiere ligeramente)
+break_even_trips_week,fixed / net_per_trip,total_fixed / net_per_trip,YES,NONE,"net_per_trip = ticket*(1-comm)*(1-payout) - km*(fuel+maint). Identica logica."
+break_even_revenue_week,break_even_trips * ticket,break_even_trips * ticket_avg,YES,NONE,Identica
+trips_week,trips * days,trips_per_day * days_per_week,YES,NONE,Identica
+km_week,trips * km_per_trip,trips_week * km_per_trip,YES,NONE,Identica
+status,"IF(margin>=10%; ""VIABLE""; IF(margin>=0;""RISKY"";""LOSS""))","VIABLE if >=10%; RISKY if >=0; else LOSS",YES,NONE,Identica

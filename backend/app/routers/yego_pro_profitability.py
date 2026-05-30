@@ -21,6 +21,10 @@ from app.services.yego_pro_profitability_service import (
     get_input_mapping,
     get_quality,
     get_root_cause_audit,
+    get_diagnostics_drivers,
+    get_diagnostics_vehicles,
+    get_diagnostics_shifts,
+    get_diagnostics_portfolio,
     PARK_ID,
 )
 
@@ -136,3 +140,51 @@ def root_cause(
     Returns detailed driver-level and shift-level gap analysis.
     """
     return get_root_cause_audit(park_id=park_id)
+
+
+@router.get("/diagnostics/drivers")
+def diagnostics_drivers(
+    park_id: str = Query(default=PARK_ID),
+):
+    """
+    P1.5 Diagnostic Layer: driver-level deterministic diagnostics.
+    Classifies each driver as PROFITABLE / RISKY / LOSS / UNKNOWN
+    with causes, severity, confidence, and explanation.
+    """
+    return get_diagnostics_drivers(park_id=park_id)
+
+
+@router.get("/diagnostics/vehicles")
+def diagnostics_vehicles(
+    park_id: str = Query(default=PARK_ID),
+):
+    """
+    P1.5 Diagnostic Layer: vehicle-level deterministic diagnostics.
+    Classifies each vehicle (by plate) as Rentable / Recuperable / Critico.
+    Margin is estimated using park-level margin proxy.
+    """
+    return get_diagnostics_vehicles(park_id=park_id)
+
+
+@router.get("/diagnostics/shifts")
+def diagnostics_shifts(
+    park_id: str = Query(default=PARK_ID),
+):
+    """
+    P1.5 Diagnostic Layer: day vs night shift diagnostics.
+    Compares revenue, trips, margin between shifts.
+    Answers gap severity and hypothetical payout limits.
+    """
+    return get_diagnostics_shifts(park_id=park_id)
+
+
+@router.get("/diagnostics/portfolio")
+def diagnostics_portfolio(
+    park_id: str = Query(default=PARK_ID),
+):
+    """
+    P1.5 Diagnostic Layer: portfolio-level aggregation.
+    Returns total margin, % in loss, top 5 losses/gains,
+    concentration, and hypothetical impact of removing bottom entities.
+    """
+    return get_diagnostics_portfolio(park_id=park_id)

@@ -931,6 +931,806 @@ def get_root_cause_audit(park_id: str = PARK_ID) -> Dict[str, Any]:
         return _error_response(str(e))
 
 
+DIAG_DRIVER_THRESHOLDS = {
+    "LOW_TRIPS_ABS": 10,
+    "LOW_TRIPS_REL": 0.5,
+    "LOW_TICKET_REL": 0.8,
+    "HIGH_KM_PER_TRIP_REL": 1.3,
+    "HIGH_COST_PER_TRIP_REL": 0.85,
+    "HIGH_PAYOUT_RATIO": 0.50,
+    "LOW_MARGIN_PCT": 0.05,
+}
+
+DIAG_VEHICLE_THRESHOLDS = {
+    "LOW_UTILIZATION_DAYS": 3,
+    "LOW_REVENUE_PER_DAY": 50.0,
+    "LOW_TRIPS_PER_DAY": 5,
+    "MANY_DRIVERS": 3,
+    "FIXED_COST_WEEKLY_DEFAULT": 350.0,
+}
+
+
+def _build_diagnostic(
+    entity_type: str,
+    entity_id: str,
+    status: str,
+    main_driver: str,
+    secondary_drivers: List[str],
+    impact_amount: Optional[float],
+    severity: str,
+    confidence: str,
+    explanation: str,
+    evidence: Dict[str, Any],
+) -> Dict[str, Any]:
+    return {
+        "entity_type": entity_type,
+        "entity_id": entity_id,
+        "status": status,
+        "main_driver": main_driver,
+        "secondary_drivers": secondary_drivers,
+        "impact_amount": _safe_float(impact_amount),
+        "severity": severity,
+        "confidence": confidence,
+        "explanation": explanation,
+        "evidence": evidence,
+    }
+
+
+def _classify_driver_causes(
+    d: Dict[str, Any],
+    avg_trips: float,
+    avg_ticket: float,
+    avg_km_per_trip: float,
+    avg_cost_per_trip: float,
+    has_close: bool,
+    has_plate: bool,
+) -> List[str]:
+    causes = []
+    trips = _safe_int(d.get("trips_completed")) or 0
+    ticket = _safe_float(d.get("ticket_avg")) or 0
+    km_pt = _safe_float(d.get("km_per_trip")) or 0
+    revenue = _safe_float(d.get("revenue_gross")) or 0
+    fuel = _safe_float(d.get("fuel_cost")) or 0
+    maint = _safe_float(d.get("maintenance_cost")) or 0
+    payment = _safe_float(d.get("driver_payment")) or 0
+    margin_pct = _safe_float(d.get("margin_pct")) or 0
+    driver_pct = _safe_float(d.get("driver_pct")) or 0
+
+    cost_per_trip = (fuel + maint + payment) / max(trips, 1)
+    rev_per_trip = revenue / max(trips, 1)
+
+    if trips < DIAG_DRIVER_THRESHOLDS["LOW_TRIPS_ABS"] or (avg_trips > 0 and trips < avg_trips * DIAG_DRIVER_THRESHOLDS["LOW_TRIPS_REL"]):
+        causes.append("LOW_TRIPS")
+    if avg_ticket > 0 and ticket < avg_ticket * DIAG_DRIVER_THRESHOLDS["LOW_TICKET_REL"]:
+        causes.append("LOW_TICKET")
+    if avg_km_per_trip > 0 and km_pt > avg_km_per_trip * DIAG_DRIVER_THRESHOLDS["HIGH_KM_PER_TRIP_REL"]:
+        causes.append("HIGH_KM_PER_TRIP")
+    if rev_per_trip > 0 and cost_per_trip > rev_per_trip * DIAG_DRIVER_THRESHOLDS["HIGH_COST_PER_TRIP_REL"]:
+        causes.append("HIGH_COST_PER_TRIP")
+    if driver_pct > DIAG_DRIVER_THRESHOLDS["HIGH_PAYOUT_RATIO"]:
+        causes.append("HIGH_PAYOUT_RATIO")
+    if margin_pct < DIAG_DRIVER_THRESHOLDS["LOW_MARGIN_PCT"]:
+        causes.append("LOW_MARGIN")
+    if not has_close:
+        causes.append("MISSING_CLOSE")
+    if not has_plate:
+        causes.append("MISSING_PLATE")
+    return causes
+
+
+def get_diagnostics_drivers(park_id: str = PARK_ID) -> Dict[str, Any]:
+    try:
+        with get_db_quick(timeout_ms=20000) as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            try:
+                if not _check_view_exists(cur, MV_DRIVER):
+                    return _missing_source_response(MV_DRIVER, "Run yego_pro_profitability_serving_views.sql")
+
+                cur.execute(
+                    f"""SELECT * FROM {MV_DRIVER}
+                        WHERE week_start = (SELECT MAX(week_start) FROM {MV_DRIVER})
+                        ORDER BY profit"""
+                )
+                rows = cur.fetchall()
+                if not rows:
+                    return {"status": "NO_DATA", "diagnostics": [], "summary": {}}
+
+                close_map = {}
+                plate_map = {}
+                park_filter = "driver_id IN (SELECT driver_id FROM public.drivers WHERE park_id = %s)"
+                try:
+                    cur.execute(f"""
+                        SELECT driver_id, COUNT(DISTINCT fecha) AS close_days
+                        FROM public.module_driver_closes
+                        WHERE {park_filter}
+                        GROUP BY driver_id
+                    """, (park_id,))
+                    for cr in cur.fetchall():
+                        close_map[cr["driver_id"]] = _safe_int(cr.get("close_days")) or 0
+
+                    cur.execute(f"""
+                        SELECT driver_id,
+                               COUNT(*) FILTER (WHERE placa IS NOT NULL) AS with_plate,
+                               COUNT(*) AS total
+                        FROM public.module_calculated_shifts
+                        WHERE {park_filter}
+                        GROUP BY driver_id
+                    """, (park_id,))
+                    for pr in cur.fetchall():
+                        total = _safe_int(pr.get("total")) or 1
+                        with_p = _safe_int(pr.get("with_plate")) or 0
+                        plate_map[pr["driver_id"]] = with_p / total > 0.5
+                except Exception:
+                    pass
+
+                all_trips = [_safe_int(r.get("trips_completed")) or 0 for r in rows]
+                all_tickets = [_safe_float(r.get("ticket_avg")) or 0 for r in rows if _safe_float(r.get("ticket_avg"))]
+                all_km = [_safe_float(r.get("km_per_trip")) or 0 for r in rows if _safe_float(r.get("km_per_trip"))]
+
+                avg_trips = sum(all_trips) / max(len(all_trips), 1)
+                avg_ticket = sum(all_tickets) / max(len(all_tickets), 1) if all_tickets else 0
+                avg_km = sum(all_km) / max(len(all_km), 1) if all_km else 0
+
+                all_costs = []
+                for r in rows:
+                    t = _safe_int(r.get("trips_completed")) or 1
+                    f = _safe_float(r.get("fuel_cost")) or 0
+                    m = _safe_float(r.get("maintenance_cost")) or 0
+                    p = _safe_float(r.get("driver_payment")) or 0
+                    all_costs.append((f + m + p) / t)
+                avg_cost_pt = sum(all_costs) / max(len(all_costs), 1) if all_costs else 0
+
+                diagnostics = []
+                for r in rows:
+                    did = r.get("driver_id")
+                    has_close = did in close_map and close_map[did] > 0
+                    has_plate = plate_map.get(did, True)
+
+                    causes = _classify_driver_causes(r, avg_trips, avg_ticket, avg_km, avg_cost_pt, has_close, has_plate)
+
+                    profit = _safe_float(r.get("profit")) or 0
+                    trips = _safe_int(r.get("trips_completed")) or 0
+                    revenue = _safe_float(r.get("revenue_gross")) or 0
+                    fuel = _safe_float(r.get("fuel_cost")) or 0
+                    maint = _safe_float(r.get("maintenance_cost")) or 0
+                    payment = _safe_float(r.get("driver_payment")) or 0
+                    margin_pct = _safe_float(r.get("margin_pct")) or 0
+
+                    if profit > 0 and not causes:
+                        status = "PROFITABLE"
+                    elif profit > 0:
+                        status = "RISKY"
+                    elif profit < 0:
+                        status = "LOSS"
+                    else:
+                        status = "UNKNOWN"
+
+                    if "MISSING_CLOSE" in causes and "MISSING_PLATE" in causes and trips == 0:
+                        classification = "No evaluable"
+                        severity = "LOW"
+                        confidence_level = "LEGACY"
+                    elif profit < -50 or (len(causes) >= 3 and profit < 0):
+                        classification = "Critico"
+                        severity = "HIGH"
+                        confidence_level = "REAL" if has_close else "ESTIMATED"
+                    elif profit < 0:
+                        classification = "Recuperable"
+                        severity = "MEDIUM"
+                        confidence_level = "REAL" if has_close else "ESTIMATED"
+                    else:
+                        classification = "Rentable"
+                        severity = "LOW"
+                        confidence_level = "REAL" if has_close else "ESTIMATED"
+
+                    main_cause = causes[0] if causes else "NONE"
+                    secondary = causes[1:] if len(causes) > 1 else []
+
+                    explanation_parts = []
+                    cause_explanations = {
+                        "LOW_TRIPS": "baja produccion de viajes",
+                        "LOW_TICKET": "ticket promedio bajo vs promedio del parque",
+                        "HIGH_KM_PER_TRIP": "km por viaje elevado (recorridos largos o ineficientes)",
+                        "HIGH_COST_PER_TRIP": "costo por viaje cercano o superior al ingreso",
+                        "HIGH_PAYOUT_RATIO": "porcentaje de pago al conductor elevado",
+                        "LOW_MARGIN": "margen operativo bajo o negativo",
+                        "MISSING_CLOSE": "sin cierres diarios registrados",
+                        "MISSING_PLATE": "sin placa asignada en turnos",
+                    }
+                    if main_cause != "NONE":
+                        explanation_parts.append(f"Causa principal: {cause_explanations.get(main_cause, main_cause)}.")
+                    if classification == "Critico":
+                        explanation_parts.append("Este conductor esta en perdida critica.")
+                    elif classification == "Recuperable":
+                        explanation_parts.append("Este conductor esta en perdida pero podria recuperarse.")
+                    elif classification == "No evaluable":
+                        explanation_parts.append("Diagnostico no evaluable porque faltan datos completos.")
+                    if confidence_level == "ESTIMATED":
+                        explanation_parts.append("Diagnostico estimado porque faltan cierres completos.")
+
+                    diagnostics.append({
+                        **_build_diagnostic(
+                            entity_type="driver",
+                            entity_id=did,
+                            status=status,
+                            main_driver=main_cause,
+                            secondary_drivers=secondary,
+                            impact_amount=profit,
+                            severity=severity,
+                            confidence=confidence_level,
+                            explanation=" ".join(explanation_parts),
+                            evidence={
+                                "driver_name": r.get("driver_name"),
+                                "week_start": str(r.get("week_start")),
+                                "classification": classification,
+                            },
+                        ),
+                        "kpis": {
+                            "revenue": _safe_float(revenue),
+                            "trips": trips,
+                            "km": _safe_float(r.get("km_total")),
+                            "ticket_avg": _safe_float(r.get("ticket_avg")),
+                            "estimated_cost": round(fuel + maint, 2),
+                            "estimated_payout": _safe_float(payment),
+                            "estimated_margin": _safe_float(profit),
+                            "revenue_per_trip": round(revenue / max(trips, 1), 2),
+                            "cost_per_trip": round((fuel + maint + payment) / max(trips, 1), 2),
+                            "margin_per_trip": _safe_float(r.get("profit_per_trip")),
+                        },
+                    })
+
+                total = len(diagnostics)
+                loss_count = sum(1 for d in diagnostics if d["status"] == "LOSS")
+                risky_count = sum(1 for d in diagnostics if d["status"] == "RISKY")
+                profitable_count = sum(1 for d in diagnostics if d["status"] == "PROFITABLE")
+                critico_count = sum(1 for d in diagnostics if d["evidence"]["classification"] == "Critico")
+                recuperable_count = sum(1 for d in diagnostics if d["evidence"]["classification"] == "Recuperable")
+
+                return {
+                    "status": "OK",
+                    "park_id": park_id,
+                    "diagnostics": diagnostics,
+                    "summary": {
+                        "total_drivers": total,
+                        "profitable": profitable_count,
+                        "risky": risky_count,
+                        "loss": loss_count,
+                        "critico": critico_count,
+                        "recuperable": recuperable_count,
+                        "pct_in_loss": round(loss_count / max(total, 1), 4),
+                    },
+                    "thresholds_used": DIAG_DRIVER_THRESHOLDS,
+                    "park_averages": {
+                        "avg_trips": round(avg_trips, 1),
+                        "avg_ticket": round(avg_ticket, 2),
+                        "avg_km_per_trip": round(avg_km, 2),
+                        "avg_cost_per_trip": round(avg_cost_pt, 2),
+                    },
+                    "source": "module_weekly_billing + module_driver_closes + module_calculated_shifts",
+                    "metric_type": "DIAGNOSTIC",
+                    "confidence": "HIGH" if len(close_map) > 0 else "MEDIUM",
+                }
+            finally:
+                cur.close()
+    except Exception as e:
+        logger.warning("yego_pro diagnostics drivers: %s", e)
+        return _error_response(str(e))
+
+
+def get_diagnostics_vehicles(park_id: str = PARK_ID) -> Dict[str, Any]:
+    try:
+        with get_db_quick(timeout_ms=20000) as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            try:
+                park_filter = "driver_id IN (SELECT driver_id FROM public.drivers WHERE park_id = %s)"
+
+                cur.execute(f"""
+                    SELECT
+                        s.placa,
+                        SUM(COALESCE(s.produccion_total, 0)) AS revenue,
+                        SUM(COALESCE(s.cantidad_viajes, 0)) AS trips,
+                        COUNT(DISTINCT s.fecha) AS active_days,
+                        COUNT(DISTINCT s.driver_id) AS drivers_count,
+                        COUNT(*) AS shift_count
+                    FROM public.module_calculated_shifts s
+                    WHERE {park_filter}
+                      AND s.placa IS NOT NULL
+                      AND s.placa != ''
+                    GROUP BY s.placa
+                    ORDER BY revenue DESC
+                """, (park_id,))
+                rows = cur.fetchall()
+
+                if not rows:
+                    return {"status": "NO_DATA", "diagnostics": [], "summary": {}}
+
+                billing_margin = {}
+                try:
+                    cur.execute(f"""
+                        SELECT
+                            SUM(COALESCE(b.utilidad, 0)) AS total_profit,
+                            SUM(COALESCE(b.monto_total_producido, 0)) AS total_revenue,
+                            COUNT(DISTINCT b.driver_id) AS billing_drivers
+                        FROM public.module_weekly_billing b
+                        WHERE b.driver_id IN (SELECT driver_id FROM public.drivers WHERE park_id = %s)
+                          AND b.fecha_inicio = (
+                              SELECT MAX(fecha_inicio) FROM public.module_weekly_billing
+                              WHERE driver_id IN (SELECT driver_id FROM public.drivers WHERE park_id = %s)
+                          )
+                    """, (park_id, park_id))
+                    brow = cur.fetchone()
+                    if brow:
+                        tr = _safe_float(brow.get("total_revenue")) or 1
+                        tp = _safe_float(brow.get("total_profit")) or 0
+                        billing_margin["park_margin_pct"] = round(tp / tr, 4)
+                except Exception:
+                    pass
+
+                park_margin_pct = billing_margin.get("park_margin_pct", -0.05)
+                fixed_cost = DIAG_VEHICLE_THRESHOLDS["FIXED_COST_WEEKLY_DEFAULT"]
+
+                all_rpd = []
+                all_tpd = []
+                for r in rows:
+                    days = _safe_int(r.get("active_days")) or 1
+                    rev = _safe_float(r.get("revenue")) or 0
+                    trips = _safe_int(r.get("trips")) or 0
+                    all_rpd.append(rev / days)
+                    all_tpd.append(trips / days)
+
+                avg_rpd = sum(all_rpd) / max(len(all_rpd), 1)
+                avg_tpd = sum(all_tpd) / max(len(all_tpd), 1)
+
+                diagnostics = []
+                for r in rows:
+                    plate = r.get("placa")
+                    rev = _safe_float(r.get("revenue")) or 0
+                    trips = _safe_int(r.get("trips")) or 0
+                    days = _safe_int(r.get("active_days")) or 1
+                    drivers = _safe_int(r.get("drivers_count")) or 1
+
+                    rpd = rev / days
+                    tpd = trips / days
+                    estimated_margin = rev * park_margin_pct
+                    utilization = min(days / 7.0, 1.0)
+
+                    causes = []
+                    if utilization < DIAG_VEHICLE_THRESHOLDS["LOW_UTILIZATION_DAYS"] / 7.0:
+                        causes.append("LOW_UTILIZATION")
+                    if rpd < DIAG_VEHICLE_THRESHOLDS["LOW_REVENUE_PER_DAY"]:
+                        causes.append("LOW_REVENUE_PER_DAY")
+                    if tpd < DIAG_VEHICLE_THRESHOLDS["LOW_TRIPS_PER_DAY"]:
+                        causes.append("LOW_TRIPS_PER_DAY")
+                    if drivers > DIAG_VEHICLE_THRESHOLDS["MANY_DRIVERS"]:
+                        causes.append("MANY_DRIVERS_LOW_CONTROL")
+                    if estimated_margin < 0:
+                        causes.append("NEGATIVE_MARGIN")
+                    if rev < fixed_cost:
+                        causes.append("FIXED_COST_NOT_COVERED")
+
+                    if estimated_margin > 0 and not causes:
+                        status = "PROFITABLE"
+                        classification = "Rentable"
+                        severity = "LOW"
+                    elif estimated_margin > 0 and causes:
+                        status = "RISKY"
+                        classification = "Recuperable"
+                        severity = "MEDIUM"
+                    elif estimated_margin < 0 and len(causes) >= 2:
+                        status = "LOSS"
+                        classification = "Critico"
+                        severity = "HIGH"
+                    elif estimated_margin < 0:
+                        status = "LOSS"
+                        classification = "Recuperable"
+                        severity = "MEDIUM"
+                    else:
+                        status = "UNKNOWN"
+                        classification = "Sin trazabilidad suficiente"
+                        severity = "LOW"
+
+                    main_cause = causes[0] if causes else "NONE"
+                    secondary = causes[1:] if len(causes) > 1 else []
+
+                    cause_explanations = {
+                        "LOW_UTILIZATION": "baja utilizacion (pocos dias activos)",
+                        "LOW_REVENUE_PER_DAY": "ingreso diario bajo",
+                        "LOW_TRIPS_PER_DAY": "pocos viajes por dia",
+                        "MANY_DRIVERS_LOW_CONTROL": "muchos conductores distintos (bajo control operativo)",
+                        "NEGATIVE_MARGIN": "margen estimado negativo",
+                        "FIXED_COST_NOT_COVERED": "no cubre su costo fijo estimado",
+                    }
+                    explanation_parts = []
+                    if main_cause != "NONE":
+                        explanation_parts.append(f"Este vehiculo tiene {cause_explanations.get(main_cause, main_cause)}.")
+                    if classification == "Critico":
+                        explanation_parts.append("Vehiculo en perdida critica estimada.")
+
+                    diagnostics.append({
+                        **_build_diagnostic(
+                            entity_type="vehicle",
+                            entity_id=plate,
+                            status=status,
+                            main_driver=main_cause,
+                            secondary_drivers=secondary,
+                            impact_amount=estimated_margin,
+                            severity=severity,
+                            confidence="ESTIMATED",
+                            explanation=" ".join(explanation_parts) if explanation_parts else "Sin causas detectadas.",
+                            evidence={
+                                "classification": classification,
+                            },
+                        ),
+                        "kpis": {
+                            "revenue": round(rev, 2),
+                            "trips": trips,
+                            "active_days": days,
+                            "revenue_per_day": round(rpd, 2),
+                            "trips_per_day": round(tpd, 2),
+                            "estimated_margin": round(estimated_margin, 2),
+                            "utilization_proxy": round(utilization, 4),
+                            "drivers_count": drivers,
+                            "missing_plate_flag": False,
+                        },
+                    })
+
+                no_plate_count = 0
+                try:
+                    cur.execute(f"""
+                        SELECT COUNT(*) AS cnt
+                        FROM public.module_calculated_shifts s
+                        WHERE {park_filter}
+                          AND (s.placa IS NULL OR s.placa = '')
+                    """, (park_id,))
+                    npr = cur.fetchone()
+                    no_plate_count = _safe_int(npr.get("cnt")) if npr else 0
+                except Exception:
+                    pass
+
+                total = len(diagnostics)
+                loss_count = sum(1 for d in diagnostics if d["status"] == "LOSS")
+
+                return {
+                    "status": "OK",
+                    "park_id": park_id,
+                    "diagnostics": diagnostics,
+                    "summary": {
+                        "total_vehicles": total,
+                        "profitable": sum(1 for d in diagnostics if d["status"] == "PROFITABLE"),
+                        "risky": sum(1 for d in diagnostics if d["status"] == "RISKY"),
+                        "loss": loss_count,
+                        "pct_in_loss": round(loss_count / max(total, 1), 4),
+                        "shifts_without_plate": no_plate_count,
+                    },
+                    "thresholds_used": DIAG_VEHICLE_THRESHOLDS,
+                    "park_averages": {
+                        "avg_revenue_per_day": round(avg_rpd, 2),
+                        "avg_trips_per_day": round(avg_tpd, 2),
+                        "park_margin_pct_used": park_margin_pct,
+                    },
+                    "source": "module_calculated_shifts + module_weekly_billing (margin proxy)",
+                    "metric_type": "DIAGNOSTIC",
+                    "confidence": "ESTIMATED",
+                    "notes": "Margen por vehiculo es estimado usando margen % del parque aplicado al revenue por placa.",
+                }
+            finally:
+                cur.close()
+    except Exception as e:
+        logger.warning("yego_pro diagnostics vehicles: %s", e)
+        return _error_response(str(e))
+
+
+def get_diagnostics_shifts(park_id: str = PARK_ID) -> Dict[str, Any]:
+    try:
+        with get_db_quick(timeout_ms=20000) as conn:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            try:
+                park_filter = "driver_id IN (SELECT driver_id FROM public.drivers WHERE park_id = %s)"
+
+                cur.execute(f"""
+                    SELECT
+                        s.tipo_turno AS shift_type,
+                        SUM(COALESCE(s.produccion_total, 0)) AS revenue,
+                        SUM(COALESCE(s.cantidad_viajes, 0)) AS trips,
+                        COUNT(DISTINCT s.fecha) AS active_days,
+                        COUNT(*) AS shift_count,
+                        SUM(COALESCE(s.monto_total, 0)) AS total_payout
+                    FROM public.module_calculated_shifts s
+                    WHERE {park_filter}
+                      AND s.tipo_turno IS NOT NULL
+                    GROUP BY s.tipo_turno
+                    ORDER BY revenue DESC
+                """, (park_id,))
+                rows = cur.fetchall()
+
+                if not rows:
+                    return {"status": "NO_DATA", "diagnostics": [], "shift_comparison": {}}
+
+                billing_margin_pct = -0.05
+                try:
+                    cur.execute(f"""
+                        SELECT
+                            SUM(COALESCE(b.utilidad, 0)) AS total_profit,
+                            SUM(COALESCE(b.monto_total_producido, 0)) AS total_revenue
+                        FROM public.module_weekly_billing b
+                        WHERE b.driver_id IN (SELECT driver_id FROM public.drivers WHERE park_id = %s)
+                    """, (park_id,))
+                    brow = cur.fetchone()
+                    if brow:
+                        tr = _safe_float(brow.get("total_revenue")) or 1
+                        tp = _safe_float(brow.get("total_profit")) or 0
+                        billing_margin_pct = round(tp / tr, 4)
+                except Exception:
+                    pass
+
+                day_labels = {"dia": "day", "day": "day", "manana": "day", "morning": "day", "tarde": "day", "afternoon": "day"}
+                night_labels = {"noche": "night", "night": "night", "evening": "night"}
+
+                day_data = {"revenue": 0, "trips": 0, "days": 0, "shifts": 0, "payout": 0}
+                night_data = {"revenue": 0, "trips": 0, "days": 0, "shifts": 0, "payout": 0}
+
+                for r in rows:
+                    st = str(r.get("shift_type") or "").lower().strip()
+                    rev = _safe_float(r.get("revenue")) or 0
+                    trips = _safe_int(r.get("trips")) or 0
+                    days = _safe_int(r.get("active_days")) or 0
+                    shifts = _safe_int(r.get("shift_count")) or 0
+                    payout = _safe_float(r.get("total_payout")) or 0
+
+                    if st in day_labels:
+                        day_data["revenue"] += rev
+                        day_data["trips"] += trips
+                        day_data["days"] = max(day_data["days"], days)
+                        day_data["shifts"] += shifts
+                        day_data["payout"] += payout
+                    elif st in night_labels:
+                        night_data["revenue"] += rev
+                        night_data["trips"] += trips
+                        night_data["days"] = max(night_data["days"], days)
+                        night_data["shifts"] += shifts
+                        night_data["payout"] += payout
+
+                def shift_kpis(data, label):
+                    rev = data["revenue"]
+                    trips = data["trips"]
+                    days = max(data["days"], 1)
+                    ticket = rev / max(trips, 1)
+                    margin = rev * billing_margin_pct
+                    rpt = rev / max(trips, 1)
+                    tpd = trips / days
+                    return {
+                        "shift": label,
+                        "revenue": round(rev, 2),
+                        "trips": trips,
+                        "ticket_avg": round(ticket, 2),
+                        "margin": round(margin, 2),
+                        "revenue_per_trip": round(rpt, 2),
+                        "trips_per_day": round(tpd, 2),
+                        "estimated_margin": round(margin, 2),
+                        "total_payout": round(data["payout"], 2),
+                    }
+
+                day_kpis = shift_kpis(day_data, "day")
+                night_kpis = shift_kpis(night_data, "night")
+
+                day_rev = day_data["revenue"]
+                night_rev = night_data["revenue"]
+                total_rev = day_rev + night_rev
+
+                if total_rev > 0 and day_rev > 0 and night_rev > 0:
+                    gap_pct = round(abs(day_rev - night_rev) / max(day_rev, night_rev), 4)
+                else:
+                    gap_pct = None
+
+                if gap_pct is not None:
+                    if gap_pct < 0.10:
+                        gap_label = "leve"
+                    elif gap_pct < 0.30:
+                        gap_label = "moderada"
+                    else:
+                        gap_label = "fuerte"
+                else:
+                    gap_label = "no_evaluable"
+
+                day_worse = day_rev < night_rev if day_rev > 0 and night_rev > 0 else None
+
+                day_margin = day_kpis["estimated_margin"]
+                night_margin = night_kpis["estimated_margin"]
+
+                if day_rev > 0 and night_rev > 0 and night_margin > 0:
+                    incentive_to_equalize = round(night_rev - day_rev, 2) if day_rev < night_rev else 0
+                else:
+                    incentive_to_equalize = None
+
+                day_max_payout = round(day_rev * (1 + billing_margin_pct), 2) if day_rev > 0 and billing_margin_pct > -1 else None
+                night_max_payout = round(night_rev * (1 + billing_margin_pct), 2) if night_rev > 0 and billing_margin_pct > -1 else None
+
+                explanation_parts = []
+                if day_worse is True:
+                    explanation_parts.append(f"El turno dia produce menos que noche. Brecha: {gap_label} ({round((gap_pct or 0) * 100, 1)}%).")
+                elif day_worse is False:
+                    explanation_parts.append(f"El turno noche produce menos que dia. Brecha: {gap_label} ({round((gap_pct or 0) * 100, 1)}%).")
+                if gap_label == "leve":
+                    explanation_parts.append("La brecha dia/noche es leve; no explica por si sola la perdida.")
+                elif gap_label == "moderada":
+                    explanation_parts.append("La brecha dia/noche es moderada; contribuye parcialmente al resultado.")
+                elif gap_label == "fuerte":
+                    explanation_parts.append("La brecha dia/noche es fuerte y puede ser un factor relevante de perdida.")
+
+                return {
+                    "status": "OK",
+                    "park_id": park_id,
+                    "diagnostics": [
+                        _build_diagnostic(
+                            entity_type="shift",
+                            entity_id="day_vs_night",
+                            status="LOSS" if (day_margin < 0 or night_margin < 0) else "PROFITABLE",
+                            main_driver="SHIFT_GAP_" + gap_label.upper() if gap_pct else "NO_DATA",
+                            secondary_drivers=[],
+                            impact_amount=round(day_margin + night_margin, 2),
+                            severity="HIGH" if gap_label == "fuerte" else ("MEDIUM" if gap_label == "moderada" else "LOW"),
+                            confidence="ESTIMATED",
+                            explanation=" ".join(explanation_parts) if explanation_parts else "Sin datos suficientes.",
+                            evidence={
+                                "gap_day_vs_night_pct": gap_pct,
+                                "gap_label": gap_label,
+                                "day_worse_than_night": day_worse,
+                            },
+                        ),
+                    ],
+                    "shift_comparison": {
+                        "day": day_kpis,
+                        "night": night_kpis,
+                        "gap_day_vs_night_pct": gap_pct,
+                        "gap_label": gap_label,
+                        "day_is_worse": day_worse,
+                        "incentive_day_to_equalize_night": incentive_to_equalize,
+                        "max_payout_day_supports": day_max_payout,
+                        "max_payout_night_supports": night_max_payout,
+                    },
+                    "source": "module_calculated_shifts + module_weekly_billing (margin proxy)",
+                    "metric_type": "DIAGNOSTIC",
+                    "confidence": "ESTIMATED",
+                }
+            finally:
+                cur.close()
+    except Exception as e:
+        logger.warning("yego_pro diagnostics shifts: %s", e)
+        return _error_response(str(e))
+
+
+def get_diagnostics_portfolio(park_id: str = PARK_ID) -> Dict[str, Any]:
+    try:
+        driver_diag = get_diagnostics_drivers(park_id=park_id)
+        vehicle_diag = get_diagnostics_vehicles(park_id=park_id)
+
+        if driver_diag.get("status") not in ("OK",) and vehicle_diag.get("status") not in ("OK",):
+            return {"status": "NO_DATA", "portfolio": {}, "message": "No diagnostic data available."}
+
+        d_list = driver_diag.get("diagnostics", [])
+        v_list = vehicle_diag.get("diagnostics", [])
+
+        total_margin_drivers = sum(_safe_float(d.get("impact_amount")) or 0 for d in d_list)
+        total_margin_vehicles = sum(_safe_float(v.get("impact_amount")) or 0 for v in v_list)
+
+        drivers_in_loss = [d for d in d_list if d.get("status") == "LOSS"]
+        drivers_profitable = [d for d in d_list if d.get("status") == "PROFITABLE"]
+        vehicles_in_loss = [v for v in v_list if v.get("status") == "LOSS"]
+        vehicles_profitable = [v for v in v_list if v.get("status") == "PROFITABLE"]
+
+        pct_drivers_loss = round(len(drivers_in_loss) / max(len(d_list), 1), 4) if d_list else None
+        pct_vehicles_loss = round(len(vehicles_in_loss) / max(len(v_list), 1), 4) if v_list else None
+
+        sorted_d_loss = sorted(d_list, key=lambda x: _safe_float(x.get("impact_amount")) or 0)
+        sorted_d_gain = sorted(d_list, key=lambda x: _safe_float(x.get("impact_amount")) or 0, reverse=True)
+        sorted_v_loss = sorted(v_list, key=lambda x: _safe_float(x.get("impact_amount")) or 0)
+        sorted_v_gain = sorted(v_list, key=lambda x: _safe_float(x.get("impact_amount")) or 0, reverse=True)
+
+        def _top_entry(item):
+            return {
+                "entity_type": item.get("entity_type"),
+                "entity_id": item.get("entity_id"),
+                "impact_amount": item.get("impact_amount"),
+                "status": item.get("status"),
+                "main_driver": item.get("main_driver"),
+                "severity": item.get("severity"),
+            }
+
+        top5_losses = [_top_entry(x) for x in sorted_d_loss[:5] if (_safe_float(x.get("impact_amount")) or 0) < 0]
+        top5_gains = [_top_entry(x) for x in sorted_d_gain[:5] if (_safe_float(x.get("impact_amount")) or 0) > 0]
+
+        total_loss_amount = sum(_safe_float(d.get("impact_amount")) or 0 for d in drivers_in_loss)
+        if len(drivers_in_loss) > 0:
+            top3_loss = sum(_safe_float(d.get("impact_amount")) or 0 for d in sorted_d_loss[:3])
+            concentration = round(top3_loss / min(total_loss_amount, -0.01), 4) if total_loss_amount < 0 else 0
+        else:
+            concentration = 0
+
+        bottom5_vehicles = sorted_v_loss[:5]
+        bottom5_drivers = sorted_d_loss[:5]
+
+        impact_remove_bottom5_vehicles = sum(_safe_float(v.get("impact_amount")) or 0 for v in bottom5_vehicles if (_safe_float(v.get("impact_amount")) or 0) < 0)
+        impact_remove_bottom5_drivers = sum(_safe_float(d.get("impact_amount")) or 0 for d in bottom5_drivers if (_safe_float(d.get("impact_amount")) or 0) < 0)
+
+        new_margin_without_v = total_margin_vehicles - impact_remove_bottom5_vehicles
+        new_margin_without_d = total_margin_drivers - impact_remove_bottom5_drivers
+
+        cause_counts: Dict[str, int] = {}
+        cause_impact: Dict[str, float] = {}
+        cause_severity: Dict[str, str] = {}
+        for d in d_list:
+            mc = d.get("main_driver", "NONE")
+            if mc == "NONE":
+                continue
+            cause_counts[mc] = cause_counts.get(mc, 0) + 1
+            cause_impact[mc] = cause_impact.get(mc, 0) + (_safe_float(d.get("impact_amount")) or 0)
+            if d.get("severity") == "HIGH":
+                cause_severity[mc] = "HIGH"
+            elif cause_severity.get(mc) != "HIGH" and d.get("severity") == "MEDIUM":
+                cause_severity[mc] = "MEDIUM"
+            elif mc not in cause_severity:
+                cause_severity[mc] = "LOW"
+
+        for v in v_list:
+            mc = v.get("main_driver", "NONE")
+            if mc == "NONE":
+                continue
+            cause_counts[mc] = cause_counts.get(mc, 0) + 1
+            cause_impact[mc] = cause_impact.get(mc, 0) + (_safe_float(v.get("impact_amount")) or 0)
+            if v.get("severity") == "HIGH":
+                cause_severity[mc] = "HIGH"
+            elif cause_severity.get(mc) != "HIGH" and v.get("severity") == "MEDIUM":
+                cause_severity[mc] = "MEDIUM"
+            elif mc not in cause_severity:
+                cause_severity[mc] = "LOW"
+
+        root_causes = sorted(
+            [
+                {
+                    "cause": c,
+                    "count": cause_counts[c],
+                    "estimated_impact": round(cause_impact[c], 2),
+                    "severity": cause_severity.get(c, "LOW"),
+                }
+                for c in cause_counts
+            ],
+            key=lambda x: x["estimated_impact"],
+        )
+
+        return {
+            "status": "OK",
+            "park_id": park_id,
+            "portfolio": {
+                "total_estimated_margin_drivers": round(total_margin_drivers, 2),
+                "total_estimated_margin_vehicles": round(total_margin_vehicles, 2),
+                "pct_drivers_in_loss": pct_drivers_loss,
+                "pct_vehicles_in_loss": pct_vehicles_loss,
+                "top5_losses": top5_losses,
+                "top5_gains": top5_gains,
+                "loss_concentration_top3": concentration,
+            },
+            "hypothetical_impact": {
+                "remove_bottom5_vehicles": {
+                    "vehicles": [_top_entry(v) for v in bottom5_vehicles],
+                    "loss_removed": round(abs(impact_remove_bottom5_vehicles), 2),
+                    "new_estimated_margin": round(new_margin_without_v, 2),
+                },
+                "remove_bottom5_drivers": {
+                    "drivers": [_top_entry(d) for d in bottom5_drivers],
+                    "loss_removed": round(abs(impact_remove_bottom5_drivers), 2),
+                    "new_estimated_margin": round(new_margin_without_d, 2),
+                },
+            },
+            "root_causes": root_causes,
+            "source": "diagnostic aggregation (drivers + vehicles)",
+            "metric_type": "DIAGNOSTIC",
+            "confidence": "ESTIMATED",
+            "notes": "Impacto hipotetico. NO se ejecuta accion. Solo muestra que pasaria.",
+        }
+    except Exception as e:
+        logger.warning("yego_pro diagnostics portfolio: %s", e)
+        return _error_response(str(e))
+
+
 def _missing_source_response(view_name: str, remediation: str) -> Dict[str, Any]:
     return {
         "status": "MISSING_SOURCE",
