@@ -13,11 +13,14 @@ import {
   getYegoProDiagnosticsVehicles,
   getYegoProDiagnosticsShifts,
   getYegoProDiagnosticsPortfolio,
+  runYegoProSimulator,
+  getYegoProSimulatorDefaults,
 } from '../services/api'
 
 const TABS = [
   { id: 'overview', label: 'Overview', fetcher: getYegoProProfitabilityOverview },
   { id: 'diagnostics', label: 'Diagnostics', fetcher: null },
+  { id: 'simulator', label: 'Simulator', fetcher: null },
   { id: 'weekly', label: 'Weekly Closed', fetcher: getYegoProProfitabilityWeekly },
   { id: 'daily', label: 'Last Closed Day', fetcher: getYegoProProfitabilityDaily },
   { id: 'drivers', label: 'Drivers', fetcher: getYegoProProfitabilityDrivers },
@@ -31,6 +34,7 @@ const TABS = [
 const EMPTY_STATES = {
   overview: 'No hay datos de resumen disponibles para este periodo. Fuente financiera pendiente.',
   diagnostics: 'No hay datos diagnosticos disponibles. Verifica que las fuentes de billing y shifts esten cargadas.',
+  simulator: 'Configura los inputs y ejecuta la simulacion para ver el resultado.',
   weekly: 'No hay semanas cerradas disponibles. Data operativa disponible, data financiera parcial.',
   daily: 'No hay datos del ultimo dia cerrado. Fuente financiera pendiente.',
   drivers: 'No hay datos de conductores disponibles. Data operativa disponible, data financiera parcial.',
@@ -1106,6 +1110,868 @@ function SectionError ({ label }) {
   return <div className="text-[11px] text-ct-text3 bg-ct-surface rounded border border-ct-border px-3 py-2">Datos de {label} no disponibles en este momento.</div>
 }
 
+function SimulatorPanel () {
+  const now = new Date()
+  const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  const [defaults, setDefaults] = useState(null)
+  const [loaded, setLoaded] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [result, setResult] = useState(null)
+  const [simError, setSimError] = useState(null)
+  const [simRunning, setSimRunning] = useState(false)
+  const [showTrace, setShowTrace] = useState(false)
+  const [showSensitivity, setShowSensitivity] = useState(false)
+  const [showMathSummary, setShowMathSummary] = useState(true)
+
+  const [shiftsPerVehicle, setShiftsPerVehicle] = useState(2)
+  const [selectedShift, setSelectedShift] = useState('day')
+  const [tripsDayWeek, setTripsDayWeek] = useState(85)
+  const [tripsNightWeek, setTripsNightWeek] = useState(45)
+  const [tripsPremierDayWeek, setTripsPremierDayWeek] = useState(6)
+  const [tripsPremierNightWeek, setTripsPremierNightWeek] = useState(3)
+  const [ticketAvgGeneral, setTicketAvgGeneral] = useState(15)
+  const [ticketAvgPremier, setTicketAvgPremier] = useState(22)
+  const [kmPerTrip, setKmPerTrip] = useState(8.5)
+  const [fuelPerKm, setFuelPerKm] = useState(0.35)
+  const [maintPerTrip, setMaintPerTrip] = useState(1.20)
+  const [platformPct, setPlatformPct] = useState(18)
+  const [vehicleWeeklyCost, setVehicleWeeklyCost] = useState(350)
+  const [insuranceWeekly, setInsuranceWeekly] = useState(45)
+  const [reservePct, setReservePct] = useState(3)
+  const [driverPayoutPct, setDriverPayoutPct] = useState(50)
+  const [vehicleBranded, setVehicleBranded] = useState(true)
+  const [eligibleGeneral, setEligibleGeneral] = useState(true)
+  const [eligiblePremier, setEligiblePremier] = useState(true)
+  const [generalBonusTrips, setGeneralBonusTrips] = useState(85)
+  const [premierBonusTrips, setPremierBonusTrips] = useState(6)
+  const [guaranteeAmount, setGuaranteeAmount] = useState(0)
+  const [bonusTables, setBonusTables] = useState({
+    general_branded: [],
+    general_unbranded: [],
+    premier: [],
+  })
+  const [showBonusConfig, setShowBonusConfig] = useState(false)
+  const [drillBlock, setDrillBlock] = useState(null)
+
+  const [scenarioName, setScenarioName] = useState('')
+  const [scenarios, setScenarios] = useState([])
+  const [saveMsg, setSaveMsg] = useState('')
+  const [editingNameId, setEditingNameId] = useState(null)
+  const [renameInput, setRenameInput] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    getYegoProSimulatorDefaults()
+      .then((data) => {
+        if (cancelled) return
+        setDefaults(data)
+        if (data?.default_inputs) {
+          const d = data.default_inputs
+          setShiftsPerVehicle(d.shifts_per_vehicle ?? 2)
+          setSelectedShift(d.selected_shift ?? 'day')
+          setTripsDayWeek(d.trips_day_week ?? 85)
+          setTripsNightWeek(d.trips_night_week ?? 45)
+          setTripsPremierDayWeek(d.trips_premier_day_week ?? 6)
+          setTripsPremierNightWeek(d.trips_premier_night_week ?? 3)
+          setTicketAvgGeneral(d.ticket_avg_general ?? d.ticket_avg ?? 15)
+          setTicketAvgPremier(d.ticket_avg_premier ?? 22)
+          setKmPerTrip(d.km_per_trip ?? 8.5)
+          setFuelPerKm(d.fuel_per_km ?? 0.35)
+          setMaintPerTrip(d.maintenance_per_trip ?? 1.20)
+          setPlatformPct(d.platform_commission_pct ?? 18)
+          setVehicleWeeklyCost(d.vehicle_weekly_cost ?? 350)
+          setInsuranceWeekly(d.insurance_gps_weekly ?? 45)
+          setReservePct(d.reserve_pct ?? 3)
+          setDriverPayoutPct(d.driver_payout_pct ?? 50)
+          setVehicleBranded(d.vehicle_branded ?? true)
+          setEligibleGeneral(d.eligible_for_general_bonus ?? true)
+          setEligiblePremier(d.eligible_for_premier_bonus ?? true)
+          setGeneralBonusTrips(d.general_bonus_trips_week ?? 85)
+          setPremierBonusTrips(d.premier_bonus_trips_week ?? 6)
+          setGuaranteeAmount(d.guarantee_amount ?? 0)
+          setScenarioName(`Escenario inicial — ${d.driver_payout_pct ?? 50}% — ${ts}`)
+        }
+        if (data?.bonus_tables) {
+          setBonusTables(data.bonus_tables)
+        }
+      })
+      .catch((err) => console.warn('[Simulator] defaults error:', err.message))
+      .finally(() => { if (!cancelled) setLoaded(true); setLoading(false) })
+    return () => { cancelled = true }
+  }, [])
+
+  function buildPayload () {
+    return {
+      shifts_per_vehicle: shiftsPerVehicle,
+      selected_shift: selectedShift,
+      trips_day_week: tripsDayWeek,
+      trips_night_week: tripsNightWeek,
+      trips_premier_day_week: tripsPremierDayWeek,
+      trips_premier_night_week: tripsPremierNightWeek,
+      ticket_avg: ticketAvgGeneral,
+      ticket_avg_general: ticketAvgGeneral,
+      ticket_avg_premier: ticketAvgPremier,
+      km_per_trip: kmPerTrip,
+      fuel_per_km: fuelPerKm,
+      maintenance_per_trip: maintPerTrip,
+      platform_commission_pct: platformPct,
+      vehicle_weekly_cost: vehicleWeeklyCost,
+      insurance_gps_weekly: insuranceWeekly,
+      reserve_pct: reservePct,
+      driver_payout_pct: driverPayoutPct,
+      vehicle_branded: vehicleBranded,
+      eligible_for_general_bonus: eligibleGeneral,
+      eligible_for_premier_bonus: eligiblePremier,
+      general_bonus_trips_week: generalBonusTrips,
+      premier_bonus_trips_week: premierBonusTrips,
+      guarantee_amount: guaranteeAmount,
+      bonus_tables: bonusTables,
+    }
+  }
+
+  function handleRun () {
+    setSimRunning(true)
+    setSimError(null)
+    const payload = buildPayload()
+    runYegoProSimulator(payload)
+      .then((data) => { setResult(data) })
+      .catch((err) => { setSimError(err.response?.data?.detail || err.message || 'Error al ejecutar simulador') })
+      .finally(() => setSimRunning(false))
+  }
+
+  function handleSave () {
+    if (!result) return
+    const name = scenarioName || `Escenario ${scenarios.length + 1} — ${driverPayoutPct}% — ${ts}`
+    setScenarios((prev) => {
+      const newIdx = prev.length + 1
+      const autoName = scenarioName || `Escenario ${newIdx} — ${driverPayoutPct}% — ${ts}`
+      return [...prev, {
+        id: Date.now(),
+        name: autoName,
+        timestamp: ts,
+        shiftModel: result.shift_label,
+        branded: vehicleBranded,
+        generalTrips: generalBonusTrips,
+        premierTrips: premierBonusTrips,
+        generalBonus: result.subtotals?.production?.general_bonus ?? 0,
+        premierBonus: result.subtotals?.production?.premier_bonus ?? 0,
+        payout: driverPayoutPct,
+        profitWeekly: result.subtotals?.result?.company_profit_weekly ?? 0,
+        margin: result.subtotals?.result?.margin_pct ?? 0,
+        driverIncome: result.subtotals?.driver_payment?.driver_income_total ?? 0,
+        payback: result.subtotals?.result?.payback_trips ?? 0,
+        status: (result.subtotals?.result?.company_profit_weekly ?? 0) >= 0 ? 'PROFITABLE' : 'LOSS',
+        payload: buildPayload(),
+        resultData: result,
+      }]
+    })
+    setSaveMsg('Escenario guardado en memoria')
+    setTimeout(() => setSaveMsg(''), 2500)
+  }
+
+  function handleRenameStart (id, currentName) {
+    setEditingNameId(id)
+    setRenameInput(currentName)
+  }
+
+  function handleRenameSave (id) {
+    setScenarios((prev) => prev.map((s) => s.id === id ? { ...s, name: renameInput } : s))
+    setEditingNameId(null)
+  }
+
+  function handleDuplicate (s) {
+    setScenarios((prev) => [...prev, { ...s, id: Date.now(), name: s.name + ' (copia)', timestamp: ts }])
+  }
+
+  function handleDelete (id) {
+    setScenarios((prev) => prev.filter((s) => s.id !== id))
+  }
+
+  function handleLoadScenario (s) {
+    const p = s.payload
+    setShiftsPerVehicle(p.shifts_per_vehicle)
+    setSelectedShift(p.selected_shift)
+    setTripsDayWeek(p.trips_day_week)
+    setTripsNightWeek(p.trips_night_week)
+    setTripsPremierDayWeek(p.trips_premier_day_week)
+    setTripsPremierNightWeek(p.trips_premier_night_week)
+    setTicketAvgGeneral(p.ticket_avg_general ?? p.ticket_avg ?? 15)
+    setTicketAvgPremier(p.ticket_avg_premier ?? 22)
+    setKmPerTrip(p.km_per_trip)
+    setFuelPerKm(p.fuel_per_km)
+    setMaintPerTrip(p.maintenance_per_trip)
+    setPlatformPct(p.platform_commission_pct)
+    setVehicleWeeklyCost(p.vehicle_weekly_cost)
+    setInsuranceWeekly(p.insurance_gps_weekly)
+    setReservePct(p.reserve_pct)
+    setDriverPayoutPct(p.driver_payout_pct)
+    setVehicleBranded(p.vehicle_branded)
+    setEligibleGeneral(p.eligible_for_general_bonus)
+    setEligiblePremier(p.eligible_for_premier_bonus)
+    setGeneralBonusTrips(p.general_bonus_trips_week)
+    setPremierBonusTrips(p.premier_bonus_trips_week)
+    setGuaranteeAmount(p.guarantee_amount ?? 0)
+    if (p.bonus_tables) {
+      setBonusTables(p.bonus_tables)
+    }
+    setScenarioName(s.name)
+    setResult(s.resultData)
+  }
+
+  function handleBonusCellChange (table, rowIdx, field, value) {
+    setBonusTables((prev) => {
+      const arr = [...(prev[table] || [])]
+      arr[rowIdx] = { ...arr[rowIdx], [field]: value }
+      return { ...prev, [table]: arr }
+    })
+  }
+
+  function handleAddBonusRow (table) {
+    setBonusTables((prev) => {
+      const arr = [...(prev[table] || [])]
+      const last = arr.length > 0 ? arr[arr.length - 1] : { trips_min: 0, bonus_pct: 0, bonus_amount: 0 }
+      arr.push({ trips_min: (last.trips_min || 0) + 50, bonus_pct: (last.bonus_pct || 0) + 5, bonus_amount: (last.bonus_amount || 0) + 200 })
+      return { ...prev, [table]: arr }
+    })
+  }
+
+  function handleDeleteBonusRow (table, rowIdx) {
+    setBonusTables((prev) => {
+      const arr = [...(prev[table] || [])]
+      arr.splice(rowIdx, 1)
+      return { ...prev, [table]: arr }
+    })
+  }
+
+  function handleResetBonusTables () {
+    if (defaults?.bonus_tables) {
+      setBonusTables(defaults.bonus_tables)
+    }
+  }
+
+  const refs = result?.operational_references || {}
+
+  function InputRow ({ label, value, setValue, refKey, unit = '', type = 'number', step = '1', min, max, disabled = false }) {
+    const ref = refKey ? refs[refKey] : null
+    return (
+      <div className="flex items-stretch gap-2 py-1.5 border-b border-ct-border/30">
+        <label className="w-48 text-xs text-ct-text2 flex-shrink-0 flex items-center">{label}</label>
+        <div className="flex items-center gap-1">
+          <input
+            type={type} value={value} onChange={(e) => setValue(type === 'checkbox' ? e.target.checked : type === 'number' ? parseFloat(e.target.value) || 0 : e.target.value)}
+            className={`px-2 py-1 rounded border border-ct-border text-xs text-ct-text bg-ct-surface w-24 ${type === 'checkbox' ? 'w-auto' : ''}`}
+            step={step} min={min} max={max} checked={type === 'checkbox' ? value : undefined}
+            disabled={disabled}
+          />
+          {unit && <span className="text-[10px] text-ct-text3 w-6">{unit}</span>}
+        </div>
+        <div className="flex-1 bg-gray-50/50 rounded px-2 flex items-center text-[10px] min-h-[28px]">
+          {ref ? (
+            <div className="flex items-center gap-1 flex-wrap">
+              <span className="bg-blue-50 text-blue-600 px-1 rounded font-medium">Ref: {ref.value}</span>
+              <span className="bg-gray-100 text-gray-500 px-1 rounded">{ref.source}</span>
+              <span className={`px-1 rounded text-[9px] font-medium ${ref.confidence === 'REAL_OPERATIONAL' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>{ref.confidence === 'REAL_OPERATIONAL' ? 'REAL_OPERATIONAL' : 'ESTIMATED'}</span>
+              {ref.period && <span className="text-gray-400">{ref.period}</span>}
+            </div>
+          ) : (
+            <span className="text-gray-400">Sin referencia operativa</span>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  function SubtotalBlock ({ title, rows, blockKey }) {
+    const trace = result?.calculation_trace || []
+    const drillSteps = {
+      Produccion: ['revenue_general', 'revenue_premier', 'gross_trip_revenue', 'general_bonus_yango', 'premier_bonus_yango', 'total_company_income'],
+      'Costos variables': ['km_total', 'fuel_cost', 'maintenance_cost', 'platform_commission', 'total_variable_cost'],
+      'Costos fijos': ['fixed_weekly', 'reserve_amount', 'total_costs'],
+      'Pago conductor': ['base_before_payout', 'payout_driver', 'net_after_payout'],
+      Resultado: ['company_profit_weekly', 'company_profit_monthly', 'margin_pct', 'payback_trips', 'break_even_trips'],
+    }
+    const stepsForBlock = drillSteps[title] || []
+    const relatedTrace = trace.filter((t) => stepsForBlock.some((s) => (t.step_key || '').includes(s) || (t.step || '').includes(s) || (t.label || '').toLowerCase().includes(s.split('_')[0])))
+    const isOpen = drillBlock === blockKey
+    const confidenceBadge = rows.some((r) => r.confidence === 'ESTIMATED')
+      ? { text: 'ESTIMATED', cls: 'bg-amber-100 text-amber-600' }
+      : { text: 'REAL', cls: 'bg-emerald-100 text-emerald-600' }
+
+    return (
+      <div className="bg-ct-card rounded-lg border border-ct-border overflow-hidden">
+        <div className="px-3 py-1.5 bg-gray-50 border-b border-ct-border text-xs font-semibold text-ct-text flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span>{title}</span>
+            <span className={`text-[9px] px-1 rounded font-normal ${confidenceBadge.cls}`}>{confidenceBadge.text}</span>
+          </div>
+          {relatedTrace.length > 0 && (
+            <button type="button" onClick={() => setDrillBlock(isOpen ? null : blockKey)}
+              className="text-[10px] text-blue-600 hover:text-blue-800 font-normal">
+              {isOpen ? 'Ocultar detalle' : 'Ver detalle'}
+            </button>
+          )}
+        </div>
+        <div className="divide-y divide-ct-border/30">
+          {rows.map((r, i) => (
+            <div key={i} className="px-3 py-1.5 flex justify-between text-xs">
+              <span className="text-ct-text2">{r.label}</span>
+              <span className={`font-semibold ${r.highlight ? (r.negative ? 'text-red-600' : 'text-emerald-600') : 'text-ct-text'}`}>
+                {typeof r.value === 'number' ? (r.isPct ? `${r.value.toFixed(1)}%` : r.isCurrency !== false ? `S/ ${r.value.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : r.value.toLocaleString('es-PE')) : String(r.value ?? 'N/D')}
+              </span>
+            </div>
+          ))}
+        </div>
+        {isOpen && relatedTrace.length > 0 && (
+          <div className="px-3 py-2 bg-gray-50/30 border-t border-ct-border/30 text-[10px] text-ct-text3 space-y-0.5 max-h-[200px] overflow-y-auto">
+            {relatedTrace.map((t, idx) => (
+              <div key={idx} className="flex justify-between">
+                <span className="text-ct-text2 truncate mr-2">{t.label || t.step || t.step_key}</span>
+                <span className="font-mono font-semibold text-ct-text">
+                  {typeof t.result === 'number' ? `S/ ${t.result.toLocaleString('es-PE', { minimumFractionDigits: 2 })}` : String(t.result ?? 'N/D')}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="w-5 h-5 border-2 border-ct-accent border-t-transparent rounded-full animate-spin" />
+        <span className="ml-2 text-xs text-ct-text3">Cargando simulador...</span>
+      </div>
+    )
+  }
+
+  const bonusGeneralKey = vehicleBranded ? 'general_branded' : 'general_unbranded'
+
+  function renderBonusConfigTab (tableKey, label) {
+    const rows = bonusTables[tableKey] || []
+    return (
+      <div>
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="border-b border-ct-border bg-gray-50/50">
+              <th className="px-2 py-1 text-left">Viajes min</th>
+              <th className="px-2 py-1 text-left">% Bonus</th>
+              <th className="px-2 py-1 text-left">Monto (S/)</th>
+              <th className="px-2 py-1 text-center w-10"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={i} className="border-b border-ct-border/30">
+                <td className="px-2 py-1">
+                  <input type="number" value={row.trips_min ?? ''} onChange={(e) => handleBonusCellChange(tableKey, i, 'trips_min', parseFloat(e.target.value) || 0)}
+                    className="w-16 px-1 py-0.5 rounded border border-ct-border text-xs bg-ct-surface" />
+                </td>
+                <td className="px-2 py-1">
+                  <input type="number" value={row.bonus_pct ?? ''} onChange={(e) => handleBonusCellChange(tableKey, i, 'bonus_pct', parseFloat(e.target.value) || 0)}
+                    className="w-16 px-1 py-0.5 rounded border border-ct-border text-xs bg-ct-surface" step="0.5" />
+                </td>
+                <td className="px-2 py-1">
+                  <input type="number" value={row.bonus_amount ?? ''} onChange={(e) => handleBonusCellChange(tableKey, i, 'bonus_amount', parseFloat(e.target.value) || 0)}
+                    className="w-20 px-1 py-0.5 rounded border border-ct-border text-xs bg-ct-surface" step="10" />
+                </td>
+                <td className="px-2 py-1 text-center">
+                  <button type="button" onClick={() => handleDeleteBonusRow(tableKey, i)}
+                    className="text-red-500 hover:text-red-700 text-xs font-bold">&times;</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="flex items-center gap-2 mt-2">
+          <button type="button" onClick={() => handleAddBonusRow(tableKey)}
+            className="text-[10px] px-2 py-0.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100">+ Agregar tramo</button>
+          <button type="button" onClick={handleResetBonusTables}
+            className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-600 rounded hover:bg-gray-200">Restaurar defaults</button>
+        </div>
+      </div>
+    )
+  }
+
+  const genTrips = shiftsPerVehicle === 2
+    ? tripsDayWeek + tripsNightWeek
+    : selectedShift === 'night' ? tripsNightWeek : tripsDayWeek
+  const premTrips = shiftsPerVehicle === 2
+    ? tripsPremierDayWeek + tripsPremierNightWeek
+    : tripsPremierDayWeek
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-ct-text3">Modelo:</span>
+        <label className="text-xs flex items-center gap-1">
+          <input type="radio" checked={shiftsPerVehicle === 1} onChange={() => setShiftsPerVehicle(1)} className="mr-0.5" />
+          1 turno
+        </label>
+        <label className="text-xs flex items-center gap-1">
+          <input type="radio" checked={shiftsPerVehicle === 2} onChange={() => setShiftsPerVehicle(2)} className="mr-0.5" />
+          2 turnos por vehiculo
+        </label>
+        {shiftsPerVehicle === 1 && (
+          <select value={selectedShift} onChange={(e) => setSelectedShift(e.target.value)} className="text-xs px-2 py-0.5 rounded border border-ct-border bg-ct-surface">
+            <option value="day">Dia</option>
+            <option value="night">Noche</option>
+          </select>
+        )}
+        <div className="flex-1" />
+        <div className="flex items-center gap-2">
+          <input
+            type="text" value={scenarioName}
+            onChange={(e) => setScenarioName(e.target.value)}
+            className="px-2 py-1 rounded border border-ct-border text-xs bg-ct-surface w-48"
+            placeholder="Nombre del escenario..."
+          />
+          <button type="button" onClick={handleRun} disabled={simRunning}
+            className="px-3 py-1 bg-ct-accent text-white rounded text-xs font-medium hover:bg-ct-accent/90 disabled:opacity-50 transition-colors">
+            {simRunning ? 'Ejecutando...' : 'Ejecutar'}
+          </button>
+          <button type="button" onClick={handleSave} disabled={!result}
+            className="px-3 py-1 bg-emerald-600 text-white rounded text-xs font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors">
+            Guardar
+          </button>
+        </div>
+      </div>
+
+      {saveMsg && <div className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-1 rounded">{saveMsg}</div>}
+
+      {simError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-xs text-red-700">{simError}</div>
+      )}
+
+      {result && (
+        <div className="space-y-3">
+          <div className="bg-amber-50 border border-amber-200 rounded px-3 py-1.5 text-xs text-amber-700">
+            Modelo: {result.shift_label}
+            {result.vehicle_branded ? ' | Brandeado' : ' | Sin brandeo'}
+            {result.shifts_per_vehicle === 2 ? ' | Ambos turnos activos' : ` | Solo turno ${selectedShift === 'night' ? 'noche' : 'dia'}`}
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+            {[
+              { title: 'Ingreso total empresa', value: result.subtotals?.production?.total_company_income ?? 0, positive: true },
+              { title: 'Bono general', value: result.subtotals?.production?.general_bonus ?? 0, positive: true },
+              { title: 'Bono Premier', value: result.subtotals?.production?.premier_bonus ?? 0, positive: true },
+              { title: 'Utilidad empresa', value: result.subtotals?.result?.company_profit_weekly ?? 0, positive: (result.subtotals?.result?.company_profit_weekly ?? 0) >= 0 },
+              { title: 'Ingreso conductor', value: result.subtotals?.driver_payment?.driver_income_total ?? 0, positive: true },
+              { title: 'Margen', value: result.subtotals?.result?.margin_pct ?? 0, positive: (result.subtotals?.result?.margin_pct ?? 0) >= 0, isPct: true },
+            ].map((card, i) => (
+              <div key={i} className={`bg-ct-card rounded-lg border-2 p-2.5 ${card.positive ? 'border-emerald-200' : 'border-red-200'}`}>
+                <div className="text-[10px] text-ct-text3 mb-0.5">{card.title}</div>
+                <div className={`text-base font-bold ${card.positive ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {card.isPct ? `${card.value.toFixed(1)}%` : `S/ ${card.value.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {result.bonus_result && (
+            <div className="bg-ct-card rounded-lg border border-ct-border p-3 space-y-3">
+              <div className="text-sm font-semibold text-ct-text">Bono aplicado esta semana</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="bg-blue-50/30 rounded border border-blue-100 p-2 space-y-1 text-xs">
+                  <div className="font-semibold text-blue-800">General ({vehicleBranded ? 'brandeado' : 'sin brandeo'})</div>
+                  {(() => {
+                    const gb = result.bonus_result.general || {}
+                    return (
+                      <>
+                        <div className="text-ct-text2">Viajes considerados: <span className="font-semibold text-ct-text">{gb.trips_considered ?? genTrips}</span></div>
+                        <div className="text-ct-text2">Tramo alcanzado: <span className="font-semibold text-ct-text">{gb.tier_reached?.trips_min ?? 0} viajes &rarr; {gb.tier_reached?.bonus_pct ?? 0}% &rarr; S/{(gb.tier_reached?.bonus_amount ?? 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span></div>
+                        <div className="text-ct-text2">Siguiente tramo: <span className="font-semibold text-ct-text">{gb.next_tier?.trips_min ?? '—'} viajes {gb.next_tier?.trips_to_next != null ? `(faltan ${gb.next_tier.trips_to_next})` : ''}</span></div>
+                        <div className="text-ct-text2">Monto adicional potencial: <span className="font-semibold text-emerald-600">+S/{(gb.additional_potential ?? 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span></div>
+                      </>
+                    )
+                  })()}
+                </div>
+                <div className="bg-amber-50/30 rounded border border-amber-100 p-2 space-y-1 text-xs">
+                  <div className="font-semibold text-amber-800">Premier</div>
+                  {(() => {
+                    const pb = result.bonus_result.premier || {}
+                    return (
+                      <>
+                        <div className="text-ct-text2">Viajes considerados: <span className="font-semibold text-ct-text">{pb.trips_considered ?? premTrips}</span></div>
+                        <div className="text-ct-text2">Tramo alcanzado: <span className="font-semibold text-ct-text">{pb.tier_reached?.trips_min ?? 0} viajes &rarr; {pb.tier_reached?.bonus_pct ?? 0}% &rarr; S/{(pb.tier_reached?.bonus_amount ?? 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span></div>
+                        <div className="text-ct-text2">Siguiente tramo: <span className="font-semibold text-ct-text">{pb.next_tier?.trips_min ?? '—'} viajes {pb.next_tier?.trips_to_next != null ? `(faltan ${pb.next_tier.trips_to_next})` : ''}</span></div>
+                        <div className="text-ct-text2">Monto adicional potencial: <span className="font-semibold text-emerald-600">+S/{(pb.additional_potential ?? 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span></div>
+                      </>
+                    )
+                  })()}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <button type="button" onClick={() => setShowBonusConfig(!showBonusConfig)}
+          className="w-full px-3 py-2 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors text-left flex items-center justify-between">
+          <span>Configurar tablas de bonos Yango</span>
+          <span className="text-[10px]">{showBonusConfig ? 'Ocultar' : 'Mostrar'}</span>
+        </button>
+        {showBonusConfig && (
+          <div className="bg-ct-card rounded-lg border border-ct-border overflow-hidden">
+            <div className="flex border-b border-ct-border">
+              {[
+                { key: 'general_branded', label: 'Bono general brandeado' },
+                { key: 'general_unbranded', label: 'Bono general sin brandeo' },
+                { key: 'premier', label: 'Bono Premier' },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setBonusTables((prev) => ({ ...prev, _activeTab: tab.key }))}
+                  className={`flex-1 px-3 py-1.5 text-xs font-medium text-center border-r border-ct-border last:border-r-0 transition-colors ${
+                    (bonusTables._activeTab || 'general_branded') === tab.key
+                      ? 'bg-white text-ct-text border-b-2 border-b-ct-accent'
+                      : 'bg-gray-50 text-ct-text3 hover:bg-gray-100'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <div className="p-2">
+              {renderBonusConfigTab(bonusTables._activeTab || 'general_branded', '')}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <SectionTitle>Produccion</SectionTitle>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-1">
+          <div className="bg-ct-card rounded-lg border border-ct-border p-2 space-y-0">
+            <div className="text-xs font-semibold text-ct-text px-1 pb-1 border-b border-ct-border/30">Produccion general</div>
+            <InputRow label="Viajes generales dia" value={tripsDayWeek} setValue={setTripsDayWeek} refKey="trips_day_week" unit="viajes" />
+            {(shiftsPerVehicle === 2 || selectedShift === 'night') && (
+              <InputRow label="Viajes generales noche" value={tripsNightWeek} setValue={setTripsNightWeek} refKey="trips_night_week" unit="viajes" />
+            )}
+            <InputRow label="Ticket promedio general" value={ticketAvgGeneral} setValue={setTicketAvgGeneral} refKey="ticket_avg" unit="S/" step="0.5" />
+          </div>
+          <div className="bg-ct-card rounded-lg border border-ct-border p-2 space-y-0">
+            <div className="text-xs font-semibold text-ct-text px-1 pb-1 border-b border-ct-border/30">Produccion Premier</div>
+            <InputRow label="Viajes Premier dia" value={tripsPremierDayWeek} setValue={setTripsPremierDayWeek} refKey="trips_premier_day_week" unit="viajes" />
+            {shiftsPerVehicle === 2 && (
+              <InputRow label="Viajes Premier noche" value={tripsPremierNightWeek} setValue={setTripsPremierNightWeek} refKey="trips_premier_night_week" unit="viajes" />
+            )}
+            <InputRow label="Ticket promedio Premier" value={ticketAvgPremier} setValue={setTicketAvgPremier} unit="S/" step="0.5" />
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <SectionTitle>Costos</SectionTitle>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-1">
+          <div className="bg-ct-card rounded-lg border border-ct-border p-2 space-y-0">
+            <div className="text-xs font-semibold text-ct-text px-1 pb-1 border-b border-ct-border/30">Costos variables</div>
+            <InputRow label="Km por viaje" value={kmPerTrip} setValue={setKmPerTrip} refKey="km_per_trip" unit="km" step="0.1" />
+            <InputRow label="Combustible / km" value={fuelPerKm} setValue={setFuelPerKm} refKey="fuel_per_km" unit="S/" step="0.01" />
+            <InputRow label="Mantenimiento / viaje" value={maintPerTrip} setValue={setMaintPerTrip} refKey="maintenance_per_trip" unit="S/" step="0.05" />
+            <InputRow label="Comision plataforma %" value={platformPct} setValue={setPlatformPct} refKey="platform_commission_pct" unit="%" step="0.5" min={0} max={100} />
+          </div>
+          <div className="bg-ct-card rounded-lg border border-ct-border p-2 space-y-0">
+            <div className="text-xs font-semibold text-ct-text px-1 pb-1 border-b border-ct-border/30">Costos fijos</div>
+            <InputRow label="Cuota vehiculo semanal" value={vehicleWeeklyCost} setValue={setVehicleWeeklyCost} refKey="vehicle_weekly_cost" unit="S/" />
+            <InputRow label="Seguro / GPS semanal" value={insuranceWeekly} setValue={setInsuranceWeekly} refKey="insurance_gps_weekly" unit="S/" />
+            <InputRow label="Reserva desgaste %" value={reservePct} setValue={setReservePct} refKey="reserve_pct" unit="%" step="0.5" min={0} max={100} />
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <SectionTitle>Pago conductor</SectionTitle>
+        <div className="bg-ct-card rounded-lg border border-ct-border p-2 mt-1">
+          <InputRow label="Payout conductor %" value={driverPayoutPct} setValue={setDriverPayoutPct} refKey="driver_payout_pct" unit="%" step="1" min={0} max={100} />
+          <InputRow label="Garantia semanal" value={guaranteeAmount} setValue={setGuaranteeAmount} unit="S/" disabled={false} />
+        </div>
+      </div>
+
+      <div className="bg-ct-card rounded-lg border border-ct-border p-2 space-y-0">
+        <div className="text-xs font-semibold text-ct-text px-1 pb-1 border-b border-ct-border/30">Elegibilidad bonos Yango</div>
+        <InputRow label="Vehiculo brandeado" value={vehicleBranded} setValue={setVehicleBranded} type="checkbox" />
+        <InputRow label="Elegible bono general" value={eligibleGeneral} setValue={setEligibleGeneral} type="checkbox" />
+        <InputRow label="Viajes para bono general" value={generalBonusTrips} setValue={setGeneralBonusTrips} refKey="general_bonus_trips_week" unit="viajes" disabled={!eligibleGeneral} />
+        <InputRow label="Elegible bono Premier" value={eligiblePremier} setValue={setEligiblePremier} type="checkbox" />
+        <InputRow label="Viajes para bono Premier" value={premierBonusTrips} setValue={setPremierBonusTrips} refKey="premier_bonus_trips_week" unit="viajes" disabled={!eligiblePremier} />
+      </div>
+
+      {!result && !simError && (
+        <div className="bg-ct-card rounded-lg border border-ct-border p-6 text-center">
+          <div className="text-sm text-ct-text3 mb-1">Configura los inputs y ejecuta la simulacion</div>
+          <div className="text-[10px] text-ct-text3">Los subtotales, sensibilidad y trazabilidad apareceran aqui</div>
+        </div>
+      )}
+
+      {result && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            <SubtotalBlock blockKey="prod" title="Produccion" rows={[
+              { label: 'Viajes semanales', value: result.subtotals.production.trips_week, isCurrency: false },
+              { label: 'Viajes Premier', value: result.subtotals.production.premier_trips_week, isCurrency: false },
+              { label: 'Revenue bruto', value: result.subtotals.production.gross_trip_revenue },
+              { label: 'Bono general', value: result.subtotals.production.general_bonus },
+              { label: 'Bono Premier', value: result.subtotals.production.premier_bonus },
+              { label: 'Ingreso total', value: result.subtotals.production.total_company_income, highlight: true },
+            ]} />
+            <SubtotalBlock blockKey="var" title="Costos variables" rows={[
+              { label: 'Km total', value: result.subtotals.variable_costs.km_total, isCurrency: false },
+              { label: 'Combustible', value: result.subtotals.variable_costs.fuel_cost },
+              { label: 'Mantenimiento', value: result.subtotals.variable_costs.maintenance_cost },
+              { label: 'Comision plataforma', value: result.subtotals.variable_costs.platform_commission },
+              { label: 'Total variable', value: result.subtotals.variable_costs.total_variable_cost, highlight: true, negative: true },
+            ]} />
+            <SubtotalBlock blockKey="fixed" title="Costos fijos" rows={[
+              { label: 'Cuota vehiculo', value: result.subtotals.fixed_costs.vehicle_weekly_cost, negative: true },
+              { label: 'Seguro/GPS', value: result.subtotals.fixed_costs.insurance_gps_weekly, negative: true },
+              { label: 'Reserva desgaste', value: result.subtotals.fixed_costs.reserve_amount, negative: true },
+              { label: 'Total fijos', value: result.subtotals.fixed_costs.total_fixed, highlight: true, negative: true },
+            ]} />
+            <SubtotalBlock blockKey="pay" title="Pago conductor" rows={[
+              { label: 'Base reparto', value: result.subtotals.driver_payment.base_before_payout },
+              { label: 'Payout conductor', value: result.subtotals.driver_payment.payout_driver, negative: true },
+              { label: 'Garantia', value: result.subtotals.driver_payment.guarantee_amount, negative: true },
+              { label: 'Ingreso conductor', value: result.subtotals.driver_payment.driver_income_total, highlight: true },
+            ]} />
+            <SubtotalBlock blockKey="res" title="Resultado" rows={[
+              { label: 'Utilidad semanal', value: result.subtotals.result.company_profit_weekly, highlight: true, negative: result.subtotals.result.company_profit_weekly < 0 },
+              { label: 'Utilidad mensual', value: result.subtotals.result.company_profit_monthly, highlight: true, negative: result.subtotals.result.company_profit_monthly < 0 },
+              { label: 'Margen', value: result.subtotals.result.margin_pct, isPct: true },
+              { label: 'Payback (viajes)', value: result.subtotals.result.payback_trips, isCurrency: false },
+              { label: 'Break-even (viajes)', value: result.subtotals.result.break_even_trips, isCurrency: false },
+            ]} />
+          </div>
+
+          <div className="bg-ct-card rounded-lg border border-ct-border p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm font-semibold text-ct-text">Como se calculo</div>
+              <button type="button" onClick={() => setShowMathSummary(!showMathSummary)} className="text-[10px] text-blue-600 hover:text-blue-800">{showMathSummary ? 'Ocultar' : 'Mostrar'}</button>
+            </div>
+            {showMathSummary && (
+              <div className="space-y-1 text-[11px] text-ct-text2 leading-relaxed">
+                {(() => {
+                  const st = result.subtotals || {}
+                  const revenueTotal = st.production?.gross_trip_revenue || 0
+                  const bonoGral = st.production?.general_bonus || 0
+                  const bonoPrem = st.production?.premier_bonus || 0
+                  const totalBonos = bonoGral + bonoPrem
+                  const incomeTotal = st.production?.total_company_income || 0
+                  const fuel = st.variable_costs?.fuel_cost || 0
+                  const maint = st.variable_costs?.maintenance_cost || 0
+                  const comm = st.variable_costs?.platform_commission || 0
+                  const varTotal = st.variable_costs?.total_variable_cost || 0
+                  const fixedWk = st.fixed_costs?.vehicle_weekly_cost || 0
+                  const insGps = st.fixed_costs?.insurance_gps_weekly || 0
+                  const reserve = st.fixed_costs?.reserve_amount || 0
+                  const fixedTotal = (st.fixed_costs?.total_fixed || 0)
+                  const costsTotal = varTotal + fixedTotal
+                  const base = st.driver_payment?.base_before_payout || 0
+                  const driverPay = st.driver_payment?.payout_driver || 0
+                  const profit = st.result?.company_profit_weekly || 0
+
+                  return (
+                    <>
+                      <div className="font-mono">1. Ingreso por viajes: ({genTrips} x S/{ticketAvgGeneral}) + ({premTrips} x S/{ticketAvgPremier}) = S/{revenueTotal.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</div>
+                      <div className="font-mono">2. Ingreso Yango: S/{bonoGral.toLocaleString('es-PE', { minimumFractionDigits: 2 })} + S/{bonoPrem.toLocaleString('es-PE', { minimumFractionDigits: 2 })} = S/{totalBonos.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</div>
+                      <div className="font-mono">3. Ingreso total: S/{revenueTotal.toLocaleString('es-PE', { minimumFractionDigits: 2 })} + S/{totalBonos.toLocaleString('es-PE', { minimumFractionDigits: 2 })} = S/{incomeTotal.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</div>
+                      <div className="font-mono">4. Costos variables: S/{fuel.toLocaleString('es-PE', { minimumFractionDigits: 2 })} + S/{maint.toLocaleString('es-PE', { minimumFractionDigits: 2 })} + S/{comm.toLocaleString('es-PE', { minimumFractionDigits: 2 })} = S/{varTotal.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</div>
+                      <div className="font-mono">5. Costos fijos: S/{fixedWk.toLocaleString('es-PE', { minimumFractionDigits: 2 })} + S/{insGps.toLocaleString('es-PE', { minimumFractionDigits: 2 })} + S/{reserve.toLocaleString('es-PE', { minimumFractionDigits: 2 })} = S/{fixedTotal.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</div>
+                      <div className="font-mono">6. Base de reparto: S/{incomeTotal.toLocaleString('es-PE', { minimumFractionDigits: 2 })} - S/{costsTotal.toLocaleString('es-PE', { minimumFractionDigits: 2 })} = S/{base.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</div>
+                      <div className="font-mono">7. Pago conductor: S/{revenueTotal.toLocaleString('es-PE', { minimumFractionDigits: 2 })} x {driverPayoutPct}% = S/{driverPay.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</div>
+                      <div className="font-mono">8. Utilidad empresa: S/{base.toLocaleString('es-PE', { minimumFractionDigits: 2 })} - S/{driverPay.toLocaleString('es-PE', { minimumFractionDigits: 2 })} = S/{profit.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</div>
+                    </>
+                  )
+                })()}
+              </div>
+            )}
+          </div>
+
+          {result?.sensitivity && (
+            <div className="space-y-2">
+              <button type="button" onClick={() => setShowSensitivity(!showSensitivity)}
+                className="w-full px-3 py-2 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors text-left flex items-center justify-between">
+                <span>Sensibilidad: Payout y Bonos</span>
+                <span className="text-[10px]">{showSensitivity ? 'Ocultar' : 'Mostrar'}</span>
+              </button>
+              {showSensitivity && (
+                <div className="space-y-3">
+                  <SectionTitle>Sensibilidad: Payout vs utilidad</SectionTitle>
+                  <div className="bg-ct-card rounded-lg border border-ct-border overflow-x-auto">
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-ct-border bg-gray-50/50">
+                          <th className="px-3 py-1.5 text-left">Payout %</th>
+                          <th className="px-3 py-1.5 text-right">Utilidad semanal</th>
+                          <th className="px-3 py-1.5 text-right">Ingreso conductor</th>
+                          <th className="px-3 py-1.5 text-right">Margen %</th>
+                          <th className="px-3 py-1.5 text-right">Diferencia vs actual</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(result.sensitivity.payout_sensitivity || []).map((row, i) => (
+                          <tr key={i} className={`border-b border-ct-border/30 ${row.payout_pct === driverPayoutPct ? 'bg-amber-50/50' : ''}`}>
+                            <td className="px-3 py-1.5 font-medium">{row.payout_pct}%</td>
+                            <td className={`px-3 py-1.5 text-right font-semibold ${row.company_profit_weekly < 0 ? 'text-red-600' : 'text-emerald-600'}`}>S/ {row.company_profit_weekly.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</td>
+                            <td className="px-3 py-1.5 text-right">S/ {row.driver_income.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</td>
+                            <td className="px-3 py-1.5 text-right">{row.margin_pct}%</td>
+                            <td className={`px-3 py-1.5 text-right font-medium ${row.diff_vs_current < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                              {row.diff_vs_current === 0 ? '—' : `S/ ${row.diff_vs_current.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <SectionTitle>Sensibilidad: Bonos alcanzados</SectionTitle>
+                  <div className="bg-ct-card rounded-lg border border-ct-border overflow-x-auto">
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-ct-border bg-gray-50/50">
+                          <th className="px-3 py-1.5 text-left">Escenario</th>
+                          <th className="px-3 py-1.5 text-right">Ingreso empresa</th>
+                          <th className="px-3 py-1.5 text-right">Utilidad semanal</th>
+                          <th className="px-3 py-1.5 text-right">Ingreso conductor</th>
+                          <th className="px-3 py-1.5 text-right">Margen %</th>
+                          <th className="px-3 py-1.5 text-right">Diferencia vs actual</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(result.sensitivity.bonus_scenarios || []).map((row, i) => (
+                          <tr key={i} className={`border-b border-ct-border/30 ${row.type === 'current' ? 'bg-amber-50/50' : ''}`}>
+                            <td className="px-3 py-1.5 font-medium">{row.label}</td>
+                            <td className="px-3 py-1.5 text-right">S/ {row.simulation.company_income.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</td>
+                            <td className={`px-3 py-1.5 text-right font-semibold ${row.simulation.company_profit_weekly < 0 ? 'text-red-600' : 'text-emerald-600'}`}>S/ {row.simulation.company_profit_weekly.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</td>
+                            <td className="px-3 py-1.5 text-right">S/ {row.simulation.driver_income.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</td>
+                            <td className="px-3 py-1.5 text-right">{row.simulation.margin_pct}%</td>
+                            <td className={`px-3 py-1.5 text-right font-medium ${row.diff_vs_current < 0 ? 'text-red-600' : row.diff_vs_current > 0 ? 'text-emerald-600' : ''}`}>
+                              {row.diff_vs_current === 0 ? '—' : `S/ ${row.diff_vs_current.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {result?.calculation_trace && (
+            <div className="space-y-2">
+              <button type="button" onClick={() => setShowTrace(!showTrace)}
+                className="w-full px-3 py-2 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-left flex items-center justify-between">
+                <span>Ver calculo ({result.calculation_trace.length} pasos)</span>
+                <span className="text-[10px]">{showTrace ? 'Ocultar' : 'Mostrar'}</span>
+              </button>
+              {showTrace && (
+                <div className="bg-ct-card rounded-lg border border-ct-border overflow-x-auto">
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-ct-border bg-gray-50/50">
+                        <th className="px-2 py-1.5 text-left">#</th>
+                        <th className="px-2 py-1.5 text-left">Paso</th>
+                        <th className="px-2 py-1.5 text-left">Formula</th>
+                        <th className="px-2 py-1.5 text-right">Resultado</th>
+                        <th className="px-2 py-1.5 text-left">Fuente</th>
+                        <th className="px-2 py-1.5 text-left">Confianza</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.calculation_trace.map((t, i) => (
+                        <tr key={i} className="border-b border-ct-border/30 hover:bg-ct-surface/50">
+                          <td className="px-2 py-1.5 text-ct-text3">{i + 1}</td>
+                          <td className="px-2 py-1.5 font-medium text-ct-text">{t.label}</td>
+                          <td className="px-2 py-1.5 text-ct-text3 font-mono text-[10px] max-w-[200px] truncate" title={t.formula}>{t.formula}</td>
+                          <td className="px-2 py-1.5 text-right font-semibold">{typeof t.result === 'number' ? `S/ ${t.result.toLocaleString('es-PE', { minimumFractionDigits: 2 })}` : t.result}</td>
+                          <td className="px-2 py-1.5"><span className="bg-gray-100 px-1 rounded text-[10px]">{t.source}</span></td>
+                          <td className="px-2 py-1.5"><span className={`px-1 rounded text-[10px] ${t.confidence === 'REAL' ? 'bg-emerald-50 text-emerald-600' : t.confidence === 'ESTIMATED' ? 'bg-amber-50 text-amber-600' : 'bg-gray-100 text-gray-500'}`}>{t.confidence}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {scenarios.length > 0 && (
+        <div className="space-y-2">
+          <SectionTitle>Escenarios guardados ({scenarios.length})</SectionTitle>
+          <div className="bg-ct-card rounded-lg border border-ct-border overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-ct-border bg-gray-50/50">
+                  <th className="px-2 py-1.5 text-left">Nombre</th>
+                  <th className="px-2 py-1.5 text-left">Fecha</th>
+                  <th className="px-2 py-1.5 text-left">Modelo</th>
+                  <th className="px-2 py-1.5 text-left">Brandeo</th>
+                  <th className="px-2 py-1.5 text-right">Viajes Gral</th>
+                  <th className="px-2 py-1.5 text-right">Viajes Premier</th>
+                  <th className="px-2 py-1.5 text-right">Bono Gral</th>
+                  <th className="px-2 py-1.5 text-right">Bono Premier</th>
+                  <th className="px-2 py-1.5 text-right">Payout</th>
+                  <th className="px-2 py-1.5 text-right">Utilidad</th>
+                  <th className="px-2 py-1.5 text-right">Margen</th>
+                  <th className="px-2 py-1.5 text-right">Ing. conductor</th>
+                  <th className="px-2 py-1.5 text-right">Payback</th>
+                  <th className="px-2 py-1.5 text-center">Status</th>
+                  <th className="px-2 py-1.5 text-center">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {scenarios.map((s) => (
+                  <tr key={s.id} className="border-b border-ct-border/30 hover:bg-ct-surface/50">
+                    <td className="px-2 py-1.5">
+                      {editingNameId === s.id ? (
+                        <div className="flex items-center gap-1">
+                          <input type="text" value={renameInput} onChange={(e) => setRenameInput(e.target.value)} className="w-32 px-1 py-0.5 border rounded text-[11px]" />
+                          <button type="button" onClick={() => handleRenameSave(s.id)} className="text-emerald-600 text-[10px]">Guardar</button>
+                        </div>
+                      ) : (
+                        <button type="button" onClick={() => handleRenameStart(s.id, s.name)} className="text-left text-ct-text hover:text-ct-accent max-w-[150px] truncate block" title="Click para renombrar">{s.name}</button>
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5 text-ct-text3 text-[10px]">{s.timestamp}</td>
+                    <td className="px-2 py-1.5">{s.shiftModel}</td>
+                    <td className="px-2 py-1.5">{s.branded ? 'Si' : 'No'}</td>
+                    <td className="px-2 py-1.5 text-right">{s.generalTrips}</td>
+                    <td className="px-2 py-1.5 text-right">{s.premierTrips}</td>
+                    <td className="px-2 py-1.5 text-right">S/ {s.generalBonus}</td>
+                    <td className="px-2 py-1.5 text-right">S/ {s.premierBonus}</td>
+                    <td className="px-2 py-1.5 text-right">{s.payout}%</td>
+                    <td className={`px-2 py-1.5 text-right font-semibold ${s.profitWeekly < 0 ? 'text-red-600' : 'text-emerald-600'}`}>S/ {s.profitWeekly.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</td>
+                    <td className="px-2 py-1.5 text-right">{s.margin}%</td>
+                    <td className="px-2 py-1.5 text-right">S/ {s.driverIncome.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</td>
+                    <td className="px-2 py-1.5 text-right">{s.payback}</td>
+                    <td className="px-2 py-1.5 text-center">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${s.status === 'PROFITABLE' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{s.status}</span>
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <div className="flex items-center gap-1 justify-center">
+                        <button type="button" onClick={() => handleLoadScenario(s)} className="text-[10px] text-blue-600 hover:underline">Cargar</button>
+                        <button type="button" onClick={() => handleDuplicate(s)} className="text-[10px] text-gray-500 hover:underline">Duplicar</button>
+                        <button type="button" onClick={() => handleDelete(s.id)} className="text-[10px] text-red-500 hover:underline">Eliminar</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DiagKpi ({ label, value, type = 'currency' }) {
   const v = num(value)
   return (
@@ -1721,6 +2587,7 @@ function QualityRow ({ check, statusColor }) {
 
 function renderTabPanel (tabId, data) {
   switch (tabId) {
+    case 'simulator': return <SimulatorPanel />
     case 'waterfall': return <WaterfallPanel data={data} />
     case 'quality': return <QualityPanel data={data} />
     default: return <TabularPanel data={data} tabId={tabId} />
@@ -1820,7 +2687,7 @@ export default function YegoProProfitabilityPage () {
   }, [])
 
   const loadTab = useCallback(async (tabId) => {
-    if (tabId === 'overview' || tabId === 'coverage' || tabId === 'diagnostics') return
+    if (tabId === 'overview' || tabId === 'coverage' || tabId === 'diagnostics' || tabId === 'simulator') return
     if (abortRef.current) abortRef.current.abort()
     const controller = new AbortController()
     abortRef.current = controller
@@ -1900,26 +2767,30 @@ export default function YegoProProfitabilityPage () {
           <DiagnosticsPanel />
         )}
 
+        {activeTab === 'simulator' && (
+          <SimulatorPanel />
+        )}
+
         {activeTab === 'coverage' && (
           <CoverageAuditPanel diagData={diagData} />
         )}
 
-        {activeTab !== 'overview' && activeTab !== 'coverage' && activeTab !== 'diagnostics' && tabLoading && (
+        {activeTab !== 'overview' && activeTab !== 'coverage' && activeTab !== 'diagnostics' && activeTab !== 'simulator' && tabLoading && (
           <div className="flex items-center justify-center py-12">
             <div className="w-5 h-5 border-2 border-ct-accent border-t-transparent rounded-full animate-spin" />
             <span className="ml-2 text-xs text-ct-text3">Cargando {TABS.find((t) => t.id === activeTab)?.label}...</span>
           </div>
         )}
 
-        {activeTab !== 'overview' && activeTab !== 'coverage' && activeTab !== 'diagnostics' && tabError && !tabLoading && (
+        {activeTab !== 'overview' && activeTab !== 'coverage' && activeTab !== 'diagnostics' && activeTab !== 'simulator' && tabError && !tabLoading && (
           <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-xs text-red-700 flex items-center gap-2">
             <span>{tabError}</span>
             <button type="button" onClick={() => loadTab(activeTab)} className="ml-auto px-2 py-0.5 rounded bg-red-100 hover:bg-red-200 text-red-700 text-[11px] font-medium transition-colors">Reintentar</button>
           </div>
         )}
 
-        {activeTab !== 'overview' && activeTab !== 'coverage' && activeTab !== 'diagnostics' && !tabLoading && !tabError && tabData && renderTabPanel(activeTab, tabData)}
-        {activeTab !== 'overview' && activeTab !== 'coverage' && activeTab !== 'diagnostics' && !tabLoading && !tabError && !tabData && <EmptyState tabId={activeTab} />}
+        {activeTab !== 'overview' && activeTab !== 'coverage' && activeTab !== 'diagnostics' && activeTab !== 'simulator' && !tabLoading && !tabError && tabData && renderTabPanel(activeTab, tabData)}
+        {activeTab !== 'overview' && activeTab !== 'coverage' && activeTab !== 'diagnostics' && activeTab !== 'simulator' && !tabLoading && !tabError && !tabData && <EmptyState tabId={activeTab} />}
       </div>
     </div>
   )

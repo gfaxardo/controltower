@@ -9,7 +9,7 @@ Park: 64085dd85e124e2c808806f70d527ea8 (Lima)
 """
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Body
 
 from app.services.yego_pro_profitability_service import (
     get_overview,
@@ -25,6 +25,8 @@ from app.services.yego_pro_profitability_service import (
     get_diagnostics_vehicles,
     get_diagnostics_shifts,
     get_diagnostics_portfolio,
+    run_simulator,
+    get_simulator_defaults,
     PARK_ID,
 )
 
@@ -188,3 +190,22 @@ def diagnostics_portfolio(
     concentration, and hypothetical impact of removing bottom entities.
     """
     return get_diagnostics_portfolio(park_id=park_id)
+
+
+@router.post("/simulator/run")
+def simulator_run(payload: dict = Body(...)):
+    """
+    P1.4.2 Simulator: ejecuta una simulacion completa de rentabilidad.
+    Recibe todos los inputs editables y devuelve subtotales, calculation_trace,
+    referencias operativas y escenarios de sensibilidad con bonos.
+    """
+    return run_simulator(payload)
+
+
+@router.get("/simulator/defaults")
+def simulator_defaults():
+    """
+    Devuelve las tablas de bonos hardcodeadas y los inputs por defecto
+    para inicializar el Simulator UI.
+    """
+    return get_simulator_defaults()

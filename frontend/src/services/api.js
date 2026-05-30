@@ -1212,4 +1212,15 @@ export const getYegoProDiagnosticsPortfolio = async (params = {}) => {
   const response = await api.get('/fleet-project/yego-pro/profitability/diagnostics/portfolio', { params, timeout: PROFITABILITY_TIMEOUT_MS })
   return response.data
 }
+
+export const runYegoProSimulator = async (payload) => {
+  const response = await api.post('/fleet-project/yego-pro/profitability/simulator/run', payload, { timeout: PROFITABILITY_TIMEOUT_MS })
+  return response.data
+}
+
+export const getYegoProSimulatorDefaults = async () => {
+  const response = await api.get('/fleet-project/yego-pro/profitability/simulator/defaults', { timeout: 15000 })
+  return response.data
+}
+
 export default api

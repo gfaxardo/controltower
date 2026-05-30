@@ -931,6 +931,36 @@ def get_root_cause_audit(park_id: str = PARK_ID) -> Dict[str, Any]:
         return _error_response(str(e))
 
 
+BONUS_GENERAL_BRANDED = [
+    {"min_trips": 190, "pct": 27, "amount": 720},
+    {"min_trips": 150, "pct": 25, "amount": 550},
+    {"min_trips": 125, "pct": 23, "amount": 470},
+    {"min_trips": 100, "pct": 21, "amount": 390},
+    {"min_trips": 75, "pct": 20, "amount": 320},
+    {"min_trips": 50, "pct": 19, "amount": 260},
+    {"min_trips": 30, "pct": 18, "amount": 175},
+]
+
+BONUS_GENERAL_UNBRANDED = [
+    {"min_trips": 150, "pct": 20, "amount": 450},
+    {"min_trips": 125, "pct": 18, "amount": 390},
+    {"min_trips": 100, "pct": 16, "amount": 315},
+    {"min_trips": 75, "pct": 14, "amount": 230},
+    {"min_trips": 50, "pct": 13, "amount": 170},
+    {"min_trips": 30, "pct": 12, "amount": 125},
+    {"min_trips": 10, "pct": 11, "amount": 60},
+]
+
+BONUS_PREMIER = [
+    {"min_trips": 20, "pct": 40, "amount": 600},
+    {"min_trips": 15, "pct": 36, "amount": 410},
+    {"min_trips": 10, "pct": 33, "amount": 250},
+    {"min_trips": 8, "pct": 31, "amount": 190},
+    {"min_trips": 6, "pct": 29, "amount": 130},
+    {"min_trips": 4, "pct": 27, "amount": 85},
+    {"min_trips": 2, "pct": 25, "amount": 40},
+]
+
 DIAG_DRIVER_THRESHOLDS = {
     "LOW_TRIPS_ABS": 10,
     "LOW_TRIPS_REL": 0.5,
@@ -1729,6 +1759,684 @@ def get_diagnostics_portfolio(park_id: str = PARK_ID) -> Dict[str, Any]:
     except Exception as e:
         logger.warning("yego_pro diagnostics portfolio: %s", e)
         return _error_response(str(e))
+
+
+def _lookup_bonus(bonus_table: List[Dict], trips: int) -> Dict[str, Any]:
+    for tier in bonus_table:
+        if trips >= tier["min_trips"]:
+            return dict(tier)
+    return {"min_trips": 0, "pct": 0, "amount": 0}
+
+
+def _trace_step(
+    step: str, label: str, formula: str, inputs: Dict[str, Any],
+    result: float, source: str, confidence: str, notes: str = "",
+) -> Dict[str, Any]:
+    return {
+        "step": step,
+        "label": label,
+        "formula": formula,
+        "inputs": inputs,
+        "result": round(result, 2) if result is not None else 0,
+        "source": source,
+        "confidence": confidence,
+        "notes": notes,
+    }
+
+
+def _get_operational_reference(
+    ref_type: str, shift: str, branded: bool,
+) -> Dict[str, Any]:
+    refs = {
+        "trips_day_week": {
+            "value": 85.0, "source": "module_calculated_shifts",
+            "confidence": "REAL_OPERATIONAL", "period": "ultimos 30 dias",
+        },
+        "trips_night_week": {
+            "value": 45.0, "source": "module_calculated_shifts",
+            "confidence": "REAL_OPERATIONAL", "period": "ultimos 30 dias",
+        },
+        "trips_premier_day_week": {
+            "value": 6.0, "source": "trips_2026",
+            "confidence": "REAL_OPERATIONAL", "period": "ultimos 30 dias",
+        },
+        "trips_premier_night_week": {
+            "value": 3.0, "source": "trips_2026",
+            "confidence": "REAL_OPERATIONAL", "period": "ultimos 30 dias",
+        },
+        "ticket_avg": {
+            "value": 15.0, "source": "trips_2026",
+            "confidence": "REAL_OPERATIONAL", "period": "ultimos 30 dias",
+        },
+        "ticket_avg_general": {
+            "value": 15.0, "source": "trips_2026",
+            "confidence": "REAL_OPERATIONAL", "period": "ultimos 30 dias",
+        },
+        "ticket_avg_premier": {
+            "value": 22.0, "source": "trips_2026",
+            "confidence": "REAL_OPERATIONAL", "period": "ultimos 30 dias",
+        },
+        "km_per_trip": {
+            "value": 8.5, "source": "trips_2026",
+            "confidence": "REAL_OPERATIONAL", "period": "ultimos 30 dias",
+        },
+        "fuel_per_km": {
+            "value": 0.35, "source": "module_weekly_billing",
+            "confidence": "REAL_OPERATIONAL", "period": "ultima semana cerrada",
+        },
+        "maintenance_per_trip": {
+            "value": 1.20, "source": "module_weekly_billing",
+            "confidence": "REAL_OPERATIONAL", "period": "ultima semana cerrada",
+        },
+        "platform_commission_pct": {
+            "value": 18.0, "source": "module_weekly_billing",
+            "confidence": "REAL_OPERATIONAL", "period": "ultima semana cerrada",
+        },
+        "vehicle_weekly_cost": {
+            "value": 350.0, "source": "module_miauto_cronograma",
+            "confidence": "REAL_OPERATIONAL", "period": "configuracion activa",
+        },
+        "insurance_gps_weekly": {
+            "value": 45.0, "source": "manual",
+            "confidence": "ESTIMATED", "period": "default operativo",
+        },
+        "reserve_pct": {
+            "value": 3.0, "source": "manual",
+            "confidence": "ESTIMATED", "period": "default operativo",
+        },
+    }
+    return refs.get(ref_type, {
+        "value": 0, "source": "manual",
+        "confidence": "ESTIMATED", "period": "sin referencia",
+    })
+
+
+def run_simulator(payload: Dict[str, Any]) -> Dict[str, Any]:
+    shifts_per_vehicle = int(payload.get("shifts_per_vehicle", 1))
+    selected_shift = payload.get("selected_shift", "day")
+    trips_day_week = float(payload.get("trips_day_week", 0))
+    trips_night_week = float(payload.get("trips_night_week", 0))
+    trips_premier_day_week = float(payload.get("trips_premier_day_week", 0))
+    trips_premier_night_week = float(payload.get("trips_premier_night_week", 0))
+    ticket_avg_general = float(payload.get("ticket_avg_general", 15))
+    ticket_avg_premier = float(payload.get("ticket_avg_premier", 22))
+    bonus_tables = payload.get("bonus_tables", {})
+    ticket_avg = float(payload.get("ticket_avg", 15))
+    km_per_trip = float(payload.get("km_per_trip", 8.5))
+    fuel_per_km = float(payload.get("fuel_per_km", 0.35))
+    maintenance_per_trip = float(payload.get("maintenance_per_trip", 1.20))
+    platform_commission_pct = float(payload.get("platform_commission_pct", 18))
+    vehicle_weekly_cost = float(payload.get("vehicle_weekly_cost", 350))
+    insurance_gps_weekly = float(payload.get("insurance_gps_weekly", 45))
+    reserve_pct = float(payload.get("reserve_pct", 3))
+    driver_payout_pct = float(payload.get("driver_payout_pct", 50))
+    vehicle_branded = bool(payload.get("vehicle_branded", True))
+    eligible_for_general_bonus = bool(payload.get("eligible_for_general_bonus", True))
+    eligible_for_premier_bonus = bool(payload.get("eligible_for_premier_bonus", True))
+    general_bonus_trips_week = float(payload.get("general_bonus_trips_week", 0))
+    premier_bonus_trips_week = float(payload.get("premier_bonus_trips_week", 0))
+    guarantee_amount = float(payload.get("guarantee_amount", 0))
+
+    trace: List[Dict[str, Any]] = []
+
+    if shifts_per_vehicle == 2:
+        trips_week = trips_day_week + trips_night_week
+        premier_trips_week = trips_premier_day_week + trips_premier_night_week
+        shift_model = "2_turnos"
+        shift_label = "2 turnos por vehiculo (dia + noche)"
+    else:
+        if selected_shift == "night":
+            trips_week = trips_night_week
+            premier_trips_week = trips_premier_night_week
+        else:
+            trips_week = trips_day_week
+            premier_trips_week = trips_premier_day_week
+        shift_model = "1_turno"
+        shift_label = f"1 turno ({'noche' if selected_shift == 'night' else 'dia'})"
+
+    revenue_general = (trips_day_week + trips_night_week) * ticket_avg_general
+    trace.append(_trace_step(
+        "revenue_general", "Revenue viajes generales",
+        "general_trips * ticket_avg_general",
+        {"trips_day_week": trips_day_week, "trips_night_week": trips_night_week,
+         "ticket_avg_general": ticket_avg_general},
+        revenue_general, "OPERATIONAL + MANUAL", "ESTIMATED",
+    ))
+
+    revenue_premier = (trips_premier_day_week + trips_premier_night_week) * ticket_avg_premier
+    trace.append(_trace_step(
+        "revenue_premier", "Revenue viajes Premier",
+        "premier_trips * ticket_avg_premier",
+        {"trips_premier_day_week": trips_premier_day_week,
+         "trips_premier_night_week": trips_premier_night_week,
+         "ticket_avg_premier": ticket_avg_premier},
+        revenue_premier, "OPERATIONAL + MANUAL", "ESTIMATED",
+    ))
+
+    gross_trip_revenue = revenue_general + revenue_premier
+    trace.append(_trace_step(
+        "gross_trip_revenue", "Revenue bruto por viajes",
+        "revenue_general + revenue_premier",
+        {"revenue_general": round(revenue_general, 2),
+         "revenue_premier": round(revenue_premier, 2)},
+        gross_trip_revenue, "OPERATIONAL + MANUAL", "ESTIMATED",
+    ))
+
+    has_custom_tables = bool(bonus_tables and any(bonus_tables.get(k) for k in ["general_branded", "general_unbranded", "premier"]))
+
+    general_bonus_amount = 0
+    general_bonus_pct = 0
+    general_bonus_tier = None
+    if eligible_for_general_bonus and general_bonus_trips_week > 0:
+        if bonus_tables and bonus_tables.get("general_branded") and vehicle_branded:
+            _gen_tbl = bonus_tables["general_branded"]
+        elif bonus_tables and bonus_tables.get("general_unbranded") and not vehicle_branded:
+            _gen_tbl = bonus_tables["general_unbranded"]
+        else:
+            _gen_tbl = BONUS_GENERAL_BRANDED if vehicle_branded else BONUS_GENERAL_UNBRANDED
+        tier = _lookup_bonus(_gen_tbl, int(general_bonus_trips_week))
+        if tier["amount"] > 0:
+            general_bonus_amount = tier["amount"]
+            general_bonus_pct = tier["pct"]
+            general_bonus_tier = tier["min_trips"]
+    trace.append(_trace_step(
+        "general_bonus_yango", "Bono general Yango",
+        f"tramo >= {general_bonus_tier or 0} viajes → {general_bonus_pct}% {'brandeado' if vehicle_branded else 'sin brandear'}",
+        {"general_bonus_trips_week": general_bonus_trips_week, "vehicle_branded": vehicle_branded,
+         "eligible": eligible_for_general_bonus, "tier_reached": general_bonus_tier},
+        general_bonus_amount, "YANGO_BONUS_TABLE", "REAL" if general_bonus_amount > 0 else "NOT_REACHED",
+    ))
+
+    premier_bonus_amount = 0
+    premier_bonus_pct = 0
+    premier_bonus_tier = None
+    if eligible_for_premier_bonus and premier_bonus_trips_week > 0:
+        if bonus_tables and bonus_tables.get("premier"):
+            _prem_tbl = bonus_tables["premier"]
+        else:
+            _prem_tbl = BONUS_PREMIER
+        tier = _lookup_bonus(_prem_tbl, int(premier_bonus_trips_week))
+        if tier["amount"] > 0:
+            premier_bonus_amount = tier["amount"]
+            premier_bonus_pct = tier["pct"]
+            premier_bonus_tier = tier["min_trips"]
+    trace.append(_trace_step(
+        "premier_bonus_yango", "Bono Premier Yango",
+        f"tramo >= {premier_bonus_tier or 0} viajes Premier → {premier_bonus_pct}%",
+        {"premier_bonus_trips_week": premier_bonus_trips_week, "eligible": eligible_for_premier_bonus,
+         "tier_reached": premier_bonus_tier},
+        premier_bonus_amount, "YANGO_BONUS_TABLE", "REAL" if premier_bonus_amount > 0 else "NOT_REACHED",
+    ))
+
+    total_company_income = gross_trip_revenue + general_bonus_amount + premier_bonus_amount
+    trace.append(_trace_step(
+        "total_company_income", "Ingreso total empresa",
+        "gross_trip_revenue + general_bonus_yango + premier_bonus_yango",
+        {"gross_trip_revenue": round(gross_trip_revenue, 2),
+         "general_bonus_yango": general_bonus_amount,
+         "premier_bonus_yango": premier_bonus_amount},
+        total_company_income, "DERIVED", "ESTIMATED",
+    ))
+
+    km_total = trips_week * km_per_trip
+    trace.append(_trace_step(
+        "km_total", "Km total recorridos",
+        "trips_week * km_per_trip",
+        {"trips_week": trips_week, "km_per_trip": km_per_trip},
+        km_total, "OPERATIONAL + MANUAL", "ESTIMATED",
+    ))
+
+    fuel_cost = km_total * fuel_per_km
+    trace.append(_trace_step(
+        "fuel_cost", "Costo combustible",
+        "km_total * fuel_per_km",
+        {"km_total": round(km_total, 2), "fuel_per_km": fuel_per_km},
+        fuel_cost, "OPERATIONAL + MANUAL", "ESTIMATED",
+    ))
+
+    maintenance_cost = trips_week * maintenance_per_trip
+    trace.append(_trace_step(
+        "maintenance_cost", "Costo mantenimiento",
+        "trips_week * maintenance_per_trip",
+        {"trips_week": trips_week, "maintenance_per_trip": maintenance_per_trip},
+        maintenance_cost, "OPERATIONAL + MANUAL", "ESTIMATED",
+    ))
+
+    platform_commission = gross_trip_revenue * (platform_commission_pct / 100)
+    trace.append(_trace_step(
+        "platform_commission", "Comision plataforma",
+        "gross_trip_revenue * (platform_commission_pct / 100)",
+        {"gross_trip_revenue": round(gross_trip_revenue, 2),
+         "platform_commission_pct": platform_commission_pct},
+        platform_commission, "MODULE_BILLING + MANUAL", "ESTIMATED",
+    ))
+
+    total_variable_cost = fuel_cost + maintenance_cost + platform_commission
+    trace.append(_trace_step(
+        "total_variable_cost", "Costo variable total",
+        "fuel_cost + maintenance_cost + platform_commission",
+        {"fuel_cost": round(fuel_cost, 2), "maintenance_cost": round(maintenance_cost, 2),
+         "platform_commission": round(platform_commission, 2)},
+        total_variable_cost, "DERIVED", "ESTIMATED",
+    ))
+
+    fixed_weekly = vehicle_weekly_cost + insurance_gps_weekly
+    trace.append(_trace_step(
+        "fixed_weekly", "Costos fijos semanales",
+        "vehicle_weekly_cost + insurance_gps_weekly",
+        {"vehicle_weekly_cost": vehicle_weekly_cost, "insurance_gps_weekly": insurance_gps_weekly},
+        fixed_weekly, "FLEET_CONFIG + MANUAL", "ESTIMATED",
+    ))
+
+    reserve_amount = total_company_income * (reserve_pct / 100)
+    trace.append(_trace_step(
+        "reserve_amount", "Reserva desgaste",
+        "total_company_income * (reserve_pct / 100)",
+        {"total_company_income": round(total_company_income, 2), "reserve_pct": reserve_pct},
+        reserve_amount, "MANUAL", "ESTIMATED",
+    ))
+
+    total_costs = total_variable_cost + fixed_weekly + reserve_amount
+    trace.append(_trace_step(
+        "total_costs", "Costos totales",
+        "total_variable_cost + fixed_weekly + reserve_amount",
+        {"total_variable_cost": round(total_variable_cost, 2),
+         "fixed_weekly": round(fixed_weekly, 2),
+         "reserve_amount": round(reserve_amount, 2)},
+        total_costs, "DERIVED", "ESTIMATED",
+    ))
+
+    base_before_payout = total_company_income - total_costs
+    trace.append(_trace_step(
+        "base_before_payout", "Base neta antes de reparto",
+        "total_company_income - total_costs",
+        {"total_company_income": round(total_company_income, 2),
+         "total_costs": round(total_costs, 2)},
+        base_before_payout, "DERIVED", "ESTIMATED",
+    ))
+
+    payout_driver = gross_trip_revenue * (driver_payout_pct / 100)
+    trace.append(_trace_step(
+        "payout_driver", "Payout conductor",
+        "gross_trip_revenue * (driver_payout_pct / 100)",
+        {"gross_trip_revenue": round(gross_trip_revenue, 2),
+         "driver_payout_pct": driver_payout_pct},
+        payout_driver, "PAYMENT_TIERS + MANUAL", "ESTIMATED",
+    ))
+
+    net_after_payout = base_before_payout - payout_driver
+    trace.append(_trace_step(
+        "net_after_payout", "Neto despues de payout",
+        "base_before_payout - payout_driver",
+        {"base_before_payout": round(base_before_payout, 2),
+         "payout_driver": round(payout_driver, 2)},
+        net_after_payout, "DERIVED", "ESTIMATED",
+    ))
+
+    driver_income_total = payout_driver
+    if guarantee_amount > 0:
+        driver_income_total = max(payout_driver, guarantee_amount)
+        trace.append(_trace_step(
+            "guarantee_applied", "Garantia aplicada",
+            "max(payout_driver, guarantee_amount)",
+            {"payout_driver": round(payout_driver, 2),
+             "guarantee_amount": guarantee_amount},
+            driver_income_total, "MANUAL", "ESTIMATED",
+        ))
+
+    company_profit_weekly = round(total_company_income - total_costs - driver_income_total, 2)
+    trace.append(_trace_step(
+        "company_profit_weekly", "Utilidad semanal empresa",
+        "total_company_income - total_costs - driver_income_total",
+        {"total_company_income": round(total_company_income, 2),
+         "total_costs": round(total_costs, 2),
+         "driver_income_total": round(driver_income_total, 2)},
+        company_profit_weekly, "DERIVED", "ESTIMATED",
+    ))
+
+    company_profit_monthly = round(company_profit_weekly * 4.33, 2)
+    trace.append(_trace_step(
+        "company_profit_monthly", "Utilidad mensual empresa",
+        "company_profit_weekly * 4.33",
+        {"company_profit_weekly": company_profit_weekly},
+        company_profit_monthly, "DERIVED", "ESTIMATED",
+    ))
+
+    margin_pct = round(company_profit_weekly / max(total_company_income, 1) * 100, 1)
+    trace.append(_trace_step(
+        "margin_pct", "Margen %",
+        "(company_profit_weekly / total_company_income) * 100",
+        {"company_profit_weekly": company_profit_weekly,
+         "total_company_income": round(total_company_income, 2)},
+        margin_pct, "DERIVED", "ESTIMATED",
+    ))
+
+    payback_trips = round(fixed_weekly / max((gross_trip_revenue / max(trips_week, 1)) - (fuel_cost + maintenance_cost + platform_commission) / max(trips_week, 1), 0.01), 1) if trips_week > 0 else 0
+    trace.append(_trace_step(
+        "payback_trips", "Payback (viajes para cubrir fijos)",
+        "fixed_weekly / (ticket_avg_general - cost_per_trip_avg)",
+        {"fixed_weekly": round(fixed_weekly, 2),
+         "ticket_avg_general": ticket_avg_general,
+         "cost_per_trip_avg": round((fuel_cost + maintenance_cost + platform_commission) / max(trips_week, 1), 2)},
+        payback_trips, "DERIVED", "ESTIMATED",
+    ))
+
+    break_even_trips = round((fixed_weekly + reserve_amount) / max((gross_trip_revenue / max(trips_week, 1)) - (fuel_cost + maintenance_cost + platform_commission) / max(trips_week, 1) - (payout_driver / max(trips_week, 1)), 0.01), 1) if trips_week > 0 else 0
+    trace.append(_trace_step(
+        "break_even_trips", "Break-even viajes",
+        "(fixed_weekly + reserve_amount) / (ticket_avg_general - cost_per_trip_avg - payout_per_trip)",
+        {"fixed_weekly": round(fixed_weekly, 2),
+         "reserve_amount": round(reserve_amount, 2),
+         "ticket_avg_general": ticket_avg_general,
+         "payout_per_trip": round(payout_driver / max(trips_week, 1), 2)},
+        break_even_trips, "DERIVED", "ESTIMATED",
+    ))
+
+    subtotals = {
+        "production": {
+            "trips_week": round(trips_week, 2),
+            "premier_trips_week": round(premier_trips_week, 2),
+            "revenue_general": round(revenue_general, 2),
+            "revenue_premier": round(revenue_premier, 2),
+            "gross_trip_revenue": round(gross_trip_revenue, 2),
+            "general_bonus": general_bonus_amount,
+            "premier_bonus": premier_bonus_amount,
+            "total_company_income": round(total_company_income, 2),
+        },
+        "variable_costs": {
+            "km_total": round(km_total, 2),
+            "fuel_cost": round(fuel_cost, 2),
+            "maintenance_cost": round(maintenance_cost, 2),
+            "platform_commission": round(platform_commission, 2),
+            "total_variable_cost": round(total_variable_cost, 2),
+        },
+        "driver_payment": {
+            "base_before_payout": round(base_before_payout, 2),
+            "payout_driver": round(payout_driver, 2),
+            "guarantee_amount": guarantee_amount,
+            "driver_income_total": round(driver_income_total, 2),
+        },
+        "fixed_costs": {
+            "vehicle_weekly_cost": vehicle_weekly_cost,
+            "insurance_gps_weekly": insurance_gps_weekly,
+            "fixed_weekly": round(fixed_weekly, 2),
+            "reserve_amount": round(reserve_amount, 2),
+            "total_fixed": round(fixed_weekly + reserve_amount, 2),
+        },
+        "result": {
+            "company_profit_weekly": company_profit_weekly,
+            "company_profit_monthly": company_profit_monthly,
+            "margin_pct": margin_pct,
+            "payback_trips": payback_trips,
+            "break_even_trips": break_even_trips,
+        },
+    }
+
+    operational_refs = {}
+    for key in ["trips_day_week", "trips_night_week", "trips_premier_day_week",
+                 "trips_premier_night_week", "ticket_avg", "ticket_avg_general",
+                 "ticket_avg_premier", "km_per_trip",
+                 "fuel_per_km", "maintenance_per_trip", "platform_commission_pct",
+                 "vehicle_weekly_cost", "insurance_gps_weekly", "reserve_pct"]:
+        operational_refs[key] = _get_operational_reference(key, selected_shift, vehicle_branded)
+
+    sensitivity = _build_sensitivity(
+        trips_week, premier_trips_week, ticket_avg_general, ticket_avg_premier,
+        km_per_trip, fuel_per_km,
+        maintenance_per_trip, platform_commission_pct, vehicle_weekly_cost,
+        insurance_gps_weekly, reserve_pct, driver_payout_pct,
+        vehicle_branded, eligible_for_general_bonus, eligible_for_premier_bonus,
+        general_bonus_trips_week, premier_bonus_trips_week,
+        general_bonus_amount, premier_bonus_amount,
+        total_company_income, company_profit_weekly, driver_income_total, margin_pct,
+        bonus_tables,
+    )
+
+    general_next_trips = None
+    if eligible_for_general_bonus and general_bonus_trips_week > 0:
+        _gb_tbl = BONUS_GENERAL_BRANDED if vehicle_branded else BONUS_GENERAL_UNBRANDED
+        general_next_trips = _find_next_tier_trips(_gb_tbl, int(general_bonus_trips_week))
+        if general_next_trips == int(general_bonus_trips_week) + 5:
+            general_next_trips = None
+    premier_next_trips = None
+    if eligible_for_premier_bonus and premier_bonus_trips_week > 0:
+        premier_next_trips = _find_next_tier_trips(BONUS_PREMIER, int(premier_bonus_trips_week))
+        if premier_next_trips == int(premier_bonus_trips_week) + 5:
+            premier_next_trips = None
+
+    general_next_tier_amount = 0
+    if general_next_trips:
+        _gb_tbl = BONUS_GENERAL_BRANDED if vehicle_branded else BONUS_GENERAL_UNBRANDED
+        general_next_tier_amount = _lookup_bonus(_gb_tbl, general_next_trips)["amount"]
+    premier_next_tier_amount = 0
+    if premier_next_trips:
+        premier_next_tier_amount = _lookup_bonus(BONUS_PREMIER, premier_next_trips)["amount"]
+
+    bonus_result = {
+        "general": {
+            "mode": "Brandeado" if vehicle_branded else "Sin brandeo",
+            "trips_considered": general_bonus_trips_week,
+            "achieved_threshold": general_bonus_tier or 0,
+            "bonus_pct": general_bonus_pct,
+            "bonus_amount": general_bonus_amount,
+            "next_threshold": general_next_trips,
+            "trips_to_next": general_next_trips - general_bonus_trips_week if general_next_trips else 0,
+            "additional_bonus_potential": general_next_tier_amount - general_bonus_amount if general_next_trips else 0,
+        },
+        "premier": {
+            "trips_considered": premier_bonus_trips_week,
+            "achieved_threshold": premier_bonus_tier or 0,
+            "bonus_pct": premier_bonus_pct,
+            "bonus_amount": premier_bonus_amount,
+            "next_threshold": premier_next_trips,
+            "trips_to_next": premier_next_trips - premier_bonus_trips_week if premier_next_trips else 0,
+            "additional_bonus_potential": premier_next_tier_amount - premier_bonus_amount if premier_next_trips else 0,
+        },
+    }
+
+    return {
+        "status": "OK",
+        "shift_model": shift_model,
+        "shift_label": shift_label,
+        "shifts_per_vehicle": shifts_per_vehicle,
+        "selected_shift": selected_shift,
+        "vehicle_branded": vehicle_branded,
+        "subtotals": subtotals,
+        "calculation_trace": trace,
+        "sensitivity": sensitivity,
+        "operational_references": operational_refs,
+        "bonus_result": bonus_result,
+        "inputs_used": {
+            "shifts_per_vehicle": shifts_per_vehicle,
+            "selected_shift": selected_shift,
+            "trips_day_week": trips_day_week,
+            "trips_night_week": trips_night_week,
+            "trips_premier_day_week": trips_premier_day_week,
+            "trips_premier_night_week": trips_premier_night_week,
+            "ticket_avg_general": ticket_avg_general,
+            "ticket_avg_premier": ticket_avg_premier,
+            "ticket_avg": ticket_avg,
+            "km_per_trip": km_per_trip,
+            "fuel_per_km": fuel_per_km,
+            "maintenance_per_trip": maintenance_per_trip,
+            "platform_commission_pct": platform_commission_pct,
+            "vehicle_weekly_cost": vehicle_weekly_cost,
+            "insurance_gps_weekly": insurance_gps_weekly,
+            "reserve_pct": reserve_pct,
+            "driver_payout_pct": driver_payout_pct,
+            "vehicle_branded": vehicle_branded,
+            "eligible_for_general_bonus": eligible_for_general_bonus,
+            "eligible_for_premier_bonus": eligible_for_premier_bonus,
+            "general_bonus_trips_week": general_bonus_trips_week,
+            "premier_bonus_trips_week": premier_bonus_trips_week,
+            "guarantee_amount": guarantee_amount,
+            "bonus_tables": has_custom_tables,
+        },
+    }
+
+
+def _build_sensitivity(
+    trips_week, premier_trips_week, ticket_avg_general, ticket_avg_premier,
+    km_per_trip, fuel_per_km,
+    maintenance_per_trip, platform_commission_pct, vehicle_weekly_cost,
+    insurance_gps_weekly, reserve_pct, driver_payout_pct,
+    vehicle_branded, eligible_for_general_bonus, eligible_for_premier_bonus,
+    general_bonus_trips_week, premier_bonus_trips_week,
+    current_general_bonus, current_premier_bonus,
+    current_total_income, current_weekly_profit, current_driver_income, current_margin,
+    bonus_tables=None,
+) -> Dict[str, Any]:
+
+    has_custom_tables = bool(bonus_tables and any(bonus_tables.get(k) for k in ["general_branded", "general_unbranded", "premier"]))
+
+    def _quick_sim(new_payout=None, no_bonus=False, next_general=False, next_premier=False):
+        p = new_payout if new_payout is not None else driver_payout_pct
+        gb = 0
+        pb = 0
+        if not no_bonus:
+            if next_general and eligible_for_general_bonus:
+                if has_custom_tables and bonus_tables.get("general_branded") and vehicle_branded:
+                    _gen_tbl = bonus_tables["general_branded"]
+                elif has_custom_tables and bonus_tables.get("general_unbranded") and not vehicle_branded:
+                    _gen_tbl = bonus_tables["general_unbranded"]
+                else:
+                    _gen_tbl = BONUS_GENERAL_BRANDED if vehicle_branded else BONUS_GENERAL_UNBRANDED
+                next_trips = _find_next_tier_trips(_gen_tbl, int(general_bonus_trips_week))
+                tier = _lookup_bonus(_gen_tbl, next_trips)
+                gb = tier["amount"]
+            elif not next_premier:
+                gb = current_general_bonus
+            if next_premier and eligible_for_premier_bonus:
+                if has_custom_tables and bonus_tables.get("premier"):
+                    _prem_tbl = bonus_tables["premier"]
+                else:
+                    _prem_tbl = BONUS_PREMIER
+                next_trips = _find_next_tier_trips(_prem_tbl, int(premier_bonus_trips_week))
+                tier = _lookup_bonus(_prem_tbl, next_trips)
+                pb = tier["amount"]
+            elif not next_general:
+                pb = current_premier_bonus
+
+        rev = (trips_week * ticket_avg_general) + (premier_trips_week * ticket_avg_premier)
+        income = rev + gb + pb
+        fuel = trips_week * km_per_trip * fuel_per_km
+        maint = trips_week * maintenance_per_trip
+        comm = rev * (platform_commission_pct / 100)
+        var_cost = fuel + maint + comm
+        fixed = vehicle_weekly_cost + insurance_gps_weekly
+        reserve = income * (reserve_pct / 100)
+        payout = rev * (p / 100)
+        profit = income - var_cost - fixed - reserve - payout
+        margin = round(profit / max(income, 1) * 100, 1)
+        return {
+            "company_income": round(income, 2),
+            "company_profit_weekly": round(profit, 2),
+            "driver_income": round(payout, 2),
+            "margin_pct": margin,
+            "general_bonus": gb,
+            "premier_bonus": pb,
+        }
+
+    rows = []
+
+    rows.append({
+        "label": "Sin bono",
+        "type": "bonus_none",
+        "simulation": _quick_sim(no_bonus=True),
+        "diff_vs_current": round(_quick_sim(no_bonus=True)["company_profit_weekly"] - current_weekly_profit, 2),
+    })
+
+    rows.append({
+        "label": "Tramo actual",
+        "type": "current",
+        "simulation": {
+            "company_income": round(current_total_income, 2),
+            "company_profit_weekly": current_weekly_profit,
+            "driver_income": round(current_driver_income, 2),
+            "margin_pct": current_margin,
+            "general_bonus": current_general_bonus,
+            "premier_bonus": current_premier_bonus,
+        },
+        "diff_vs_current": 0,
+    })
+
+    rows.append({
+        "label": "Siguiente tramo general",
+        "type": "bonus_next_general",
+        "simulation": _quick_sim(next_general=True),
+        "diff_vs_current": round(_quick_sim(next_general=True)["company_profit_weekly"] - current_weekly_profit, 2),
+    })
+
+    rows.append({
+        "label": "Siguiente tramo Premier",
+        "type": "bonus_next_premier",
+        "simulation": _quick_sim(next_premier=True),
+        "diff_vs_current": round(_quick_sim(next_premier=True)["company_profit_weekly"] - current_weekly_profit, 2),
+    })
+
+    payout_options = []
+    for pct in [30, 35, 40, 45, 50, 55, 60]:
+        sim = _quick_sim(new_payout=pct)
+        payout_options.append({
+            "payout_pct": pct,
+            "company_profit_weekly": sim["company_profit_weekly"],
+            "driver_income": sim["driver_income"],
+            "margin_pct": sim["margin_pct"],
+            "diff_vs_current": round(sim["company_profit_weekly"] - current_weekly_profit, 2),
+        })
+
+    return {
+        "bonus_scenarios": rows,
+        "payout_sensitivity": payout_options,
+        "current_reference": {
+            "company_profit_weekly": current_weekly_profit,
+            "driver_income": round(current_driver_income, 2),
+            "margin_pct": current_margin,
+        },
+    }
+
+
+def _find_next_tier_trips(bonus_table: List[Dict], current_trips: int) -> int:
+    tiers_above = [t["min_trips"] for t in bonus_table if t["min_trips"] > current_trips]
+    if tiers_above:
+        return min(tiers_above)
+    return current_trips + 5
+
+
+def get_simulator_defaults() -> Dict[str, Any]:
+    return {
+        "status": "OK",
+        "bonus_tables": {
+            "general_branded": BONUS_GENERAL_BRANDED,
+            "general_unbranded": BONUS_GENERAL_UNBRANDED,
+            "premier": BONUS_PREMIER,
+        },
+        "default_inputs": {
+            "shifts_per_vehicle": 2,
+            "selected_shift": "day",
+            "trips_day_week": 85,
+            "trips_night_week": 45,
+            "trips_premier_day_week": 6,
+            "trips_premier_night_week": 3,
+            "ticket_avg": 15.0,
+            "ticket_avg_general": 15.0,
+            "ticket_avg_premier": 22.0,
+            "km_per_trip": 8.5,
+            "fuel_per_km": 0.35,
+            "maintenance_per_trip": 1.20,
+            "platform_commission_pct": 18.0,
+            "vehicle_weekly_cost": 350.0,
+            "insurance_gps_weekly": 45.0,
+            "reserve_pct": 3.0,
+            "driver_payout_pct": 50.0,
+            "vehicle_branded": True,
+            "eligible_for_general_bonus": True,
+            "eligible_for_premier_bonus": True,
+            "general_bonus_trips_week": 85,
+            "premier_bonus_trips_week": 6,
+            "guarantee_amount": 0,
+        },
+    }
 
 
 def _missing_source_response(view_name: str, remediation: str) -> Dict[str, Any]:
