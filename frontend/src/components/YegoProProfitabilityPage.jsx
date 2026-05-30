@@ -6,12 +6,9 @@ import {
   getYegoProProfitabilityDrivers,
   getYegoProProfitabilityVehicles,
   getYegoProProfitabilityShifts,
-  getYegoProProfitabilityWaterfall,
   getYegoProProfitabilityInputMapping,
   getYegoProProfitabilityQuality,
   getYegoProProfitabilityRootCause,
-  getYegoProSimulatorDefaults,
-  postYegoProSimulatorRun,
 } from '../services/api'
 
 const TABS = [
@@ -21,8 +18,7 @@ const TABS = [
   { id: 'drivers', label: 'Drivers', fetcher: getYegoProProfitabilityDrivers },
   { id: 'vehicles', label: 'Vehicles', fetcher: getYegoProProfitabilityVehicles },
   { id: 'shifts', label: 'Shifts', fetcher: getYegoProProfitabilityShifts },
-  { id: 'waterfall', label: 'Waterfall', fetcher: getYegoProProfitabilityWaterfall },
-  { id: 'simulator', label: 'Simulator', fetcher: null },
+  { id: 'waterfall', label: 'Waterfall', fetcher: getYegoProProfitabilityInputMapping },
   { id: 'quality', label: 'Data Quality', fetcher: getYegoProProfitabilityQuality },
   { id: 'coverage', label: 'Coverage Audit', fetcher: null },
 ]
@@ -31,10 +27,10 @@ const EMPTY_STATES = {
   overview: 'No hay datos de resumen disponibles para este periodo. Fuente financiera pendiente.',
   weekly: 'No hay semanas cerradas disponibles. Data operativa disponible, data financiera parcial.',
   daily: 'No hay datos del ultimo dia cerrado. Fuente financiera pendiente.',
-  drivers: 'No se puede estimar esta vista porque falta produccion y cierre.',
-  vehicles: 'No se puede estimar esta vista porque falta produccion y cierre.',
-  shifts: 'No se puede estimar esta vista porque falta produccion y cierre.',
-  waterfall: 'No se puede estimar esta vista porque falta produccion y cierre.',
+  drivers: 'No hay datos de conductores disponibles. Data operativa disponible, data financiera parcial.',
+  vehicles: 'No hay datos de vehiculos disponibles. Fuente financiera pendiente.',
+  shifts: 'No hay datos de turnos disponibles. Data operativa disponible, data financiera parcial.',
+  waterfall: 'No hay datos de waterfall disponibles. Fuente financiera pendiente.',
   coverage: 'No hay datos de coverage disponibles. Verifica que el endpoint overview este respondiendo.',
 }
 
@@ -115,7 +111,7 @@ const HUMAN_GUIDES = {
 
 const COLUMN_LABELS = {
   driver_id: 'ID Conductor', driver_name: 'Conductor', vehicle_id: 'ID Vehiculo',
-  vehicle_plate: 'Placa', vehicle_name: 'Vehiculo', plate: 'Placa', profit: 'Utilidad / Perdida',
+  vehicle_plate: 'Placa', vehicle_name: 'Vehiculo', profit: 'Utilidad / Perdida',
   loss: 'Perdida', revenue: 'Ingreso', cost: 'Costo', margin: 'Margen',
   margin_pct: 'Margen %', trips: 'Viajes', hours: 'Horas', week: 'Semana',
   date: 'Fecha', day: 'Dia', shift: 'Turno', shift_type: 'Tipo Turno',
@@ -132,31 +128,15 @@ const COLUMN_LABELS = {
   revenue_per_driver: 'Ingreso/Conductor', revenue_per_vehicle: 'Ingreso/Vehiculo',
   trips_per_vehicle: 'Viajes/Vehiculo', km_per_trip: 'Km/Viaje',
   fixed_costs: 'Costos Fijos', other: 'Otros',
-  estimated_margin: 'Margen Estimado', estimated_cost: 'Costo Estimado',
-  estimated_fuel: 'Combustible Est.', estimated_maintenance: 'Mantenimiento Est.',
-  estimated_driver_payout: 'Payout Conductor Est.', work_hours: 'Horas',
-  shift_days: 'Dias Turno', drivers_count: 'Conductores', active_drivers: 'Conductores Activos',
-  total_minutes: 'Minutos Totales', ticket_avg: 'Ticket Promedio',
 }
 
 const SOURCE_TYPE_LABELS = {
-  REAL: 'Real', REAL_OPERATIONAL: 'Real Operativo', REAL_SETTLEMENT: 'Real Liquidacion', REAL_FINANCIAL: 'Real Financiero',
-  ESTIMATED: 'Estimado', ESTIMATED_FINANCIAL: 'Estimado Financiero',
-  LEGACY: 'Legacy', LEGACY_MODEL: 'Modelo Legacy',
-  DERIVED: 'Derivado', ASSUMPTION: 'Supuesto', NOT_AVAILABLE: 'No disponible',
+  REAL: 'Real', DERIVED: 'Derivado', ASSUMPTION: 'Supuesto', NOT_AVAILABLE: 'No disponible',
   real: 'Real', derived: 'Derivado', assumption: 'Supuesto', not_available: 'No disponible',
-  estimated: 'Estimado', legacy: 'Legacy',
 }
 
 const SOURCE_TYPE_COLORS = {
   REAL: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  REAL_OPERATIONAL: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  REAL_SETTLEMENT: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  REAL_FINANCIAL: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  ESTIMATED: 'bg-amber-50 text-amber-700 border-amber-200',
-  ESTIMATED_FINANCIAL: 'bg-amber-50 text-amber-700 border-amber-200',
-  LEGACY: 'bg-purple-50 text-purple-700 border-purple-200',
-  LEGACY_MODEL: 'bg-purple-50 text-purple-700 border-purple-200',
   DERIVED: 'bg-blue-50 text-blue-700 border-blue-200',
   ASSUMPTION: 'bg-amber-50 text-amber-700 border-amber-200',
   NOT_AVAILABLE: 'bg-gray-100 text-gray-500 border-gray-200',
@@ -164,8 +144,6 @@ const SOURCE_TYPE_COLORS = {
   derived: 'bg-blue-50 text-blue-700 border-blue-200',
   assumption: 'bg-amber-50 text-amber-700 border-amber-200',
   not_available: 'bg-gray-100 text-gray-500 border-gray-200',
-  estimated: 'bg-amber-50 text-amber-700 border-amber-200',
-  legacy: 'bg-purple-50 text-purple-700 border-purple-200',
 }
 
 const SHIFT_LABELS = {
@@ -214,19 +192,7 @@ function fmtCellValue (value, colKey) {
 
 function colLabel (key) { return COLUMN_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) }
 
-function extractRows (data) {
-  if (!data) return []
-  if (Array.isArray(data)) return data
-  if (data.rows) return data.rows
-  if (data.data) return data.data
-  if (data.drivers) return data.drivers
-  if (data.vehicles) return data.vehicles
-  if (data.shifts) return data.shifts
-  if (data.weeks) return data.weeks
-  if (data.days) return data.days
-  if (data.steps) return data.steps
-  return []
-}
+function extractRows (data) { return data?.rows || data?.data || (Array.isArray(data) ? data : []) }
 
 function extractNum (obj, ...keys) { for (const k of keys) { const v = num(obj?.[k]); if (v !== null) return v } return null }
 
@@ -251,11 +217,11 @@ function getMetricMeta (obj, key) {
 function sortRows (rows, tabId) {
   if (!rows || rows.length === 0) return rows
   const sorted = [...rows]
-  const profitKey = (row) => { for (const k of ['profit', 'net_profit', 'estimated_margin', 'margin', 'result']) { if (typeof row[k] === 'number') return row[k] } return 0 }
-  const dateKey = (row) => { for (const k of ['week', 'date', 'day', 'period', 'fecha', 'week_start']) { if (row[k]) return String(row[k]) } return '' }
+  const profitKey = (row) => { for (const k of ['profit', 'net_profit', 'margin', 'result']) { if (typeof row[k] === 'number') return row[k] } return 0 }
+  const dateKey = (row) => { for (const k of ['week', 'date', 'day', 'period', 'fecha']) { if (row[k]) return String(row[k]) } return '' }
   switch (tabId) {
     case 'drivers': case 'vehicles': return sorted.sort((a, b) => profitKey(a) - profitKey(b))
-    case 'weekly': case 'daily': case 'shifts': return sorted.sort((a, b) => dateKey(b).localeCompare(dateKey(a)))
+    case 'weekly': case 'daily': return sorted.sort((a, b) => dateKey(b).localeCompare(dateKey(a)))
     default: return sorted
   }
 }
@@ -1074,27 +1040,23 @@ function OverviewDiagnostic ({ diagData, diagLoading, diagErrors, billingWeeks }
   )
 }
 
-const META_COLUMNS = new Set(['confidence', 'source', 'warning', 'margin_confidence', 'cost_confidence', 'cost_source', 'trust_layer', 'is_profitable'])
-
 function DataTable ({ rows, columns, tabId }) {
   if (!rows || rows.length === 0) return <EmptyState tabId={tabId} />
   const sorted = sortRows(rows, tabId)
-  const cols = columns || (sorted.length > 0 ? Object.keys(sorted[0]).filter((k) => !k.endsWith('_source') && !k.endsWith('_confidence') && !META_COLUMNS.has(k)) : [])
-  const hasConfidence = sorted.some((r) => r.confidence)
+  const cols = columns || (sorted.length > 0 ? Object.keys(sorted[0]).filter((k) => !k.endsWith('_source') && !k.endsWith('_confidence')) : [])
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs border-collapse">
         <thead>
           <tr className="border-b border-ct-border">
             {cols.map((c) => <th key={c} className="px-2 py-1.5 text-left font-medium text-ct-text2 whitespace-nowrap">{colLabel(c)}</th>)}
-            {hasConfidence && <th className="px-2 py-1.5 text-left font-medium text-ct-text2 whitespace-nowrap">Confianza</th>}
           </tr>
         </thead>
         <tbody>
           {sorted.map((row, i) => (
-            <tr key={i} className={`border-b border-ct-border/50 hover:bg-ct-surface/50 ${row.confidence === 'ESTIMATED' ? 'bg-amber-50/20' : ''}`}>
+            <tr key={i} className="border-b border-ct-border/50 hover:bg-ct-surface/50">
               {cols.map((c) => {
-                const isProfit = ['profit', 'net_profit', 'margin', 'result', 'estimated_margin'].includes(c)
+                const isProfit = ['profit', 'net_profit', 'margin', 'result'].includes(c)
                 return (
                   <td key={c} className="px-2 py-1.5 whitespace-nowrap">
                     <span className={isProfit && typeof safeVal(row[c]) === 'number' && row[c] < 0 ? 'text-red-600 font-medium' : ''}>
@@ -1106,11 +1068,6 @@ function DataTable ({ rows, columns, tabId }) {
                   </td>
                 )
               })}
-              {hasConfidence && (
-                <td className="px-2 py-1.5 whitespace-nowrap">
-                  <ConfidenceBadge confidence={row.confidence} />
-                </td>
-              )}
             </tr>
           ))}
         </tbody>
@@ -1122,20 +1079,13 @@ function DataTable ({ rows, columns, tabId }) {
 
 function TabularPanel ({ data, tabId }) {
   if (!data) return <EmptyState tabId={tabId} />
-  const rows = extractRows(data)
+  const rows = data.rows || data.data || (Array.isArray(data) ? data : null)
   const columns = data.columns || null
   const meta = data.meta || data.period || null
   if (!rows || rows.length === 0) return <><GuideBlock tabId={tabId} /><EmptyState tabId={tabId} /></>
   return (
     <div className="space-y-3">
       <GuideBlock tabId={tabId} />
-      <TrustWarningBanner data={data} />
-      {data.confidence && data.confidence !== 'REAL' && (
-        <div className="flex items-center gap-2 text-[11px]">
-          <span className="text-ct-text3">Confianza general:</span>
-          <ConfidenceBadge confidence={data.confidence} />
-        </div>
-      )}
       {meta && (
         <div className="flex flex-wrap gap-2 text-[11px] text-ct-text3">
           {typeof meta === 'string' ? <span>{meta}</span> : Object.entries(meta).map(([k, v]) => (
@@ -1151,33 +1101,16 @@ function TabularPanel ({ data, tabId }) {
   )
 }
 
-function ConfidenceBadge ({ confidence }) {
-  if (!confidence) return null
-  const color = SOURCE_TYPE_COLORS[confidence] || 'bg-gray-100 text-gray-500 border-gray-200'
-  const label = SOURCE_TYPE_LABELS[confidence] || confidence
-  return <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium ${color}`}>{label}</span>
-}
-
-function TrustWarningBanner ({ data }) {
-  const warning = data?.warning
-  const isPartial = data?.is_partial === true
-  if (!warning && !isPartial) return null
-  return (
-    <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-[11px] text-amber-700">
-      {warning || 'Datos parciales: no todos los valores provienen de fuentes financieras completas. Cada linea indica su confianza.'}
-    </div>
-  )
-}
-
 function WaterfallPanel ({ data }) {
   if (!data) return <><GuideBlock tabId="waterfall" /><EmptyState tabId="waterfall" /></>
   const items = data.steps || data.items || data.rows || data.data || (Array.isArray(data) ? data : null)
+  const isPartial = data.partial === true || data.is_partial === true
   if (!items || items.length === 0) return <><GuideBlock tabId="waterfall" /><EmptyState tabId="waterfall" /></>
-  const maxAbs = Math.max(...items.map((it) => Math.abs(num(it.value ?? it.amount) ?? 0)), 1)
   return (
     <div className="space-y-2">
       <GuideBlock tabId="waterfall" />
-      <TrustWarningBanner data={data} />
+      {isPartial && <div className="bg-amber-50 border border-amber-200 rounded px-3 py-1.5 text-[11px] text-amber-700">Waterfall parcial: algunos inputs no tienen fuente financiera completa. Resultado observado con datos disponibles.</div>}
+      {data.missing_sources && data.missing_sources.length > 0 && <div className="flex flex-wrap gap-1 mb-1">{data.missing_sources.map((ms, i) => <MissingSourceNotice key={i} field={ms} />)}</div>}
       {items.map((item, i) => {
         const label = item.label || item.name || item.step || colLabel(item.input || `step_${i + 1}`)
         const raw = num(item.value ?? item.amount); const value = raw ?? 0; const isPositive = value >= 0
@@ -1187,19 +1120,19 @@ function WaterfallPanel ({ data }) {
             <span className="text-xs text-ct-text2 w-44 flex-shrink-0 truncate" title={label}>{label}</span>
             <div className="flex-1 h-5 bg-gray-100 rounded overflow-hidden"><div className={`h-full rounded ${isPositive ? 'bg-emerald-400' : 'bg-red-400'}`} style={{ width: `${Math.min(pct, 100)}%` }} /></div>
             <span className={`text-xs font-medium w-24 text-right ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>{raw !== null ? fmt(value, 'currency') : 'No disponible'}</span>
-            <ConfidenceBadge confidence={item.confidence} />
+            {item.missing_source ? <MissingSourceNotice /> : <SourceBadge source={item.source} confidence={item.confidence} />}
           </div>
         )
       })}
       <div className="mt-2 bg-ct-card rounded-lg border border-ct-border overflow-x-auto">
         <table className="w-full text-xs border-collapse">
-          <thead><tr className="border-b border-ct-border"><th className="px-2 py-1.5 text-left font-medium text-ct-text2">Linea</th><th className="px-2 py-1.5 text-right font-medium text-ct-text2">Valor</th><th className="px-2 py-1.5 text-left font-medium text-ct-text2">Fuente</th><th className="px-2 py-1.5 text-left font-medium text-ct-text2">Confianza</th></tr></thead>
+          <thead><tr className="border-b border-ct-border"><th className="px-2 py-1.5 text-left font-medium text-ct-text2">Input</th><th className="px-2 py-1.5 text-right font-medium text-ct-text2">Valor</th><th className="px-2 py-1.5 text-left font-medium text-ct-text2">Fuente</th><th className="px-2 py-1.5 text-left font-medium text-ct-text2">Confianza</th></tr></thead>
           <tbody>{items.map((item, i) => (
             <tr key={i} className="border-b border-ct-border/50">
               <td className="px-2 py-1.5">{item.label || item.name || item.step || colLabel(item.input || `step_${i + 1}`)}</td>
               <td className="px-2 py-1.5 text-right font-medium">{fmt(num(item.value ?? item.amount), 'currency')}</td>
-              <td className="px-2 py-1.5 text-[10px]">{item.source || 'No disponible'}</td>
-              <td className="px-2 py-1.5"><ConfidenceBadge confidence={item.confidence} /></td>
+              <td className="px-2 py-1.5">{SOURCE_TYPE_LABELS[item.source] || item.source || 'No disponible'}</td>
+              <td className="px-2 py-1.5">{item.confidence || 'No disponible'}</td>
             </tr>
           ))}</tbody>
         </table>
@@ -1208,54 +1141,9 @@ function WaterfallPanel ({ data }) {
   )
 }
 
-function TrustLayerSection ({ trustSummary }) {
-  if (!trustSummary) return null
-  const sections = [
-    { key: 'REAL', label: 'Datos reales', color: 'border-emerald-200 bg-emerald-50/50', textColor: 'text-emerald-700', icon: 'bg-emerald-500' },
-    { key: 'ESTIMATED', label: 'Datos estimados', color: 'border-amber-200 bg-amber-50/50', textColor: 'text-amber-700', icon: 'bg-amber-500' },
-    { key: 'LEGACY', label: 'Datos legacy/default', color: 'border-purple-200 bg-purple-50/50', textColor: 'text-purple-700', icon: 'bg-purple-500' },
-    { key: 'NOT_AVAILABLE', label: 'No disponible', color: 'border-gray-200 bg-gray-50/50', textColor: 'text-gray-500', icon: 'bg-gray-400' },
-  ]
-
-  return (
-    <div className="space-y-3">
-      <SectionTitle>Capa de confianza (Trust Layer)</SectionTitle>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-        {sections.map((sec) => {
-          const items = trustSummary[sec.key]
-          if (!items || items.length === 0) return null
-          return (
-            <div key={sec.key} className={`rounded-lg border p-3 ${sec.color}`}>
-              <div className={`text-xs font-semibold mb-1.5 flex items-center gap-1.5 ${sec.textColor}`}>
-                <span className={`w-2 h-2 rounded-full ${sec.icon}`} />
-                {sec.label}
-              </div>
-              <ul className="space-y-1">
-                {items.map((item, i) => (
-                  <li key={i} className={`text-[11px] ${sec.textColor}`}>{item}</li>
-                ))}
-              </ul>
-            </div>
-          )
-        })}
-      </div>
-      {trustSummary.upgrade_path && trustSummary.upgrade_path.length > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-          <div className="text-xs font-semibold text-blue-700 mb-1.5">Para convertir estimaciones en datos reales:</div>
-          <ul className="space-y-1">
-            {trustSummary.upgrade_path.map((item, i) => (
-              <li key={i} className="text-[11px] text-blue-700">{item}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  )
-}
-
 function QualityPanel ({ data }) {
   if (!data) return <><GuideBlock tabId="quality" /><EmptyState tabId="quality" /></>
-  const checks = data.serving_views || data.checks || data.inputs || data.rows || data.data || (Array.isArray(data) ? data : null)
+  const checks = data.checks || data.inputs || data.rows || data.data || (Array.isArray(data) ? data : null)
   if (!checks || checks.length === 0) return <><GuideBlock tabId="quality" /><EmptyState tabId="quality" /></>
 
   const sourceInfo = [
@@ -1292,8 +1180,6 @@ function QualityPanel ({ data }) {
           <div className="space-y-1.5 ml-1">{grouped[gk].map((c, i) => <QualityRow key={i} check={c} statusColor={statusColor} />)}</div>
         </div>
       )) : <div className="space-y-1.5">{checks.map((c, i) => <QualityRow key={i} check={c} statusColor={statusColor} />)}</div>}
-
-      <TrustLayerSection trustSummary={data.trust_layer_summary} />
     </div>
   )
 }
@@ -1311,309 +1197,6 @@ function QualityRow ({ check, statusColor }) {
         {check.source && <span className="text-[10px] bg-white/60 px-1.5 py-0.5 rounded">{SOURCE_TYPE_LABELS[check.source] || check.source}</span>}
         {check.confidence && <span className="text-[10px] bg-white/60 px-1.5 py-0.5 rounded">{check.confidence}</span>}
       </div>
-    </div>
-  )
-}
-
-const SIM_INPUT_GROUPS = [
-  { key: 'production', label: 'Produccion', fields: ['trips_per_day', 'days_per_week', 'ticket_avg', 'km_per_trip'] },
-  { key: 'variable_costs', label: 'Costos variables', fields: ['fuel_cost_per_km', 'maintenance_cost_per_km', 'platform_commission_pct'] },
-  { key: 'driver_pay', label: 'Pago conductor', fields: ['driver_payout_pct', 'weekly_bonus_day', 'weekly_bonus_night', 'guarantee_weekly'] },
-  { key: 'fixed_costs', label: 'Costos fijos / vehiculo', fields: ['fixed_daily_cost', 'vehicle_monthly_quota', 'insurance_gps_monthly', 'wear_reserve_pct'] },
-  { key: 'investment', label: 'Inversion y payback', fields: ['capital_to_recover', 'payback_target_months'] },
-]
-
-const SIM_FIELD_LABELS = {
-  trips_per_day: 'Viajes/dia', days_per_week: 'Dias/semana', ticket_avg: 'Ticket promedio (S/)',
-  km_per_trip: 'Km/viaje', fuel_cost_per_km: 'Combustible S//km', maintenance_cost_per_km: 'Mantenimiento S//km',
-  platform_commission_pct: 'Comision plataforma %', driver_payout_pct: 'Payout conductor %',
-  fixed_daily_cost: 'Costo fijo diario (S/)', vehicle_monthly_quota: 'Cuota vehiculo mensual (S/)',
-  insurance_gps_monthly: 'Seguro/GPS mensual (S/)', capital_to_recover: 'Capital a recuperar (S/)',
-  payback_target_months: 'Payback objetivo (meses)', weekly_bonus_day: 'Bono dia semanal (S/)',
-  weekly_bonus_night: 'Bono noche semanal (S/)', guarantee_weekly: 'Garantia semanal (S/)',
-  wear_reserve_pct: 'Reserva desgaste %',
-}
-
-const SIM_PAYOUT_PRESETS = [0.40, 0.45, 0.50, 0.55, 0.60]
-
-function SimulatorPanel () {
-  const [inputs, setInputs] = useState(null)
-  const [results, setResults] = useState(null)
-  const [scenarios, setScenarios] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [simLoading, setSimLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [sensitivity, setSensitivity] = useState(null)
-
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    getYegoProSimulatorDefaults().then((data) => {
-      if (cancelled) return
-      if (data?.inputs) {
-        const flat = {}
-        Object.entries(data.inputs).forEach(([k, v]) => { flat[k] = v.value })
-        setInputs(flat)
-      }
-      setLoading(false)
-    }).catch((e) => {
-      if (cancelled) return
-      setError('No se pudieron cargar los defaults del simulador.')
-      setLoading(false)
-    })
-    return () => { cancelled = true }
-  }, [])
-
-  const runSim = useCallback(async (overrides = {}) => {
-    if (!inputs) return null
-    const params = { ...inputs, ...overrides, scenario_name: overrides.scenario_name || 'Simulacion' }
-    setSimLoading(true)
-    try {
-      const res = await postYegoProSimulatorRun(params)
-      if (!overrides._silent) setResults(res)
-      setSimLoading(false)
-      return res
-    } catch (e) {
-      setSimLoading(false)
-      return null
-    }
-  }, [inputs])
-
-  useEffect(() => {
-    if (inputs) runSim()
-  }, [inputs, runSim])
-
-  const handleInput = (key, rawValue) => {
-    const value = parseFloat(rawValue)
-    if (isNaN(value)) return
-    setInputs((prev) => ({ ...prev, [key]: value }))
-  }
-
-  const saveScenario = () => {
-    if (!results?.results) return
-    const name = `Escenario ${scenarios.length + 1} (${(inputs.driver_payout_pct * 100).toFixed(0)}%)`
-    setScenarios((prev) => [...prev, { name, inputs: { ...inputs }, results: results.results }])
-  }
-
-  const runSensitivity = useCallback(async () => {
-    if (!inputs) return
-    const payoutResults = []
-    for (const pct of SIM_PAYOUT_PRESETS) {
-      const res = await postYegoProSimulatorRun({ ...inputs, driver_payout_pct: pct, _silent: true })
-      if (res?.results) payoutResults.push({ pct, ...res.results })
-    }
-    const prodResults = []
-    const baseTpd = inputs.trips_per_day
-    for (const mult of [0.9, 1.0, 1.1, 1.2]) {
-      const res = await postYegoProSimulatorRun({ ...inputs, trips_per_day: baseTpd * mult, _silent: true })
-      if (res?.results) prodResults.push({ label: mult === 1 ? 'Actual' : `${mult > 1 ? '+' : ''}${((mult - 1) * 100).toFixed(0)}%`, ...res.results })
-    }
-    setSensitivity({ payout: payoutResults, production: prodResults })
-  }, [inputs])
-
-  useEffect(() => {
-    if (inputs) runSensitivity()
-  }, [inputs, runSensitivity])
-
-  if (loading) return (
-    <div className="flex items-center justify-center py-12">
-      <div className="w-5 h-5 border-2 border-ct-accent border-t-transparent rounded-full animate-spin" />
-      <span className="ml-2 text-xs text-ct-text3">Cargando simulador...</span>
-    </div>
-  )
-  if (error) return <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-xs text-red-700">{error}</div>
-  if (!inputs) return null
-
-  const r = results?.results || {}
-  const statusColor = { VIABLE: 'text-emerald-700 bg-emerald-50 border-emerald-200', RISKY: 'text-amber-700 bg-amber-50 border-amber-200', LOSS: 'text-red-700 bg-red-50 border-red-200' }
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-[11px] text-blue-700">
-        Esta es una simulacion. No modifica pagos reales. Los inputs marcados como LEGACY son supuestos heredados del modelo Excel. Los inputs OPERATIONAL vienen de produccion real.
-      </div>
-
-      <div className="flex gap-1.5 flex-wrap">
-        <span className="text-[10px] text-ct-text3 self-center mr-1">Payout rapido:</span>
-        {SIM_PAYOUT_PRESETS.map((p) => (
-          <button key={p} type="button" onClick={() => setInputs((prev) => ({ ...prev, driver_payout_pct: p }))}
-            className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors ${inputs.driver_payout_pct === p ? 'bg-ct-accent text-white border-ct-accent' : 'bg-ct-card text-ct-text2 border-ct-border hover:border-ct-accent'}`}>
-            {(p * 100).toFixed(0)}%
-          </button>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-1 space-y-3">
-          {SIM_INPUT_GROUPS.map((group) => (
-            <div key={group.key} className="bg-ct-card rounded-lg border border-ct-border p-3">
-              <div className="text-[11px] font-semibold text-ct-text mb-2">{group.label}</div>
-              <div className="space-y-1.5">
-                {group.fields.map((field) => (
-                  <div key={field} className="flex items-center gap-2">
-                    <label className="text-[10px] text-ct-text2 w-36 flex-shrink-0 truncate" title={SIM_FIELD_LABELS[field]}>{SIM_FIELD_LABELS[field] || field}</label>
-                    <input type="number" step="any" value={inputs[field] ?? ''} onChange={(e) => handleInput(field, e.target.value)}
-                      className="flex-1 bg-ct-surface border border-ct-border rounded px-2 py-1 text-xs text-ct-text w-20 focus:outline-none focus:border-ct-accent" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="lg:col-span-2 space-y-3">
-          {simLoading && <div className="text-[10px] text-ct-text3 flex items-center gap-1"><div className="w-3 h-3 border border-ct-accent border-t-transparent rounded-full animate-spin" /> Calculando...</div>}
-
-          {r.net_profit_week != null && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <SectionTitle>Resultado</SectionTitle>
-                {r.status && <span className={`text-[10px] px-2 py-0.5 rounded border font-semibold ${statusColor[r.status] || ''}`}>{r.status}</span>}
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-                <SimKpi label="Utilidad semanal" value={r.net_profit_week} type="currency" />
-                <SimKpi label="Utilidad mensual" value={r.net_profit_month} type="currency" />
-                <SimKpi label="Margen %" value={r.margin_pct} type="pct" />
-                <SimKpi label="Ingreso conductor sem." value={r.driver_income_week} type="currency" positive />
-                <SimKpi label="Ingreso conductor mes" value={r.driver_income_month} type="currency" positive />
-                <SimKpi label="Payback estimado" value={r.company_recovery_months} type="months" />
-                <SimKpi label="Break-even viajes/sem" value={r.break_even_trips_week} type="number" />
-                <SimKpi label="Revenue bruto sem." value={r.gross_revenue_week} type="currency" positive />
-              </div>
-              {results?.explanation && <div className="bg-ct-surface border border-ct-border rounded px-3 py-2 text-[11px] text-ct-text2">{results.explanation}</div>}
-            </div>
-          )}
-
-          <div className="flex gap-2">
-            <button type="button" onClick={saveScenario} className="px-3 py-1.5 rounded bg-ct-accent text-white text-[11px] font-medium hover:opacity-90 transition-opacity">Guardar escenario</button>
-            <button type="button" onClick={() => setScenarios([])} className="px-3 py-1.5 rounded bg-ct-surface border border-ct-border text-ct-text2 text-[11px] font-medium hover:bg-ct-card transition-colors">Limpiar</button>
-          </div>
-
-          {scenarios.length > 0 && (
-            <div>
-              <SectionTitle>Escenarios guardados ({scenarios.length})</SectionTitle>
-              <div className="bg-ct-card rounded-lg border border-ct-border overflow-x-auto mt-1">
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr className="border-b border-ct-border bg-ct-surface/50">
-                      <th className="px-2 py-1.5 text-left font-medium text-ct-text2">Nombre</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Payout %</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Viajes/sem</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Ticket</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Utilidad sem.</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Utilidad mes</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Margen</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Ingr. Conductor</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Payback</th>
-                      <th className="px-2 py-1.5 text-center font-medium text-ct-text2">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {scenarios.map((sc, i) => (
-                      <tr key={i} className="border-b border-ct-border/50 hover:bg-ct-surface/50">
-                        <td className="px-2 py-1.5 font-medium text-ct-text">{sc.name}</td>
-                        <td className="px-2 py-1.5 text-right">{(sc.inputs.driver_payout_pct * 100).toFixed(0)}%</td>
-                        <td className="px-2 py-1.5 text-right">{sc.results.trips_week}</td>
-                        <td className="px-2 py-1.5 text-right">{fmt(sc.inputs.ticket_avg, 'currency')}</td>
-                        <td className={`px-2 py-1.5 text-right font-medium ${sc.results.net_profit_week < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{fmt(sc.results.net_profit_week, 'currency')}</td>
-                        <td className={`px-2 py-1.5 text-right ${sc.results.net_profit_month < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{fmt(sc.results.net_profit_month, 'currency')}</td>
-                        <td className="px-2 py-1.5 text-right">{(sc.results.margin_pct * 100).toFixed(1)}%</td>
-                        <td className="px-2 py-1.5 text-right">{fmt(sc.results.driver_income_week, 'currency')}</td>
-                        <td className="px-2 py-1.5 text-right">{sc.results.company_recovery_months != null ? `${sc.results.company_recovery_months} m` : 'N/A'}</td>
-                        <td className="px-2 py-1.5 text-center"><span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${statusColor[sc.results.status] || ''}`}>{sc.results.status}</span></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {sensitivity && (
-            <div className="space-y-3">
-              <SectionTitle>Sensibilidad payout</SectionTitle>
-              <div className="bg-ct-card rounded-lg border border-ct-border overflow-x-auto">
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr className="border-b border-ct-border bg-ct-surface/50">
-                      <th className="px-2 py-1.5 text-left font-medium text-ct-text2">Payout %</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Utilidad empresa</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Ingreso conductor</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Margen</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Payback</th>
-                      <th className="px-2 py-1.5 text-center font-medium text-ct-text2">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sensitivity.payout.map((row, i) => (
-                      <tr key={i} className={`border-b border-ct-border/50 ${row.pct === inputs.driver_payout_pct ? 'bg-blue-50/50' : ''}`}>
-                        <td className="px-2 py-1.5 font-medium">{(row.pct * 100).toFixed(0)}%</td>
-                        <td className={`px-2 py-1.5 text-right font-medium ${row.net_profit_week < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{fmt(row.net_profit_week, 'currency')}</td>
-                        <td className="px-2 py-1.5 text-right">{fmt(row.driver_income_week, 'currency')}</td>
-                        <td className="px-2 py-1.5 text-right">{(row.margin_pct * 100).toFixed(1)}%</td>
-                        <td className="px-2 py-1.5 text-right">{row.company_recovery_months != null ? `${row.company_recovery_months} m` : 'N/A'}</td>
-                        <td className="px-2 py-1.5 text-center"><span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${statusColor[row.status] || ''}`}>{row.status}</span></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <SectionTitle>Sensibilidad produccion</SectionTitle>
-              <div className="bg-ct-card rounded-lg border border-ct-border overflow-x-auto">
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr className="border-b border-ct-border bg-ct-surface/50">
-                      <th className="px-2 py-1.5 text-left font-medium text-ct-text2">Escenario</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Viajes/sem</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Utilidad sem.</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Margen</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-ct-text2">Ingreso conductor</th>
-                      <th className="px-2 py-1.5 text-center font-medium text-ct-text2">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sensitivity.production.map((row, i) => (
-                      <tr key={i} className={`border-b border-ct-border/50 ${row.label === 'Actual' ? 'bg-blue-50/50' : ''}`}>
-                        <td className="px-2 py-1.5 font-medium">{row.label}</td>
-                        <td className="px-2 py-1.5 text-right">{row.trips_week}</td>
-                        <td className={`px-2 py-1.5 text-right font-medium ${row.net_profit_week < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{fmt(row.net_profit_week, 'currency')}</td>
-                        <td className="px-2 py-1.5 text-right">{(row.margin_pct * 100).toFixed(1)}%</td>
-                        <td className="px-2 py-1.5 text-right">{fmt(row.driver_income_week, 'currency')}</td>
-                        <td className="px-2 py-1.5 text-center"><span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${statusColor[row.status] || ''}`}>{row.status}</span></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-[10px] text-gray-500 space-y-1">
-            <div>Los resultados no deben usarse para cambiar esquemas sin validar cierres y billing.</div>
-            <div>Simulacion deterministica. No se persisten datos. No se modifican pagos reales.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function SimKpi ({ label, value, type = 'currency', positive }) {
-  const v = safeVal(value)
-  const isNum = typeof v === 'number'
-  const color = positive ? 'text-ct-text' : (isNum && v < 0 ? 'text-red-600' : (isNum && v > 0 ? 'text-emerald-600' : 'text-ct-text'))
-  let display = 'N/A'
-  if (isNum) {
-    if (type === 'currency') display = `S/ ${v.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    else if (type === 'pct') display = `${(v * 100).toFixed(1)}%`
-    else if (type === 'months') display = `${v.toFixed(0)} meses`
-    else display = v.toLocaleString('es-PE', { maximumFractionDigits: 1 })
-  }
-  return (
-    <div className="bg-ct-card rounded-lg border border-ct-border p-2.5">
-      <div className="text-[10px] text-ct-text3 mb-0.5">{label}</div>
-      <div className={`text-sm font-bold ${color}`}>{display}</div>
     </div>
   )
 }
@@ -1646,7 +1229,7 @@ const DIAG_ENDPOINTS = [
   { key: 'drivers', fetcher: getYegoProProfitabilityDrivers },
   { key: 'vehicles', fetcher: getYegoProProfitabilityVehicles },
   { key: 'shifts', fetcher: getYegoProProfitabilityShifts },
-  { key: 'waterfall', fetcher: getYegoProProfitabilityWaterfall },
+  { key: 'waterfall', fetcher: getYegoProProfitabilityInputMapping },
   { key: 'quality', fetcher: getYegoProProfitabilityQuality },
   { key: 'rootCause', fetcher: getYegoProProfitabilityRootCause },
 ]
@@ -1719,7 +1302,7 @@ export default function YegoProProfitabilityPage () {
   }, [])
 
   const loadTab = useCallback(async (tabId) => {
-    if (tabId === 'overview' || tabId === 'coverage' || tabId === 'simulator') return
+    if (tabId === 'overview' || tabId === 'coverage') return
     if (abortRef.current) abortRef.current.abort()
     const controller = new AbortController()
     abortRef.current = controller
@@ -1799,26 +1382,22 @@ export default function YegoProProfitabilityPage () {
           <CoverageAuditPanel diagData={diagData} />
         )}
 
-        {activeTab === 'simulator' && (
-          <SimulatorPanel />
-        )}
-
-        {activeTab !== 'overview' && activeTab !== 'coverage' && activeTab !== 'simulator' && tabLoading && (
+        {activeTab !== 'overview' && activeTab !== 'coverage' && tabLoading && (
           <div className="flex items-center justify-center py-12">
             <div className="w-5 h-5 border-2 border-ct-accent border-t-transparent rounded-full animate-spin" />
             <span className="ml-2 text-xs text-ct-text3">Cargando {TABS.find((t) => t.id === activeTab)?.label}...</span>
           </div>
         )}
 
-        {activeTab !== 'overview' && activeTab !== 'coverage' && activeTab !== 'simulator' && tabError && !tabLoading && (
+        {activeTab !== 'overview' && activeTab !== 'coverage' && tabError && !tabLoading && (
           <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-xs text-red-700 flex items-center gap-2">
             <span>{tabError}</span>
             <button type="button" onClick={() => loadTab(activeTab)} className="ml-auto px-2 py-0.5 rounded bg-red-100 hover:bg-red-200 text-red-700 text-[11px] font-medium transition-colors">Reintentar</button>
           </div>
         )}
 
-        {activeTab !== 'overview' && activeTab !== 'coverage' && activeTab !== 'simulator' && !tabLoading && !tabError && tabData && renderTabPanel(activeTab, tabData)}
-        {activeTab !== 'overview' && activeTab !== 'coverage' && activeTab !== 'simulator' && !tabLoading && !tabError && !tabData && <EmptyState tabId={activeTab} />}
+        {activeTab !== 'overview' && activeTab !== 'coverage' && !tabLoading && !tabError && tabData && renderTabPanel(activeTab, tabData)}
+        {activeTab !== 'overview' && activeTab !== 'coverage' && !tabLoading && !tabError && !tabData && <EmptyState tabId={activeTab} />}
       </div>
     </div>
   )

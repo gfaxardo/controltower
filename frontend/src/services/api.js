@@ -1149,14 +1149,6 @@ export const getYangoLoyaltyPerformance = async (params = {}) => {
   const response = await api.get('/yango-loyalty/performance', { params, timeout: 15000 })
   return response.data
 }
-export const getYangoLoyaltyHistory = async (params = {}) => {
-  const response = await api.get('/yango-loyalty/history', { params, timeout: 10000 })
-  return response.data
-}
-export const getYangoLoyaltyCityComparison = async (params = {}) => {
-  const response = await api.get('/yango-loyalty/city-comparison', { params, timeout: 10000 })
-  return response.data
-}
 
 // --- Fleet Project > Yego Pro > Profitability (P2) ---
 const PROFITABILITY_TIMEOUT_MS = 60000
@@ -1188,10 +1180,6 @@ export const getYegoProProfitabilityInputMapping = async (params = {}) => {
   const response = await api.get('/fleet-project/yego-pro/profitability/input-mapping', { params, timeout: PROFITABILITY_TIMEOUT_MS })
   return response.data
 }
-export const getYegoProProfitabilityWaterfall = async (params = {}) => {
-  const response = await api.get('/fleet-project/yego-pro/profitability/waterfall', { params, timeout: PROFITABILITY_TIMEOUT_MS })
-  return response.data
-}
 export const getYegoProProfitabilityQuality = async (params = {}) => {
   const response = await api.get('/fleet-project/yego-pro/profitability/quality', { params, timeout: PROFITABILITY_TIMEOUT_MS })
   return response.data
@@ -1200,13 +1188,4 @@ export const getYegoProProfitabilityRootCause = async (params = {}) => {
   const response = await api.get('/fleet-project/yego-pro/profitability/root-cause', { params, timeout: PROFITABILITY_TIMEOUT_MS })
   return response.data
 }
-export const getYegoProSimulatorDefaults = async (params = {}) => {
-  const response = await api.get('/fleet-project/yego-pro/profitability/simulator/defaults', { params, timeout: PROFITABILITY_TIMEOUT_MS })
-  return response.data
-}
-export const postYegoProSimulatorRun = async (data = {}) => {
-  const response = await api.post('/fleet-project/yego-pro/profitability/simulator/run', data, { timeout: PROFITABILITY_TIMEOUT_MS })
-  return response.data
-}
-
 export default api
