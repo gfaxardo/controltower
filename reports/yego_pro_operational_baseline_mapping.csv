@@ -1,0 +1,25 @@
+input_simulador,fuente_disponible,formula,periodo,confidence,usable_as_reference,notas
+trips_day_week,module_calculated_shifts,SUM(cantidad_viajes WHERE tipo_turno IN ('dia','morning','tarde')) / dias,ultimos 30 dias,REAL_OPERATIONAL,TRUE,"Shift diario via MV_SHIFT_DAILY o consulta directa"
+trips_night_week,module_calculated_shifts,SUM(cantidad_viajes WHERE tipo_turno IN ('noche','evening')) / dias,ultimos 30 dias,REAL_OPERATIONAL,TRUE,"Shift nocturno via MV_SHIFT_DAILY"
+trips_premier_day_week,trips_2026,COUNT(*) WHERE tipo_servicio ILIKE '%premier%' AND HOUR(fecha_inicio) BETWEEN 6 AND 17,ultimos 30 dias,REAL_OPERATIONAL,TRUE,"Filtro Premier + turno dia desde trips_2026"
+trips_premier_night_week,trips_2026,COUNT(*) WHERE tipo_servicio ILIKE '%premier%' AND HOUR(fecha_inicio) NOT BETWEEN 6 AND 17,ultimos 30 dias,REAL_OPERATIONAL,TRUE,"Filtro Premier + turno noche"
+ticket_avg_general,trips_2026,AVG(precio_yango_pro) WHERE condicion='Completado',ultimos 30 dias,REAL_OPERATIONAL,TRUE,"Ticket promedio general desde trips_2026"
+ticket_avg_premier,trips_2026,AVG(precio_yango_pro) WHERE tipo_servicio ILIKE '%premier%',ultimos 30 dias,REAL_OPERATIONAL,TRUE,Solo si hay viajes Premier en el periodo
+km_per_trip,module_weekly_billing,km_recorrido / total_viajes,ultima semana cerrada,REAL_OPERATIONAL,TRUE,Depende de billing disponible
+fuel_per_km,module_weekly_billing,gasto_combustible / km_recorrido,ultima semana cerrada,REAL_OPERATIONAL,TRUE,Depende de billing disponible
+maintenance_per_trip,module_weekly_billing,gasto_mantenimiento / total_viajes,ultima semana cerrada,REAL_OPERATIONAL,TRUE,Depende de billing disponible
+platform_commission_pct,module_weekly_billing,comision_app / monto_total_producido * 100,ultima semana cerrada,REAL_OPERATIONAL,TRUE,Depende de billing
+vehicle_weekly_cost,module_miauto_cronograma,AVG(cuotas_semanales) FROM cronograma_vehiculo JOIN cronograma WHERE active=true,configuracion activa,REAL_OPERATIONAL,TRUE,"Cuota semanal desde cronograma activo"
+insurance_gps_weekly,manual,default operativo,default operativo,ESTIMATED,FALSE,"Sin fuente automatica en base de datos"
+reserve_pct,manual,default operativo 3%,default operativo,ESTIMATED,FALSE,"Reserva operativa manual, sin fuente en DB"
+driver_payout_pct,module_weekly_billing,AVG(porcentaje_pago) ultima semana,ultima semana cerrada,REAL_OPERATIONAL,TRUE,Solo si billing disponible
+garantia_semanal,module_weekly_billing,garantia desde billing,ultima semana cerrada,REAL_OPERATIONAL,TRUE,Solo si billing disponible
+general_bonus_trips_week,trips_2026,COUNT(*) WHERE condicion='Completado',ultimos 30 dias,REAL_OPERATIONAL,TRUE,Total viajes completados 30d
+premier_bonus_trips_week,trips_2026,COUNT(*) WHERE tipo_servicio ILIKE '%premier%',ultimos 30 dias,REAL_OPERATIONAL,TRUE,Total viajes Premier completados 30d
+bono_general_yango_income,module_weekly_billing,bono_yango desde billing,ultima semana cerrada,REAL_OPERATIONAL,TRUE,Bonos Yango recibidos (ingreso flota)
+drive_payout_expense,module_weekly_billing,pago_total desde billing,ultima semana cerrada,REAL_OPERATIONAL,TRUE,Pago a conductores (egreso flota)
+supply_hours_real,ct_fleet_summary_daily,horas_trabajo,sin datos,N/A,FALSE,Tabla vacia para park_id 64085dd... (proxy: billing.horas_trabajo)
+acceptance_rate,summary_daily,tasa_aceptacion,sin datos,N/A,FALSE,0 registros para park_id
+vehicle_driver_assignment,N/A,sin tabla de asignacion,N/A,N/A,FALSE,Solo parcial via module_calculated_shifts.placa (55% cobertura)
+margen_operativo_por_placa,module_calculated_shifts + proxy park_margin,revenue_placa * park_margin_pct,ultimos 30 dias,ESTIMATED,TRUE,Margen estimado (no real por placa individual)
+cierre_diario_coverage,module_driver_closes,COUNT(DISTINCT fecha) vs dias_con_produccion,ultimo periodo,REAL_OPERATIONAL,TRUE,Cobertura de cierres diarios

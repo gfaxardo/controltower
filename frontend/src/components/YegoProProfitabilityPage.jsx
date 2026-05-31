@@ -15,6 +15,19 @@ import {
   getYegoProDiagnosticsPortfolio,
   runYegoProSimulator,
   getYegoProSimulatorDefaults,
+  getYegoProBonusConfig,
+  saveYegoProBonusConfig,
+  resetYegoProBonusConfig,
+  getYegoProBaseline,
+  getYegoProScenarios,
+  saveYegoProScenario,
+  updateYegoProScenario,
+  duplicateYegoProScenario,
+  archiveYegoProScenario,
+  getYegoProOperationalReferences,
+  getYegoProKpiExplainability,
+  getYegoProDriverDrill,
+  getYegoProVehicleDrill,
 } from '../services/api'
 
 const TABS = [
@@ -973,30 +986,51 @@ function DiagShiftsPanel ({ data }) {
 
 function DiagRootCausesPanel ({ data }) {
   const rc = data?.root_causes || []
+  const port = data?.portfolio || {}
+  const totalLoss = Math.abs(port.total_estimated_margin_drivers || 0) + Math.abs(port.total_estimated_margin_vehicles || 0)
   if (rc.length === 0) return <EmptyState tabId="diagnostics" />
 
   return (
     <div className="space-y-4">
+      {totalLoss > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+          <div className="text-xs font-semibold text-red-700">Perdida total: S/ {totalLoss.toLocaleString('es-PE', {minimumFractionDigits: 2})}</div>
+          <div className="text-[10px] text-red-600 mt-1">
+            {rc.filter(c => (c.estimated_impact || 0) < 0).length} causas raiz identificadas.
+            Reconstruible desde drivers + vehiculos + root causes.
+          </div>
+        </div>
+      )}
       <SectionTitle>Principales causas de perdida</SectionTitle>
       <div className="bg-ct-card rounded-lg border border-ct-border overflow-x-auto mt-2">
         <table className="w-full text-xs border-collapse">
           <thead>
             <tr className="border-b border-ct-border bg-gray-50/50">
-              <th className="px-3 py-2 text-left font-medium text-ct-text2">Causa</th>
-              <th className="px-3 py-2 text-right font-medium text-ct-text2">Casos</th>
-              <th className="px-3 py-2 text-right font-medium text-ct-text2">Impacto estimado</th>
-              <th className="px-3 py-2 text-left font-medium text-ct-text2">Severidad</th>
+              <th className="px-2 py-2 text-left font-medium text-ct-text2">Causa</th>
+              <th className="px-2 py-2 text-right font-medium text-ct-text2">Casos</th>
+              <th className="px-2 py-2 text-right font-medium text-ct-text2">Impacto</th>
+              <th className="px-2 py-2 text-right font-medium text-ct-text2">% Perdida</th>
+              <th className="px-2 py-2 text-left font-medium text-ct-text2">Severidad</th>
+              <th className="px-2 py-2 text-left font-medium text-ct-text2">Contribuyentes</th>
             </tr>
           </thead>
           <tbody>
-            {rc.map((c, i) => (
-              <tr key={i} className="border-b border-ct-border/50 hover:bg-ct-surface/50">
-                <td className="px-3 py-2 font-medium text-ct-text">{CAUSE_LABELS[c.cause] || c.cause}</td>
-                <td className="px-3 py-2 text-right">{fmt(c.count, 'number')}</td>
-                <td className="px-3 py-2 text-right"><span className={`font-semibold ${(num(c.estimated_impact) ?? 0) < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{fmt(c.estimated_impact, 'currency')}</span></td>
-                <td className="px-3 py-2"><DiagBadge label={c.severity} colorClass={SEVERITY_COLORS[c.severity] || SEVERITY_COLORS.LOW} /></td>
-              </tr>
-            ))}
+            {rc.map((c, i) => {
+              const lossPct = c.pct_of_total_loss || (totalLoss > 0 ? Math.round(Math.abs(c.estimated_impact || 0) / totalLoss * 100) : 0)
+              const contributors = c.contributors || c.affected_entities?.drivers || c.affected_entities?.vehicles || []
+              return (
+                <tr key={i} className="border-b border-ct-border/50 hover:bg-ct-surface/50">
+                  <td className="px-2 py-2 font-medium text-ct-text">{CAUSE_LABELS[c.cause] || c.cause}</td>
+                  <td className="px-2 py-2 text-right">{fmt(c.count, 'number')}</td>
+                  <td className="px-2 py-2 text-right"><span className={`font-semibold ${(num(c.estimated_impact) ?? 0) < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{fmt(c.estimated_impact, 'currency')}</span></td>
+                  <td className="px-2 py-2 text-right"><span className={`font-semibold ${lossPct > 20 ? 'text-red-600' : 'text-amber-600'}`}>{lossPct}%</span></td>
+                  <td className="px-2 py-2"><DiagBadge label={c.severity} colorClass={SEVERITY_COLORS[c.severity] || SEVERITY_COLORS.LOW} /></td>
+                  <td className="px-2 py-2 text-[10px] text-ct-text3 max-w-[200px] truncate" title={contributors.slice(0, 5).join(', ')}>
+                    {contributors.length > 0 ? `${contributors.length} entidades` : 'N/A'}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
@@ -1994,7 +2028,7 @@ function DiagCountKpi ({ label, value, total, bad }) {
   )
 }
 
-function DiagnosticHeader ({ overview, drivers, vehicles }) {
+function DiagnosticHeader ({ overview, drivers, vehicles, onViewCalculation }) {
   const ov = overview?.summary || overview?.kpis || overview || {}
   const ovFlat = Array.isArray(ov) ? Object.fromEntries(ov.map((k) => [k.key || k.label, k.value])) : ov
 
@@ -2016,7 +2050,10 @@ function DiagnosticHeader ({ overview, drivers, vehicles }) {
 
   return (
     <div className="space-y-2">
-      <SectionTitle>Que esta pasando?</SectionTitle>
+      <div className="flex items-center justify-between">
+        <SectionTitle>Que esta pasando?</SectionTitle>
+        <button type="button" onClick={onViewCalculation} className="text-[10px] text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-1 rounded">Ver calculo</button>
+      </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
         <DiagKpi label="Utilidad neta semanal" value={netWeekly} />
         <DiagKpi label="Utilidad neta mensual est." value={netMonthly} />
@@ -2034,7 +2071,7 @@ function DiagnosticHeader ({ overview, drivers, vehicles }) {
   )
 }
 
-function TopRankedCard ({ title, rows, isLoss }) {
+function TopRankedCard ({ title, rows, isLoss, onDrill }) {
   if (!rows || rows.length === 0) return null
   const profitVal = (r) => num(r.profit ?? r.net_profit ?? r.margin ?? r.result) ?? 0
   const sorted = [...rows].sort((a, b) => isLoss ? profitVal(a) - profitVal(b) : profitVal(b) - profitVal(a))
@@ -2049,7 +2086,7 @@ function TopRankedCard ({ title, rows, isLoss }) {
           return (
             <div key={i} className="px-3 py-1.5 flex items-center gap-2 text-xs">
               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${isLoss ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>{i + 1}</span>
-              <span className="flex-1 truncate font-medium text-ct-text">{idKey(r)}</span>
+              <button type="button" onClick={() => onDrill && onDrill(r)} className="flex-1 truncate font-medium text-ct-text text-left hover:text-ct-accent hover:underline" title="Click para ver detalle">{idKey(r)}</button>
               <span className={`font-semibold ${pv < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{fmt(pv, 'currency')}</span>
               <span className="text-ct-text3 w-16 text-right">{fmt(num(r.revenue), 'currency')}</span>
               <span className="text-ct-text3 w-10 text-right">{fmt(num(r.trips), 'number')}</span>
@@ -2065,15 +2102,15 @@ function TopRankedCard ({ title, rows, isLoss }) {
   )
 }
 
-function DriverLeaderboard ({ drivers }) {
+function DriverLeaderboard ({ drivers, onDrill }) {
   const rows = extractRows(drivers)
   if (rows.length === 0) return null
   return (
     <div className="space-y-2">
       <SectionTitle>Conductores: contribucion al resultado</SectionTitle>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <TopRankedCard title="TOP CONDUCTORES RENTABLES" rows={rows} isLoss={false} />
-        <TopRankedCard title="TOP CONDUCTORES EN PERDIDA" rows={rows} isLoss />
+        <TopRankedCard title="TOP CONDUCTORES RENTABLES" rows={rows} isLoss={false} onDrill={onDrill} />
+        <TopRankedCard title="TOP CONDUCTORES EN PERDIDA" rows={rows} isLoss onDrill={onDrill} />
       </div>
     </div>
   )
@@ -2359,7 +2396,7 @@ function DataConfidence ({ quality, billingWeeks }) {
   )
 }
 
-function OverviewDiagnostic ({ diagData, diagLoading, diagErrors, billingWeeks }) {
+function OverviewDiagnostic ({ diagData, diagLoading, diagErrors, billingWeeks, onViewCalculation, onEntityDrill }) {
   const anyLoading = Object.values(diagLoading).some(Boolean)
   const allDone = Object.values(diagLoading).every((v) => !v)
   const hasAnyData = Object.values(diagData).some((v) => v != null)
@@ -2378,17 +2415,17 @@ function OverviewDiagnostic ({ diagData, diagLoading, diagErrors, billingWeeks }
   return (
     <div className="space-y-4">
       {diagErrors.overview && <SectionError label="resumen" />}
-      <DiagnosticHeader overview={diagData.overview} drivers={diagData.drivers} vehicles={diagData.vehicles} />
+      <DiagnosticHeader overview={diagData.overview} drivers={diagData.drivers} vehicles={diagData.vehicles} onViewCalculation={onViewCalculation} />
 
       {diagData.vehicles ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          <TopRankedCard title="TOP VEHICULOS EN PERDIDA" rows={extractRows(diagData.vehicles)} isLoss />
-          <TopRankedCard title="TOP VEHICULOS RENTABLES" rows={extractRows(diagData.vehicles)} isLoss={false} />
+          <TopRankedCard title="TOP VEHICULOS EN PERDIDA" rows={extractRows(diagData.vehicles)} isLoss onDrill={onEntityDrill} />
+          <TopRankedCard title="TOP VEHICULOS RENTABLES" rows={extractRows(diagData.vehicles)} isLoss={false} onDrill={onEntityDrill} />
         </div>
       ) : diagErrors.vehicles ? <SectionError label="vehiculos" /> : null}
 
       {diagData.drivers ? (
-        <DriverLeaderboard drivers={diagData.drivers} />
+        <DriverLeaderboard drivers={diagData.drivers} onDrill={onEntityDrill} />
       ) : diagErrors.drivers ? <SectionError label="conductores" /> : null}
 
       {diagData.waterfall ? (
@@ -2637,6 +2674,28 @@ export default function YegoProProfitabilityPage () {
   const requestIdRef = useRef(0)
   const forceShowRef = useRef(null)
 
+  const [showKpiCalc, setShowKpiCalc] = useState(false)
+  const [kpiExplain, setKpiExplain] = useState(null)
+  const [kpiExplainLoading, setKpiExplainLoading] = useState(false)
+  const [showEntityDrill, setShowEntityDrill] = useState(false)
+  const [entityDrillData, setEntityDrillData] = useState(null)
+  const [entityDrillLoading, setEntityDrillLoading] = useState(false)
+  const [entityDrillError, setEntityDrillError] = useState(null)
+
+  function handleViewCalculation () {
+    setShowKpiCalc(true)
+    if (!kpiExplain) { setKpiExplainLoading(true); getYegoProKpiExplainability().then(setKpiExplain).catch(()=>{}).finally(()=>setKpiExplainLoading(false)) }
+  }
+  function handleEntityDrill (entity) {
+    const isVeh = !!(entity.vehicle_plate || entity.vehicle_id || entity.vehicle_name)
+    const id = entity.driver_id || entity.vehicle_plate || entity.vehicle_id || entity.id
+    setShowEntityDrill(true); setEntityDrillLoading(true); setEntityDrillData(null); setEntityDrillError(null)
+    const fetcher = isVeh ? getYegoProVehicleDrill : getYegoProDriverDrill
+    fetcher(isVeh ? { plate: entity.vehicle_plate || id } : { driver_id: id })
+      .then(setEntityDrillData).catch(e => setEntityDrillError(e.response?.data?.detail || e.message || 'Error'))
+      .finally(() => setEntityDrillLoading(false))
+  }
+
   useEffect(() => {
     const requestId = ++requestIdRef.current
     if (diagAbortRef.current) diagAbortRef.current.abort()
@@ -2760,7 +2819,7 @@ export default function YegoProProfitabilityPage () {
 
       <div className="min-h-[200px]">
         {activeTab === 'overview' && (
-          <OverviewDiagnostic diagData={diagData} diagLoading={diagLoading} diagErrors={diagErrors} billingWeeks={billingWeeks} />
+          <OverviewDiagnostic diagData={diagData} diagLoading={diagLoading} diagErrors={diagErrors} billingWeeks={billingWeeks} onViewCalculation={handleViewCalculation} onEntityDrill={handleEntityDrill} />
         )}
 
         {activeTab === 'diagnostics' && (
@@ -2792,6 +2851,30 @@ export default function YegoProProfitabilityPage () {
         {activeTab !== 'overview' && activeTab !== 'coverage' && activeTab !== 'diagnostics' && activeTab !== 'simulator' && !tabLoading && !tabError && tabData && renderTabPanel(activeTab, tabData)}
         {activeTab !== 'overview' && activeTab !== 'coverage' && activeTab !== 'diagnostics' && activeTab !== 'simulator' && !tabLoading && !tabError && !tabData && <EmptyState tabId={activeTab} />}
       </div>
+
+      {showKpiCalc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowKpiCalc(false)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto m-4" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b border-ct-border px-4 py-3 flex items-center justify-between rounded-t-xl">
+              <h2 className="text-sm font-bold text-ct-text">Calculo de utilidad semanal</h2>
+              <button type="button" onClick={() => setShowKpiCalc(false)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">&times;</button>
+            </div>
+            <div className="px-4 py-3 space-y-3">
+              {kpiExplainLoading ? <div className="flex items-center justify-center py-8"><div className="w-5 h-5 border-2 border-ct-accent border-t-transparent rounded-full animate-spin" /><span className="ml-2 text-xs text-ct-text3">Cargando explicacion...</span></div>
+              : kpiExplain ? (() => { const np = kpiExplain.explainability?.net_profit_weekly; if (!np) return <div className="text-xs text-ct-text3">Datos no disponibles</div>; return <div className="space-y-3"><div className="flex items-center gap-2"><div className="text-2xl font-bold text-ct-text">S/ {np.value?.toLocaleString('es-PE', {minimumFractionDigits: 2})}</div><span className={`text-xs px-2 py-0.5 rounded font-semibold ${(np.value || 0) < 0 ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>{(np.value || 0) < 0 ? 'PERDIDA' : 'GANANCIA'}</span></div><div className="bg-gray-50 rounded-lg border border-ct-border p-3"><div className="text-[10px] text-ct-text3 mb-1">Formula</div><div className="text-xs font-mono text-ct-text2">{np.formula}</div></div><div><div className="text-xs font-semibold text-ct-text mb-2">Ingresos</div>{np.components.filter(c => c.sign === 'positive').map((c, i) => <div key={i} className="flex justify-between text-xs px-3 py-1.5 bg-emerald-50/30 rounded border border-emerald-100"><div><span className="text-ct-text">{c.label}</span><span className="text-[9px] text-ct-text3 ml-1">({c.source})</span></div><span className="font-semibold text-emerald-600">+S/ {Math.abs(c.value || 0).toLocaleString('es-PE', {minimumFractionDigits: 2})}</span></div>)}</div><div><div className="text-xs font-semibold text-ct-text mb-2">Costos</div>{np.components.filter(c => c.sign === 'negative').map((c, i) => <div key={i} className="flex justify-between text-xs px-3 py-1.5 bg-red-50/30 rounded border border-red-100"><div><span className="text-ct-text">{c.label}</span><span className="text-[9px] text-ct-text3 ml-1">({c.source} — {c.confidence || 'ESTIMATED'})</span></div><span className="font-semibold text-red-600">-S/ {Math.abs(c.value || 0).toLocaleString('es-PE', {minimumFractionDigits: 2})}</span></div>)}</div><div className="bg-blue-50 rounded-lg border border-blue-200 p-3 text-xs"><div className="font-semibold text-blue-800 mb-1">Resumen</div><div className="text-blue-700">{np.source_summary}</div></div>{np.warnings && np.warnings.length > 0 && <div><div className="text-xs font-semibold text-amber-700 mb-1">Advertencias</div>{np.warnings.map((w, i) => <div key={i} className={`text-xs px-3 py-1.5 rounded border ${w.severity === 'HIGH' ? 'bg-red-50 border-red-200 text-red-700' : w.severity === 'MEDIUM' ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-blue-50 border-blue-200 text-blue-700'}`}><span className="font-medium">{w.severity}</span>: {w.message}</div>)}</div>}<div className="text-[10px] text-ct-text3">Confianza: <span className={`font-semibold ${np.confidence === 'HIGH' ? 'text-emerald-600' : 'text-amber-600'}`}>{np.confidence}</span>{kpiExplain.data_quality_flags?.has_estimations && <span className="ml-2 text-amber-600">Estimaciones usadas. <button type="button" onClick={() => { setShowKpiCalc(false); setActiveTab('quality') }} className="ml-1 text-blue-600 hover:underline">Ver Calidad</button></span>}</div></div> })() : <div className="text-xs text-ct-text3 py-4 text-center">No se pudo cargar la explicacion de KPIs.</div>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEntityDrill && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowEntityDrill(false)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto m-4" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b border-ct-border px-4 py-3 flex items-center justify-between rounded-t-xl"><h2 className="text-sm font-bold text-ct-text">Como se calculo</h2><button type="button" onClick={() => setShowEntityDrill(false)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">&times;</button></div>
+            <div className="px-4 py-3">{entityDrillLoading ? <div className="flex items-center justify-center py-8"><div className="w-5 h-5 border-2 border-ct-accent border-t-transparent rounded-full animate-spin" /><span className="ml-2 text-xs text-ct-text3">Cargando...</span></div> : entityDrillError ? <div className="text-xs text-red-600 bg-red-50 p-3 rounded">{entityDrillError}</div> : entityDrillData ? (() => { const c = entityDrillData.calculation; if (!c) return <div className="text-xs">Sin datos</div>; const name = c.driver_name || c.plate || c.driver_id || 'Entidad'; const p = c.result?.estimated_profit ?? c.result?.profit ?? 0; return <div className="space-y-3"><div className="flex items-center gap-2"><div className="text-lg font-bold">{name}</div><span className={`text-xs px-2 py-0.5 rounded font-semibold ${p >= 0 ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>{p >= 0 ? 'GANANCIA' : 'PERDIDA'}</span></div>{c.income && <div><div className="text-xs font-semibold mb-1">Ingresos</div><div className="space-y-0.5 text-[11px]">{c.income.revenue_gross != null && <div className="flex justify-between"><span className="text-ct-text3">Revenue bruto</span><span className="font-semibold">{fmt(c.income.revenue_gross, 'currency')}</span></div>}{c.income.platform_commission != null && <div className="flex justify-between"><span className="text-ct-text3">Comision</span><span className="text-red-600">-{fmt(c.income.platform_commission, 'currency')}</span></div>}{c.income.bono_yango > 0 && <div className="flex justify-between"><span className="text-ct-text3">Bono Yango</span><span className="text-emerald-600">+{fmt(c.income.bono_yango, 'currency')}</span></div>}</div></div>}{c.costs && <div><div className="text-xs font-semibold mb-1">Costos</div><div className="space-y-0.5 text-[11px]">{c.costs.fuel_cost != null && <div className="flex justify-between"><span className="text-ct-text3">Combustible</span><span className="text-red-600">-{fmt(c.costs.fuel_cost, 'currency')}</span></div>}{c.costs.maintenance_cost != null && <div className="flex justify-between"><span className="text-ct-text3">Mantenimiento</span><span className="text-red-600">-{fmt(c.costs.maintenance_cost, 'currency')}</span></div>}</div></div>}{c.costs_estimated && <div><div className="text-xs font-semibold mb-1">Costos est</div><div className="space-y-0.5 text-[11px]">{c.costs_estimated.total_cost_estimated != null && <div className="flex justify-between border-t pt-0.5"><span className="text-ct-text3">Total</span><span className="font-bold">-{fmt(c.costs_estimated.total_cost_estimated, 'currency')}</span></div>}</div></div>}{c.driver_payment && <div><div className="text-xs font-semibold mb-1">Pago conductor</div><div className="space-y-0.5 text-[11px]">{c.driver_payment.payout_pct != null && <div className="flex justify-between"><span className="text-ct-text3">% Payout</span><span>{c.driver_payment.payout_pct}%</span></div>}{c.driver_payment.payout_amount != null && <div className="flex justify-between"><span className="text-ct-text3">Monto</span><span className="text-red-600">-{fmt(c.driver_payment.payout_amount, 'currency')}</span></div>}</div></div>}{c.operational && <div className="grid grid-cols-3 gap-1 text-[10px]">{c.operational.trips != null && <div className="bg-gray-50 rounded px-2 py-1"><span className="text-ct-text3">Viajes </span><span className="font-semibold">{c.operational.trips}</span></div>}{c.operational.hours != null && <div className="bg-gray-50 rounded px-2 py-1"><span className="text-ct-text3">Horas </span><span className="font-semibold">{c.operational.hours}</span></div>}</div>}<div className={`text-sm font-bold rounded-lg border p-3 text-center ${p >= 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700'}`}>Resultado: S/ {p.toLocaleString('es-PE', {minimumFractionDigits: 2})}</div>{c.explanation && <div className="bg-blue-50 rounded border border-blue-200 p-2 text-xs text-blue-800">{c.explanation}</div>}{c.confidence && <div className="text-[10px] text-ct-text3">Confianza: <span className={`font-semibold ${c.confidence === 'HIGH' ? 'text-emerald-600' : 'text-amber-600'}`}>{c.confidence}</span></div>}</div> })() : null}</div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

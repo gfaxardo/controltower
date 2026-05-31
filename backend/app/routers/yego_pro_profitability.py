@@ -27,6 +27,20 @@ from app.services.yego_pro_profitability_service import (
     get_diagnostics_portfolio,
     run_simulator,
     get_simulator_defaults,
+    get_bonus_config,
+    save_bonus_config,
+    reset_bonus_config_to_defaults,
+    get_baseline_scenario,
+    list_scenarios,
+    save_scenario,
+    update_scenario,
+    duplicate_scenario,
+    archive_scenario,
+    get_operational_baseline,
+    get_kpi_explainability,
+    get_operational_references_real,
+    get_driver_drill,
+    get_vehicle_drill,
     PARK_ID,
 )
 
@@ -209,3 +223,153 @@ def simulator_defaults():
     para inicializar el Simulator UI.
     """
     return get_simulator_defaults()
+
+
+@router.get("/simulator/bonus-config")
+def bonus_config_get(
+    park_id: str = Query(default=PARK_ID, description="Park ID"),
+    config_name: str = Query(default="default", description="Config name"),
+):
+    """
+    P1.4.4: Lee configuracion de bonos persistida.
+    Si no existe en PostgreSQL devuelve defaults hardcodeados con status NOT_PERSISTED.
+    """
+    return get_bonus_config(park_id=park_id, config_name=config_name)
+
+
+@router.post("/simulator/bonus-config")
+def bonus_config_save(payload: dict = Body(...)):
+    """
+    P1.4.4: Guarda nueva version de configuracion de bonos.
+    Desactiva configs activas anteriores e inserta las nuevas filas.
+    Valida bonus_type, trips_min > 0, bonus_pct >= 0, bonus_amount >= 0.
+    """
+    park_id = payload.get("park_id", PARK_ID)
+    return save_bonus_config(park_id=park_id, payload=payload)
+
+
+@router.post("/simulator/bonus-config/reset")
+def bonus_config_reset(payload: dict = Body(...)):
+    """
+    P1.4.4: Restaura defaults como nueva version activa.
+    No borra historico.
+    """
+    park_id = payload.get("park_id", PARK_ID)
+    config_name = payload.get("config_name", "default")
+    return reset_bonus_config_to_defaults(park_id=park_id, config_name=config_name)
+
+
+@router.get("/simulator/baseline")
+def simulator_baseline(
+    park_id: str = Query(default=PARK_ID, description="Park ID"),
+):
+    """
+    P1.4.5A: Escenario baseline "OPERACION REAL" calculado desde
+    datos operativos reales (module_weekly_billing, trips_2026,
+    module_calculated_shifts, bonus config persistida).
+    """
+    return get_baseline_scenario(park_id=park_id)
+
+
+@router.get("/simulator/scenarios")
+def scenarios_list(
+    park_id: str = Query(default=PARK_ID, description="Park ID"),
+    include_archived: bool = Query(default=False, description="Include archived scenarios"),
+):
+    """
+    P1.4.5A: Lista escenarios guardados del Simulator.
+    """
+    return list_scenarios(park_id=park_id, include_archived=include_archived)
+
+
+@router.post("/simulator/scenarios")
+def scenarios_save(payload: dict = Body(...)):
+    """
+    P1.4.5A: Guarda un nuevo escenario.
+    Recibe: scenario_name, scenario_type, inputs, outputs, calculation_trace, etc.
+    """
+    park_id = payload.get("park_id", PARK_ID)
+    return save_scenario(park_id=park_id, payload=payload)
+
+
+@router.patch("/simulator/scenarios/{scenario_id}")
+def scenarios_update(scenario_id: int, payload: dict = Body(...)):
+    """
+    P1.4.5A: Actualiza campos de un escenario (nombre, favorito, archivado, etc.).
+    Baselines solo permiten modificar nombre e is_favorite.
+    """
+    return update_scenario(scenario_id=scenario_id, payload=payload)
+
+
+@router.post("/simulator/scenarios/{scenario_id}/duplicate")
+def scenarios_duplicate(scenario_id: int, payload: dict = Body(...)):
+    """
+    P1.4.5A: Duplica un escenario existente.
+    """
+    new_name = payload.get("scenario_name")
+    return duplicate_scenario(scenario_id=scenario_id, new_name=new_name)
+
+
+@router.post("/simulator/scenarios/{scenario_id}/archive")
+def scenarios_archive(scenario_id: int):
+    """
+    P1.4.5A: Archiva un escenario (soft-delete).
+    """
+    return archive_scenario(scenario_id=scenario_id)
+
+
+@router.get("/simulator/operational-baseline")
+def simulator_operational_baseline(
+    park_id: str = Query(default=PARK_ID, description="Park ID para baseline operativo"),
+):
+    """
+    P2.2.1: Baseline operativo con datos reales de produccion, costos y KPIs.
+    Devuelve inputs con referencia operativa real, financial_summary y missing_inputs.
+    """
+    return get_operational_baseline(park_id=park_id)
+
+
+@router.get("/simulator/operational-references")
+def simulator_operational_references(
+    park_id: str = Query(default=PARK_ID, description="Park ID"),
+):
+    """
+    P2.2.1: Referencias operativas reales para cada input del Simulator.
+    Devuelve value, source, confidence, period para cada input editable.
+    """
+    return get_operational_references_real(park_id=park_id)
+
+
+@router.get("/kpi-explainability")
+def kpi_explainability(
+    park_id: str = Query(default=PARK_ID, description="Park ID"),
+):
+    """
+    P2.2.1: Explicacion de KPIs financieros clave.
+    Incluye formula, componentes, fuentes y confianza para cada KPI ejecutivo.
+    """
+    return get_kpi_explainability(park_id=park_id)
+
+
+@router.get("/driver-drill")
+def driver_drill(
+    park_id: str = Query(default=PARK_ID, description="Park ID"),
+    driver_id: str = Query(..., description="Driver ID"),
+):
+    """
+    P2.2.2: Drill-down por conductor.
+    Devuelve desglose completo de ingresos, costos, pago y resultado por conductor.
+    """
+    return get_driver_drill(park_id=park_id, driver_id=driver_id)
+
+
+@router.get("/vehicle-drill")
+def vehicle_drill(
+    park_id: str = Query(default=PARK_ID, description="Park ID"),
+    plate: str = Query(..., description="Placa del vehiculo"),
+):
+    """
+    P2.2.2: Drill-down por vehiculo.
+    Devuelve desglose completo de ingresos, costos, pago y resultado por placa.
+    """
+    return get_vehicle_drill(park_id=park_id, plate=plate)

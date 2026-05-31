@@ -198,6 +198,12 @@ export const getOmniviewFreshnessGovernance = async ({ signal } = {}) => {
   return response.data
 }
 
+/** Refresh Remediation Control: ejecuta recarga day_fact + week_fact + month_fact. */
+export const postOmniviewRefresh = async (force = true) => {
+  const response = await api.post('/ops/omniview/refresh', null, { params: { force }, timeout: 300000 })
+  return response.data
+}
+
 /**
  * FASE 1.1 — Ownership Serving Monthly.
  * Devuelve métricas plan vs real agrupadas por Jefe Producto.
@@ -1270,6 +1276,31 @@ export const duplicateYegoProScenario = async (id, payload = {}) => {
 
 export const archiveYegoProScenario = async (id) => {
   const response = await api.post(`/fleet-project/yego-pro/profitability/simulator/scenarios/${id}/archive`, {}, { timeout: 15000 })
+  return response.data
+}
+
+export const getYegoProOperationalBaseline = async (params = {}) => {
+  const response = await api.get('/fleet-project/yego-pro/profitability/simulator/operational-baseline', { params, timeout: 30000 })
+  return response.data
+}
+
+export const getYegoProOperationalReferences = async (params = {}) => {
+  const response = await api.get('/fleet-project/yego-pro/profitability/simulator/operational-references', { params, timeout: 30000 })
+  return response.data
+}
+
+export const getYegoProKpiExplainability = async (params = {}) => {
+  const response = await api.get('/fleet-project/yego-pro/profitability/kpi-explainability', { params, timeout: 30000 })
+  return response.data
+}
+
+export const getYegoProDriverDrill = async (params = {}) => {
+  const response = await api.get('/fleet-project/yego-pro/profitability/driver-drill', { params, timeout: 30000 })
+  return response.data
+}
+
+export const getYegoProVehicleDrill = async (params = {}) => {
+  const response = await api.get('/fleet-project/yego-pro/profitability/vehicle-drill', { params, timeout: 30000 })
   return response.data
 }
 
