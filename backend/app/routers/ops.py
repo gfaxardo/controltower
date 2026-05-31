@@ -42,6 +42,9 @@ from app.services.serving_governance_service import (
     detect_runtime_risk,
     compute_serving_integrity,
 )
+from app.services.omniview_freshness_governance_service import (
+    get_omniview_freshness_governance,
+)
 from app.services.business_slice_real_freshness_service import (
     get_omniview_business_slice_real_freshness,
 )
@@ -638,6 +641,19 @@ async def business_slice_real_freshness_endpoint():
         return sanitize_for_json(get_omniview_business_slice_real_freshness())
     except Exception as e:
         logger.exception("business-slice/real-freshness")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/omniview/freshness")
+async def omniview_freshness_governance_endpoint():
+    """
+    Omniview Freshness Governance: RAW → day_fact → week_fact → month_fact → projection.
+    Status: ok / warning / blocked. Remediation copy incluida.
+    """
+    try:
+        return sanitize_for_json(get_omniview_freshness_governance())
+    except Exception as e:
+        logger.exception("omniview/freshness")
         raise HTTPException(status_code=500, detail=str(e))
 
 

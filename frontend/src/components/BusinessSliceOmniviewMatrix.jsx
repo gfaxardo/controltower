@@ -44,6 +44,7 @@ import {
   resolveMainIssueCellTarget,
   findCurrentPeriodIndex,
   getCurrentPeriodKey,
+  periodKey,
 } from './omniview/omniviewMatrixUtils.js'
 import { resolveCurrentPeriodIndex, calculateScrollTarget } from '../utils/currentPeriodFocusEngine.js'
 import BusinessSliceOmniviewMatrixTable from './BusinessSliceOmniviewMatrixTable.jsx'
@@ -57,6 +58,7 @@ import { INSIGHT_CONFIG } from './omniview/insightConfig.js'
 import OmniviewPriorityPanel from './OmniviewPriorityPanel.jsx'
 import OmniviewProjectionDrill from './OmniviewProjectionDrill.jsx'
 import OperationalPriorityLayer from './omniview/priority/OperationalPriorityLayer.jsx'
+import OmniviewFreshnessGovernanceCard from './omniview/freshness/OmniviewFreshnessGovernanceCard.jsx'
 import BusinessSliceInsightsPanel from './BusinessSliceInsightsPanel.jsx'
 import BusinessSliceInsightSettings from './BusinessSliceInsightSettings.jsx'
 import MatrixExecutiveBanner from './MatrixExecutiveBanner.jsx'
@@ -897,6 +899,30 @@ export default function BusinessSliceOmniviewMatrix () {
 
   const projMatrix = useMemo(() => isProjectionMode ? buildProjectionMatrix(projectionRows, grain) : null, [projectionRows, grain, isProjectionMode])
 
+  const periodInfoMap = useMemo(() => {
+    if (!isProjectionMode || !projectionRows?.length) return null
+    const map = new Map()
+    for (const row of projectionRows) {
+      const pk = periodKey(row, grain)
+      if (!pk) continue
+      if (map.has(pk)) continue
+      const weekState = row.week_state || null
+      const comparisonBasis = row.trips_completed_comparison_basis
+        || row.revenue_yego_net_comparison_basis
+        || row.active_drivers_comparison_basis
+        || row.avg_ticket_comparison_basis
+        || row.trips_per_driver_comparison_basis
+        || null
+      const hasReal = (
+        (Number(row.trips_completed) || 0) > 0 ||
+        (Number(row.revenue_yego_net) || 0) > 0 ||
+        (Number(row.active_drivers) || 0) > 0
+      )
+      map.set(pk, { weekState, comparisonBasis, hasReal })
+    }
+    return map
+  }, [isProjectionMode, projectionRows, grain])
+
   useEffect(() => {
     if (!import.meta.env.DEV) return
     const debugOn = typeof window !== 'undefined' && window.location?.search?.includes('debugOmniview=1')
@@ -1097,10 +1123,11 @@ export default function BusinessSliceOmniviewMatrix () {
       allPeriods: displayProjMatrix.allPeriods,
       grain,
       projectionMeta,
+      periodInfoMap,
       selectedKpi: focusedKpi,
       kpiFreshness: projectionMeta?.kpi_freshness || null,
     })
-  }, [isProjectionMode, displayProjMatrix?.allPeriods, grain, projectionMeta, focusedKpi])
+  }, [isProjectionMode, displayProjMatrix?.allPeriods, grain, projectionMeta, focusedKpi, periodInfoMap])
 
   const operationalCurrentPeriodKey = useMemo(() => {
     if (isProjectionMode && closedPeriodAnchor?.anchorPeriodKey) {
@@ -1785,6 +1812,11 @@ export default function BusinessSliceOmniviewMatrix () {
 
         {!focusMode && heavyQueriesEnabled && isProjectionMode && projectionReady && projectionMeta && (
           <OperationalOpportunitiesSummary projectionMeta={projectionMeta} compact={compact} />
+        )}
+
+        {/* ── Freshness Governance (CF-H1D) ──────────────────── */}
+        {!focusMode && heavyQueriesEnabled && isProjectionMode && (
+          <OmniviewFreshnessGovernanceCard compact={compact} />
         )}
 
         {/* ── Context bar (Vs Proyección) ─────────────────────── */}

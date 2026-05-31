@@ -193,6 +193,11 @@ export const getOmniviewProjection = async (params = {}, { signal } = {}) => {
   return response.data
 }
 
+export const getOmniviewFreshnessGovernance = async ({ signal } = {}) => {
+  const response = await api.get('/ops/omniview/freshness', { signal })
+  return response.data
+}
+
 /**
  * FASE 1.1 — Ownership Serving Monthly.
  * Devuelve métricas plan vs real agrupadas por Jefe Producto.
@@ -1220,6 +1225,51 @@ export const runYegoProSimulator = async (payload) => {
 
 export const getYegoProSimulatorDefaults = async () => {
   const response = await api.get('/fleet-project/yego-pro/profitability/simulator/defaults', { timeout: 15000 })
+  return response.data
+}
+
+export const getYegoProBonusConfig = async (params = {}) => {
+  const response = await api.get('/fleet-project/yego-pro/profitability/simulator/bonus-config', { params, timeout: 15000 })
+  return response.data
+}
+
+export const saveYegoProBonusConfig = async (payload) => {
+  const response = await api.post('/fleet-project/yego-pro/profitability/simulator/bonus-config', payload, { timeout: 15000 })
+  return response.data
+}
+
+export const resetYegoProBonusConfig = async (payload = {}) => {
+  const response = await api.post('/fleet-project/yego-pro/profitability/simulator/bonus-config/reset', payload, { timeout: 15000 })
+  return response.data
+}
+
+export const getYegoProBaseline = async (params = {}) => {
+  const response = await api.get('/fleet-project/yego-pro/profitability/simulator/baseline', { params, timeout: 30000 })
+  return response.data
+}
+
+export const getYegoProScenarios = async (params = {}) => {
+  const response = await api.get('/fleet-project/yego-pro/profitability/simulator/scenarios', { params, timeout: 15000 })
+  return response.data
+}
+
+export const saveYegoProScenario = async (payload) => {
+  const response = await api.post('/fleet-project/yego-pro/profitability/simulator/scenarios', payload, { timeout: 15000 })
+  return response.data
+}
+
+export const updateYegoProScenario = async (id, payload) => {
+  const response = await api.patch(`/fleet-project/yego-pro/profitability/simulator/scenarios/${id}`, payload, { timeout: 15000 })
+  return response.data
+}
+
+export const duplicateYegoProScenario = async (id, payload = {}) => {
+  const response = await api.post(`/fleet-project/yego-pro/profitability/simulator/scenarios/${id}/duplicate`, payload, { timeout: 15000 })
+  return response.data
+}
+
+export const archiveYegoProScenario = async (id) => {
+  const response = await api.post(`/fleet-project/yego-pro/profitability/simulator/scenarios/${id}/archive`, {}, { timeout: 15000 })
   return response.data
 }
 
