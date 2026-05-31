@@ -681,7 +681,7 @@ function DiagPortfolioPanel ({ data }) {
             {p.top5_losses.map((item, i) => (
               <div key={i} className="px-3 py-2 flex items-center gap-3 text-xs">
                 <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold bg-red-100 text-red-700">{i + 1}</span>
-                <span className="flex-1 truncate font-medium text-ct-text font-mono text-[10px]">{item.entity_id?.slice(0, 16)}...</span>
+                <span className="flex-1 truncate font-medium text-ct-text text-[11px]">{item.entity_name || item.entity_id?.slice(0, 12) || '?'}</span>
                 <DiagBadge label={item.entity_type} colorClass="bg-gray-100 text-gray-600" />
                 <span className="text-red-600 font-semibold w-24 text-right">{fmt(item.impact_amount, 'currency')}</span>
                 <DiagBadge label={CAUSE_LABELS[item.main_driver] || item.main_driver} colorClass={SEVERITY_COLORS[item.severity] || SEVERITY_COLORS.LOW} />
@@ -698,7 +698,7 @@ function DiagPortfolioPanel ({ data }) {
             {p.top5_gains.map((item, i) => (
               <div key={i} className="px-3 py-2 flex items-center gap-3 text-xs">
                 <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold bg-emerald-100 text-emerald-700">{i + 1}</span>
-                <span className="flex-1 truncate font-medium text-ct-text font-mono text-[10px]">{item.entity_id?.slice(0, 16)}...</span>
+                <span className="flex-1 truncate font-medium text-ct-text text-[11px]">{item.entity_name || item.entity_id?.slice(0, 12) || '?'}</span>
                 <span className="text-emerald-600 font-semibold w-24 text-right">{fmt(item.impact_amount, 'currency')}</span>
               </div>
             ))}
@@ -1055,8 +1055,15 @@ function DiagRootCausesPanel ({ data }) {
           }
           return (
             <div key={i} className="border-l-4 border-l-red-500 bg-red-50/40 rounded-r px-3 py-2 text-xs text-ct-text">
-              <span className="font-medium">{CAUSE_LABELS[c.cause] || c.cause}: </span>
-              {causeExplanations[c.cause] || 'Causa de perdida detectada.'} ({c.count} caso{c.count !== 1 ? 's' : ''}, impacto: {fmt(c.estimated_impact, 'currency')})
+              <div className="flex items-center gap-2">
+                <span className="font-medium">{CAUSE_LABELS[c.cause] || c.cause}</span>
+                <span className="text-[10px] bg-red-100 text-red-600 px-1 rounded font-semibold">{lossPct}% de la perdida</span>
+              </div>
+              <div className="text-[10px] text-ct-text2 mt-0.5">{causeExplanations[c.cause] || 'Causa de perdida detectada.'} ({c.count} caso{c.count !== 1 ? 's' : ''}, impacto: {fmt(c.estimated_impact, 'currency')})</div>
+              {c.rule && <div className="mt-1 text-[9px] text-ct-text3"><span className="font-medium">Regla:</span> {c.rule}</div>}
+              {contributors.length > 0 && (
+                <div className="mt-1 text-[9px] text-ct-text3"><span className="font-medium">Afectados:</span> {contributors.slice(0, 8).map((id) => (id || '').slice(0, 12)).join(', ')}{contributors.length > 8 ? ` +${contributors.length - 8} mas` : ''}</div>
+              )}
             </div>
           )
         })}
@@ -2677,6 +2684,7 @@ export default function YegoProProfitabilityPage () {
   const [showKpiCalc, setShowKpiCalc] = useState(false)
   const [kpiExplain, setKpiExplain] = useState(null)
   const [kpiExplainLoading, setKpiExplainLoading] = useState(false)
+  const [kpiCalcTab, setKpiCalcTab] = useState('net_profit_weekly')
   const [showEntityDrill, setShowEntityDrill] = useState(false)
   const [entityDrillData, setEntityDrillData] = useState(null)
   const [entityDrillLoading, setEntityDrillLoading] = useState(false)
@@ -2856,12 +2864,53 @@ export default function YegoProProfitabilityPage () {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowKpiCalc(false)}>
           <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto m-4" onClick={(e) => e.stopPropagation()}>
             <div className="sticky top-0 bg-white border-b border-ct-border px-4 py-3 flex items-center justify-between rounded-t-xl">
-              <h2 className="text-sm font-bold text-ct-text">Calculo de utilidad semanal</h2>
+              <h2 className="text-sm font-bold text-ct-text">Como se calculo</h2>
               <button type="button" onClick={() => setShowKpiCalc(false)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">&times;</button>
             </div>
-            <div className="px-4 py-3 space-y-3">
-              {kpiExplainLoading ? <div className="flex items-center justify-center py-8"><div className="w-5 h-5 border-2 border-ct-accent border-t-transparent rounded-full animate-spin" /><span className="ml-2 text-xs text-ct-text3">Cargando explicacion...</span></div>
-              : kpiExplain ? (() => { const np = kpiExplain.explainability?.net_profit_weekly; if (!np) return <div className="text-xs text-ct-text3">Datos no disponibles</div>; return <div className="space-y-3"><div className="flex items-center gap-2"><div className="text-2xl font-bold text-ct-text">S/ {np.value?.toLocaleString('es-PE', {minimumFractionDigits: 2})}</div><span className={`text-xs px-2 py-0.5 rounded font-semibold ${(np.value || 0) < 0 ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>{(np.value || 0) < 0 ? 'PERDIDA' : 'GANANCIA'}</span></div><div className="bg-gray-50 rounded-lg border border-ct-border p-3"><div className="text-[10px] text-ct-text3 mb-1">Formula</div><div className="text-xs font-mono text-ct-text2">{np.formula}</div></div><div><div className="text-xs font-semibold text-ct-text mb-2">Ingresos</div>{np.components.filter(c => c.sign === 'positive').map((c, i) => <div key={i} className="flex justify-between text-xs px-3 py-1.5 bg-emerald-50/30 rounded border border-emerald-100"><div><span className="text-ct-text">{c.label}</span><span className="text-[9px] text-ct-text3 ml-1">({c.source})</span></div><span className="font-semibold text-emerald-600">+S/ {Math.abs(c.value || 0).toLocaleString('es-PE', {minimumFractionDigits: 2})}</span></div>)}</div><div><div className="text-xs font-semibold text-ct-text mb-2">Costos</div>{np.components.filter(c => c.sign === 'negative').map((c, i) => <div key={i} className="flex justify-between text-xs px-3 py-1.5 bg-red-50/30 rounded border border-red-100"><div><span className="text-ct-text">{c.label}</span><span className="text-[9px] text-ct-text3 ml-1">({c.source} — {c.confidence || 'ESTIMATED'})</span></div><span className="font-semibold text-red-600">-S/ {Math.abs(c.value || 0).toLocaleString('es-PE', {minimumFractionDigits: 2})}</span></div>)}</div><div className="bg-blue-50 rounded-lg border border-blue-200 p-3 text-xs"><div className="font-semibold text-blue-800 mb-1">Resumen</div><div className="text-blue-700">{np.source_summary}</div></div>{np.warnings && np.warnings.length > 0 && <div><div className="text-xs font-semibold text-amber-700 mb-1">Advertencias</div>{np.warnings.map((w, i) => <div key={i} className={`text-xs px-3 py-1.5 rounded border ${w.severity === 'HIGH' ? 'bg-red-50 border-red-200 text-red-700' : w.severity === 'MEDIUM' ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-blue-50 border-blue-200 text-blue-700'}`}><span className="font-medium">{w.severity}</span>: {w.message}</div>)}</div>}<div className="text-[10px] text-ct-text3">Confianza: <span className={`font-semibold ${np.confidence === 'HIGH' ? 'text-emerald-600' : 'text-amber-600'}`}>{np.confidence}</span>{kpiExplain.data_quality_flags?.has_estimations && <span className="ml-2 text-amber-600">Estimaciones usadas. <button type="button" onClick={() => { setShowKpiCalc(false); setActiveTab('quality') }} className="ml-1 text-blue-600 hover:underline">Ver Calidad</button></span>}</div></div> })() : <div className="text-xs text-ct-text3 py-4 text-center">No se pudo cargar la explicacion de KPIs.</div>}
+            <div className="px-4 py-3">
+              {kpiExplainLoading ? <div className="flex items-center justify-center py-8"><div className="w-5 h-5 border-2 border-ct-accent border-t-transparent rounded-full animate-spin" /><span className="ml-2 text-xs text-ct-text3">Cargando...</span></div>
+              : kpiExplain && kpiExplain.explainability ? (() => {
+                const ex = kpiExplain.explainability
+                const kpiKeys = Object.keys(ex)
+                const sel = kpiCalcTab
+                const kp = ex[sel]
+                return (
+                  <div className="space-y-3">
+                    <div className="flex gap-1 flex-wrap border-b border-ct-border/30 pb-2">
+                      {kpiKeys.map(k => (
+                        <button key={k} type="button" onClick={() => setKpiCalcTab(k)}
+                          className={`text-[10px] px-2 py-0.5 rounded ${sel === k ? 'bg-ct-accent text-white' : 'bg-gray-100 text-ct-text2 hover:bg-gray-200'}`}>
+                          {k === 'net_profit_weekly' ? 'Utilidad' : k === 'revenue_weekly' ? 'Revenue' : k === 'yango_bonus_income' ? 'Bonos Yango' : k === 'platform_commission' ? 'Comision' : k === 'fuel_cost' ? 'Combustible' : k === 'maintenance_cost' ? 'Mantenimiento' : k === 'driver_payout' ? 'Pago conductor' : k === 'margin_pct' ? 'Margen' : k}
+                        </button>
+                      ))}
+                    </div>
+                    {kp ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <div className="text-2xl font-bold text-ct-text">{typeof kp.value === 'number' ? `S/ ${kp.value.toLocaleString('es-PE', {minimumFractionDigits: 2})}` : kp.value}</div>
+                        </div>
+                        <div className="bg-gray-50 rounded-lg border border-ct-border p-3"><div className="text-[10px] text-ct-text3 mb-1">Formula</div><div className="text-xs font-mono text-ct-text2 break-all">{kp.formula}</div></div>
+                        {kp.components && kp.components.length > 0 && (
+                          <div>
+                            <div className="text-xs font-semibold text-ct-text mb-2">Componentes</div>
+                            <div className="space-y-1">
+                              {kp.components.map((c, i) => (
+                                <div key={i} className={`flex justify-between text-xs px-3 py-1.5 rounded border ${c.sign === 'positive' ? 'bg-emerald-50/30 border-emerald-100' : c.sign === 'negative' ? 'bg-red-50/30 border-red-100' : 'bg-gray-50/30 border-gray-100'}`}>
+                                  <div><span className="text-ct-text">{c.label}</span><span className="text-[9px] text-ct-text3 ml-1">({c.source} {c.confidence ? `— ${c.confidence}` : ''})</span></div>
+                                  <span className={`font-semibold ${c.sign === 'positive' ? 'text-emerald-600' : c.sign === 'negative' ? 'text-red-600' : 'text-ct-text'}`}>{c.sign === 'positive' ? '+' : c.sign === 'negative' ? '-' : ''}S/ {Math.abs(c.value || 0).toLocaleString('es-PE', {minimumFractionDigits: 2})}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {kp.source_summary && <div className="bg-blue-50 rounded-lg border border-blue-200 p-3 text-xs"><div className="font-semibold text-blue-800 mb-1">Fuente</div><div className="text-blue-700">{kp.source_summary}</div></div>}
+                        {kp.warnings && kp.warnings.length > 0 && <div><div className="text-xs font-semibold text-amber-700 mb-1">Advertencias</div><div className="space-y-1">{kp.warnings.map((w, i) => <div key={i} className={`text-xs px-3 py-1.5 rounded border ${w.severity === 'HIGH' ? 'bg-red-50 border-red-200 text-red-700' : w.severity === 'MEDIUM' ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-blue-50 border-blue-200 text-blue-700'}`}><span className="font-medium">{w.severity}</span>: {w.message}</div>)}</div></div>}
+                        <div className="text-[10px] text-ct-text3 flex items-center gap-3"><span>Confianza: <span className={`font-semibold ${kp.confidence === 'HIGH' ? 'text-emerald-600' : 'text-amber-600'}`}>{kp.confidence}</span></span>{kpiExplain.data_quality_flags?.has_estimations && <span className="text-amber-600">Estimaciones usadas. <button type="button" onClick={() => { setShowKpiCalc(false); setActiveTab('quality') }} className="ml-1 text-blue-600 hover:underline">Ver Calidad</button></span>}</div>
+                      </div>
+                    ) : <div className="text-xs text-ct-text3 py-4 text-center">KPI no disponible</div>}
+                  </div>
+                )
+              })() : <div className="text-xs text-ct-text3 py-4 text-center">No se pudo cargar la explicacion de KPIs.</div>}
             </div>
           </div>
         </div>

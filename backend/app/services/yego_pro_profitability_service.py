@@ -1660,6 +1660,7 @@ def get_diagnostics_portfolio(park_id: str = PARK_ID) -> Dict[str, Any]:
             return {
                 "entity_type": item.get("entity_type"),
                 "entity_id": item.get("entity_id"),
+                "entity_name": (item.get("evidence", {}) or {}).get("driver_name") or item.get("entity_id"),
                 "impact_amount": item.get("impact_amount"),
                 "status": item.get("status"),
                 "main_driver": item.get("main_driver"),
@@ -1735,6 +1736,23 @@ def get_diagnostics_portfolio(park_id: str = PARK_ID) -> Dict[str, Any]:
                         "drivers": [d.get("entity_id") for d in d_list if d.get("main_driver") == c],
                         "vehicles": [v.get("entity_id") for v in v_list if v.get("main_driver") == c],
                     },
+                    "rule": {
+                        "LOW_TRIPS": f"Viajes < {DIAG_DRIVER_THRESHOLDS['LOW_TRIPS_ABS']} abs o < {DIAG_DRIVER_THRESHOLDS['LOW_TRIPS_REL']*100}% del promedio",
+                        "LOW_TICKET": f"Ticket < {DIAG_DRIVER_THRESHOLDS['LOW_TICKET_REL']*100}% del promedio del parque",
+                        "HIGH_KM_PER_TRIP": f"Km/viaje > {DIAG_DRIVER_THRESHOLDS['HIGH_KM_PER_TRIP_REL']*100}% del promedio",
+                        "HIGH_COST_PER_TRIP": f"Costo/viaje > {DIAG_DRIVER_THRESHOLDS['HIGH_COST_PER_TRIP_REL']*100}% del ingreso/viaje",
+                        "HIGH_PAYOUT_RATIO": f"Payout > {DIAG_DRIVER_THRESHOLDS['HIGH_PAYOUT_RATIO']*100}%",
+                        "LOW_MARGIN": f"Margen < {DIAG_DRIVER_THRESHOLDS['LOW_MARGIN_PCT']*100}%",
+                        "MISSING_CLOSE": "Sin cierres diarios en module_driver_closes",
+                        "MISSING_PLATE": "Sin placa en module_calculated_shifts",
+                        "LOW_UTILIZATION": f"Dias activos < {DIAG_VEHICLE_THRESHOLDS['LOW_UTILIZATION_DAYS']} por semana",
+                        "LOW_REVENUE_PER_DAY": f"Revenue/dia < S/ {DIAG_VEHICLE_THRESHOLDS['LOW_REVENUE_PER_DAY']}",
+                        "LOW_TRIPS_PER_DAY": f"Viajes/dia < {DIAG_VEHICLE_THRESHOLDS['LOW_TRIPS_PER_DAY']}",
+                        "MANY_DRIVERS_LOW_CONTROL": f"Conductores > {DIAG_VEHICLE_THRESHOLDS['MANY_DRIVERS']}",
+                        "NEGATIVE_MARGIN": "Margen estimado < 0",
+                        "FIXED_COST_NOT_COVERED": f"Revenue < S/ {DIAG_VEHICLE_THRESHOLDS['FIXED_COST_WEEKLY_DEFAULT']} (costo fijo semanal)",
+                    }.get(c, "Regla no documentada"),
+                    "threshold_category": "DRIVER" if c in ("LOW_TRIPS", "LOW_TICKET", "HIGH_KM_PER_TRIP", "HIGH_COST_PER_TRIP", "HIGH_PAYOUT_RATIO", "LOW_MARGIN", "MISSING_CLOSE", "MISSING_PLATE") else "VEHICLE",
                 }
                 for c in cause_counts
             ],
