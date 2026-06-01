@@ -215,7 +215,11 @@ function fmtCellValue (value, colKey) {
 
 function colLabel (key) { return COLUMN_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) }
 
-function extractRows (data) { return data?.rows || data?.data || (Array.isArray(data) ? data : []) }
+function extractRows (data) {
+  if (!data) return []
+  if (Array.isArray(data)) return data
+  return data?.rows || data?.data || data?.weeks || data?.days || data?.drivers || data?.vehicles || data?.shifts || data?.waterfall || data?.checks || []
+}
 
 function extractNum (obj, ...keys) { for (const k of keys) { const v = num(obj?.[k]); if (v !== null) return v } return null }
 
@@ -2507,7 +2511,7 @@ function DataTable ({ rows, columns, tabId }) {
 
 function TabularPanel ({ data, tabId }) {
   if (!data) return <EmptyState tabId={tabId} />
-  const rows = data.rows || data.data || (Array.isArray(data) ? data : null)
+  const rows = extractRows(data)
   const columns = data.columns || null
   const meta = data.meta || data.period || null
   if (!rows || rows.length === 0) return <><GuideBlock tabId={tabId} /><EmptyState tabId={tabId} /></>
@@ -2664,6 +2668,15 @@ const DIAG_ENDPOINTS = [
 ]
 
 export default function YegoProProfitabilityPage () {
+  console.log('PROFITABILITY_RUNTIME_FINGERPRINT', {
+    component: 'YegoProProfitabilityPage.jsx',
+    commit: '4182aa2',
+    buildTimestamp: new Date().toISOString(),
+    tabs: 'overview,diagnostics,simulator,weekly,daily,drivers,vehicles,shifts,waterfall,quality,coverage',
+    hasKpiModal: typeof setShowKpiCalc === 'function',
+    hasEntityDrill: typeof setShowEntityDrill === 'function',
+    hasOperationalRefs: typeof getYegoProOperationalReferences === 'function',
+  })
   console.log('PROFITABILITY VERSION 2026-05-29 A — requestIdRef + forceShow 8s')
 
   const [activeTab, setActiveTab] = useState('overview')
@@ -2802,6 +2815,16 @@ export default function YegoProProfitabilityPage () {
 
   return (
     <div className="space-y-3">
+      <div className="bg-purple-600 text-white px-3 py-1.5 rounded text-[10px] font-mono flex items-center gap-3 flex-wrap">
+        <span className="font-bold">PROFITABILITY_RUNTIME_FINGERPRINT</span>
+        <span>component: YegoProProfitabilityPage.jsx</span>
+        <span>commit: 4182aa2</span>
+        <span>built: 2026-05-31 21:45</span>
+        <span className="bg-purple-500 px-1 rounded">tabs: 11</span>
+        <span className="bg-purple-500 px-1 rounded">kpi_modal: yes</span>
+        <span className="bg-purple-500 px-1 rounded">entity_drill: yes</span>
+        <span className="bg-purple-500 px-1 rounded">op_refs: yes</span>
+      </div>
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-base font-semibold text-ct-text">Yego Pro &mdash; Profitability</h1>
