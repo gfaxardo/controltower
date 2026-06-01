@@ -566,8 +566,7 @@ FROM (
             b.country, b.city, b.tipo_servicio, b.works_terms,
             b.completed_flag, b.cancelled_flag, b.trip_date, b.trip_month,
             b.trip_week, b.hour_of_day, b.trip_hour_start,
-            b.revenue_yego_real AS revenue_yego_net, b.revenue_yego_final,
-            b.ticket, b.km, b.duration_minutes,
+            b.revenue_yego_real AS revenue_yego_net, b.revenue_yego_final, b.ticket, b.km, b.duration_minutes,
             b.gmv_passenger_paid, b.total_fare, b.condicion, b.source_table,
             rl.id AS mapping_rule_id, rl.business_slice_name, rl.fleet_display_name,
             rl.is_subfleet, rl.subfleet_name, rl.parent_fleet_name, rl.rule_type,
@@ -1802,8 +1801,9 @@ def backfill_business_slice_months(
         months.append(d)
         total_rows += load_business_slice_month(cur, d, conn, chunk_grain=chunk_grain)
         if with_daily:
-            nd = load_business_slice_day_for_month(cur, d, conn, chunk_grain=chunk_grain)
+            nd = load_business_slice_day_for_month(cur, d, conn, chunk_grain=chunk_grain, keep_enriched=True)
             nw = load_business_slice_week_for_month(cur, d, conn)
+            _drop_enriched_temp(cur)
             logger.info(
                 "backfill day/week: month=%s day_rows=%s week_rows=%s",
                 d, nd, nw,
