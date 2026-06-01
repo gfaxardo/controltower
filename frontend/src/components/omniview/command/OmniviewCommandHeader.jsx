@@ -28,12 +28,7 @@ export default function OmniviewCommandHeader({
   const isFreshnessOk = freshnessStatus === 'fresh' || freshnessStatus === 'fresca' || !freshnessStatus
 
   return (
-    <div className="overflow-hidden shadow-sm" style={{
-      borderRadius: 'var(--ct-radius-lg)',
-      border: '1px solid var(--tw-bg-ct-border)',
-      borderLeft: '3px solid var(--tw-bg-ct-accent)',
-      background: 'var(--tw-bg-ct-card)',
-    }}>
+    <div className="overflow-hidden border-l-[3px] border-l-ct-accent">
       {/* Command strip */}
       <div className="flex flex-wrap items-center gap-x-2_5 gap-y-0.5 px-3 text-xs text-ct-text3" style={{minHeight: 28}} role="status" aria-label="Omniview command header">
         {/* Mode selector — segmented control in header */}

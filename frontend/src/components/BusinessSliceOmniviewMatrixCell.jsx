@@ -1,5 +1,5 @@
 import { memo, useState, useCallback, useEffect } from 'react'
-import { fmtValue, fmtDelta, signalColorForKpi, signalArrow, buildCellTooltip, trustPeriodCellOverlayClass, trustSegmentsDetailForTooltip } from './omniview/omniviewMatrixUtils.js'
+import { fmtValue, fmtDelta, signalColorForKpi, signalArrow, buildCellTooltip, trustPeriodCellOverlayClass, trustSegmentsDetailForTooltip, TEMPORAL_VISUAL_TIERS, temporalCellBorder, timelineOpacityDecay, outlierEmphasisClass } from './omniview/omniviewMatrixUtils.js'
 import {
   fmtAttainment,
   fmtGap,
@@ -42,6 +42,8 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
   isCurrentPeriod = false,
   isWorstInRow = false,
   isCalendarCurrentPartial = false,
+  temporalTier = null,
+  temporalDistance = 0,
 }) {
   const [ctxMenu, setCtxMenu] = useState(null)
 
@@ -80,13 +82,15 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
         grain={grain}
         isWorstInRow={isWorstInRow}
         isCalendarCurrentPartial={isCalendarCurrentPartial}
+        temporalTier={temporalTier}
+        temporalDistance={temporalDistance}
       />
     )
   }
 
   const py = compact ? 'py-px' : 'py-1'
-  const valSize = compact ? 'text-[11px]' : isCurrentPeriod ? 'text-[16px]' : 'text-[14px]'
-  const deltaSize = compact ? 'text-[9px]' : isCurrentPeriod ? 'text-[12px]' : 'text-[11px]'
+  const valSize = compact ? 'text-[11px]' : temporalTier === TEMPORAL_VISUAL_TIERS.LATEST_CLOSED ? 'text-[16px]' : 'text-[14px]'
+  const deltaSize = compact ? 'text-[9px]' : temporalTier === TEMPORAL_VISUAL_TIERS.LATEST_CLOSED ? 'text-[12px]' : 'text-[11px]'
   const zebra = periodIdx % 2 === 1
   const trustOverlay = trustPeriodCellOverlayClass(periodTrustVisual)
   const tipTrust = periodTrustVisual ? trustLine : null
@@ -103,6 +107,18 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
 
   const dimmed = insightMode && !hasInsight
   const isPC = delta?.isPartialComparison
+
+  const tierBorder = temporalCellBorder(temporalTier)
+  const isLatestClosed = temporalTier === TEMPORAL_VISUAL_TIERS.LATEST_CLOSED
+  const isFuture = temporalTier === TEMPORAL_VISUAL_TIERS.FUTURE
+  const isHistorical = temporalTier === TEMPORAL_VISUAL_TIERS.HISTORICAL_CLOSED
+  const isCurrentPartial = temporalTier === TEMPORAL_VISUAL_TIERS.CURRENT_PARTIAL
+
+  const distance = temporalDistance || 0
+  const pastOpacity = isHistorical ? timelineOpacityDecay(distance) : 0
+  const pastOpacityStyle = pastOpacity > 0 ? { opacity: 1 - pastOpacity } : undefined
+
+  const outlierClass = outlierEmphasisClass(delta)
 
   function renderCtxMenu () {
     if (!ctxMenu) return null
@@ -121,11 +137,23 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
 
   if (!delta) {
     const emptyTooltip = [buildCellTooltip(kpi, null, cityName, lineName, periodLbl, periodState, grain, tipTrust), segDetail].filter(Boolean).join('\n\n')
+    const emptyBg = isLatestClosed
+      ? 'bg-white/90'
+      : isCurrentPartial
+        ? 'bg-white'
+        : isFuture
+          ? 'bg-slate-50/10'
+          : zebra ? 'bg-slate-50/50' : ''
+    const emptyOpacity = isFuture ? 'opacity-30' : dimmed ? 'opacity-30' : ''
     return (
       <>
         <td
           data-matrix-cell-id={matrixCellId || undefined}
-          className={`px-1 ${py} text-center ${valSize} text-gray-400 cursor-default select-none ${trustOverlay} ${isSelected ? 'bg-blue-50' : isCurrentPeriod ? 'bg-blue-50/50 ring-1 ring-inset ring-blue-300/30 shadow-[inset_0_0_20px_rgba(59,130,246,0.06)]' : zebra ? 'bg-slate-50/50' : ''} ${dimmed ? 'opacity-30' : ''} border-r border-gray-200/60`}
+          className={`px-1 ${py} text-center ${valSize} text-gray-400 cursor-default select-none ${trustOverlay} ${tierBorder} ${outlierClass}
+            ${isSelected ? 'bg-blue-50'
+              : emptyBg}
+            ${emptyOpacity} border-r border-gray-200/60`}
+          style={pastOpacityStyle}
           title={emptyTooltip || undefined}
           onContextMenu={handleContextMenu}
         >
@@ -142,35 +170,49 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
   const baseColor = signalColorForKpi(delta.signal, kpiKey)
   // Momentum comparisons get full color authority; sequential get subdued
   const color = isMomentum ? baseColor
-    : delta?.isProjection ? baseColor + '99' // subdued projection color
-    : baseColor + '66' // very subtle for simple sequential
+    : delta?.isProjection ? baseColor + '99'
+    : baseColor + '66'
   const arrow = signalArrow(delta.signal)
   const tooltip = [buildCellTooltip(kpi, delta, cityName, lineName, periodLbl, periodState, grain, tipTrust), segDetail].filter(Boolean).join('\n\n')
+
+  const cellBg = isSelected
+    ? 'bg-blue-50 ring-1 ring-inset ring-blue-300'
+    : hasInsight
+      ? insightBorder
+      : isLatestClosed
+        ? `bg-white/95 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.15)]`
+        : isCurrentPartial
+          ? `bg-sky-50/20 ${zebra ? '' : ''}`
+          : isFuture
+            ? 'bg-slate-50/10'
+            : zebra
+              ? 'bg-slate-50/50 hover:bg-blue-50/40'
+              : 'hover:bg-blue-50/40'
+
+  const valueColor = isFuture ? 'text-gray-400' : 'text-gray-900'
 
   return (
     <>
       <td
         data-matrix-cell-id={matrixCellId || undefined}
-        className={`px-1 ${py} text-center whitespace-nowrap cursor-pointer select-none border-r border-gray-200/60 transition-colors ${trustOverlay}
-          ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-300'
-            : hasInsight ? insightBorder
-            : isCurrentPeriod ? `bg-blue-50/40 ring-1 ring-inset ring-blue-400/30 shadow-[inset_0_0_20px_rgba(59,130,246,0.08)]`
-            : zebra ? 'bg-slate-50/50 hover:bg-blue-50/40'
-            : 'hover:bg-blue-50/40'}
-          ${dimmed ? 'opacity-30' : ''}`}
+        className={`px-1 ${py} text-center whitespace-nowrap cursor-pointer select-none border-r border-gray-200/60 transition-colors ${trustOverlay} ${tierBorder} ${outlierClass}
+          ${cellBg}
+          ${dimmed ? 'opacity-30' : ''}
+          ${isFuture ? 'opacity-35' : ''}`}
+        style={isFuture ? undefined : pastOpacityStyle}
         onClick={onClick}
         title={tooltip}
         onContextMenu={handleContextMenu}
       >
-        <div className={`${valSize} font-semibold ${isCurrentPeriod ? 'font-extrabold text-gray-900' : 'text-gray-900'} leading-none`}>{val}</div>
+        <div className={`${valSize} font-semibold ${isLatestClosed ? 'font-extrabold' : ''} ${valueColor} leading-none`}>{val}</div>
         {deltaTxt && (() => {
           const momLabel = getComparisonLabel(delta, grain)
           return (
             <div
-              className={`${deltaSize} leading-none ${isMomentum ? 'font-semibold' : 'font-normal'} ${isCurrentPeriod && isMomentum ? 'font-bold' : ''} mt-px`}
+              className={`${deltaSize} leading-none ${isMomentum ? 'font-semibold' : 'font-normal'} ${isLatestClosed && isMomentum ? 'font-bold' : ''} mt-px`}
               style={{
                 color,
-                opacity: isPC ? 0.6 : isMomentum ? 1 : 0.55,
+                opacity: isFuture ? 0.4 : isPC ? 0.6 : isMomentum ? 1 : 0.55,
               }}
             >
               {isMomentum && momLabel !== 'Δ' && (
@@ -203,8 +245,11 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
  * Si no hay datos (delta = null):
  *   —               ← celda vacía, sin plan ni real
  */
-function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compact, periodIdx, cityName, lineName, periodLbl, matrixCellId, isCurrentPeriod = false, periodKey = null, grain = 'daily', isWorstInRow = false, isCalendarCurrentPartial = false }) {
+function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compact, periodIdx, cityName, lineName, periodLbl, matrixCellId, isCurrentPeriod = false, periodKey = null, grain = 'daily', isWorstInRow = false, isCalendarCurrentPartial = false, temporalTier = null, temporalDistance = 0 }) {
   const zebra = periodIdx % 2 === 1
+  const isHistorical = temporalTier === TEMPORAL_VISUAL_TIERS.HISTORICAL_CLOSED
+  const isFuture = temporalTier === TEMPORAL_VISUAL_TIERS.FUTURE
+  const tDist = temporalDistance || 0
   const isProjectable = PROJECTION_KPIS.includes(kpiKey)
 
   // Tamaños tipográficos adaptados al modo compact
@@ -234,7 +279,8 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
   // ── Real sin plan ("missing_plan") — muestra real con badge "Sin proyección" ──
   if (comparisonStatus === 'missing_plan' && isProjectable) {
     const actual = delta.value
-    const hasReal = actual != null && Number(actual) > 0
+    const hasReal = actual != null && !isNaN(Number(actual))
+    const hasPositiveReal = hasReal && Number(actual) > 0
     const valStr = hasReal ? fmtValue(actual, kpiKey) : '—'
     return (
       <td
@@ -247,7 +293,7 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
         title={`Sin proyección para este período.\nReal: ${valStr}\n${cityName} · ${lineName} · ${periodLbl}`}
       >
         {/* Real */}
-        <div className={`${szReal} font-semibold leading-none ${hasReal ? 'text-gray-800' : 'text-gray-300'}`}>{valStr}</div>
+        <div className={`${szReal} font-semibold leading-none ${hasPositiveReal ? 'text-gray-800' : 'text-gray-400'}`}>{valStr}</div>
         {/* Badge "Sin proy." */}
         <div className={`${szStatus} leading-none mt-px text-slate-400 italic`}>Sin proy.</div>
       </td>
@@ -279,11 +325,12 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
   // CANONICAL: build display model → momentum always dominates when data exists
   const dm = buildProjectionCellDisplay(delta, grain, kpiKey)
 
-  // Temporal degradation
-  const temporalAge = periodKey
-    ? computePastAgingOpacity(periodKey, grain)
-    : 0
-  const pastDegraded = temporalAge > 0 && !isCurrentPeriod && !isSelected
+  // ── PAST DEGRADATION: use timeline gradient when available ──
+  const pastDecay = isHistorical
+    ? timelineOpacityDecay(tDist)
+    : computePastAgingOpacity(periodKey, grain)
+
+  const pastDegraded = pastDecay > 0 && !dm.isFuture && !isSelected
 
   // ── SEVERITY-BASED EMPHASIS (per-cell, self-limiting) ──
   const sev = dm.hasComparable ? dm.comparableDelta.severity : null
@@ -324,8 +371,8 @@ function ProjectionCellRender ({ kpiKey, kpi, delta, onClick, isSelected, compac
   const futureDim = dm.isFuture ? 'opacity-35 grayscale-[40%]' : ''
 
   // ── PAST DEGRADATION ── applies to border too
-  const pastStyle = pastDegraded && !dm.isFuture
-    ? { opacity: 1 - temporalAge, borderRightColor: 'rgba(243,244,246,0.15)' }
+  const pastStyle = pastDegraded
+    ? { opacity: 1 - pastDecay, borderRightColor: 'rgba(243,244,246,0.15)' }
     : undefined
 
   return (

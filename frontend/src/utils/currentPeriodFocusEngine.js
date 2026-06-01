@@ -70,10 +70,15 @@ export function getCurrentPeriodBadge(grain) {
   return 'MES ACTUAL'
 }
 
-export function calculateScrollTarget(idx, colW, fixedW, viewportW) {
+export function calculateScrollTarget(idx, colW, fixedW, viewportW, grain = 'daily') {
   if (idx < 0) return 0
   const targetLeft = fixedW + (idx * colW)
-  return Math.max(0, targetLeft - (viewportW / 2) + (colW / 2))
+  // Daily: present ~30% from left (show recent past + present + some future)
+  // Weekly/Monthly: center the period
+  const offset = grain === 'daily'
+    ? viewportW * 0.30
+    : viewportW / 2 - colW / 2
+  return Math.max(0, targetLeft - offset)
 }
 
 export function getCurrentPeriodVisualPriority(grain) {

@@ -221,8 +221,8 @@ def get_omniview_freshness_governance() -> Dict[str, Any]:
             "Verificar con health check."
         )
         result["remediation"] = (
-            "Ejecutar python -m scripts.refresh_omniview_real_slice --force "
-            "y luego python -m scripts.check_omniview_serving_freshness"
+            "Ejecutar python -m scripts.refresh_omniview_real_slice_incremental "
+            "--start-date <fecha_inicio> --end-date <fecha_fin> --grain all"
         )
     elif agg == STATUS_BLOCKED:
         result["message"] = (
@@ -230,8 +230,10 @@ def get_omniview_freshness_governance() -> Dict[str, Any]:
             "pero Omniview todavia no fue refrescado."
         )
         result["remediation"] = (
-            "Ejecutar python -m scripts.refresh_omniview_real_slice --force "
-            "y luego python -m scripts.check_omniview_serving_freshness"
+            "Ejecutar python -m scripts.refresh_omniview_real_slice_incremental "
+            "--start-date <fecha_inicio> --end-date <fecha_fin> --grain all. "
+            "El script legacy refresh_omniview_real_slice.py --force es NO-GO: "
+            "escanea 65M filas via vista enriquecida. Usar el incremental."
         )
     else:
         result["message"] = "Error consultando freshness"

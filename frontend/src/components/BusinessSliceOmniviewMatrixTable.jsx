@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef, memo } from 'react'
 import BusinessSliceOmniviewMatrixHeader, { COL1_W, COL2_W, HEADER_H_COMFORTABLE, HEADER_H_COMPACT } from './BusinessSliceOmniviewMatrixHeader.jsx'
 import BusinessSliceOmniviewMatrixCell from './BusinessSliceOmniviewMatrixCell.jsx'
-import { MATRIX_KPIS, computeDeltas, computeTotalsDeltas, fmtValue, fmtDelta, signalColorForKpi, signalArrow, sortLineEntries, periodTooltipLabel as periodLabelFn, trustIssueSummaryForTooltip, trustPeriodCellOverlayClass, resolveCellTrustVisual, resolveTotalsTrustVisual } from './omniview/omniviewMatrixUtils.js'
+import { MATRIX_KPIS, computeDeltas, computeTotalsDeltas, fmtValue, fmtDelta, signalColorForKpi, signalArrow, sortLineEntries, periodTooltipLabel as periodLabelFn, trustIssueSummaryForTooltip, trustPeriodCellOverlayClass, resolveCellTrustVisual, resolveTotalsTrustVisual, TEMPORAL_VISUAL_TIERS, temporalDistance } from './omniview/omniviewMatrixUtils.js'
 import {
   computeProjectionDeltas,
   computeProjectionTotalsDeltas,
@@ -97,6 +97,7 @@ export default function BusinessSliceOmniviewMatrixTable ({
   insightMode,
   lineImpactMap,
   periodStates,
+  temporalTiers = null,
   matrixTrust = null,
   focusedKpi = 'trips_completed',
   mode = 'evolution',
@@ -105,6 +106,7 @@ export default function BusinessSliceOmniviewMatrixTable ({
   currentPeriodKey = null,
   calendarCurrentPeriodKey = null,
   scrollContainerRef = null,
+  isFullscreen = false,
 }) {
   const isProjection = mode === 'projection'
   const { cities, allPeriods, totals, comparisonTotals, comparisonMeta, cityVolumeMap, lineVolumeMap, periodMeta, periodDayLabels } = matrix
@@ -135,6 +137,14 @@ export default function BusinessSliceOmniviewMatrixTable ({
     () => MATRIX_KPIS.find((kpi) => kpi.key === focusedKpi) || MATRIX_KPIS.find((kpi) => kpi.key === 'trips_completed') || MATRIX_KPIS[0],
     [focusedKpi]
   )
+
+  const latestClosedPk = useMemo(() => {
+    if (!temporalTiers || !allPeriods?.length) return null
+    for (const pk of allPeriods) {
+      if (temporalTiers.get(pk) === TEMPORAL_VISUAL_TIERS.LATEST_CLOSED) return pk
+    }
+    return null
+  }, [temporalTiers, allPeriods])
 
   const cityEntries = useMemo(() => {
     return [...cities.entries()].sort((a, b) => {
@@ -254,7 +264,7 @@ export default function BusinessSliceOmniviewMatrixTable ({
   }
 
   return (
-    <div className="rounded-lg border border-gray-100 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]" style={{ overflow: 'clip' }} data-omniview-matrix-table>
+    <div className="overflow-hidden" data-omniview-matrix-table>
       {cityEntries.length > 1 && (
         <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50/80 border-b border-gray-200 text-[10px]">
           <button type="button" onClick={expandAll} className="px-2 py-0.5 rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-100 hover:text-gray-800 transition-colors">Expandir todo</button>
@@ -268,7 +278,7 @@ export default function BusinessSliceOmniviewMatrixTable ({
           )}
         </div>
       )}
-      <div ref={scrollContainerRef} className="overflow-x-auto overflow-y-auto" style={{ maxHeight: 'calc(100vh - 240px)' }} tabIndex={0} onKeyDown={selectedCell ? handleTableKeyDown : undefined}>
+      <div ref={scrollContainerRef} className={`overflow-x-auto ${isFullscreen ? 'overflow-y-auto' : ''}`} style={isFullscreen ? { maxHeight: 'calc(100vh - 120px)' } : {}} tabIndex={0} onKeyDown={selectedCell ? handleTableKeyDown : undefined}>
         <table className="border-collapse min-w-full" style={{ tableLayout: 'fixed', width: 'auto' }}>
           <colgroup>
             <col style={{ width: COL1_W, minWidth: COL1_W }} />
@@ -278,7 +288,7 @@ export default function BusinessSliceOmniviewMatrixTable ({
             ))}
           </colgroup>
 
-          <BusinessSliceOmniviewMatrixHeader allPeriods={allPeriods} grain={grain} compact={compact} periodStates={periodStates} matrixTrust={isProjection ? null : matrixTrust} focusedKpi={activeKpi} periodMeta={isProjection ? periodMeta : null} periodDayLabels={isProjection ? null : periodDayLabels} isProjection={isProjection} currentPeriodKey={currentPeriodKey} />
+          <BusinessSliceOmniviewMatrixHeader allPeriods={allPeriods} grain={grain} compact={compact} periodStates={periodStates} temporalTiers={temporalTiers} matrixTrust={isProjection ? null : matrixTrust} focusedKpi={activeKpi} periodMeta={isProjection ? periodMeta : null} periodDayLabels={isProjection ? null : periodDayLabels} isProjection={isProjection} currentPeriodKey={currentPeriodKey} />
 
           <tbody>
             {isProjection
@@ -325,6 +335,8 @@ export default function BusinessSliceOmniviewMatrixTable ({
                   insightCellMap={isProjection ? null : insightCellMap}
                   insightMode={isProjection ? false : insightMode}
                   periodStates={periodStates}
+                  temporalTiers={temporalTiers}
+                  latestClosedPk={latestClosedPk}
                   matrixTrust={isProjection ? null : matrixTrust}
                   trustLine={isProjection ? null : trustLine}
                   focusedKpi={activeKpi}
@@ -522,7 +534,7 @@ const ProjectionTotalsRow = memo(function ProjectionTotalsRow ({ allPeriods, tot
   )
 })
 
-function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, onToggle, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode, periodMeta = null, periodDayLabels = null, projectionIntegrityBroken = false, projectionAuthoritativeYtd = null, currentPeriodKey = null, calendarCurrentPeriodKey = null }) {
+function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, onToggle, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, temporalTiers = null, latestClosedPk = null, matrixTrust, trustLine, focusedKpi, mode, periodMeta = null, periodDayLabels = null, projectionIntegrityBroken = false, projectionAuthoritativeYtd = null, currentPeriodKey = null, calendarCurrentPeriodKey = null }) {
   const totalCols = allPeriods.length
   const py = compact ? 'py-1' : 'py-2'
   const fontSize = compact ? 'text-[11px]' : 'text-[14px]'
@@ -557,6 +569,7 @@ function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, o
         <LineRow key={lineKey} cityKey={cityKey} cityName={cityData.city} lineKey={lineKey} lineData={lineData}
           allPeriods={allPeriods} onCellClick={onCellClick} selectedCell={selectedCell} grain={grain} compact={compact}
           insightCellMap={insightCellMap} insightMode={insightMode} periodStates={periodStates}
+          temporalTiers={temporalTiers} latestClosedPk={latestClosedPk}
           matrixTrust={matrixTrust} trustLine={trustLine} focusedKpi={focusedKpi} mode={mode} periodMeta={periodMeta} periodDayLabels={periodDayLabels}
            projectionIntegrityBroken={projectionIntegrityBroken} currentPeriodKey={currentPeriodKey} calendarCurrentPeriodKey={calendarCurrentPeriodKey} />
       ))}
@@ -564,7 +577,7 @@ function CityBlock ({ cityKey, cityData, lineEntries, allPeriods, isCollapsed, o
   )
 }
 
-function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, matrixTrust, trustLine, focusedKpi, mode, periodMeta = null, periodDayLabels = null, projectionIntegrityBroken = false, currentPeriodKey = null, calendarCurrentPeriodKey = null }) {
+function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClick, selectedCell, grain, compact, insightCellMap, insightMode, periodStates, temporalTiers = null, latestClosedPk = null, matrixTrust, trustLine, focusedKpi, mode, periodMeta = null, periodDayLabels = null, projectionIntegrityBroken = false, currentPeriodKey = null, calendarCurrentPeriodKey = null }) {
   const isProjection = mode === 'projection'
   const deltas = useMemo(
     () => isProjection
@@ -653,6 +666,8 @@ function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClic
         const delta = periodDeltas ? periodDeltas[focusedKpi.key] : null
         const insightSev = isProjection ? null : (insightCellMap?.get(cellId) || null)
         const ptv = isProjection ? null : resolveCellTrustVisual(matrixTrust, grain, cityName, lineData.business_slice_name, pk, focusedKpi.key)
+        const tTier = isProjection ? null : temporalTiers?.get(pk) || null
+        const tDist = isProjection ? 0 : temporalDistance(pk, latestClosedPk, grain)
         return (
           <BusinessSliceOmniviewMatrixCell
             key={cellId} kpiKey={focusedKpi.key} kpi={focusedKpi} delta={delta}
@@ -667,6 +682,8 @@ function LineRow ({ cityKey, cityName, lineKey, lineData, allPeriods, onCellClic
             isCurrentPeriod={currentPeriodKey === pk}
             isCalendarCurrentPartial={calendarCurrentPeriodKey ? (calendarCurrentPeriodKey === pk && pk !== currentPeriodKey) : false}
             isWorstInRow={isProjection && pk === worstPeriodPk}
+            temporalTier={tTier}
+            temporalDistance={tDist}
             onClick={() => onCellClick?.({
               id: cellId, cityKey, lineKey, period: pk, kpiKey: focusedKpi.key,
               lineData, periodDeltas, raw: lineData.periods.get(pk)?.raw,

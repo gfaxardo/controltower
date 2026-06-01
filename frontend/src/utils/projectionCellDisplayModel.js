@@ -25,7 +25,7 @@ export function buildProjectionCellDisplay(delta, grain, kpiKey) {
   const isProjection = delta?.isProjection
   const weekState   = delta?.week_state
 
-  const hasReal  = actual != null && Number(actual) > 0
+  const hasReal  = actual != null && !isNaN(Number(actual))
   const hasPlan  = projected != null && Number(projected) > 0
   const hasNegActual = actual != null && Number(actual) < 0
   const isFuture = weekState === 'future' && !hasReal

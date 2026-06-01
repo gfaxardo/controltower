@@ -281,10 +281,6 @@ export function getPeriodBadge(status, grain) {
  * Get "go to anchor" button label.
  */
 export function getAnchorButtonLabel(grain, isCalendarCurrentPartial) {
-  if (isCalendarCurrentPartial) {
-    if (grain === 'daily') return 'Ir al cierre'
-    return 'Ir al cierre'
-  }
   if (grain === 'daily') return 'Ir a hoy'
   if (grain === 'weekly') return 'Ir a sem. actual'
   return 'Ir a mes actual'

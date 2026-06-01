@@ -657,6 +657,50 @@ async def omniview_freshness_governance_endpoint():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/omniview/refresh")
+async def omniview_refresh_remediation_endpoint(
+    force: bool = Query(True, description="Si True, ignora cooldown entre corridas. Default True para remediación manual."),
+):
+    """
+    Refresh Remediation Control: ejecuta recarga operacional completa
+    (day_fact + week_fact + month_fact) para mes actual y anterior.
+
+    Usado desde UI cuando Freshness Governance está en BLOCKED.
+    Devuelve status, started_at, finished_at, duration, rows_affected, errors.
+    """
+    import datetime as _dt
+    started_at = _dt.datetime.utcnow().isoformat() + "Z"
+    try:
+        result = await _run_sync(run_business_slice_real_refresh_job, force)
+        finished_at = _dt.datetime.utcnow().isoformat() + "Z"
+        freshness_after = result.get("freshness_after", {}) if isinstance(result, dict) else {}
+        day_fact = freshness_after.get("day_fact", {}) if isinstance(freshness_after, dict) else {}
+        rows_affected = day_fact.get("row_count") if isinstance(day_fact, dict) else None
+        return sanitize_for_json({
+            "status": "ok" if result.get("ok") else "failed",
+            "started_at": started_at,
+            "finished_at": finished_at,
+            "duration_seconds": result.get("duration_seconds"),
+            "rows_affected": rows_affected,
+            "errors": result.get("errors", []),
+            "log": result.get("log", []),
+            "freshness_after": freshness_after,
+            "upstream_preflight": result.get("upstream_preflight"),
+            "before_max_trip_date": result.get("before_max_trip_date"),
+        })
+    except Exception as e:
+        logger.exception("omniview/refresh")
+        finished_at = _dt.datetime.utcnow().isoformat() + "Z"
+        return sanitize_for_json({
+            "status": "error",
+            "started_at": started_at,
+            "finished_at": finished_at,
+            "duration_seconds": None,
+            "rows_affected": None,
+            "errors": [{"error": str(e)}],
+        })
+
+
 @router.post("/business-slice/real-refresh-omniview")
 async def business_slice_real_refresh_omniview_endpoint(
     force: bool = Query(False, description="Si True, ignora cooldown entre corridas."),

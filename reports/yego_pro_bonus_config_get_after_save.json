@@ -1,0 +1,123 @@
+{
+  "status": "OK",
+  "park_id": "64085dd85e124e2c808806f70d527ea8",
+  "config_name": "default",
+  "persisted": true,
+  "inserted_rows": 21,
+  "updated_at": "2026-05-30 22:36:22.695831-05:00",
+  "updated_by": null,
+  "effective_from": "2026-05-30",
+  "tables": {
+    "general_branded": [
+      {
+        "min_trips": 190,
+        "pct": 27.0,
+        "amount": 720.0
+      },
+      {
+        "min_trips": 150,
+        "pct": 25.0,
+        "amount": 550.0
+      },
+      {
+        "min_trips": 125,
+        "pct": 23.0,
+        "amount": 470.0
+      },
+      {
+        "min_trips": 100,
+        "pct": 21.0,
+        "amount": 390.0
+      },
+      {
+        "min_trips": 75,
+        "pct": 20.0,
+        "amount": 320.0
+      },
+      {
+        "min_trips": 50,
+        "pct": 19.0,
+        "amount": 260.0
+      },
+      {
+        "min_trips": 30,
+        "pct": 18.0,
+        "amount": 175.0
+      }
+    ],
+    "general_unbranded": [
+      {
+        "min_trips": 150,
+        "pct": 20.0,
+        "amount": 450.0
+      },
+      {
+        "min_trips": 125,
+        "pct": 18.0,
+        "amount": 390.0
+      },
+      {
+        "min_trips": 100,
+        "pct": 16.0,
+        "amount": 315.0
+      },
+      {
+        "min_trips": 75,
+        "pct": 14.0,
+        "amount": 230.0
+      },
+      {
+        "min_trips": 50,
+        "pct": 13.0,
+        "amount": 170.0
+      },
+      {
+        "min_trips": 30,
+        "pct": 12.0,
+        "amount": 125.0
+      },
+      {
+        "min_trips": 10,
+        "pct": 11.0,
+        "amount": 60.0
+      }
+    ],
+    "premier": [
+      {
+        "min_trips": 20,
+        "pct": 40.0,
+        "amount": 600.0
+      },
+      {
+        "min_trips": 15,
+        "pct": 36.0,
+        "amount": 410.0
+      },
+      {
+        "min_trips": 10,
+        "pct": 33.0,
+        "amount": 250.0
+      },
+      {
+        "min_trips": 8,
+        "pct": 31.0,
+        "amount": 190.0
+      },
+      {
+        "min_trips": 6,
+        "pct": 29.0,
+        "amount": 131.0
+      },
+      {
+        "min_trips": 4,
+        "pct": 27.0,
+        "amount": 85.0
+      },
+      {
+        "min_trips": 2,
+        "pct": 25.0,
+        "amount": 40.0
+      }
+    ]
+  }
+}

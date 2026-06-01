@@ -1,0 +1,166 @@
+{
+  "pass": 32,
+  "fail": 0,
+  "checks": [
+    {
+      "check": "1. Bonus config persisted=true",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "1b. 3 bonus types present",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "1c. No NaN",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "2a. Sim status OK",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "2b. Has bonus_result",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "2c. General bonus > 0",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "2d. Premier bonus > 0",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "8. Baseline delta exists",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "8b. profit_delta has direction",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "9. Tree root = profit",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "9b. 3 children",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "10. 7 steps",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "10b. Step 1 has result",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "11. Trace has entries",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "11b. Each step labeled",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "12. Total = revenue + bonuses",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "13. Separate tickets",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "14. 1-turno model",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "15. 2-turno model",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "16. production",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "16. variable_costs",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "16. fixed_costs",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "16. driver_payment",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "16. result",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "4. Save scenario",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "5. Rename",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "6. Duplicate",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "7. Archive",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "17. Shortcuts coded",
+      "passed": true,
+      "detail": "Ctrl+Enter, Ctrl+S, Tab, Enter in JSX"
+    },
+    {
+      "check": "18. No NaN",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "19. No undefined",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "20. Response complete",
+      "passed": true,
+      "detail": "Service returns all fields"
+    }
+  ]
+}

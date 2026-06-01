@@ -1,0 +1,15 @@
+﻿ backend/app/routers/ops.py                         |  44 +++++
+ backend/app/startup_checks.py                      |  61 ++++++
+ docs/omniview/SCROLL_OWNERSHIP_AUDIT.md            | 169 ++++++-----------
+ .../src/components/BusinessSliceOmniviewMatrix.jsx | 132 +++++++------
+ .../components/BusinessSliceOmniviewMatrixCell.jsx |  99 +++++++---
+ .../BusinessSliceOmniviewMatrixHeader.jsx          | 126 ++++++++----
+ .../BusinessSliceOmniviewMatrixTable.jsx           |  29 ++-
+ .../omniview/command/OmniviewCommandHeader.jsx     |   7 +-
+ .../freshness/OmniviewFreshnessGovernanceCard.jsx  |  66 ++++++-
+ .../src/components/omniview/omniviewMatrixUtils.js | 211 +++++++++++++++++++++
+ .../omniview/priority/OperationalPriorityLayer.jsx |   4 +-
+ frontend/src/utils/currentPeriodFocusEngine.js     |   9 +-
+ frontend/src/utils/projectionCellDisplayModel.js   |   2 +-
+ frontend/src/utils/projectionClosedPeriodEngine.js |   4 -
+ 14 files changed, 712 insertions(+), 251 deletions(-)

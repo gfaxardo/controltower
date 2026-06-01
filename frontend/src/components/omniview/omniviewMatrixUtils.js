@@ -308,6 +308,217 @@ export function periodStateLabel (state) {
   return STATE_LABELS[state] || ''
 }
 
+// ─── UX-H2 Temporal Visual Hierarchy ──────────────────────────────────────
+
+/**
+ * Visual tiers for temporal line reading.
+ * Maps period states to a 4-tier visual language:
+ *   HISTORICAL_CLOSED → subdued, normal
+ *   LATEST_CLOSED     → DOMINANT, anchor
+ *   CURRENT_PARTIAL   → distinct, "running"
+ *   FUTURE            → attenuated
+ */
+export const TEMPORAL_VISUAL_TIERS = {
+  HISTORICAL_CLOSED: 'HISTORICAL_CLOSED',
+  LATEST_CLOSED: 'LATEST_CLOSED',
+  CURRENT_PARTIAL: 'CURRENT_PARTIAL',
+  FUTURE: 'FUTURE',
+}
+
+const TIER_LABELS = {
+  HISTORICAL_CLOSED: '',
+  LATEST_CLOSED: 'Último cierre',
+  CURRENT_PARTIAL: 'Parcial',
+  FUTURE: '',
+}
+
+const TIER_ORDER = {
+  HISTORICAL_CLOSED: 0,
+  LATEST_CLOSED: 1,
+  CURRENT_PARTIAL: 2,
+  FUTURE: 3,
+}
+
+export function temporalTierLabel (tier) {
+  return TIER_LABELS[tier] || ''
+}
+
+/**
+ * Computes the visual tier for every period column.
+ * Returns a Map<periodKey, TEMPORAL_VISUAL_TIERS>.
+ *
+ * Logic:
+ *   1. Find LATEST_CLOSED: the most recent column whose periodState is CLOSED
+ *      (or the latest period ≤ today if none is explicitly CLOSED).
+ *   2. All periods before LATEST_CLOSED → HISTORICAL_CLOSED.
+ *   3. PARTIAL / CURRENT_DAY / OPEN → CURRENT_PARTIAL (current period still filling).
+ *   4. FUTURE → FUTURE.
+ */
+export function computeTemporalVisualTiers (allPeriods, grain, periodStates) {
+  const tiers = new Map()
+  if (!allPeriods?.length) return tiers
+
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const toDate = (pk) => new Date(pk + 'T00:00:00')
+
+  let latestClosedPk = null
+
+  for (let i = allPeriods.length - 1; i >= 0; i--) {
+    const pk = allPeriods[i]
+    const d = toDate(pk)
+    if (isNaN(d)) continue
+    if (d > today) continue
+    const st = periodStates?.get(pk)
+    if (st === PERIOD_STATES.CLOSED) {
+      latestClosedPk = pk
+      break
+    }
+  }
+
+  if (!latestClosedPk) {
+    for (let i = allPeriods.length - 1; i >= 0; i--) {
+      const pk = allPeriods[i]
+      const d = toDate(pk)
+      if (isNaN(d)) continue
+      if (d <= today) {
+        latestClosedPk = pk
+        break
+      }
+    }
+  }
+
+  for (const pk of allPeriods) {
+    const st = periodStates?.get(pk)
+    if (st === PERIOD_STATES.FUTURE) {
+      tiers.set(pk, TEMPORAL_VISUAL_TIERS.FUTURE)
+    } else if (st === PERIOD_STATES.PARTIAL || st === PERIOD_STATES.CURRENT_DAY || st === PERIOD_STATES.OPEN) {
+      tiers.set(pk, TEMPORAL_VISUAL_TIERS.CURRENT_PARTIAL)
+    } else if (pk === latestClosedPk) {
+      tiers.set(pk, TEMPORAL_VISUAL_TIERS.LATEST_CLOSED)
+    } else {
+      tiers.set(pk, TEMPORAL_VISUAL_TIERS.HISTORICAL_CLOSED)
+    }
+  }
+
+  return tiers
+}
+
+/**
+ * Distance from a period to the LATEST_CLOSED anchor.
+ * Daily: day steps, Weekly: week steps, Monthly: month steps.
+ * Returns integer ≥ 0. Higher = farther from present anchor.
+ */
+export function temporalDistance (pk, latestClosedPk, grain) {
+  if (!pk || !latestClosedPk) return 0
+  const d = new Date(pk + 'T00:00:00')
+  const anchor = new Date(latestClosedPk + 'T00:00:00')
+  if (isNaN(d) || isNaN(anchor)) return 0
+
+  const diffDays = Math.floor((anchor - d) / (1000 * 60 * 60 * 24))
+  if (diffDays <= 0) return 0
+
+  if (grain === 'daily') return diffDays
+  if (grain === 'weekly') return Math.floor(diffDays / 7)
+  return Math.floor(diffDays / 30)
+}
+
+/**
+ * Opacity decay for timeline gradient.
+ * Steps 0-1: full opacity. Each step beyond reduces contrast.
+ * Max reduction: 35% (floor at 0.65 opacity).
+ */
+export function timelineOpacityDecay (distance) {
+  if (distance <= 0) return 0
+  const decay = Math.min(distance * 0.05, 0.35)
+  return decay
+}
+
+/**
+ * Column background for temporal visual tiers.
+ */
+export function temporalColumnBg (tier, isProjection = false) {
+  if (tier === TEMPORAL_VISUAL_TIERS.LATEST_CLOSED) {
+    return isProjection
+      ? 'bg-gradient-to-b from-white/90 to-emerald-50/30'
+      : 'bg-white/95'
+  }
+  if (tier === TEMPORAL_VISUAL_TIERS.CURRENT_PARTIAL) {
+    return isProjection
+      ? 'bg-gradient-to-b from-sky-50/40 to-sky-50/10'
+      : 'bg-white'
+  }
+  if (tier === TEMPORAL_VISUAL_TIERS.FUTURE) {
+    return 'bg-slate-50/20'
+  }
+  return ''
+}
+
+/**
+ * Border treatment for temporal visual tiers (column cells).
+ */
+export function temporalCellBorder (tier) {
+  if (tier === TEMPORAL_VISUAL_TIERS.LATEST_CLOSED) {
+    return 'border-l-2 border-r-2 border-emerald-400/60 shadow-[0_0_12px_rgba(16,185,129,0.10)]'
+  }
+  if (tier === TEMPORAL_VISUAL_TIERS.CURRENT_PARTIAL) {
+    return 'border-l-2 border-r-2 border-sky-400/40'
+  }
+  if (tier === TEMPORAL_VISUAL_TIERS.FUTURE) {
+    return 'border-l border-r border-slate-200/40'
+  }
+  return ''
+}
+
+/**
+ * Header treatment for LATEST_CLOSED: +25% emphasis.
+ * Returns additional classes for the header <th>.
+ */
+export function temporalHeaderEmphasis (tier) {
+  if (tier === TEMPORAL_VISUAL_TIERS.LATEST_CLOSED) {
+    return {
+      bg: 'bg-emerald-900/95',
+      text: 'text-emerald-100',
+      border: 'border-l-[3px] border-r-[3px] border-emerald-400/80 shadow-[0_2px_12px_rgba(16,185,129,0.25)]',
+      glow: 'ring-1 ring-inset ring-emerald-400/40',
+      scale: 1.28,
+    }
+  }
+  if (tier === TEMPORAL_VISUAL_TIERS.CURRENT_PARTIAL) {
+    return {
+      bg: 'bg-sky-900/90',
+      text: 'text-sky-100',
+      border: 'border-l-2 border-r-2 border-sky-400/50',
+      glow: '',
+      scale: 1.12,
+    }
+  }
+  if (tier === TEMPORAL_VISUAL_TIERS.FUTURE) {
+    return {
+      bg: '',
+      text: 'text-slate-400',
+      border: 'border-l border-slate-600/30',
+      glow: '',
+      scale: 0.85,
+    }
+  }
+  return { bg: '', text: '', border: '', glow: '', scale: 1.0 }
+}
+
+/**
+ * Outlier emphasis: if |delta_pct| exceeds threshold, return subtle highlight class.
+ */
+export function outlierEmphasisClass (delta, threshold = 0.15) {
+  if (!delta || delta.delta_pct == null) return ''
+  const absPct = Math.abs(delta.delta_pct)
+  if (absPct > threshold) {
+    return absPct > 0.40
+      ? 'ring-1 ring-inset ring-amber-300/40 bg-amber-50/15'
+      : 'bg-amber-50/8'
+  }
+  return ''
+}
+
 /**
  * Prioriza estados calculados en backend (State Engine) sobre el fallback local.
  * @param {Map<string,string>} computedMap

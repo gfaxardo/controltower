@@ -28,6 +28,7 @@ import {
   computeDeltas as computeDeltasFn,
   computePeriodStates,
   mergePeriodStatesFromMeta,
+  computeTemporalVisualTiers,
   periodStateLabel,
   periodElapsedDays,
   periodTotalDays,
@@ -85,11 +86,11 @@ const GRAINS = [
 ]
 
 const KPI_FOCUS_OPTIONS = [
-  { id: 'trips_completed', label: 'Trips' },
-  { id: 'revenue_yego_net', label: 'Revenue' },
-  { id: 'active_drivers', label: 'Active drivers' },
-  { id: 'avg_ticket', label: 'Avg ticket' },
-  { id: 'trips_per_driver', label: 'Trips per driver' },
+  { id: 'trips_completed', label: 'Trips', short: 'Viajes' },
+  { id: 'revenue_yego_net', label: 'Revenue', short: 'Rev.' },
+  { id: 'active_drivers', label: 'Active drivers', short: 'Cond.' },
+  { id: 'avg_ticket', label: 'Avg ticket', short: 'Ticket' },
+  { id: 'trips_per_driver', label: 'Trips per driver', short: 'TPD' },
 ]
 
 const btnCls = (active) =>
@@ -1064,6 +1065,11 @@ export default function BusinessSliceOmniviewMatrix () {
     [matrix.allPeriods, grain, maxDataDate, matrixMeta]
   )
 
+  const temporalTiers = useMemo(
+    () => computeTemporalVisualTiers(matrix.allPeriods, grain, periodStates),
+    [matrix.allPeriods, grain, periodStates]
+  )
+
   const bannerContextHints = useMemo(() => {
     const hints = []
     if (matrixMeta?.fact_layer?.status === 'empty') {
@@ -1139,6 +1145,7 @@ export default function BusinessSliceOmniviewMatrix () {
   const autoScrollAppliedRef = useRef(false)
   const userHasScrolledRef = useRef(false)
   const scrollRafRef = useRef(null)
+  const scrollTimeoutRef = useRef(null)
 
   const scrollToCurrentPeriod = useCallback(() => {
     const container = scrollContainerRef.current
@@ -1147,43 +1154,53 @@ export default function BusinessSliceOmniviewMatrix () {
       ? (displayProjMatrix?.allPeriods || projMatrix?.allPeriods || [])
       : (matrix.allPeriods || [])
     if (!allPeriods.length) return
+    // Guard: container must have width and scrollable content
+    if (container.clientWidth <= 0) return
+    if (container.scrollWidth <= container.clientWidth) return
+
     const evColW = compact ? 58 : 78
     const projColW = compact ? 78 : 100
     const colW = isProjectionMode ? projColW : evColW
-    const idx = isProjectionMode && closedPeriodAnchor?.anchorPeriodKey
-      ? resolveCurrentPeriodIndex(allPeriods, grain) // fallback: use calendar if anchor not found in range
-      : resolveCurrentPeriodIndex(allPeriods, grain)
-    // Use anchor period key if available
-    const targetAllPeriods = allPeriods
+    let effectiveIdx = resolveCurrentPeriodIndex(allPeriods, grain)
+
     const anchorKey = isProjectionMode ? closedPeriodAnchor?.anchorPeriodKey : null
-    let effectiveIdx = idx
     if (anchorKey) {
-      const anchorIdx = targetAllPeriods.indexOf(anchorKey)
+      const anchorIdx = allPeriods.indexOf(anchorKey)
       if (anchorIdx >= 0) effectiveIdx = anchorIdx
     }
-    if (effectiveIdx < 0) return
+    if (effectiveIdx < 0) {
+      effectiveIdx = allPeriods.length - 1
+    }
     const viewportWidth = container.clientWidth
     const fixedW = COL1_W + COL2_W
-    const scrollTo = calculateScrollTarget(effectiveIdx, colW, fixedW, viewportWidth)
+    const scrollTo = calculateScrollTarget(effectiveIdx, colW, fixedW, viewportWidth, grain)
     container.scrollTo({ left: scrollTo, behavior: 'smooth' })
-  }, [matrix.allPeriods, grain, compact, isProjectionMode, closedPeriodAnchor])
+  }, [matrix.allPeriods, displayProjMatrix?.allPeriods, projMatrix?.allPeriods, grain, compact, isProjectionMode, closedPeriodAnchor])
 
   useEffect(() => {
     const hasData = isProjectionMode ? projectionRows.length > 0 : rows.length > 0
     if (loading || blockedByCountry || !hasData) return
     if (!autoScrollAppliedRef.current && !userHasScrolledRef.current) {
+      // Double RAF for DOM paint + 150ms timeout fallback for heavy renders
       scrollRafRef.current = requestAnimationFrame(() => {
         scrollRafRef.current = requestAnimationFrame(() => {
           scrollToCurrentPeriod()
           autoScrollAppliedRef.current = true
+          // Retry once after paint settles (large tables may need extra time)
+          const retryTimer = setTimeout(() => {
+            scrollToCurrentPeriod()
+          }, 150)
+          scrollTimeoutRef.current = retryTimer
         })
       })
       return () => {
         if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current)
+        if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current)
       }
     }
     return () => {
       if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current)
+      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current)
     }
   }, [loading, blockedByCountry, rows.length, projectionRows.length, scrollToCurrentPeriod, isProjectionMode])
 
@@ -1399,8 +1416,9 @@ export default function BusinessSliceOmniviewMatrix () {
     sliceMaxTripDate, maxDataDate, periodStates, rows])
 
   return (
-    <div className="relative overflow-x-hidden" data-omniview-matrix-root style={{ width: '100vw', left: '50%', right: '50%', marginLeft: '-50vw', marginRight: '-50vw' }}>
-      <div className="px-3 sm:px-4 space-y-2">
+    <div className="relative" data-omniview-matrix-root style={{ width: '100vw', left: '50%', right: '50%', marginLeft: '-50vw', marginRight: '-50vw' }}>
+      {/* ═══ OMNIVIEW SHELL — single operational surface ═══ */}
+      <div className="mx-3 sm:mx-4 rounded-lg border border-ct-border bg-ct-surface overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)] divide-y divide-ct-border/40">
         {/* ═══ COMMAND HEADER ═══ */}
         <OmniviewCommandHeader
           viewMode={viewMode}
@@ -1431,15 +1449,13 @@ export default function BusinessSliceOmniviewMatrix () {
         </OmniviewCommandHeader>
 
         {/* Momentum Priority Strip — surfaces deteriorations (both modes) */}
-        <OmniviewMomentumPriorityStrip cities={isProjectionMode ? projMatrix?.cities ?? null : baseMatrix?.cities ?? null} allPeriods={isProjectionMode ? projMatrix?.allPeriods ?? [] : baseMatrix?.allPeriods ?? []} grain={grain} maxItems={5} />
+        <div className="divide-y-0">
+          <OmniviewMomentumPriorityStrip cities={isProjectionMode ? projMatrix?.cities ?? null : baseMatrix?.cities ?? null} allPeriods={isProjectionMode ? projMatrix?.allPeriods ?? [] : baseMatrix?.allPeriods ?? []} grain={grain} maxItems={5} />
+        </div>
 
-        {/* Controls */}
-        <div className="overflow-hidden" style={{
-          border: '1px solid var(--tw-bg-ct-border)',
-          borderRadius: 'var(--ct-radius-md)',
-          background: 'var(--tw-bg-ct-surface)',
-        }}>
-          <div className="flex flex-wrap items-end gap-x-3 gap-y-1.5 px-3 py-1.5">
+        {/* Controls — unified inside shell */}
+        <div className="overflow-hidden">
+          <div className="flex flex-wrap items-end gap-x-2 gap-y-1 px-3 py-1">
             {/* Grano temporal */}
             <div className="flex flex-col gap-1">
               <span className="text-2xs font-semibold text-ct-text3 uppercase tracking-wider">Grano</span>
@@ -1536,16 +1552,16 @@ export default function BusinessSliceOmniviewMatrix () {
             )}
           </div>
 
-          <div className="px-4 py-2 border-t border-ct-border bg-ct-surface/40">
+          <div className="px-3 py-1 border-t border-ct-border bg-ct-surface/40">
             {!focusMode && <OmniviewDataHelp />}
           </div>
 
-          {/* Fila 2: Controles de visualización */}
-          <div className="px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-2 bg-ct-bg/60">
+          {/* Fila 2: Controles de visualización + KPI selector compacto */}
+          <div className="px-3 py-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 bg-ct-bg/60">
             {/* Modo Evolución / Vs Proyección */}
             <div className="flex items-center gap-1">
-              <span className="text-[11px] font-medium text-ct-text3 mr-1">Modo</span>
-              <div className="flex gap-1">
+              <span className="text-[10px] font-medium text-ct-text3 mr-1">Modo</span>
+              <div className="flex gap-0.5">
                 <button type="button" className={btnCls(viewMode === 'evolucion')} onClick={() => setViewMode('evolucion')}>Evolución</button>
                 <button type="button" className={btnCls(viewMode === 'proyeccion')} onClick={() => setViewMode('proyeccion')}>Vs Proyección</button>
               </div>
@@ -1576,6 +1592,24 @@ export default function BusinessSliceOmniviewMatrix () {
                 </div>
               </>
             )}
+            {/* ── KPI selector compacto (inline) ── */}
+            <div className="w-px h-4 bg-gray-200 hidden sm:block" />
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] font-medium text-ct-text3 mr-1">KPI</span>
+              <div className="flex gap-0.5">
+                {KPI_FOCUS_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setFocusedKpi(option.id)}
+                    className={btnCls(focusedKpi === option.id)}
+                    title={option.label}
+                  >
+                    {option.short || option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             {isProjectionMode && (
               <>
@@ -1860,29 +1894,7 @@ export default function BusinessSliceOmniviewMatrix () {
           />
         )}
 
-        {/* ── KPI focus mode ────────────────────────────────────── */}
-        {!focusMode && heavyQueriesEnabled && !blockedByCountry && ((!isProjectionMode && rows.length > 0) || (isProjectionMode && projectionRows.length > 0)) && (
-          <div className="rounded-lg border border-ct-border bg-ct-card px-4 py-3 shadow-sm">
-            <div className="flex flex-wrap items-center gap-3">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-ct-text3">KPI focus mode</p>
-                <p className="mt-1 text-xs text-ct-text2">La matriz conserva la lectura temporal, pero muestra una sola métrica a la vez.</p>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {KPI_FOCUS_OPTIONS.map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => setFocusedKpi(option.id)}
-                    className={btnCls(focusedKpi === option.id)}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+        {/* ── KPI focus mode ── merged into controls row (inline) ── */}
 
         {/* ── Insights Panel (additive, between focus and Matrix) ── */}
         {!focusMode && heavyQueriesEnabled && !blockedByCountry && !isProjectionMode && insights.length > 0 && (
@@ -1934,7 +1946,7 @@ export default function BusinessSliceOmniviewMatrix () {
         {/* ── Matrix + Inspector (Evolución) — FASE 1H.3 fullscreen ── */}
         {heavyQueriesEnabled && !loading && !blockedByCountry && !isProjectionMode && rows.length > 0 && (
           matrixFullscreen ? (
-            <div className="fixed inset-0 z-[100] bg-white overflow-hidden" role="dialog" aria-modal="true" aria-label="Omniview Matrix — pantalla completa">
+            <div className="fixed inset-0 z-[100] bg-white overflow-y-auto" role="dialog" aria-modal="true" aria-label="Omniview Matrix — pantalla completa">
               <div className="max-w-full mx-auto p-3 sm:p-4">
                 <div className="flex items-center justify-between mb-2 px-1">
                   <div className="flex items-center gap-2">
@@ -1956,11 +1968,13 @@ export default function BusinessSliceOmniviewMatrix () {
                       onCellClick={handleCellClick} selectedCell={selectedCell}
                       insightCellMap={insightCellMap} insightMode={insightMode}
                       lineImpactMap={lineImpactMap} periodStates={periodStates}
+                      temporalTiers={temporalTiers}
                       matrixTrust={matrixTrust}
                       focusedKpi={focusedKpi}
                       currentPeriodKey={operationalCurrentPeriodKey}
                       calendarCurrentPeriodKey={isProjectionMode ? currentPeriodKey : undefined}
                       scrollContainerRef={scrollContainerRef}
+                      isFullscreen={true}
                     />
                   </div>
                   <BusinessSliceOmniviewInspector
@@ -1998,6 +2012,7 @@ export default function BusinessSliceOmniviewMatrix () {
                   onCellClick={handleCellClick} selectedCell={selectedCell}
                   insightCellMap={insightCellMap} insightMode={insightMode}
                   lineImpactMap={lineImpactMap} periodStates={periodStates}
+                  temporalTiers={temporalTiers}
                   matrixTrust={matrixTrust}
                   focusedKpi={focusedKpi}
                   currentPeriodKey={operationalCurrentPeriodKey}
@@ -2059,7 +2074,7 @@ export default function BusinessSliceOmniviewMatrix () {
         {/* ── Matrix + Drill (Vs Proyección) — FASE 1H.3 fullscreen ── */}
         {heavyQueriesEnabled && projectionReady && isProjectionMode && perspective === 'operational' && projMatrix && projectionRows.length > 0 && (
           matrixFullscreen ? (
-            <div className="fixed inset-0 z-[100] bg-white overflow-hidden" role="dialog" aria-modal="true" aria-label="Omniview Proyección — pantalla completa">
+            <div className="fixed inset-0 z-[100] bg-white overflow-y-auto" role="dialog" aria-modal="true" aria-label="Omniview Proyección — pantalla completa">
               <div className="max-w-full mx-auto p-3 sm:p-4">
                 <div className="flex items-center justify-between mb-2 px-1">
                   <div className="flex items-center gap-2">
@@ -2085,6 +2100,7 @@ export default function BusinessSliceOmniviewMatrix () {
                       matrix={displayProjMatrix} grain={grain} compact={compact} sortKey={sortKey}
                       onCellClick={handleCellClick} selectedCell={selectedCell}
                       periodStates={periodStates}
+                      temporalTiers={temporalTiers}
                       focusedKpi={focusedKpi}
                       mode="projection"
                       projectionAuthoritativeYtd={projectionMeta?.authoritative_ytd}
@@ -2092,6 +2108,7 @@ export default function BusinessSliceOmniviewMatrix () {
                       currentPeriodKey={operationalCurrentPeriodKey}
                       calendarCurrentPeriodKey={isProjectionMode ? currentPeriodKey : undefined}
                       scrollContainerRef={scrollContainerRef}
+                      isFullscreen={true}
                     />
                   </div>
                   <OmniviewProjectionDrill
@@ -2127,12 +2144,13 @@ export default function BusinessSliceOmniviewMatrix () {
                   matrix={displayProjMatrix} grain={grain} compact={compact} sortKey={sortKey}
                   onCellClick={handleCellClick} selectedCell={selectedCell}
                   periodStates={periodStates}
+                  temporalTiers={temporalTiers}
                   focusedKpi={focusedKpi}
                   mode="projection"
                   projectionAuthoritativeYtd={projectionMeta?.authoritative_ytd}
                   projectionIntegrityBroken={projectionIntegrityBroken}
                   currentPeriodKey={operationalCurrentPeriodKey}
-                      calendarCurrentPeriodKey={isProjectionMode ? currentPeriodKey : undefined}
+                  calendarCurrentPeriodKey={isProjectionMode ? currentPeriodKey : undefined}
                   scrollContainerRef={scrollContainerRef}
                 />
               </div>

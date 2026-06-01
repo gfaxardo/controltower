@@ -1,0 +1,14 @@
+﻿=== OVERVIEW ===
+URL: http://127.0.0.1:8000/fleet-project/yego-pro/profitability/overview?park_id=64085dd85e124e2c808806f70d527ea8
+Time: 2026-05-31 22:07:12
+HTTP: 200
+Status field: ERROR
+KPIs: 0
+billing_weeks: 
+shift_days: 
+days_with_trips: 
+financial_history_status: 
+data_confidence: 
+
+PAYLOAD (first 80 lines):
+{     "status":  "ERROR",     "error":  "connection already closed",     "remediation":  "Check database connectivity and view existence." }

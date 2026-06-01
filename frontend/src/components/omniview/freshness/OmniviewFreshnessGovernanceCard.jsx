@@ -4,9 +4,13 @@
  * Capa de gobernanza: muestra estado de freshness RAW → FACT → SERVING.
  * Compacta. Sin invasión visual si está OK.
  * Clara si hay WARNING/BLOCKED.
+ *
+ * Refresh Remediation Control (CF-H1G):
+ *   Si BLOCKED, muestra botón "Refrescar Omniview" que ejecuta
+ *   POST /ops/omniview/refresh y luego re-evalúa freshness.
  */
 import { useState, useEffect } from 'react'
-import { getOmniviewFreshnessGovernance } from '../../../services/api.js'
+import { getOmniviewFreshnessGovernance, postOmniviewRefresh } from '../../../services/api.js'
 
 const STATUS_STYLES = {
   ok: { bg: 'bg-emerald-50/60', text: 'text-emerald-800', dot: 'bg-emerald-500', label: 'OK' },
@@ -44,14 +48,26 @@ export default function OmniviewFreshnessGovernanceCard({ compact = false }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshResult, setRefreshResult] = useState(null)
+
+  const fetchFreshness = async ({ signal } = {}) => {
+    try {
+      setError(null)
+      const res = await getOmniviewFreshnessGovernance({ signal })
+      setData(res)
+    } catch (e) {
+      setError(e.message || 'Error')
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
-    const fetch = async () => {
+    const doFetch = async () => {
       try {
         setLoading(true)
         setError(null)
-        const res = await getOmniviewFreshnessGovernance()
+        const res = await getOmniviewFreshnessGovernance({ signal: cancelled ? {} : undefined })
         if (!cancelled) setData(res)
       } catch (e) {
         if (!cancelled) setError(e.message || 'Error')
@@ -59,9 +75,31 @@ export default function OmniviewFreshnessGovernanceCard({ compact = false }) {
         if (!cancelled) setLoading(false)
       }
     }
-    fetch()
+    doFetch()
     return () => { cancelled = true }
   }, [])
+
+  const handleRefresh = async () => {
+    if (!window.confirm(
+      '¿Ejecutar refresh completo de Omniview?\n\n' +
+      'Esto recalcula day_fact + week_fact + month_fact para el mes actual y anterior.\n' +
+      'El proceso puede tardar varios segundos.'
+    )) {
+      return
+    }
+
+    setRefreshing(true)
+    setRefreshResult(null)
+    try {
+      const result = await postOmniviewRefresh(true)
+      setRefreshResult(result)
+      await fetchFreshness()
+    } catch (e) {
+      setRefreshResult({ status: 'error', errors: [{ error: e.message || 'Error de red' }] })
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   if (loading) return null
   if (error) return null
@@ -69,6 +107,7 @@ export default function OmniviewFreshnessGovernanceCard({ compact = false }) {
 
   const overall = data.status
   const isOk = overall === 'ok'
+  const isBlocked = overall === 'blocked'
   const style = STATUS_STYLES[overall] || STATUS_STYLES.ok
 
   const rawDate = data.raw?.max_date
@@ -92,6 +131,16 @@ export default function OmniviewFreshnessGovernanceCard({ compact = false }) {
           <FreshnessRow label={LAYER_LABELS.projection_daily} dateStr={proj.max_date} status={proj.status} lagDays={proj.lag_days} />
         </div>
 
+        {isBlocked && (
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="text-[10px] font-semibold px-2 py-0.5 rounded border border-red-300 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {refreshing ? 'Refrescando...' : 'Refrescar Omniview'}
+          </button>
+        )}
+
         {!isOk && data.message && (
           <div className="w-full mt-0.5">
             <span className={`text-[10px] ${style.text} font-medium`}>{data.message}</span>
@@ -101,6 +150,15 @@ export default function OmniviewFreshnessGovernanceCard({ compact = false }) {
                 <code className="text-[9px] text-ct-text3 bg-gray-100 px-1 py-0.5 rounded">{data.remediation}</code>
               </details>
             )}
+          </div>
+        )}
+
+        {refreshResult && (
+          <div className={`w-full mt-0.5 text-[10px] ${refreshResult.status === 'ok' ? 'text-emerald-700' : 'text-red-700'} font-medium`}>
+            {refreshResult.status === 'ok'
+              ? `Refresh completado en ${refreshResult.duration_seconds?.toFixed(1) || '?'}s.`
+              : `Error en refresh: ${refreshResult.errors?.[0]?.error || 'Desconocido'}`
+            }
           </div>
         )}
       </div>

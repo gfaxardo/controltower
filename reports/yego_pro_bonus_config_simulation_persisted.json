@@ -1,0 +1,591 @@
+{
+  "status": "OK",
+  "shift_model": "1_turno",
+  "shift_label": "1 turno (dia)",
+  "shifts_per_vehicle": 1,
+  "selected_shift": "day",
+  "vehicle_branded": true,
+  "subtotals": {
+    "production": {
+      "trips_week": 0.0,
+      "premier_trips_week": 6.0,
+      "revenue_general": 0.0,
+      "revenue_premier": 150.0,
+      "gross_trip_revenue": 150.0,
+      "general_bonus": 0,
+      "premier_bonus": 131.0,
+      "total_company_income": 281.0
+    },
+    "variable_costs": {
+      "km_total": 0.0,
+      "fuel_cost": 0.0,
+      "maintenance_cost": 0.0,
+      "platform_commission": 27.0,
+      "total_variable_cost": 27.0
+    },
+    "driver_payment": {
+      "base_before_payout": -149.43,
+      "payout_driver": 75.0,
+      "guarantee_amount": 0.0,
+      "driver_income_total": 75.0
+    },
+    "fixed_costs": {
+      "vehicle_weekly_cost": 350.0,
+      "insurance_gps_weekly": 45.0,
+      "fixed_weekly": 395.0,
+      "reserve_amount": 8.43,
+      "total_fixed": 403.43
+    },
+    "result": {
+      "company_profit_weekly": -224.43,
+      "company_profit_monthly": -971.78,
+      "margin_pct": -79.9,
+      "payback_trips": 0,
+      "break_even_trips": 0
+    }
+  },
+  "calculation_trace": [
+    {
+      "step": "revenue_general",
+      "label": "Revenue viajes generales",
+      "formula": "general_trips * ticket_avg_general",
+      "inputs": {
+        "trips_day_week": 0.0,
+        "trips_night_week": 0.0,
+        "ticket_avg_general": 15.0
+      },
+      "result": 0.0,
+      "source": "OPERATIONAL + MANUAL",
+      "confidence": "ESTIMATED",
+      "notes": ""
+    },
+    {
+      "step": "revenue_premier",
+      "label": "Revenue viajes Premier",
+      "formula": "premier_trips * ticket_avg_premier",
+      "inputs": {
+        "trips_premier_day_week": 6.0,
+        "trips_premier_night_week": 0.0,
+        "ticket_avg_premier": 25.0
+      },
+      "result": 150.0,
+      "source": "OPERATIONAL + MANUAL",
+      "confidence": "ESTIMATED",
+      "notes": ""
+    },
+    {
+      "step": "gross_trip_revenue",
+      "label": "Revenue bruto por viajes",
+      "formula": "revenue_general + revenue_premier",
+      "inputs": {
+        "revenue_general": 0.0,
+        "revenue_premier": 150.0
+      },
+      "result": 150.0,
+      "source": "OPERATIONAL + MANUAL",
+      "confidence": "ESTIMATED",
+      "notes": ""
+    },
+    {
+      "step": "general_bonus_yango",
+      "label": "Bono general Yango",
+      "formula": "tramo >= 0 viajes \u2192 0% brandeado",
+      "inputs": {
+        "general_bonus_trips_week": 0.0,
+        "vehicle_branded": true,
+        "eligible": false,
+        "tier_reached": null
+      },
+      "result": 0,
+      "source": "YANGO_BONUS_TABLE",
+      "confidence": "NOT_REACHED",
+      "notes": ""
+    },
+    {
+      "step": "premier_bonus_yango",
+      "label": "Bono Premier Yango",
+      "formula": "tramo >= 6 viajes Premier \u2192 29.0%",
+      "inputs": {
+        "premier_bonus_trips_week": 6.0,
+        "eligible": true,
+        "tier_reached": 6
+      },
+      "result": 131.0,
+      "source": "YANGO_BONUS_TABLE",
+      "confidence": "REAL",
+      "notes": ""
+    },
+    {
+      "step": "total_company_income",
+      "label": "Ingreso total empresa",
+      "formula": "gross_trip_revenue + general_bonus_yango + premier_bonus_yango",
+      "inputs": {
+        "gross_trip_revenue": 150.0,
+        "general_bonus_yango": 0,
+        "premier_bonus_yango": 131.0
+      },
+      "result": 281.0,
+      "source": "DERIVED",
+      "confidence": "ESTIMATED",
+      "notes": ""
+    },
+    {
+      "step": "km_total",
+      "label": "Km total recorridos",
+      "formula": "trips_week * km_per_trip",
+      "inputs": {
+        "trips_week": 0.0,
+        "km_per_trip": 8.5
+      },
+      "result": 0.0,
+      "source": "OPERATIONAL + MANUAL",
+      "confidence": "ESTIMATED",
+      "notes": ""
+    },
+    {
+      "step": "fuel_cost",
+      "label": "Costo combustible",
+      "formula": "km_total * fuel_per_km",
+      "inputs": {
+        "km_total": 0.0,
+        "fuel_per_km": 0.35
+      },
+      "result": 0.0,
+      "source": "OPERATIONAL + MANUAL",
+      "confidence": "ESTIMATED",
+      "notes": ""
+    },
+    {
+      "step": "maintenance_cost",
+      "label": "Costo mantenimiento",
+      "formula": "trips_week * maintenance_per_trip",
+      "inputs": {
+        "trips_week": 0.0,
+        "maintenance_per_trip": 1.2
+      },
+      "result": 0.0,
+      "source": "OPERATIONAL + MANUAL",
+      "confidence": "ESTIMATED",
+      "notes": ""
+    },
+    {
+      "step": "platform_commission",
+      "label": "Comision plataforma",
+      "formula": "gross_trip_revenue * (platform_commission_pct / 100)",
+      "inputs": {
+        "gross_trip_revenue": 150.0,
+        "platform_commission_pct": 18.0
+      },
+      "result": 27.0,
+      "source": "MODULE_BILLING + MANUAL",
+      "confidence": "ESTIMATED",
+      "notes": ""
+    },
+    {
+      "step": "total_variable_cost",
+      "label": "Costo variable total",
+      "formula": "fuel_cost + maintenance_cost + platform_commission",
+      "inputs": {
+        "fuel_cost": 0.0,
+        "maintenance_cost": 0.0,
+        "platform_commission": 27.0
+      },
+      "result": 27.0,
+      "source": "DERIVED",
+      "confidence": "ESTIMATED",
+      "notes": ""
+    },
+    {
+      "step": "fixed_weekly",
+      "label": "Costos fijos semanales",
+      "formula": "vehicle_weekly_cost + insurance_gps_weekly",
+      "inputs": {
+        "vehicle_weekly_cost": 350.0,
+        "insurance_gps_weekly": 45.0
+      },
+      "result": 395.0,
+      "source": "FLEET_CONFIG + MANUAL",
+      "confidence": "ESTIMATED",
+      "notes": ""
+    },
+    {
+      "step": "reserve_amount",
+      "label": "Reserva desgaste",
+      "formula": "total_company_income * (reserve_pct / 100)",
+      "inputs": {
+        "total_company_income": 281.0,
+        "reserve_pct": 3.0
+      },
+      "result": 8.43,
+      "source": "MANUAL",
+      "confidence": "ESTIMATED",
+      "notes": ""
+    },
+    {
+      "step": "total_costs",
+      "label": "Costos totales",
+      "formula": "total_variable_cost + fixed_weekly + reserve_amount",
+      "inputs": {
+        "total_variable_cost": 27.0,
+        "fixed_weekly": 395.0,
+        "reserve_amount": 8.43
+      },
+      "result": 430.43,
+      "source": "DERIVED",
+      "confidence": "ESTIMATED",
+      "notes": ""
+    },
+    {
+      "step": "base_before_payout",
+      "label": "Base neta antes de reparto",
+      "formula": "total_company_income - total_costs",
+      "inputs": {
+        "total_company_income": 281.0,
+        "total_costs": 430.43
+      },
+      "result": -149.43,
+      "source": "DERIVED",
+      "confidence": "ESTIMATED",
+      "notes": ""
+    },
+    {
+      "step": "payout_driver",
+      "label": "Payout conductor",
+      "formula": "gross_trip_revenue * (driver_payout_pct / 100)",
+      "inputs": {
+        "gross_trip_revenue": 150.0,
+        "driver_payout_pct": 50.0
+      },
+      "result": 75.0,
+      "source": "PAYMENT_TIERS + MANUAL",
+      "confidence": "ESTIMATED",
+      "notes": ""
+    },
+    {
+      "step": "net_after_payout",
+      "label": "Neto despues de payout",
+      "formula": "base_before_payout - payout_driver",
+      "inputs": {
+        "base_before_payout": -149.43,
+        "payout_driver": 75.0
+      },
+      "result": -224.43,
+      "source": "DERIVED",
+      "confidence": "ESTIMATED",
+      "notes": ""
+    },
+    {
+      "step": "company_profit_weekly",
+      "label": "Utilidad semanal empresa",
+      "formula": "total_company_income - total_costs - driver_income_total",
+      "inputs": {
+        "total_company_income": 281.0,
+        "total_costs": 430.43,
+        "driver_income_total": 75.0
+      },
+      "result": -224.43,
+      "source": "DERIVED",
+      "confidence": "ESTIMATED",
+      "notes": ""
+    },
+    {
+      "step": "company_profit_monthly",
+      "label": "Utilidad mensual empresa",
+      "formula": "company_profit_weekly * 4.33",
+      "inputs": {
+        "company_profit_weekly": -224.43
+      },
+      "result": -971.78,
+      "source": "DERIVED",
+      "confidence": "ESTIMATED",
+      "notes": ""
+    },
+    {
+      "step": "margin_pct",
+      "label": "Margen %",
+      "formula": "(company_profit_weekly / total_company_income) * 100",
+      "inputs": {
+        "company_profit_weekly": -224.43,
+        "total_company_income": 281.0
+      },
+      "result": -79.9,
+      "source": "DERIVED",
+      "confidence": "ESTIMATED",
+      "notes": ""
+    },
+    {
+      "step": "payback_trips",
+      "label": "Payback (viajes para cubrir fijos)",
+      "formula": "fixed_weekly / (ticket_avg_general - cost_per_trip_avg)",
+      "inputs": {
+        "fixed_weekly": 395.0,
+        "ticket_avg_general": 15.0,
+        "cost_per_trip_avg": 27.0
+      },
+      "result": 0,
+      "source": "DERIVED",
+      "confidence": "ESTIMATED",
+      "notes": ""
+    },
+    {
+      "step": "break_even_trips",
+      "label": "Break-even viajes",
+      "formula": "(fixed_weekly + reserve_amount) / (ticket_avg_general - cost_per_trip_avg - payout_per_trip)",
+      "inputs": {
+        "fixed_weekly": 395.0,
+        "reserve_amount": 8.43,
+        "ticket_avg_general": 15.0,
+        "payout_per_trip": 75.0
+      },
+      "result": 0,
+      "source": "DERIVED",
+      "confidence": "ESTIMATED",
+      "notes": ""
+    }
+  ],
+  "sensitivity": {
+    "bonus_scenarios": [
+      {
+        "label": "Sin bono",
+        "type": "bonus_none",
+        "simulation": {
+          "company_income": 150.0,
+          "company_profit_weekly": -351.5,
+          "driver_income": 75.0,
+          "margin_pct": -234.3,
+          "general_bonus": 0,
+          "premier_bonus": 0
+        },
+        "diff_vs_current": -127.07
+      },
+      {
+        "label": "Tramo actual",
+        "type": "current",
+        "simulation": {
+          "company_income": 281.0,
+          "company_profit_weekly": -224.43,
+          "driver_income": 75.0,
+          "margin_pct": -79.9,
+          "general_bonus": 0,
+          "premier_bonus": 131.0
+        },
+        "diff_vs_current": 0
+      },
+      {
+        "label": "Siguiente tramo general",
+        "type": "bonus_next_general",
+        "simulation": {
+          "company_income": 150.0,
+          "company_profit_weekly": -351.5,
+          "driver_income": 75.0,
+          "margin_pct": -234.3,
+          "general_bonus": 0,
+          "premier_bonus": 0
+        },
+        "diff_vs_current": -127.07
+      },
+      {
+        "label": "Siguiente tramo Premier",
+        "type": "bonus_next_premier",
+        "simulation": {
+          "company_income": 340.0,
+          "company_profit_weekly": -167.2,
+          "driver_income": 75.0,
+          "margin_pct": -49.2,
+          "general_bonus": 0,
+          "premier_bonus": 190.0
+        },
+        "diff_vs_current": 57.23
+      }
+    ],
+    "payout_sensitivity": [
+      {
+        "payout_pct": 30,
+        "company_profit_weekly": -194.43,
+        "driver_income": 45.0,
+        "margin_pct": -69.2,
+        "diff_vs_current": 30.0
+      },
+      {
+        "payout_pct": 35,
+        "company_profit_weekly": -201.93,
+        "driver_income": 52.5,
+        "margin_pct": -71.9,
+        "diff_vs_current": 22.5
+      },
+      {
+        "payout_pct": 40,
+        "company_profit_weekly": -209.43,
+        "driver_income": 60.0,
+        "margin_pct": -74.5,
+        "diff_vs_current": 15.0
+      },
+      {
+        "payout_pct": 45,
+        "company_profit_weekly": -216.93,
+        "driver_income": 67.5,
+        "margin_pct": -77.2,
+        "diff_vs_current": 7.5
+      },
+      {
+        "payout_pct": 50,
+        "company_profit_weekly": -224.43,
+        "driver_income": 75.0,
+        "margin_pct": -79.9,
+        "diff_vs_current": 0.0
+      },
+      {
+        "payout_pct": 55,
+        "company_profit_weekly": -231.93,
+        "driver_income": 82.5,
+        "margin_pct": -82.5,
+        "diff_vs_current": -7.5
+      },
+      {
+        "payout_pct": 60,
+        "company_profit_weekly": -239.43,
+        "driver_income": 90.0,
+        "margin_pct": -85.2,
+        "diff_vs_current": -15.0
+      }
+    ],
+    "current_reference": {
+      "company_profit_weekly": -224.43,
+      "driver_income": 75.0,
+      "margin_pct": -79.9
+    }
+  },
+  "operational_references": {
+    "trips_day_week": {
+      "value": 85.0,
+      "source": "module_calculated_shifts",
+      "confidence": "REAL_OPERATIONAL",
+      "period": "ultimos 30 dias"
+    },
+    "trips_night_week": {
+      "value": 45.0,
+      "source": "module_calculated_shifts",
+      "confidence": "REAL_OPERATIONAL",
+      "period": "ultimos 30 dias"
+    },
+    "trips_premier_day_week": {
+      "value": 6.0,
+      "source": "trips_2026",
+      "confidence": "REAL_OPERATIONAL",
+      "period": "ultimos 30 dias"
+    },
+    "trips_premier_night_week": {
+      "value": 3.0,
+      "source": "trips_2026",
+      "confidence": "REAL_OPERATIONAL",
+      "period": "ultimos 30 dias"
+    },
+    "ticket_avg": {
+      "value": 15.0,
+      "source": "trips_2026",
+      "confidence": "REAL_OPERATIONAL",
+      "period": "ultimos 30 dias"
+    },
+    "ticket_avg_general": {
+      "value": 15.0,
+      "source": "trips_2026",
+      "confidence": "REAL_OPERATIONAL",
+      "period": "ultimos 30 dias"
+    },
+    "ticket_avg_premier": {
+      "value": 22.0,
+      "source": "trips_2026",
+      "confidence": "REAL_OPERATIONAL",
+      "period": "ultimos 30 dias"
+    },
+    "km_per_trip": {
+      "value": 8.5,
+      "source": "trips_2026",
+      "confidence": "REAL_OPERATIONAL",
+      "period": "ultimos 30 dias"
+    },
+    "fuel_per_km": {
+      "value": 0.35,
+      "source": "module_weekly_billing",
+      "confidence": "REAL_OPERATIONAL",
+      "period": "ultima semana cerrada"
+    },
+    "maintenance_per_trip": {
+      "value": 1.2,
+      "source": "module_weekly_billing",
+      "confidence": "REAL_OPERATIONAL",
+      "period": "ultima semana cerrada"
+    },
+    "platform_commission_pct": {
+      "value": 18.0,
+      "source": "module_weekly_billing",
+      "confidence": "REAL_OPERATIONAL",
+      "period": "ultima semana cerrada"
+    },
+    "vehicle_weekly_cost": {
+      "value": 350.0,
+      "source": "module_miauto_cronograma",
+      "confidence": "REAL_OPERATIONAL",
+      "period": "configuracion activa"
+    },
+    "insurance_gps_weekly": {
+      "value": 45.0,
+      "source": "manual",
+      "confidence": "ESTIMATED",
+      "period": "default operativo"
+    },
+    "reserve_pct": {
+      "value": 3.0,
+      "source": "manual",
+      "confidence": "ESTIMATED",
+      "period": "default operativo"
+    }
+  },
+  "bonus_result": {
+    "general": {
+      "mode": "Brandeado",
+      "trips_considered": 0.0,
+      "achieved_threshold": 0,
+      "bonus_pct": 0,
+      "bonus_amount": 0,
+      "next_threshold": null,
+      "trips_to_next": 0,
+      "additional_bonus_potential": 0
+    },
+    "premier": {
+      "trips_considered": 6.0,
+      "achieved_threshold": 6,
+      "bonus_pct": 29.0,
+      "bonus_amount": 131.0,
+      "next_threshold": 8,
+      "trips_to_next": 2.0,
+      "additional_bonus_potential": 59.0
+    }
+  },
+  "inputs_used": {
+    "shifts_per_vehicle": 1,
+    "selected_shift": "day",
+    "trips_day_week": 0.0,
+    "trips_night_week": 0.0,
+    "trips_premier_day_week": 6.0,
+    "trips_premier_night_week": 0.0,
+    "ticket_avg_general": 15.0,
+    "ticket_avg_premier": 25.0,
+    "ticket_avg": 15.0,
+    "km_per_trip": 8.5,
+    "fuel_per_km": 0.35,
+    "maintenance_per_trip": 1.2,
+    "platform_commission_pct": 18.0,
+    "vehicle_weekly_cost": 350.0,
+    "insurance_gps_weekly": 45.0,
+    "reserve_pct": 3.0,
+    "driver_payout_pct": 50.0,
+    "vehicle_branded": true,
+    "eligible_for_general_bonus": false,
+    "eligible_for_premier_bonus": true,
+    "general_bonus_trips_week": 0.0,
+    "premier_bonus_trips_week": 6.0,
+    "guarantee_amount": 0.0,
+    "bonus_tables": true
+  }
+}

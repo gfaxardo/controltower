@@ -1,0 +1,166 @@
+{
+  "pass": 32,
+  "fail": 0,
+  "checks": [
+    {
+      "check": "status OK",
+      "passed": true,
+      "detail": "OK"
+    },
+    {
+      "check": "persisted=true",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "general_branded 7 rows",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "general_unbranded 7 rows",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "premier 7 rows",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "premier[4] amount=130 (default)",
+      "passed": true,
+      "detail": "got 130.0"
+    },
+    {
+      "check": "no null tables",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "no NaN in response",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "save status OK",
+      "passed": true,
+      "detail": "OK"
+    },
+    {
+      "check": "persisted=true after save",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "premier[4] amount=131",
+      "passed": true,
+      "detail": "got 131.0"
+    },
+    {
+      "check": "updated_at changed",
+      "passed": true,
+      "detail": "old=2026-05-30 22:36:08.107297-05:00 new=2026-05-30 22:36:22.695831-05:00"
+    },
+    {
+      "check": "general_branded preserved",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "re-read persisted=true",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "re-read premier[4]=131",
+      "passed": true,
+      "detail": "got 131.0"
+    },
+    {
+      "check": "has active rows",
+      "passed": true,
+      "detail": "active=21"
+    },
+    {
+      "check": "premier 6/131 active in DB",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "has inactive rows (old version preserved)",
+      "passed": true,
+      "detail": "inactive=147"
+    },
+    {
+      "check": "no duplicate active per type",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "sim premier bonus=131",
+      "passed": true,
+      "detail": "got 131.0"
+    },
+    {
+      "check": "sim total_income includes 131",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "trace has premier bonus entry",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "trace premier result=131",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "reset status OK",
+      "passed": true,
+      "detail": "OK"
+    },
+    {
+      "check": "reset persisted=true",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "after reset premier[4]=130",
+      "passed": true,
+      "detail": "got 130.0"
+    },
+    {
+      "check": "after reset persisted=true",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "reject invalid bonus_type",
+      "passed": true,
+      "detail": "Invalid bonus_type: invalid_type"
+    },
+    {
+      "check": "reject negative bonus_amount",
+      "passed": true,
+      "detail": "bonus_amount must be >= 0, got -50.0 for premier"
+    },
+    {
+      "check": "reject negative bonus_pct",
+      "passed": true,
+      "detail": "bonus_pct must be >= 0, got -5.0 for premier"
+    },
+    {
+      "check": "reject zero trips_min",
+      "passed": true,
+      "detail": "trips_min must be > 0, got 0 for premier"
+    },
+    {
+      "check": "reject negative trips_min",
+      "passed": true,
+      "detail": "trips_min must be > 0, got -1 for premier"
+    }
+  ]
+}

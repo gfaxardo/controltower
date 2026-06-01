@@ -20,8 +20,10 @@ from __future__ import annotations
 import logging
 import os
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, List, Optional, Tuple
+
+from app.db.connection import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -421,7 +423,12 @@ FROM (
                        OR ops.normalized_works_terms(b.works_terms::text) LIKE '%%' || ops.normalized_works_terms(w::text) || '%%')))
     ),
     mx AS (SELECT trip_id, max(spec_score) AS max_spec FROM m GROUP BY trip_id),
-    best AS (SELECT m.* FROM m INNER JOIN mx ON m.trip_id = mx.trip_id AND m.spec_score = mx.max_spec),
+    best AS (
+        SELECT DISTINCT ON (trip_id) m.*
+        FROM m
+        INNER JOIN mx ON m.trip_id = mx.trip_id AND m.spec_score = mx.max_spec
+        ORDER BY trip_id, mapping_rule_id
+    ),
     outcome AS (
         SELECT trip_id, count(DISTINCT business_slice_name) AS n_slices,
             array_agg(DISTINCT mapping_rule_id) AS rule_ids,
@@ -438,10 +445,10 @@ FROM (
     SELECT
         b.trip_id, b.driver_id, b.park_id, b.park_name,
         b.country, b.city, b.tipo_servicio, b.works_terms,
-        b.completed_flag, b.cancelled_flag, b.trip_date, b.trip_month,
-        b.trip_week, b.hour_of_day, b.trip_hour_start,
-        b.revenue_yego_net, b.ticket, b.km, b.duration_minutes,
-        b.gmv_passenger_paid, b.total_fare, b.condicion, b.source_table,
+            b.completed_flag, b.cancelled_flag, b.trip_date, b.trip_month,
+            b.trip_week, b.hour_of_day, b.trip_hour_start,
+            b.revenue_yego_real AS revenue_yego_net, b.ticket, b.km, b.duration_minutes,
+            b.gmv_passenger_paid, b.total_fare, b.condicion, b.source_table,
         b.revenue_source, b.revenue_yego_final,
         CASE WHEN o.trip_id IS NULL THEN 'unmatched' WHEN o.n_slices > 1 THEN 'conflict' ELSE 'resolved' END AS resolution_status,
         w.mapping_rule_id,
@@ -559,7 +566,8 @@ FROM (
             b.country, b.city, b.tipo_servicio, b.works_terms,
             b.completed_flag, b.cancelled_flag, b.trip_date, b.trip_month,
             b.trip_week, b.hour_of_day, b.trip_hour_start,
-            b.revenue_yego_real AS revenue_yego_net, b.ticket, b.km, b.duration_minutes,
+            b.revenue_yego_real AS revenue_yego_net, b.revenue_yego_final,
+            b.ticket, b.km, b.duration_minutes,
             b.gmv_passenger_paid, b.total_fare, b.condicion, b.source_table,
             rl.id AS mapping_rule_id, rl.business_slice_name, rl.fleet_display_name,
             rl.is_subfleet, rl.subfleet_name, rl.parent_fleet_name, rl.rule_type,
@@ -582,7 +590,12 @@ FROM (
                        OR ops.normalized_works_terms(b.works_terms::text) LIKE '%%' || ops.normalized_works_terms(w::text) || '%%')))
     ),
     mx AS (SELECT trip_id, max(spec_score) AS max_spec FROM m GROUP BY trip_id),
-    best AS (SELECT m.* FROM m INNER JOIN mx ON m.trip_id = mx.trip_id AND m.spec_score = mx.max_spec),
+    best AS (
+        SELECT DISTINCT ON (trip_id) m.*
+        FROM m
+        INNER JOIN mx ON m.trip_id = mx.trip_id AND m.spec_score = mx.max_spec
+        ORDER BY trip_id, mapping_rule_id
+    ),
     outcome AS (
         SELECT trip_id, count(DISTINCT business_slice_name) AS n_slices,
             array_agg(DISTINCT mapping_rule_id) AS rule_ids,
@@ -1021,8 +1034,408 @@ def _drop_enriched_temp(cur: Any) -> None:
     cur.execute("DROP TABLE IF EXISTS _bs_enriched_month")
 
 
-# ---------------------------------------------------------------------------
-# Loader mensual principal
+# ══════════════════════════════════════════════════════════════════════════════
+# CF-H1I — Incremental Refresh: bypass enriched view, direct RAW query
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def _materialize_enriched_direct(
+    cur: Any, start_date: date, end_date: date, conn: Optional[Any]
+) -> int:
+    """
+    Pre-materializa trips del rango [start_date, end_date) desde RAW directo
+    con filtro nativo (usa indice btree), replicando la logica de
+    ops.v_real_trips_enriched_base pero SIN el DISTINCT ON global.
+    El DISTINCT ON solo opera sobre las filas del rango acotado.
+    """
+    t0 = time.perf_counter()
+    apply_business_slice_load_session_settings(cur)
+    cur.execute("DROP TABLE IF EXISTS _bs_enriched_month")
+
+    need_2025 = start_date < date(2026, 1, 1)
+    need_2026 = end_date > date(2025, 12, 31)
+
+    print(
+        f"  materializando enriched directo {start_date} -> {end_date} "
+        f"(2025={'si' if need_2025 else 'no'}, 2026={'si' if need_2026 else 'no'}) ...",
+        flush=True,
+    )
+
+    source_ctes = []
+    for table_name, year_filter_start, year_filter_end in (
+        [("trips_2025", date(2025, 1, 1), date(2026, 1, 1))]
+        if need_2025
+        else []
+    ) + (
+        [("trips_2026", date(2026, 1, 1), date(2027, 1, 1))]
+        if need_2026
+        else []
+    ):
+        tbl_start = max(start_date, year_filter_start)
+        tbl_end = min(end_date, year_filter_end)
+        source_ctes.append(
+            f"""
+            SELECT
+                id, park_id, tipo_servicio, fecha_inicio_viaje, fecha_finalizacion,
+                comision_empresa_asociada, pago_corporativo, distancia_km,
+                condicion, conductor_id, precio_yango_pro, efectivo, tarjeta,
+                motivo_cancelacion,
+                '{table_name}' AS source_table,
+                {2 if table_name == 'trips_2026' else 1} AS source_priority
+            FROM public.{table_name}
+            WHERE fecha_inicio_viaje IS NOT NULL
+              AND fecha_inicio_viaje >= '{tbl_start.isoformat()} 00:00:00'::timestamptz
+              AND fecha_inicio_viaje <  '{tbl_end.isoformat()} 00:00:00'::timestamptz
+            """
+        )
+
+    raw_union = " UNION ALL ".join(source_ctes)
+
+    # Deduplicate within the filtered range only (not 65M rows)
+    sql = f"""
+        CREATE TEMP TABLE _bs_enriched_month AS
+        WITH raw_filtered AS (
+            {raw_union}
+        ),
+        canon AS (
+            SELECT DISTINCT ON (id) *
+            FROM raw_filtered
+            ORDER BY id, source_priority DESC, fecha_inicio_viaje DESC NULLS LAST
+        )
+        SELECT
+            c.id::varchar(255) AS trip_id,
+            c.conductor_id AS driver_id,
+            c.park_id,
+            NULLIF(btrim(COALESCE(dp.park_name, '')), '') AS park_name,
+            NULLIF(btrim(COALESCE(dp.country, '')), '') AS country,
+            NULLIF(btrim(COALESCE(dp.city, '')), '') AS city,
+            c.tipo_servicio,
+            d.works_terms,
+            c.condicion::text = 'Completado' AS completed_flag,
+            c.condicion::text = 'Cancelado' AS cancelled_flag,
+            c.fecha_inicio_viaje::date AS trip_date,
+            date_trunc('month', c.fecha_inicio_viaje)::date AS trip_month,
+            date_trunc('week', c.fecha_inicio_viaje)::date AS trip_week,
+            EXTRACT(HOUR FROM c.fecha_inicio_viaje)::int AS hour_of_day,
+            date_trunc('hour', c.fecha_inicio_viaje) AS trip_hour_start,
+            NULLIF(c.comision_empresa_asociada, 0) AS revenue_yego_net,
+            c.precio_yango_pro AS ticket,
+            CASE
+                WHEN c.distancia_km IS NOT NULL THEN ABS(c.distancia_km) / 1000.0
+                ELSE NULL
+            END AS km,
+            CASE
+                WHEN c.fecha_finalizacion IS NOT NULL
+                 AND c.fecha_inicio_viaje IS NOT NULL
+                 AND c.fecha_finalizacion > c.fecha_inicio_viaje
+                THEN EXTRACT(EPOCH FROM c.fecha_finalizacion - c.fecha_inicio_viaje) / 60.0
+                ELSE NULL
+            END AS duration_minutes,
+            COALESCE(c.efectivo, 0) + COALESCE(c.tarjeta, 0) + COALESCE(c.pago_corporativo, 0) AS gmv_passenger_paid,
+            COALESCE(c.efectivo, 0) + COALESCE(c.tarjeta, 0) + COALESCE(c.pago_corporativo, 0) AS total_fare,
+            c.condicion,
+            c.source_table,
+            c.motivo_cancelacion,
+            -- Derived columns
+            CASE
+                WHEN c.condicion::text = 'Completado'
+                 AND NULLIF(c.comision_empresa_asociada, 0) IS NOT NULL
+                THEN ABS(NULLIF(c.comision_empresa_asociada, 0))
+                ELSE NULL
+            END AS revenue_yego_real,
+            CASE
+                WHEN c.condicion::text = 'Completado'
+                 AND c.precio_yango_pro IS NOT NULL AND c.precio_yango_pro > 0
+                THEN c.precio_yango_pro * COALESCE(
+                    ops.resolve_commission_pct(
+                        NULLIF(btrim(COALESCE(dp.country, '')), ''),
+                        NULLIF(btrim(COALESCE(dp.city, '')), ''),
+                        c.park_id, c.tipo_servicio, c.fecha_inicio_viaje::date
+                    ), 0.03)
+                ELSE NULL
+            END AS revenue_yego_proxy,
+            CASE
+                WHEN c.condicion::text = 'Completado'
+                 AND NULLIF(c.comision_empresa_asociada, 0) IS NOT NULL
+                THEN ABS(NULLIF(c.comision_empresa_asociada, 0))
+                WHEN c.condicion::text = 'Completado'
+                 AND c.precio_yango_pro IS NOT NULL AND c.precio_yango_pro > 0
+                THEN c.precio_yango_pro * COALESCE(
+                    ops.resolve_commission_pct(
+                        NULLIF(btrim(COALESCE(dp.country, '')), ''),
+                        NULLIF(btrim(COALESCE(dp.city, '')), ''),
+                        c.park_id, c.tipo_servicio, c.fecha_inicio_viaje::date
+                    ), 0.03)
+                ELSE NULL
+            END AS revenue_yego_final,
+            CASE
+                WHEN c.condicion::text != 'Completado' THEN NULL
+                WHEN NULLIF(c.comision_empresa_asociada, 0) IS NOT NULL THEN 'real'
+                WHEN c.precio_yango_pro IS NOT NULL AND c.precio_yango_pro > 0 THEN 'proxy'
+                ELSE 'missing'
+            END AS revenue_source
+        FROM canon c
+        LEFT JOIN dim.dim_park dp
+            ON lower(btrim(dp.park_id::text)) = lower(btrim(c.park_id::text))
+        LEFT JOIN public.drivers d
+            ON lower(btrim(c.conductor_id::text)) = lower(btrim(d.driver_id::text))
+        WHERE c.fecha_inicio_viaje::date IS NOT NULL
+    """
+
+    cur.execute(sql)
+    mat_rows = cur.rowcount
+    cur.execute("CREATE INDEX _bsem_geo ON _bs_enriched_month (country, city)")
+    cur.execute("CREATE INDEX _bsem_park ON _bs_enriched_month (park_id)")
+    cur.execute("ANALYZE _bs_enriched_month")
+    dt = time.perf_counter() - t0
+    print(
+        f"  enriched directo materializado: {mat_rows} viajes en {dt:.1f}s",
+        flush=True,
+    )
+    if conn is not None:
+        conn.commit()
+    return mat_rows
+
+
+def refresh_business_slice_day_range(
+    cur: Any, start_date: date, end_date: date, conn: Optional[Any] = None
+) -> dict:
+    """
+    Refresca day_fact solo para el rango [start_date, end_date).
+    Materializa enriched desde RAW directo (sin vista pesada), luego usa
+    la misma resolución + agregación que el loader mensual (chunk por ciudad).
+    Retorna dict con ok, rows_inserted, duration_seconds, errors.
+    """
+    t0 = time.perf_counter()
+    errors = []
+
+    print(f"CF-H1I day_fact incremental: {start_date} -> {end_date}", flush=True)
+    mat_rows = _materialize_enriched_direct(cur, start_date, end_date, conn)
+    if mat_rows == 0:
+        _drop_enriched_temp(cur)
+        return {"ok": True, "skipped": True, "reason": "no_raw_data", "duration_seconds": round(time.perf_counter() - t0, 2)}
+
+    # Delete existing facts in range
+    cur.execute(
+        f"DELETE FROM {FACT_DAY} WHERE trip_date >= %s AND trip_date < %s",
+        (start_date, end_date),
+    )
+    deleted = cur.rowcount
+    print(f"  day_fact: {deleted} rows deleted", flush=True)
+    if conn is not None:
+        conn.commit()
+
+    # Discover chunks from temp table
+    cur.execute("SELECT DISTINCT country, city FROM _bs_enriched_month ORDER BY 1 NULLS FIRST, 2 NULLS FIRST")
+    chunks = cur.fetchall()
+    total_inserted = 0
+
+    for country, city in chunks:
+        cur.execute(
+            _RESOLVE_AND_AGG_DAY_FROM_TEMP.format(fact_day=FACT_DAY),
+            (country, city),
+        )
+        n = cur.rowcount
+        total_inserted += n
+        if conn is not None:
+            conn.commit()
+        print(f"  day_fact chunk ({country}, {city}): {n} rows", flush=True)
+
+    _drop_enriched_temp(cur)
+    if conn is not None:
+        conn.commit()
+
+    dt = round(time.perf_counter() - t0, 2)
+    return {
+        "ok": len(errors) == 0,
+        "deleted": deleted,
+        "rows_inserted": total_inserted,
+        "raw_rows": mat_rows,
+        "duration_seconds": dt,
+        "errors": errors,
+    }
+
+
+def refresh_business_slice_week_range(
+    cur: Any, start_date: date, end_date: date, conn: Optional[Any] = None
+) -> dict:
+    """
+    Refresca week_fact para las semanas afectadas por el rango [start_date, end_date).
+    Usa enriched directo (bypass vista) + resolución/agregación estándar.
+    Retorna dict con ok, rows_inserted, duration_seconds, errors.
+    """
+    t0 = time.perf_counter()
+    errors = []
+
+    print(f"CF-H1I week_fact incremental: {start_date} -> {end_date}", flush=True)
+    mat_rows = _materialize_enriched_direct(cur, start_date, end_date, conn)
+    if mat_rows == 0:
+        _drop_enriched_temp(cur)
+        return {"ok": True, "skipped": True, "reason": "no_raw_data", "duration_seconds": round(time.perf_counter() - t0, 2)}
+
+    # Delete affected weeks — find ALL ISO weeks intersecting [start_date, end_date)
+    affected_weeks = set()
+    from datetime import timedelta
+    first_monday = start_date - timedelta(days=start_date.weekday())
+    last_date = end_date - timedelta(days=1)
+    last_monday = last_date - timedelta(days=last_date.weekday())
+    w = first_monday
+    while w <= last_monday:
+        affected_weeks.add(w)
+        w += timedelta(days=7)
+    for w_ in sorted(affected_weeks):
+        we = w_ + timedelta(days=7)
+        cur.execute(
+            f"DELETE FROM {FACT_WEEK} WHERE week_start >= %s AND week_start < %s",
+            (w_, we),
+        )
+    deleted = cur.rowcount
+    print(f"  week_fact: {deleted} rows deleted", flush=True)
+    if conn is not None:
+        conn.commit()
+
+    # Discover chunks and insert
+    cur.execute("SELECT DISTINCT country, city FROM _bs_enriched_month ORDER BY 1 NULLS FIRST, 2 NULLS FIRST")
+    chunks = cur.fetchall()
+    total_inserted = 0
+
+    for country, city in chunks:
+        cur.execute(
+            _RESOLVE_AND_AGG_WEEK_FROM_TEMP.format(fact_week=FACT_WEEK),
+            (country, city),
+        )
+        n = cur.rowcount
+        total_inserted += n
+        if conn is not None:
+            conn.commit()
+        print(f"  week_fact chunk ({country}, {city}): {n} rows", flush=True)
+
+    _drop_enriched_temp(cur)
+    if conn is not None:
+        conn.commit()
+
+    dt = round(time.perf_counter() - t0, 2)
+    return {
+        "ok": len(errors) == 0,
+        "rows_inserted": total_inserted,
+        "raw_rows": mat_rows,
+        "duration_seconds": dt,
+        "errors": errors,
+    }
+
+
+def refresh_business_slice_month_range(
+    cur: Any, start_date: date, end_date: date, conn: Optional[Any] = None
+) -> dict:
+    """
+    Refresca month_fact para los meses afectados por el rango [start_date, end_date).
+    Usa enriched directo (bypass vista) + resolución/agregación estándar.
+    Retorna dict con ok, rows_inserted, duration_seconds, errors.
+    """
+    t0 = time.perf_counter()
+    errors = []
+
+    print(f"CF-H1I month_fact incremental: {start_date} -> {end_date}", flush=True)
+    mat_rows = _materialize_enriched_direct(cur, start_date, end_date, conn)
+    if mat_rows == 0:
+        _drop_enriched_temp(cur)
+        return {"ok": True, "skipped": True, "reason": "no_raw_data", "duration_seconds": round(time.perf_counter() - t0, 2)}
+
+    # Delete affected months
+    affected_months = set()
+    d = date(start_date.year, start_date.month, 1)
+    end_month = date(end_date.year, end_date.month, 1)
+    while d <= end_month:
+        affected_months.add(d)
+        if d.month == 12:
+            d = date(d.year + 1, 1, 1)
+        else:
+            d = date(d.year, d.month + 1, 1)
+
+    for m in sorted(affected_months):
+        cur.execute(
+            f"DELETE FROM {FACT_MONTH} WHERE month = %s::date",
+            (m,),
+        )
+    deleted = cur.rowcount
+    print(f"  month_fact: {deleted} rows deleted", flush=True)
+    if conn is not None:
+        conn.commit()
+
+    # Discover chunks and insert
+    cur.execute("SELECT DISTINCT country, city FROM _bs_enriched_month ORDER BY 1 NULLS FIRST, 2 NULLS FIRST")
+    chunks = cur.fetchall()
+    total_inserted = 0
+
+    for country, city in chunks:
+        cur.execute(
+            _RESOLVE_AND_AGG_FROM_TEMP.format(fact_month=FACT_MONTH),
+            (country, city),
+        )
+        n = cur.rowcount
+        total_inserted += n
+        if conn is not None:
+            conn.commit()
+        print(f"  month_fact chunk ({country}, {city}): {n} rows", flush=True)
+
+    _drop_enriched_temp(cur)
+    if conn is not None:
+        conn.commit()
+
+    dt = round(time.perf_counter() - t0, 2)
+    return {
+        "ok": len(errors) == 0,
+        "rows_inserted": total_inserted,
+        "raw_rows": mat_rows,
+        "duration_seconds": dt,
+        "errors": errors,
+    }
+
+
+def refresh_omniview_incremental(
+    start_date: date, end_date: date, cur: Any, conn: Any, grains: list = None
+) -> dict:
+    """
+    Refresco incremental completo: day_fact + week_fact + month_fact
+    para el rango [start_date, end_date).
+
+    Args:
+        start_date: fecha inicio (inclusive)
+        end_date: fecha fin (exclusive)
+        cur: cursor de base de datos
+        conn: conexion (para commit)
+        grains: lista de grains a refrescar ['day','week','month'] o None para todos
+
+    Safety: si el rango > 45 dias, requiere confirmacion explicita.
+    """
+    if grains is None:
+        grains = ["day", "week", "month"]
+
+    days = (end_date - start_date).days
+    if days > 45:
+        return {
+            "ok": False,
+            "error": f"Rango de {days} dias excede el limite de seguridad (45). "
+                      "Use rangos menores o pase force=True al script CLI.",
+        }
+
+    if days <= 0:
+        return {"ok": False, "error": "start_date debe ser anterior a end_date"}
+
+    print(f"CF-H1I incremental refresh: {start_date} -> {end_date} ({days} dias)", flush=True)
+
+    results = {"start_date": str(start_date), "end_date": str(end_date), "days": days}
+
+    if "day" in grains:
+        results["day"] = refresh_business_slice_day_range(cur, start_date, end_date, conn)
+
+    if "week" in grains:
+        results["week"] = refresh_business_slice_week_range(cur, start_date, end_date, conn)
+
+    if "month" in grains:
+        results["month"] = refresh_business_slice_month_range(cur, start_date, end_date, conn)
+
+    return results
 # ---------------------------------------------------------------------------
 
 
@@ -1039,7 +1452,7 @@ def load_business_slice_month(
     1. DELETE del mes + COMMIT
     2. Pre-materializar enriched del mes en temp table + COMMIT
     3. Descubrir chunks (country o country+city) desde el temp table
-    4. Para cada chunk: resolución inline desde temp table → agregación → INSERT + COMMIT
+    4. Para cada chunk: resolución inline desde temp table -> agregación -> INSERT + COMMIT
     5. DROP temp table
 
     chunk_grain: ``country``, ``city`` (defecto), ``city_week``, ``city_day``.
@@ -1074,7 +1487,7 @@ def load_business_slice_month(
     mat_rows = _materialize_enriched_for_month(cur, target_month, conn)
     if mat_rows == 0:
         print(
-            f"  enriched vacío para {target_month}: no hay viajes → 0 filas insertadas.",
+            f"  enriched vacío para {target_month}: no hay viajes -> 0 filas insertadas.",
             flush=True,
         )
         _drop_enriched_temp(cur)
@@ -1208,7 +1621,7 @@ def load_business_slice_day_for_month(
 
     mat_rows = _materialize_enriched_for_month(cur, target_month, conn)
     if mat_rows == 0:
-        print(f"  enriched vacío para {target_month}: 0 filas → day_fact.", flush=True)
+        print(f"  enriched vacío para {target_month}: 0 filas -> day_fact.", flush=True)
         _drop_enriched_temp(cur)
         return 0
 

@@ -53,7 +53,7 @@ export default function OperationalPriorityLayer({
 
   if (!hasAny) {
     return (
-      <div className="rounded-lg border border-ct-border bg-ct-surface shadow-sm px-4 py-2">
+      <div className="bg-ct-surface px-4 py-2">
         <span className="text-[10px] font-bold text-ct-text2 uppercase tracking-wider">Prioridad</span>
         <span className="ml-3 text-[11px] text-ct-text3">
           Sin prioridades operacionales detectadas
@@ -65,7 +65,7 @@ export default function OperationalPriorityLayer({
   const py = compact ? 'py-1' : 'py-1.5'
 
   return (
-    <div className={`rounded-lg border border-ct-border bg-ct-surface shadow-sm px-4 ${py} space-y-1.5`}>
+    <div className={`bg-ct-surface px-4 ${py} space-y-1.5`}>
       <span className="text-[10px] font-bold text-ct-text2 uppercase tracking-wider">Prioridad</span>
 
       <div className="flex flex-wrap gap-x-4 gap-y-1">
