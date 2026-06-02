@@ -256,6 +256,50 @@ class Settings(BaseSettings):
                     "NUNCA se imprime en logs ni reportes.",
     )
 
+    # ── YEGO Lima Fleet Growth Tower / Yango Orders API (Fase 0 — API Lab) ──
+    YANGO_API_ENABLED: bool = Field(
+        default=False,
+        description="Habilita la integración con Yango Fleet API para el Growth Lab de Lima.",
+    )
+    YANGO_API_BASE_URL: str = Field(
+        default="https://fleet-api.yango.tech",
+        description="Base URL de Yango Fleet API.",
+    )
+    YANGO_CLIENT_ID: str = Field(
+        default="",
+        description="X-Client-ID para Yango Fleet API. NUNCA loggear completo.",
+    )
+    YANGO_API_KEY: str = Field(
+        default="",
+        description="X-API-Key para Yango Fleet API. NUNCA loggear ni exponer.",
+    )
+    YANGO_LIMA_PARK_ID: str = Field(
+        default="",
+        description="Park ID de la flota Lima en Yango.",
+    )
+    YANGO_API_TIMEOUT_SECONDS: int = Field(
+        default=20,
+        ge=1,
+        le=120,
+        description="Timeout en segundos para llamadas a Yango Fleet API.",
+    )
+    YANGO_API_MAX_RETRIES: int = Field(
+        default=2,
+        ge=0,
+        le=5,
+        description="Máximo de reintentos para errores transitorios en Yango API.",
+    )
+    YANGO_ORDERS_PAGE_SIZE: int = Field(
+        default=500,
+        ge=1,
+        le=1000,
+        description="Tamaño de página para listado de órdenes de Yango.",
+    )
+    YANGO_API_DEBUG: bool = Field(
+        default=False,
+        description="Modo debug para Yango API (solo en desarrollo, nunca en producción).",
+    )
+
     model_config = {
         "env_file": os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"),
         "case_sensitive": False,
