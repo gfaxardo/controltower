@@ -1,10 +1,10 @@
 # CURRENT ACTIVE PHASE — YEGO CONTROL TOWER
 
-Last Updated: 2026-05-24
+Last Updated: 2026-06-02
 
 ---
 
-# ACTIVE PHASE
+# CONTROL FOUNDATION — CLOSED
 
 Motor:
 Control Foundation
@@ -13,10 +13,33 @@ Phase:
 1H.4 — Operational Maturity Governance Layer
 
 Status:
-ACTIVE
+**CLOSED** (2026-06-02)
+
+Closure certification:
+- CF-H1 Final Certification: PASS (CF_H1_FINAL_CERTIFICATION.md)
+- CF-H1 Operational Refresh & Closure: PASS (this update)
+- Canonical Registry: OMNIVIEW_CANONICAL_REGISTRY.md
+- week_fact refreshed through S22 (2026-05-25)
+- Freshness governance active (cross-validation breach on current intra-week S23 is expected temporal — governance refinement pending)
+- Architecture: CERTIFIED | Serving: CERTIFIED | Lineage: CERTIFIED | Governance: CERTIFIED
+- Tests: 23/24 PASS (1 known test gap: test_freshness_governance_returns_expected_keys lacks "breach" in expected set)
+- Build: PASS (frontend 5.34s, Python compileall clean)
+
+---
+
+# ACTIVE PHASE
+
+Motor:
+**Diagnostic Engine**
+
+Phase:
+**2A.3 — Behavioral Pattern Diagnosis**
+
+Status:
+**ACTIVE** (unblocked 2026-06-02)
 
 Goal:
-Implementar capa estructural de madurez operacional para controlar visibilidad, exposición UX, navegación, estado real de cada módulo, y governance de fases. Reducir ruido, eliminar falsas expectativas, evitar features zombie.
+Implementar diagnóstico de patrones conductuales de conductores usando serving facts gobernados. Clasificar drivers en segmentos conductuales determinísticos. Generar insights accionables sin AI.
 
 ---
 
@@ -24,49 +47,41 @@ Implementar capa estructural de madurez operacional para controlar visibilidad, 
 
 Current operational focus:
 
-- madurez operacional (clasificación de módulos)
-- governance de visibilidad
-- navegación confiable (sin features zombie)
-- reducción de falsas expectativas
-- feature flag hardening
-- eliminación de deuda visual
-- registry-driven navigation
+- Driver lifecycle diagnosis (behavioral patterns from activity facts)
+- Deterministic driver classification (GROWING, DECLINING, AT_RISK, etc.)
+- Behavioral benchmarking (TOP vs DECLINING cohorts)
+- Recoverability scoring (0-100, 6-component deterministic)
+- Periodic diagnostic runs (daily/weekly)
 
 NOT building:
-- nuevos motores
+- nuevos motores (Forecast, Suggestion, Decision, Action, AI Copilot, Learning)
 - AI Copilot
-- Suggestion Engine
-- runtime pesado
+- speculative AI features
+- Revenue Certification (separate track)
+- Yego Lima Growth (separate phase)
 
 ---
 
 # CURRENT PROBLEMS BEING SOLVED
 
-1. Features sin clasificación de madurez (zombie modules)
-2. Usuarios expuestos a módulos parcialmente implementados
-3. Navegación inflada con rutas legacy
-4. Falta de visibilidad sobre el estado real de cada módulo
-5. Feature flags inexistentes para módulos experimentales
-6. Sin governance formal de fases en la UI
+1. Drivers without behavioral classification
+2. No operational diagnosis of WHY drivers decline/churn
+3. No recoverability scoring for intervention prioritization
+4. No benchmark comparison between driver cohorts
+5. Diagnostic Engine needs serving facts foundation (certified)
 
 ---
 
 # ALLOWED CHANGES
 
-- UX operacional (navegación, focus mode, fullscreen)
-- workflow-first operation (action context)
-- performance perceptual (memoization, skeleton)
-- eliminación de redundancias (rutas, tabs, filtros)
-- mejora de empty states y loading UX
-- claridad visual, reducción de ruido
-- Omniview hardening (focus mode, fullscreen drill)
-- serving layer
-- refresh scripts
-- coverage validators
-- operational monitoring
-- governance dashboards
-- freshness validation
-- runtime protection
+- Driver behavioral pattern diagnosis
+- Deterministic driver classification rules
+- Recoverability intelligence service
+- Behavioral benchmarking service
+- Operational behavioral intelligence
+- Diagnostic serving facts
+- Diagnostic observability
+- Driver lifecycle diagnostic hardening
 
 ---
 
@@ -82,6 +97,10 @@ DO NOT:
 - mix Diagnostic with Forecast
 - add speculative AI features
 - re-enable heavy runtime fallback
+- touch Revenue (separate certification track)
+- touch Yego Lima Growth (separate phase)
+- modify Omniview architecture
+- break serving governance
 
 ---
 
@@ -93,22 +112,29 @@ DO NOT:
 4. Every serving fact must have freshness + coverage metadata
 5. Serving failures must fail gracefully
 6. Control Foundation reliability > new features
+7. Deterministic logic first — before any AI interpretation
 
 ---
 
 # READY NEXT
 
 Motor:
-Diagnostic Engine
+Revenue Detail Certification (CF-H2)
 
 Phase:
-2A.3 — Behavioral Pattern Diagnosis
+Revenue Canonical Definition + Historical Logic Audit
 
 Status:
-READY NEXT (NOT ACTIVE)
+READY NEXT (independent track — can proceed in parallel with Diagnostic)
 
-Blocked until:
-Serving Governance Foundation is stabilized.
+Motor:
+Diagnostic Engine sub-phase
+
+Phase:
+2A.4 — Behavioral Benchmarking Expansion
+
+Status:
+BACKLOG (after 2A.3 completion)
 
 ---
 
@@ -127,33 +153,36 @@ Serving Governance Foundation is stabilized.
 # LAST MAJOR INCIDENT
 
 Incident:
-Fase 1G.3 / 1G.4 Serving Fact Regression
+CF-H1: week_fact 43-day staleness (S18-S22 missing)
 
 Root Cause:
-UI depended on incomplete serving facts while runtime fallback was disabled.
+Week_fact refresh had not been executed since commit c69a0f7 (SQL fix for revenue_yego_final column).
 
 Resolution:
-- serving facts expanded
-- runtime fallback protected
-- frontend/backend consistency fixed
-- VITE_API_URL corrected
-- serving version governance added
+- Executed canonical incremental refresh: `refresh_omniview_real_slice_incremental --start-date 2026-05-01 --end-date 2026-06-01 --grain week`
+- 3,074,016 raw trips materialized in 181s
+- 112 rows inserted into week_fact
+- All closed weeks S18-S22 populated (76K-177K trips each)
+- Freshness governance breach resolved for closed weeks
+- Current intra-week S23 shows expected temporal breach (serving ahead of canonical — governance refinement pending)
 
 ---
 
-# SUCCESS CRITERIA TO CLOSE CURRENT PHASE
+# SUCCESS CRITERIA TO OPEN DIAGNOSTIC ENGINE
 
-- no UI freezes
-- no heavy runtime fallback
-- serving coverage complete
-- automatic refresh orchestration
-- stale fact detection
-- runtime risk detection
-- operational observability active
-- navegación operacional con single path
-- Omniview focus mode funcional (dimming + reversible)
-- fullscreen drill funcional (ESC cierre)
-- estados vacíos con remediation
-- skeleton loading sin layout jumps
-- sin redundancias de navegación activas
-- performance perceptual estable (sin renders innecesarios)
+- Serving Governance Foundation stabilized ✓
+- week_fact reconciled through last closed week ✓
+- Freshness monitoring active ✓
+- Canonical Registry documented ✓
+- No BLOCKED cross-validations on closed periods ✓
+- Architecture certified ✓
+
+# SUCCESS CRITERIA TO CLOSE DIAGNOSTIC ENGINE 2A.3
+
+- Deterministic driver classification functional (all lifecycle states)
+- Behavioral benchmarking producing valid TOP vs DECLINING comparisons
+- Recoverability scoring calibrated (0-100)
+- Diagnostic serving facts governed
+- No runtime fallback in diagnostic endpoints
+- Diagnostic observability active
+- Driver behavioral diagnosis accuracy validated

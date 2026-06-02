@@ -150,6 +150,24 @@ def run_business_slice_real_refresh_job(force: bool = False) -> Dict[str, Any]:
                 conn.commit()
                 cur.close()
             dt = time.perf_counter() - t_m
+
+            # CF-H1J.8A guardrail: zero rows inserted is a hard error
+            if nd == 0 and nw == 0:
+                err_msg = (
+                    f"CRITICAL: month={mo_label} produjo 0 filas en day_fact Y week_fact. "
+                    "Posible falla de enriched o mapping rules. Datos anteriores PRESERVADOS (staging safety)."
+                )
+                logger.error(err_msg)
+                errors.append({"month": mo_label, "error": err_msg})
+            elif nw == 0 and nd > 0:
+                err_msg = (
+                    f"CRITICAL: month={mo_label} day_fact={nd} filas pero week_fact=0 filas. "
+                    "week_fact loader produjo 0 filas. Datos anteriores de week_fact PRESERVADOS. "
+                    "Investigar _RESOLVE_AND_AGG_WEEK_FROM_TEMP vs mapping rules."
+                )
+                logger.error(err_msg)
+                errors.append({"month": mo_label, "error": err_msg})
+
             if include_month_fact:
                 log_lines.append(f"{mo_label}: day_rows={nd} week_rows={nw} month_rows={nm} {dt:.1f}s")
                 logger.info(
@@ -207,8 +225,11 @@ def run_business_slice_real_refresh_job(force: bool = False) -> Dict[str, Any]:
 
 
 def run_business_slice_real_refresh_job_safe(force: bool = False) -> Dict[str, Any]:
-    """Wrapper con advisory lock + ledger para uso desde APScheduler (evita race condition multi-worker)."""
-    from app.services.refresh_control_service import refresh_guard
+    """Wrapper con advisory lock + ledger para uso desde APScheduler (evita race condition multi-worker).
+
+    CF-H1J.8A: Si el job produce ok=False (ej. week_fact=0), propaga warning al ledger.
+    """
+    from app.services.refresh_control_service import refresh_guard, finish_refresh_run
 
     with refresh_guard(
         refresh_name="omniview_business_slice_real_refresh",
@@ -226,6 +247,9 @@ def run_business_slice_real_refresh_job_safe(force: bool = False) -> Dict[str, A
         try:
             result = run_business_slice_real_refresh_job(force=force)
             guard.run_id = getattr(guard, "run_id", None)
+            if not result.get("ok") and result.get("errors"):
+                error_msgs = [e.get("error", "") for e in result.get("errors", [])]
+                guard._warning = "; ".join(error_msgs[:3])[:1000]
             return result
         except Exception as e:
             raise

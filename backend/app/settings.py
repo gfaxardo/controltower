@@ -300,6 +300,71 @@ class Settings(BaseSettings):
         description="Modo debug para Yango API (solo en desarrollo, nunca en producción).",
     )
 
+    YANGO_DRIVER_PROFILES_PAGE_SIZE: int = Field(
+        default=1000,
+        ge=1,
+        le=1000,
+        description="Tamaño de página para listado de driver profiles.",
+    )
+    YANGO_SUPPLY_HOURS_SAMPLE_SIZE: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Tamaño de muestra para discovery de supply-hours.",
+    )
+    YANGO_BALANCE_SAMPLE_SIZE: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Tamaño de muestra para discovery de blocked-balance.",
+    )
+    YANGO_SUPPLY_REQUEST_DELAY_MS: int = Field(
+        default=1500,
+        ge=0,
+        le=5000,
+        description="Delay entre requests de supply-hours para evitar rate limiting (ms).",
+    )
+    YANGO_SUPPLY_BATCH_SIZE: int = Field(
+        default=100,
+        ge=10,
+        le=500,
+        description="Tamaño de batch para log de progreso en supply batch runner.",
+    )
+    YANGO_SUPPLY_MAX_DRIVERS_PER_RUN: int = Field(
+        default=500,
+        ge=1,
+        le=5000,
+        description="Maximo de conductores por ejecucion de supply batch runner.",
+    )
+
+    # ── Driver 360 Productivity Bands (Fase 2A.2) ──
+    YANGO_LOW_PRODUCTIVITY_TPH_THRESHOLD: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=5.0,
+        description="Trips per supply hour bajo el cual se clasifica LOW_PRODUCTIVITY.",
+    )
+    YANGO_HIGH_PRODUCTIVITY_TPH_THRESHOLD: float = Field(
+        default=2.0,
+        ge=0.5,
+        le=10.0,
+        description="Trips per supply hour sobre el cual se clasifica HIGH_PRODUCTIVITY.",
+    )
+
+    # ── Supply rate-limit hardening (Fase 2A.2) ──
+    YANGO_SUPPLY_RATE_LIMIT_BACKOFF_MS: int = Field(
+        default=3000,
+        ge=500,
+        le=30000,
+        description="Backoff en ms cuando se recibe 429 de supply-hours API.",
+    )
+    YANGO_SUPPLY_MAX_RETRIES: int = Field(
+        default=1,
+        ge=0,
+        le=3,
+        description="Maximo de reintentos tras 429 para supply-hours API.",
+    )
+
     model_config = {
         "env_file": os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"),
         "case_sensitive": False,

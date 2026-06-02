@@ -636,9 +636,14 @@ async def business_slice_real_freshness_endpoint():
     """
     Freshness Omniview: upstream (trips base) + facts agregados (day/week/month),
     status global (peor caso), lag combinado, last_refresh_at, next_scheduled_run.
+
+    CF-H1J.7: incluye scheduler_status para detection de silencio operativo.
     """
     try:
-        return sanitize_for_json(get_omniview_business_slice_real_freshness())
+        from app.services.scheduler_status_service import get_scheduler_status
+        payload = get_omniview_business_slice_real_freshness()
+        payload["scheduler_status"] = get_scheduler_status()["status"]
+        return sanitize_for_json(payload)
     except Exception as e:
         logger.exception("business-slice/real-freshness")
         raise HTTPException(status_code=500, detail=str(e))
@@ -648,12 +653,42 @@ async def business_slice_real_freshness_endpoint():
 async def omniview_freshness_governance_endpoint():
     """
     Omniview Freshness Governance: RAW → day_fact → week_fact → month_fact → projection.
-    Status: ok / warning / blocked. Remediation copy incluida.
+    Status: ok / warning / blocked / breach. Remediation copy incluida.
+
+    CF-H1J.7: incluye per-grain freshness, serving grains, cross-validation, scheduler_status.
     """
     try:
-        return sanitize_for_json(get_omniview_freshness_governance())
+        from app.services.scheduler_status_service import get_scheduler_status
+        payload = get_omniview_freshness_governance()
+        payload["scheduler_status"] = get_scheduler_status()["status"]
+        return sanitize_for_json(payload)
     except Exception as e:
         logger.exception("omniview/freshness")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/omniview/weekly-serving-guardrails")
+async def omniview_weekly_serving_guardrails_endpoint(
+    weeks: int = Query(8, ge=1, le=52, description="Last N closed ISO weeks to check"),
+):
+    """
+    CF-H1J.7 Weekly Serving Guardrails: reconciliacion fact vs serving semanal.
+
+    Compara week_fact vs serving.omniview_projection_daily_fact (grain='weekly')
+    para las ultimas N semanas ISO cerradas.
+
+    Detecta:
+    - SERVING_WITHOUT_FACT  (breach)
+    - FACT_WITHOUT_SERVING  (warning)
+    - METRIC_MISMATCH       (blocked)
+
+    Devuelve findings con severity, affected_week, affected_slice, metric, diff, remediation.
+    """
+    try:
+        from app.services.weekly_serving_guardrails_service import reconcile_weekly_fact_vs_serving
+        return sanitize_for_json(reconcile_weekly_fact_vs_serving(weeks_count=weeks))
+    except Exception as e:
+        logger.exception("omniview/weekly-serving-guardrails")
         raise HTTPException(status_code=500, detail=str(e))
 
 

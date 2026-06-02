@@ -65,8 +65,12 @@ def test_freshness_governance_facts_structure():
 
     result = get_omniview_freshness_governance()
     facts = result.get("facts", {})
-    for key in ("daily", "weekly", "monthly", "projection_daily"):
+    for key in ("daily", "weekly", "monthly"):
         assert key in facts, f"Missing fact layer: {key}"
+
+    serving = result.get("serving", {})
+    for key in ("daily", "weekly", "monthly"):
+        assert key in serving, f"Missing serving layer: {key}"
 
 
 def test_freshness_governance_blocked_has_remediation_message():

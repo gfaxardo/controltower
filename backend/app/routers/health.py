@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 
 from app.startup_state import get_startup_report
 from app.db.connection import get_db
+from app.services.scheduler_status_service import get_scheduler_status
 
 router = APIRouter(tags=["health"])
 
@@ -36,11 +37,16 @@ async def health_check():
         "inspection_ok": bool(rep.get("inspection")) and not (rep.get("inspection") or {}).get("_error"),
     }
 
+    scheduler = get_scheduler_status()
+
     body = {
         "status": overall,
         "service": "YEGO Control Tower API",
         "db_connection": "ok" if db_ok else "down",
         "startup": startup_slim,
+        "scheduler_status": scheduler["status"],
+        "scheduler_detail": scheduler["detail"],
+        "scheduler_jobs": scheduler["jobs"],
     }
     code = 503 if overall == "blocked" else 200
     return JSONResponse(status_code=code, content=body)

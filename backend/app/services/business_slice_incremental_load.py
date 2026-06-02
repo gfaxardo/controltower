@@ -1610,6 +1610,16 @@ def load_business_slice_day_for_month(
     last_day = calendar.monthrange(target_month.year, target_month.month)[1]
     end_date = date(target_month.year, target_month.month, last_day)
 
+    mat_rows = _materialize_enriched_for_month(cur, target_month, conn)
+    if mat_rows == 0:
+        print(f"  enriched vacío para {target_month}: 0 filas -> day_fact.", flush=True)
+        _drop_enriched_temp(cur)
+        logger.warning(
+            "day_fact SAFETY: enriched vacío para month=%s. day_fact existente PRESERVADO.",
+            target_month,
+        )
+        return 0
+
     cur.execute(
         f"DELETE FROM {FACT_DAY} WHERE trip_date >= %s::date AND trip_date <= %s::date",
         (target_month, end_date),
@@ -1617,12 +1627,6 @@ def load_business_slice_day_for_month(
     deleted_day = cur.rowcount
     if conn is not None:
         conn.commit()
-
-    mat_rows = _materialize_enriched_for_month(cur, target_month, conn)
-    if mat_rows == 0:
-        print(f"  enriched vacío para {target_month}: 0 filas -> day_fact.", flush=True)
-        _drop_enriched_temp(cur)
-        return 0
 
     t0 = time.perf_counter()
     inserted_total = 0
@@ -1657,6 +1661,13 @@ def load_business_slice_day_for_month(
         dt = time.perf_counter() - t_chunk
         print(f"  [{i+1}/{n}] day_fact country={c_country!r} city={c_city!r} inserted={rows} {dt:.1f}s", flush=True)
 
+    if inserted_total == 0:
+        logger.warning(
+            "day_fact SAFETY: 0 filas insertadas para month=%s. "
+            "DELETE ya ejecutado (deleted_day=%s). Verificar enriched y mapping rules.",
+            target_month, deleted_day,
+        )
+
     if not keep_enriched:
         _drop_enriched_temp(cur)
     total_dt = time.perf_counter() - t0
@@ -1676,11 +1687,12 @@ def load_business_slice_week_for_month(
     chunk_grain: Optional[str] = None,
 ) -> int:
     """
-    CF-H1 HARDENING: Agrega week_fact desde _bs_enriched_month (misma fuente que
-    day_fact y month_fact). Computa COUNT(DISTINCT driver_id) canónico semanal.
+    CF-H1J.8A SAFE STAGING: Agrega week_fact desde _bs_enriched_month con
+    staging seguro. Primero INSERTA en tabla temporal _week_fact_stage,
+    luego cuenta filas. Si staged_count == 0 NO borra datos existentes.
+    Si staged_count > 0 hace DELETE + INSERT desde staging.
 
-    La vista enriched ya debe estar materializada (normalmente por day_fact).
-    Procesa por chunks (country/city) para evitar escaneos masivos.
+    Previene pérdida de datos canónicos cuando el enriched no produce filas.
     """
     if target_month.day != 1:
         target_month = target_month.replace(day=1)
@@ -1694,19 +1706,14 @@ def load_business_slice_week_for_month(
 
     apply_business_slice_load_session_settings(cur)
 
-    cur.execute(
-        f"DELETE FROM {FACT_WEEK} WHERE week_start >= %s::date AND week_start < %s::date",
-        (first_monday, next_monday_after_end),
-    )
-    deleted = cur.rowcount
-    if conn is not None:
-        conn.commit()
+    stage_table = "_week_fact_stage"
+    cur.execute(f"DROP TABLE IF EXISTS {stage_table}")
+    stage_sql = _RESOLVE_AND_AGG_WEEK_FROM_TEMP.format(fact_week=stage_table)
 
     grain = _effective_chunk_grain(chunk_grain)
-    resolve_sql = _RESOLVE_AND_AGG_WEEK_FROM_TEMP.format(fact_week=FACT_WEEK)
 
     t0 = __import__('time').perf_counter()
-    inserted_total = 0
+    staged_total = 0
     use_country_only = grain == "country"
 
     if use_country_only:
@@ -1718,7 +1725,7 @@ def load_business_slice_week_for_month(
 
     n = len(chunks)
     print(
-        f"  {n} chunk(s) — week_fact resolución inline desde _bs_enriched_month (deleted={deleted})",
+        f"  {n} chunk(s) — week_fact staging desde _bs_enriched_month",
         flush=True,
     )
 
@@ -1726,20 +1733,48 @@ def load_business_slice_week_for_month(
         c_country, c_city = chunk[0], chunk[1] if len(chunk) > 1 else None
         apply_business_slice_load_session_settings(cur)
         try:
-            cur.execute(resolve_sql, (c_country, c_city))
+            cur.execute(stage_sql, (c_country, c_city))
             rows = cur.rowcount
         except Exception as e:
-            raise RuntimeError(f"week_fact load falló chunk [{i+1}/{n}] month={target_month}: {e}") from e
-        inserted_total += rows
+            cur.execute(f"DROP TABLE IF EXISTS {stage_table}")
+            raise RuntimeError(f"week_fact stage falló chunk [{i+1}/{n}] month={target_month}: {e}") from e
+        staged_total += rows
         if conn is not None:
             conn.commit()
 
+    stage_dt = __import__('time').perf_counter() - t0
+
+    if staged_total == 0:
+        cur.execute(f"DROP TABLE IF EXISTS {stage_table}")
+        logger.warning(
+            "week_fact SAFETY: 0 filas staged para month=%s range=[%s..%s). "
+            "week_fact existente PRESERVADO. Remediation: verificar enriched table y mapping rules.",
+            target_month, first_monday, next_monday_after_end,
+        )
+        return 0
+
+    cur.execute(
+        f"DELETE FROM {FACT_WEEK} WHERE week_start >= %s::date AND week_start < %s::date",
+        (first_monday, next_monday_after_end),
+    )
+    deleted = cur.rowcount
+    if conn is not None:
+        conn.commit()
+
+    cur.execute(f"INSERT INTO {FACT_WEEK} SELECT * FROM {stage_table}")
+    inserted = cur.rowcount
+    if conn is not None:
+        conn.commit()
+
+    cur.execute(f"DROP TABLE IF EXISTS {stage_table}")
+
     total_dt = __import__('time').perf_counter() - t0
     print(
-        f"  week_fact [{first_monday}..{next_monday_after_end}): deleted={deleted} inserted={inserted_total} {total_dt:.1f}s",
+        f"  week_fact [{first_monday}..{next_monday_after_end}): "
+        f"staged={staged_total} deleted={deleted} inserted={inserted} ({stage_dt:.1f}s stage + {total_dt-stage_dt:.1f}s swap)",
         flush=True,
     )
-    return inserted_total
+    return inserted
 
 
 # ---------------------------------------------------------------------------

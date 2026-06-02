@@ -131,14 +131,32 @@ async def startup_event():
         raise
 
     global _omniview_real_refresh_scheduler
+    from app.services.scheduler_status_service import (
+        set_scheduler_active,
+        set_scheduler_disabled,
+        set_scheduler_missing_dependency,
+        set_scheduler_error,
+        APSCHEDULER_AVAILABLE,
+    )
+
+    if not APSCHEDULER_AVAILABLE:
+        set_scheduler_missing_dependency("apscheduler not installed in environment")
+        logger.warning(
+            "APScheduler NO disponible: apscheduler no instalado en el entorno. "
+            "Ejecutar: pip install apscheduler>=3.10.0"
+        )
+
     if settings.OMNIVIEW_REAL_REFRESH_ENABLED or settings.OMNIVIEW_REAL_WATCHDOG_ENABLED:
         from app.services.refresh_control_service import is_scheduler_enabled
 
         if not is_scheduler_enabled():
+            set_scheduler_disabled("CT_SCHEDULER_ENABLED=false")
             logger.info(
                 "APScheduler NO iniciado: CT_SCHEDULER_ENABLED=false en entorno %s.",
                 getattr(settings, "ENVIRONMENT", "unknown"),
             )
+        elif not APSCHEDULER_AVAILABLE:
+            pass
         else:
             try:
                 from apscheduler.schedulers.background import BackgroundScheduler
@@ -150,6 +168,7 @@ async def startup_event():
                 from app.services.real_data_watchdog_service import run_real_data_watchdog
 
                 _omniview_real_refresh_scheduler = BackgroundScheduler(daemon=True)
+                jobs_registered = []
 
                 # FASE 1H.1 — Serving fact refresh diario (05:00 UTC)
                 try:
@@ -165,6 +184,7 @@ async def startup_event():
                         coalesce=True,
                         misfire_grace_time=1800,
                     )
+                    jobs_registered.append("serving_fact_daily_refresh")
                     logger.info("Serving fact refresh programado: 05:00 diario (daily+weekly+monthly).")
                 except Exception as e:
                     logger.warning("No se pudo registrar serving refresh scheduler: %s", e)
@@ -181,6 +201,7 @@ async def startup_event():
                         coalesce=True,
                         misfire_grace_time=600,
                     )
+                    jobs_registered.append("omniview_business_slice_real_refresh")
                     logger.info(
                         "Omniview REAL refresh programado: %02d:%02d (day_fact + week_fact + month_fact, 2 meses).",
                         settings.OMNIVIEW_REAL_REFRESH_HOUR,
@@ -199,6 +220,7 @@ async def startup_event():
                         coalesce=True,
                         misfire_grace_time=120,
                     )
+                    jobs_registered.append("omniview_real_data_watchdog")
                     logger.info(
                         "Omniview REAL watchdog programado: cada %s min.",
                         wd_min,
@@ -206,8 +228,10 @@ async def startup_event():
 
                 _omniview_real_refresh_scheduler.start()
                 attach_omniview_scheduler(_omniview_real_refresh_scheduler)
+                set_scheduler_active(jobs_registered)
                 logger.info("APScheduler Omniview (refresh/watchdog) iniciado.")
             except Exception as e:
+                set_scheduler_error(str(e)[:200])
                 logger.exception(
                     "No se pudo iniciar Omniview APScheduler (continuando sin él): %s",
                     e,
