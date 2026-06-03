@@ -1,7 +1,14 @@
 """
-YEGO Lima Growth — Action Registry Service (Fase 2C).
+YEGO Lima Growth — Action Registry Service (Fase 2C + Fase 2D-R).
 
 Registers, confirms, and queries agent actions on drivers.
+
+Fase 2D-R extensions:
+- Supports opportunity_date + opportunity_type + program_code (canonical)
+- Maintains backward compatibility with list_date + list_type (legacy)
+
+DEPRECATED: list_type / list_date legacy replaced by
+  opportunity_type / opportunity_date / program_code.
 """
 
 from __future__ import annotations
@@ -16,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 TABLE_ACTIONS = "growth.yango_lima_driver_action_registry"
 TABLE_LIST = "growth.yango_lima_actionable_list_daily"
+TABLE_OPPORTUNITY = "growth.yango_lima_daily_opportunity_list"
 
 
 def create_action(
@@ -26,6 +34,10 @@ def create_action(
     action_status: str = "attempted", action_confirmed: bool = False,
     confirmation_source: Optional[str] = None, action_reason: Optional[str] = None,
     campaign_code: Optional[str] = None, notes: Optional[str] = None,
+    # ── Fase 2D-R new fields ──
+    opportunity_date: Optional[str] = None,
+    opportunity_type: Optional[str] = None,
+    program_code: Optional[str] = None,
 ) -> Dict[str, Any]:
 
     with get_db() as conn:
@@ -55,14 +67,23 @@ def create_action(
         row = cur.fetchone()
         action_id = str(row["action_id"])
 
-        # Update actionable list if linked
+        new_status = "ACTION_CONFIRMED" if action_confirmed else "ACTION_ATTEMPTED"
+
+        # Update actionable list if linked (legacy)
         if list_date and list_type:
-            new_status = "ACTION_CONFIRMED" if action_confirmed else "ACTION_ATTEMPTED"
             cur.execute(f"""
                 UPDATE {TABLE_LIST}
                 SET management_status = %(ms)s, action_id = %(aid)s::uuid, closed_at = now()
                 WHERE list_date = %(ld)s AND driver_profile_id = %(did)s AND list_type = %(lt)s
             """, {"ms": new_status, "aid": action_id, "ld": list_date, "did": driver_profile_id, "lt": list_type})
+
+        # Update opportunity list if linked (new canonical)
+        if opportunity_date and opportunity_type:
+            cur.execute(f"""
+                UPDATE {TABLE_OPPORTUNITY}
+                SET management_status = %(ms)s, action_id = %(aid)s::uuid, closed_at = now()
+                WHERE opportunity_date = %(od)s AND driver_profile_id = %(did)s AND opportunity_type = %(ot)s
+            """, {"ms": new_status, "aid": action_id, "od": opportunity_date, "did": driver_profile_id, "ot": opportunity_type})
 
         conn.commit()
         return {"ok": True, "action_id": action_id}

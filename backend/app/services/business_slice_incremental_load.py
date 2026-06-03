@@ -424,51 +424,98 @@ FROM (
     ),
     mx AS (SELECT trip_id, max(spec_score) AS max_spec FROM m GROUP BY trip_id),
     best AS (
-        SELECT DISTINCT ON (trip_id) m.*
+        SELECT m.*
         FROM m
         INNER JOIN mx ON m.trip_id = mx.trip_id AND m.spec_score = mx.max_spec
-        ORDER BY trip_id, mapping_rule_id
     ),
     outcome AS (
-        SELECT trip_id, count(DISTINCT business_slice_name) AS n_slices,
+        SELECT
+            trip_id,
+            count(DISTINCT business_slice_name) AS n_slices,
             array_agg(DISTINCT mapping_rule_id) AS rule_ids,
             array_agg(DISTINCT business_slice_name) AS slice_names
-        FROM best GROUP BY trip_id
+        FROM best
+        GROUP BY trip_id
     ),
     winner AS (
         SELECT DISTINCT ON (trip_id)
-            trip_id, mapping_rule_id, business_slice_name, fleet_display_name,
-            is_subfleet, subfleet_name, parent_fleet_name, rule_type, spec_score
+            trip_id,
+            mapping_rule_id,
+            business_slice_name,
+            fleet_display_name,
+            is_subfleet,
+            subfleet_name,
+            parent_fleet_name,
+            rule_type,
+            spec_score
         FROM best
-        ORDER BY trip_id, is_subfleet ASC, parent_fleet_name NULLS FIRST, fleet_display_name ASC, mapping_rule_id ASC
+        ORDER BY
+            trip_id,
+            is_subfleet ASC,
+            parent_fleet_name NULLS FIRST,
+            fleet_display_name ASC,
+            mapping_rule_id ASC
     )
     SELECT
-        b.trip_id, b.driver_id, b.park_id, b.park_name,
-        b.country, b.city, b.tipo_servicio, b.works_terms,
-            b.completed_flag, b.cancelled_flag, b.trip_date, b.trip_month,
-            b.trip_week, b.hour_of_day, b.trip_hour_start,
-            b.revenue_yego_real AS revenue_yego_net, b.ticket, b.km, b.duration_minutes,
-            b.gmv_passenger_paid, b.total_fare, b.condicion, b.source_table,
-        b.revenue_source, b.revenue_yego_final,
-        CASE WHEN o.trip_id IS NULL THEN 'unmatched' WHEN o.n_slices > 1 THEN 'conflict' ELSE 'resolved' END AS resolution_status,
+        b.trip_id,
+        b.driver_id,
+        b.park_id,
+        b.park_name,
+        b.country,
+        b.city,
+        b.tipo_servicio,
+        b.works_terms,
+        b.completed_flag,
+        b.cancelled_flag,
+        b.trip_date,
+        b.trip_month,
+        b.trip_week,
+        b.hour_of_day,
+        b.trip_hour_start,
+        b.revenue_yego_real AS revenue_yego_net,
+        b.ticket,
+        b.km,
+        b.duration_minutes,
+        b.gmv_passenger_paid,
+        b.total_fare,
+        b.condicion,
+        b.source_table,
+        b.revenue_source,
+        b.revenue_yego_final,
+        CASE
+            WHEN o.trip_id IS NULL THEN 'unmatched'
+            WHEN o.n_slices > 1 THEN 'conflict'
+            ELSE 'resolved'
+        END AS resolution_status,
         w.mapping_rule_id,
         COALESCE(w.business_slice_name, '__UNMATCHED__') AS business_slice_name,
         w.fleet_display_name,
         COALESCE(w.is_subfleet, false) AS is_subfleet,
-        w.subfleet_name, w.parent_fleet_name,
+        w.subfleet_name,
+        w.parent_fleet_name,
         w.rule_type AS matched_rule_type,
-        o.n_slices AS conflict_slice_count, o.rule_ids AS conflict_rule_ids, o.slice_names AS conflict_slice_names
+        o.n_slices AS conflict_slice_count,
+        o.rule_ids AS conflict_rule_ids,
+        o.slice_names AS conflict_slice_names
     FROM base b
     LEFT JOIN outcome o ON b.trip_id = o.trip_id
-    LEFT JOIN winner w ON b.trip_id = w.trip_id AND o.trip_id IS NOT NULL AND o.n_slices = 1
+    LEFT JOIN winner w
+        ON b.trip_id = w.trip_id
+        AND o.trip_id IS NOT NULL
+        AND o.n_slices = 1
 ) r
 WHERE r.resolution_status = 'resolved'
   AND r.trip_date IS NOT NULL
   AND r.business_slice_name IS NOT NULL
 GROUP BY
     r.trip_date,
-    r.country, r.city, r.business_slice_name, r.fleet_display_name,
-    r.is_subfleet, r.subfleet_name, r.parent_fleet_name
+    r.country,
+    r.city,
+    r.business_slice_name,
+    r.fleet_display_name,
+    r.is_subfleet,
+    r.subfleet_name,
+    r.parent_fleet_name
 ON CONFLICT (trip_date, COALESCE(country, ''::text), COALESCE(city, ''::text), business_slice_name, COALESCE(fleet_display_name, ''::text), is_subfleet, COALESCE(subfleet_name, ''::text), COALESCE(parent_fleet_name, ''::text))
 DO UPDATE SET
     trips_completed = EXCLUDED.trips_completed,
@@ -590,34 +637,98 @@ FROM (
     ),
     mx AS (SELECT trip_id, max(spec_score) AS max_spec FROM m GROUP BY trip_id),
     best AS (
-        SELECT DISTINCT ON (trip_id) m.*
+        SELECT m.*
         FROM m
         INNER JOIN mx ON m.trip_id = mx.trip_id AND m.spec_score = mx.max_spec
-        ORDER BY trip_id, mapping_rule_id
     ),
     outcome AS (
-        SELECT trip_id, count(DISTINCT business_slice_name) AS n_slices,
+        SELECT
+            trip_id,
+            count(DISTINCT business_slice_name) AS n_slices,
             array_agg(DISTINCT mapping_rule_id) AS rule_ids,
             array_agg(DISTINCT business_slice_name) AS slice_names
-        FROM best GROUP BY trip_id
+        FROM best
+        GROUP BY trip_id
     ),
-    resolved AS (
-        SELECT b.*, o.n_slices, o.rule_ids, o.slice_names,
-            CASE WHEN b.revenue_yego_net IS NULL THEN 'proxy' ELSE 'real' END AS revenue_source,
-            'resolved' AS resolution_status
-        FROM best b
-        INNER JOIN outcome o ON b.trip_id = o.trip_id
-        WHERE o.n_slices = 1
+    winner AS (
+        SELECT DISTINCT ON (trip_id)
+            trip_id,
+            mapping_rule_id,
+            business_slice_name,
+            fleet_display_name,
+            is_subfleet,
+            subfleet_name,
+            parent_fleet_name,
+            rule_type,
+            spec_score
+        FROM best
+        ORDER BY
+            trip_id,
+            is_subfleet ASC,
+            parent_fleet_name NULLS FIRST,
+            fleet_display_name ASC,
+            mapping_rule_id ASC
     )
-    SELECT * FROM resolved
-    WHERE resolution_status = 'resolved'
-      AND business_slice_name IS NOT NULL
-      AND trip_date IS NOT NULL
+    SELECT
+        b.trip_id,
+        b.driver_id,
+        b.park_id,
+        b.park_name,
+        b.country,
+        b.city,
+        b.tipo_servicio,
+        b.works_terms,
+        b.completed_flag,
+        b.cancelled_flag,
+        b.trip_date,
+        b.trip_month,
+        b.trip_week,
+        b.hour_of_day,
+        b.trip_hour_start,
+        b.revenue_yego_net,
+        b.revenue_yego_final,
+        b.ticket,
+        b.km,
+        b.duration_minutes,
+        b.gmv_passenger_paid,
+        b.total_fare,
+        b.condicion,
+        b.source_table,
+        CASE WHEN b.revenue_yego_net IS NULL THEN 'proxy' ELSE 'real' END AS revenue_source,
+        CASE
+            WHEN o.trip_id IS NULL THEN 'unmatched'
+            WHEN o.n_slices > 1 THEN 'conflict'
+            ELSE 'resolved'
+        END AS resolution_status,
+        w.mapping_rule_id,
+        COALESCE(w.business_slice_name, '__UNMATCHED__') AS business_slice_name,
+        w.fleet_display_name,
+        COALESCE(w.is_subfleet, false) AS is_subfleet,
+        w.subfleet_name,
+        w.parent_fleet_name,
+        w.rule_type AS matched_rule_type,
+        o.n_slices AS conflict_slice_count,
+        o.rule_ids AS conflict_rule_ids,
+        o.slice_names AS conflict_slice_names
+    FROM base b
+    LEFT JOIN outcome o ON b.trip_id = o.trip_id
+    LEFT JOIN winner w
+        ON b.trip_id = w.trip_id
+        AND o.trip_id IS NOT NULL
+        AND o.n_slices = 1
 ) r
+WHERE r.resolution_status = 'resolved'
+  AND r.trip_date IS NOT NULL
+  AND r.business_slice_name IS NOT NULL
 GROUP BY
     date_trunc('week', r.trip_date),
-    r.country, r.city, r.business_slice_name, r.fleet_display_name,
-    r.is_subfleet, r.subfleet_name, r.parent_fleet_name
+    r.country,
+    r.city,
+    r.business_slice_name,
+    r.fleet_display_name,
+    r.is_subfleet,
+    r.subfleet_name,
+    r.parent_fleet_name
 """
 
 # ---------------------------------------------------------------------------

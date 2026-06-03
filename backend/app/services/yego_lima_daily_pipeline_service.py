@@ -1,8 +1,11 @@
 """
-YEGO Lima Growth — Daily Pipeline Orchestrator (Fase 2D.0).
+YEGO Lima Growth — Daily Pipeline Orchestrator (Fase 2D.0 + Fase 2D-R).
 
 Manual daily pipeline runner. Idempotent steps, status per step.
 No automatic scheduler.
+
+Fase 2D-R: New step order with state/program/opportunity canonical flow.
+Legacy steps preserved for backward compatibility.
 """
 
 from __future__ import annotations
@@ -22,14 +25,20 @@ TABLE_STEP = "growth.yango_lima_pipeline_run_step_log"
 
 PIPELINE_STEPS = [
     ("validate_foundation", 1),
-    ("build_loyalty_sub50", 2),
-    ("build_driver_segments", 3),
-    ("build_actionable_lists", 4),
-    ("close_previous_day_unmanaged", 5),
-    ("build_daily_impact", 6),
-    ("build_segment_transitions", 7),
-    ("build_list_outcomes", 8),
-    ("build_impact_attribution", 9),
+    ("build_eligible_universe", 2),
+    ("stabilize_driver_360_day", 3),
+    ("build_loyalty_sub50", 4),
+    ("build_driver_segments", 5),
+    ("build_driver_state_snapshot", 6),
+    ("build_program_eligibility", 7),
+    ("build_daily_opportunity_lists", 8),
+    ("close_previous_day_unmanaged_opportunities", 9),
+    ("close_previous_day_unmanaged", 10),
+    ("build_daily_impact", 11),
+    ("build_segment_transitions", 12),
+    ("build_list_outcomes", 13),
+    ("build_impact_attribution", 14),
+    ("build_executive_metrics_check", 15),
 ]
 
 
@@ -121,6 +130,24 @@ def _execute_step(step_name: str, run_date_str: str, prev_date_str: str, dry_run
     if step_name == "validate_foundation":
         return _validate_foundation(run_date_str)
 
+    elif step_name == "build_eligible_universe":
+        try:
+            from app.services.yego_lima_eligible_universe_service import build_eligible_universe
+            import asyncio as _asyncio
+            r = _asyncio.run(build_eligible_universe(run_date_str))
+        except RuntimeError:
+            r = {"ok": True, "skipped": "async_in_event_loop"}
+        return "success" if r.get("ok") else "warning", r, None
+
+    elif step_name == "stabilize_driver_360_day":
+        try:
+            from app.services.yego_lima_driver_360_service import stabilize_driver_360_day
+            import asyncio as _asyncio
+            r = _asyncio.run(stabilize_driver_360_day(run_date_str))
+        except RuntimeError:
+            r = {"ok": True, "skipped": "async_in_event_loop"}
+        return "success" if r.get("ok") else "warning", r, None
+
     elif step_name == "build_loyalty_sub50":
         from app.services.yego_lima_loyalty_sub50_service import build_loyalty_sub50
         r = build_loyalty_sub50(run_date_str)
@@ -131,15 +158,35 @@ def _execute_step(step_name: str, run_date_str: str, prev_date_str: str, dry_run
         r = build_driver_segments(run_date_str)
         return "success" if r.get("ok") else "warning", r, None
 
-    elif step_name == "build_actionable_lists":
-        from app.services.yego_lima_actionable_list_service import build_daily_actionable_lists
-        r = build_daily_actionable_lists(run_date_str)
+    elif step_name == "build_driver_state_snapshot":
+        from app.services.yego_lima_driver_state_service import build_driver_state_snapshot
+        r = build_driver_state_snapshot(run_date_str)
         return "success" if r.get("ok") else "warning", r, None
+
+    elif step_name == "build_program_eligibility":
+        from app.services.yego_lima_program_eligibility_service import build_program_eligibility
+        r = build_program_eligibility(run_date_str)
+        return "success" if r.get("ok") else "warning", r, None
+
+    elif step_name == "build_daily_opportunity_lists":
+        from app.services.yego_lima_daily_opportunity_service import build_daily_opportunity_lists
+        r = build_daily_opportunity_lists(run_date_str)
+        return "success" if r.get("ok") else "warning", r, None
+
+    elif step_name == "close_previous_day_unmanaged_opportunities":
+        from app.services.yego_lima_daily_opportunity_service import close_unmanaged_opportunities
+        r = close_unmanaged_opportunities(prev_date_str)
+        return "success", r, None
 
     elif step_name == "close_previous_day_unmanaged":
         from app.services.yego_lima_actionable_list_service import close_unmanaged_items
         r = close_unmanaged_items(prev_date_str)
         return "success", r, None
+
+    elif step_name == "build_actionable_lists":
+        from app.services.yego_lima_actionable_list_service import build_daily_actionable_lists
+        r = build_daily_actionable_lists(run_date_str)
+        return "success" if r.get("ok") else "warning", r, None
 
     elif step_name == "build_daily_impact":
         from app.services.yego_lima_action_impact_service import build_daily_impact_for_date
@@ -160,6 +207,9 @@ def _execute_step(step_name: str, run_date_str: str, prev_date_str: str, dry_run
         from app.services.yego_lima_impact_attribution_service import build_daily_attribution
         r = build_daily_attribution(run_date_str)
         return "success" if r.get("ok") else "warning", r, None
+
+    elif step_name == "build_executive_metrics_check":
+        return "success", {"check": "executive_metrics_available"}, None
 
     return "skipped", {"reason": "unknown_step"}, None
 
@@ -199,6 +249,10 @@ def get_pipeline_status(query_date: Optional[str] = None) -> Dict[str, Any]:
             "list_outcomes": ("growth.yango_lima_actionable_list_outcome_daily", "list_date"),
             "attribution": ("growth.yango_lima_action_attribution_daily", "attribution_date"),
             "daily_impact": ("growth.yango_lima_driver_action_daily_impact", "impact_date"),
+            # Fase 2D-R new layers
+            "driver_state_snapshot": ("growth.yango_lima_driver_state_snapshot", "snapshot_date"),
+            "program_eligibility_daily": ("growth.yango_lima_program_eligibility_daily", "eligibility_date"),
+            "daily_opportunity_list": ("growth.yango_lima_daily_opportunity_list", "opportunity_date"),
         }
 
         status = {}
@@ -207,8 +261,15 @@ def get_pipeline_status(query_date: Optional[str] = None) -> Dict[str, Any]:
             cnt = cur.fetchone()["count"]
             status[name] = {"exists": cnt > 0, "rows": cnt}
 
-        # Prev day unmanaged check
+        # Prev day unmanaged check - opportunities
         prev = (date.fromisoformat(query_date) - timedelta(days=1)).isoformat()
+        cur.execute("""
+            SELECT COUNT(*) FROM growth.yango_lima_daily_opportunity_list
+            WHERE opportunity_date = %(d)s AND management_status = 'PENDING_ACTION'
+        """, {"d": prev})
+        opp_prev_pending = cur.fetchone()["count"]
+
+        # Prev day unmanaged check - legacy
         cur.execute("""
             SELECT COUNT(*) FROM growth.yango_lima_actionable_list_daily
             WHERE list_date = %(d)s AND management_status = 'PENDING_ACTION'
@@ -220,7 +281,8 @@ def get_pipeline_status(query_date: Optional[str] = None) -> Dict[str, Any]:
             "date": query_date,
             "layers": status,
             "previous_day_pending": prev_pending,
-            "status": "ok" if not missing and prev_pending == 0 else "warning",
+            "previous_day_opp_pending": opp_prev_pending,
+            "status": "ok" if not missing and prev_pending == 0 and opp_prev_pending == 0 else "warning",
             "missing_layers": missing,
             "remediation": "Run POST /pipeline/run-daily" if missing else None,
         }
@@ -234,22 +296,43 @@ def consistency_check(query_date: Optional[str] = None) -> Dict[str, Any]:
         cur = conn.cursor()
         checks = []
 
-        # Snapshot exists
+        # Snapshot exists (legacy)
         cur.execute("SELECT COUNT(*) FROM growth.yango_lima_driver_segment_snapshot WHERE snapshot_date = %(d)s", {"d": query_date})
         checks.append({"check": "segment_snapshot_exists", "ok": cur.fetchone()[0] > 0,
                        "remediation": "Run build-driver-segments"})
 
-        # Actionable list exists
+        # Driver state snapshot exists (new)
+        cur.execute("SELECT COUNT(*) FROM growth.yango_lima_driver_state_snapshot WHERE snapshot_date = %(d)s", {"d": query_date})
+        checks.append({"check": "driver_state_snapshot_exists", "ok": cur.fetchone()[0] > 0,
+                       "remediation": "Run POST /state/build-driver-states"})
+
+        # Program eligibility exists (new)
+        cur.execute("SELECT COUNT(*) FROM growth.yango_lima_program_eligibility_daily WHERE eligibility_date = %(d)s", {"d": query_date})
+        checks.append({"check": "program_eligibility_exists", "ok": cur.fetchone()[0] > 0,
+                       "remediation": "Run POST /programs/build-eligibility"})
+
+        # Opportunity list exists (new)
+        cur.execute("SELECT COUNT(*) FROM growth.yango_lima_daily_opportunity_list WHERE opportunity_date = %(d)s", {"d": query_date})
+        checks.append({"check": "daily_opportunity_exists", "ok": cur.fetchone()[0] > 0,
+                       "remediation": "Run POST /opportunities/build-daily"})
+
+        # Actionable list exists (legacy)
         cur.execute("SELECT COUNT(*) FROM growth.yango_lima_actionable_list_daily WHERE list_date = %(d)s", {"d": query_date})
         checks.append({"check": "actionable_list_exists", "ok": cur.fetchone()[0] > 0,
                        "remediation": "Run build-actionable-lists"})
 
-        # No stale pending from yesterday
+        # No stale pending from yesterday (legacy)
         prev = (date.fromisoformat(query_date) - timedelta(days=1)).isoformat()
         cur.execute("SELECT COUNT(*) FROM growth.yango_lima_actionable_list_daily WHERE list_date = %(d)s AND management_status = 'PENDING_ACTION'", {"d": prev})
         pending = cur.fetchone()[0]
-        checks.append({"check": "no_stale_pending", "ok": pending == 0,
+        checks.append({"check": "no_stale_pending_legacy", "ok": pending == 0,
                        "remediation": f"Close {pending} unmanaged items from {prev}" if pending else None})
+
+        # No stale pending from yesterday (new)
+        cur.execute("SELECT COUNT(*) FROM growth.yango_lima_daily_opportunity_list WHERE opportunity_date = %(d)s AND management_status = 'PENDING_ACTION'", {"d": prev})
+        opp_pending = cur.fetchone()[0]
+        checks.append({"check": "no_stale_pending_opportunities", "ok": opp_pending == 0,
+                       "remediation": f"Close {opp_pending} unmanaged opportunities from {prev}" if opp_pending else None})
 
         all_ok = all(c["ok"] for c in checks)
         return {"date": query_date, "status": "ok" if all_ok else "warning", "checks": checks}

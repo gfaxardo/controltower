@@ -401,6 +401,40 @@ class Settings(BaseSettings):
         description="Ventana maxima en dias para atribuir una accion a una transicion.",
     )
 
+    # ── Lima Growth State-Based Loyalty Architecture (Fase 2D-R) ──
+    LIMA_GROWTH_API_CUTOVER_DATE: str = Field(
+        default="2026-06-01",
+        description="Fecha de corte: antes = backfill trips_2025/2026, después = pipeline API/Driver360.",
+    )
+    LIMA_GROWTH_REACTIVATION_GAP_DAYS: int = Field(
+        default=30, ge=7, le=365,
+        description="Dias de inactividad tras los cuales un conductor se considera REACTIVATED si vuelve.",
+    )
+    LIMA_GROWTH_ESTABLISHED_AFTER_DAYS: int = Field(
+        default=14, ge=7, le=90,
+        description="Dias desde first_trip_at tras los cuales un conductor pasa de EARLY_LIFE a ESTABLISHED.",
+    )
+    LIMA_GROWTH_NEW_DRIVER_WINDOW_DAYS: int = Field(
+        default=14, ge=1, le=90,
+        description="Ventana en dias para considerar NEW driver desde primera semana.",
+    )
+    LIMA_GROWTH_RETENTION_WINDOW_DAYS: int = Field(
+        default=90, ge=30, le=365,
+        description="Ventana en dias para PROSPECT → ACTIVATED → EARLY_LIFE window.",
+    )
+    LIMA_GROWTH_LOW_PERFORMANCE_RATIO: float = Field(
+        default=0.4, ge=0.0, le=1.0,
+        description="Ratio trips/target bajo el cual se clasifica LOW performance.",
+    )
+    LIMA_GROWTH_MEDIUM_PERFORMANCE_RATIO: float = Field(
+        default=0.8, ge=0.0, le=1.0,
+        description="Ratio trips/target bajo el cual se clasifica MEDIUM performance.",
+    )
+    LIMA_GROWTH_PERFORMANCE_TARGET_RATIO: float = Field(
+        default=1.0, ge=0.5, le=2.0,
+        description="Ratio trips/target para clasificar TARGET performance.",
+    )
+
     # ── Lima Growth Impact Attribution (Fase 2C.2) ──
     LIMA_GROWTH_ATTRIBUTION_WINDOW_DAYS: int = Field(
         default=7, ge=1, le=14,

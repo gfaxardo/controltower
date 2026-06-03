@@ -1,8 +1,9 @@
 """
-YEGO Lima Growth — Executive Metrics Service (Fase 2D.0).
+YEGO Lima Growth — Executive Metrics Service (Fase 2D.0 + Fase 2D-R).
 
 Read-only aggregated metrics for future dashboard.
-Sources: snapshot, lists, transitions, outcomes, attribution, 360_daily.
+Sources (preferred): driver_state_snapshot, program_eligibility_daily, daily_opportunity_list.
+Fallback: legacy segment_snapshot, actionable_list_daily.
 """
 
 from __future__ import annotations
@@ -15,105 +16,194 @@ from app.db.connection import get_db
 
 logger = logging.getLogger(__name__)
 
+TABLE_STATE = "growth.yango_lima_driver_state_snapshot"
+TABLE_PROGRAM = "growth.yango_lima_program_eligibility_daily"
+TABLE_OPPORTUNITY = "growth.yango_lima_daily_opportunity_list"
+
+TABLE_LEGACY_SNAPSHOT = "growth.yango_lima_driver_segment_snapshot"
+TABLE_LEGACY_LIST = "growth.yango_lima_actionable_list_daily"
+
+
+def _has_state_data(cur, query_date: str) -> bool:
+    cur.execute(f"SELECT COUNT(*) AS cnt FROM {TABLE_STATE} WHERE snapshot_date = %(d)s", {"d": query_date})
+    r = cur.fetchone()
+    return r["cnt"] > 0 if r else False
+
 
 def executive_summary(query_date: Optional[str] = None) -> Dict[str, Any]:
     with get_db() as conn:
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
         if not query_date:
-            cur.execute("SELECT MAX(snapshot_date) FROM growth.yango_lima_driver_segment_snapshot")
+            cur.execute(f"SELECT MAX(snapshot_date) FROM {TABLE_STATE}")
             r = cur.fetchone()
-            if not r or not r["max"]:
-                return {"error": "No snapshot data"}
-            query_date = str(r["max"])
+            if r and r["max"]:
+                query_date = str(r["max"])
+            else:
+                cur.execute(f"SELECT MAX(snapshot_date) FROM {TABLE_LEGACY_SNAPSHOT}")
+                r = cur.fetchone()
+                if not r or not r["max"]:
+                    return {"error": "No snapshot data"}
+                query_date = str(r["max"])
 
-        # Segment counts
-        cur.execute("""
-            SELECT segment_level_1, COUNT(*) AS cnt
-            FROM growth.yango_lima_driver_segment_snapshot
-            WHERE snapshot_date = %(d)s
-            GROUP BY segment_level_1
-        """, {"d": query_date})
-        l1 = {r["segment_level_1"]: r["cnt"] for r in cur.fetchall()}
+        use_new = _has_state_data(cur, query_date)
 
-        cur.execute("""
-            SELECT segment_level_2, COUNT(*) AS cnt
-            FROM growth.yango_lima_driver_segment_snapshot
-            WHERE snapshot_date = %(d)s
-            GROUP BY segment_level_2
-        """, {"d": query_date})
-        l2 = {r["segment_level_2"]: r["cnt"] for r in cur.fetchall()}
+        if use_new:
+            # ── CANONICAL: driver_state_snapshot ──
+            cur.execute(f"""
+                SELECT lifecycle_state, COUNT(*) AS cnt
+                FROM {TABLE_STATE} WHERE snapshot_date = %(d)s
+                GROUP BY lifecycle_state
+            """, {"d": query_date})
+            lc_dist = {r["lifecycle_state"]: r["cnt"] for r in cur.fetchall()}
 
-        # Actions today
-        cur.execute("""
-            SELECT
-                COUNT(*) AS total,
-                SUM(CASE WHEN management_status = 'ACTION_CONFIRMED' THEN 1 ELSE 0 END) AS confirmed,
-                SUM(CASE WHEN management_status = 'ACTION_ATTEMPTED' THEN 1 ELSE 0 END) AS attempted,
-                SUM(CASE WHEN management_status = 'NO_ACTION' THEN 1 ELSE 0 END) AS no_action,
-                SUM(CASE WHEN management_status = 'PENDING_ACTION' THEN 1 ELSE 0 END) AS pending
-            FROM growth.yango_lima_actionable_list_daily
-            WHERE list_date = %(d)s
-        """, {"d": query_date})
-        actions = dict(cur.fetchone() or {})
+            cur.execute(f"""
+                SELECT performance_state, COUNT(*) AS cnt
+                FROM {TABLE_STATE} WHERE snapshot_date = %(d)s
+                GROUP BY performance_state
+            """, {"d": query_date})
+            perf_dist = {r["performance_state"]: r["cnt"] for r in cur.fetchall()}
 
-        # Movements today
-        cur.execute("""
-            SELECT
-                COUNT(*) AS total,
-                SUM(CASE WHEN segment_changed_flag THEN 1 ELSE 0 END) AS moved,
-                SUM(CASE WHEN movement_direction = 'IMPROVED' THEN 1 ELSE 0 END) AS improved,
-                SUM(CASE WHEN movement_direction IN ('RECOVERED','IMPROVED') THEN 1 ELSE 0 END) AS reactivated_recovered
-            FROM growth.yango_lima_driver_segment_transition_daily
-            WHERE transition_date = %(d)s
-        """, {"d": query_date})
-        movements = dict(cur.fetchone() or {})
+            cur.execute(f"""
+                SELECT retention_state, COUNT(*) AS cnt
+                FROM {TABLE_STATE} WHERE snapshot_date = %(d)s
+                GROUP BY retention_state
+            """, {"d": query_date})
+            ret_dist = {r["retention_state"]: r["cnt"] for r in cur.fetchall()}
 
-        # 360_daily stats
-        cur.execute("""
-            SELECT COUNT(DISTINCT driver_profile_id) AS active,
-                   SUM(completed_orders) AS orders,
-                   SUM(supply_hours) AS supply
-            FROM growth.yango_lima_driver_360_daily
-            WHERE date = %(d)s AND active_flag = true
-        """, {"d": query_date})
-        d360 = dict(cur.fetchone() or {})
+            # Program counts
+            cur.execute(f"""
+                SELECT program_code, COUNT(*) AS cnt
+                FROM {TABLE_PROGRAM} WHERE eligibility_date = %(d)s
+                GROUP BY program_code
+            """, {"d": query_date})
+            prog_counts = {r["program_code"]: r["cnt"] for r in cur.fetchall()}
 
-        active = int(d360.get("active") or 0)
-        orders_total = int(d360.get("orders") or 0)
-        supply_total = float(d360.get("supply") or 0)
+            # Opportunity counts
+            cur.execute(f"""
+                SELECT
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN management_status = 'ACTION_CONFIRMED' THEN 1 ELSE 0 END) AS confirmed,
+                    SUM(CASE WHEN management_status = 'ACTION_ATTEMPTED' THEN 1 ELSE 0 END) AS attempted,
+                    SUM(CASE WHEN management_status = 'NO_ACTION' THEN 1 ELSE 0 END) AS no_action,
+                    SUM(CASE WHEN management_status = 'PENDING_ACTION' THEN 1 ELSE 0 END) AS pending
+                FROM {TABLE_OPPORTUNITY} WHERE opportunity_date = %(d)s
+            """, {"d": query_date})
+            actions = dict(cur.fetchone() or {})
 
-        # Freshness
-        cur.execute("SELECT MAX(date) FROM growth.yango_lima_driver_360_daily")
-        f360 = str(cur.fetchone()["max"])
-        cur.execute("SELECT MAX(snapshot_date) FROM growth.yango_lima_driver_segment_snapshot")
-        fseg = str(cur.fetchone()["max"])
-        cur.execute("SELECT MAX(attribution_date) FROM growth.yango_lima_action_attribution_daily")
-        fatt = str(cur.fetchone()["max"])
+            total_drivers = sum(lc_dist.values())
+            managed = int(actions.get("confirmed") or 0) + int(actions.get("attempted") or 0)
 
-        total_drivers = sum(l1.values())
-        managed = int(actions.get("confirmed") or 0) + int(actions.get("attempted") or 0)
-        mov_total = int(movements.get("total") or 1)
+            # 360_daily stats
+            cur.execute("""
+                SELECT COUNT(DISTINCT driver_profile_id) AS active,
+                       SUM(completed_orders) AS orders,
+                       SUM(supply_hours) AS supply
+                FROM growth.yango_lima_driver_360_daily
+                WHERE date = %(d)s AND active_flag = true
+            """, {"d": query_date})
+            d360 = dict(cur.fetchone() or {})
 
-        return {
-            "date": query_date,
-            "drivers_total": total_drivers,
-            "l1_14_90_count": l1.get("NEW", 0) + l1.get("REACTIVATED", 0),
-            "l2_active_growth_count": l2.get("LOYALTY_ACTIVE_GROWTH", 0),
-            "l3_churn_prevention_count": l2.get("LOYALTY_CHURN_PREVENTION", 0),
-            "drivers_managed_today": managed,
-            "drivers_no_action_today": int(actions.get("no_action") or 0),
-            "drivers_moved_today": int(movements.get("moved") or 0),
-            "drivers_improved_today": int(movements.get("improved") or 0),
-            "drivers_reactivated_today": int(movements.get("reactivated_recovered") or 0),
-            "drivers_reached_target_today": 0,
-            "movement_rate": round(int(movements.get("moved") or 0) / mov_total * 100, 1) if mov_total else 0,
-            "action_confirmation_rate": round(int(actions.get("confirmed") or 0) / max(managed, 1) * 100, 1),
-            "avg_orders_per_driver": round(orders_total / active, 1) if active else 0,
-            "total_supply_hours": round(supply_total, 2),
-            "avg_trips_per_supply_hour": round(orders_total / supply_total, 2) if supply_total else 0,
-            "freshness": {"driver360_max_date": f360, "segment_snapshot_max_date": fseg, "attribution_max_date": fatt},
-        }
+            active = int(d360.get("active") or 0)
+            orders_total = int(d360.get("orders") or 0)
+            supply_total = float(d360.get("supply") or 0)
+
+            # Freshness
+            cur.execute(f"SELECT MAX(snapshot_date) FROM {TABLE_STATE}")
+            fstate = str(cur.fetchone()["max"])
+            cur.execute(f"SELECT MAX(eligibility_date) FROM {TABLE_PROGRAM}")
+            fprog = str(cur.fetchone()["max"])
+            cur.execute(f"SELECT MAX(opportunity_date) FROM {TABLE_OPPORTUNITY}")
+            fopp = str(cur.fetchone()["max"])
+
+            return {
+                "date": query_date,
+                "source": "state_based",
+                "drivers_total": total_drivers,
+                "lifecycle_distribution": lc_dist,
+                "performance_distribution": perf_dist,
+                "retention_distribution": ret_dist,
+                "program_counts": prog_counts,
+                "opportunity_total": int(actions.get("total") or 0),
+                "drivers_managed_today": managed,
+                "drivers_no_action_today": int(actions.get("no_action") or 0),
+                "drivers_pending_today": int(actions.get("pending") or 0),
+                "action_confirmation_rate": round(int(actions.get("confirmed") or 0) / max(managed, 1) * 100, 1),
+                "avg_orders_per_driver": round(orders_total / active, 1) if active else 0,
+                "total_supply_hours": round(supply_total, 2),
+                "avg_trips_per_supply_hour": round(orders_total / supply_total, 2) if supply_total else 0,
+                "freshness": {
+                    "driver_state_max_date": fstate,
+                    "program_eligibility_max_date": fprog,
+                    "opportunity_max_date": fopp,
+                },
+            }
+
+        else:
+            # ── LEGACY FALLBACK: segment_snapshot ──
+            cur.execute(f"""
+                SELECT segment_level_1, COUNT(*) AS cnt
+                FROM {TABLE_LEGACY_SNAPSHOT} WHERE snapshot_date = %(d)s
+                GROUP BY segment_level_1
+            """, {"d": query_date})
+            l1 = {r["segment_level_1"]: r["cnt"] for r in cur.fetchall()}
+
+            cur.execute(f"""
+                SELECT segment_level_2, COUNT(*) AS cnt
+                FROM {TABLE_LEGACY_SNAPSHOT} WHERE snapshot_date = %(d)s
+                GROUP BY segment_level_2
+            """, {"d": query_date})
+            l2 = {r["segment_level_2"]: r["cnt"] for r in cur.fetchall()}
+
+            cur.execute(f"""
+                SELECT
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN management_status = 'ACTION_CONFIRMED' THEN 1 ELSE 0 END) AS confirmed,
+                    SUM(CASE WHEN management_status = 'ACTION_ATTEMPTED' THEN 1 ELSE 0 END) AS attempted,
+                    SUM(CASE WHEN management_status = 'NO_ACTION' THEN 1 ELSE 0 END) AS no_action,
+                    SUM(CASE WHEN management_status = 'PENDING_ACTION' THEN 1 ELSE 0 END) AS pending
+                FROM {TABLE_LEGACY_LIST} WHERE list_date = %(d)s
+            """, {"d": query_date})
+            actions = dict(cur.fetchone() or {})
+
+            cur.execute("""
+                SELECT COUNT(DISTINCT driver_profile_id) AS active,
+                       SUM(completed_orders) AS orders,
+                       SUM(supply_hours) AS supply
+                FROM growth.yango_lima_driver_360_daily
+                WHERE date = %(d)s AND active_flag = true
+            """, {"d": query_date})
+            d360 = dict(cur.fetchone() or {})
+
+            active = int(d360.get("active") or 0)
+            orders_total = int(d360.get("orders") or 0)
+            supply_total = float(d360.get("supply") or 0)
+
+            cur.execute("SELECT MAX(date) FROM growth.yango_lima_driver_360_daily")
+            f360 = str(cur.fetchone()["max"])
+            cur.execute(f"SELECT MAX(snapshot_date) FROM {TABLE_LEGACY_SNAPSHOT}")
+            fseg = str(cur.fetchone()["max"])
+            cur.execute("SELECT MAX(attribution_date) FROM growth.yango_lima_action_attribution_daily")
+            fatt = str(cur.fetchone()["max"])
+
+            total_drivers = sum(l1.values())
+            managed = int(actions.get("confirmed") or 0) + int(actions.get("attempted") or 0)
+
+            return {
+                "date": query_date,
+                "source": "legacy_fallback",
+                "drivers_total": total_drivers,
+                "l1_14_90_count": l1.get("NEW", 0) + l1.get("REACTIVATED", 0),
+                "l2_active_growth_count": l2.get("LOYALTY_ACTIVE_GROWTH", 0),
+                "l3_churn_prevention_count": l2.get("LOYALTY_CHURN_PREVENTION", 0),
+                "drivers_managed_today": managed,
+                "drivers_no_action_today": int(actions.get("no_action") or 0),
+                "action_confirmation_rate": round(int(actions.get("confirmed") or 0) / max(managed, 1) * 100, 1),
+                "avg_orders_per_driver": round(orders_total / active, 1) if active else 0,
+                "total_supply_hours": round(supply_total, 2),
+                "avg_trips_per_supply_hour": round(orders_total / supply_total, 2) if supply_total else 0,
+                "freshness": {"driver360_max_date": f360, "segment_snapshot_max_date": fseg, "attribution_max_date": fatt},
+            }
 
 
 def executive_segments(query_date: Optional[str] = None) -> Dict[str, Any]:

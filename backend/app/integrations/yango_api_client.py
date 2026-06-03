@@ -580,3 +580,576 @@ async def list_completed_orders(
         "error_code": error_code,
         "error_message": error_message or f"Yango API returned status {status_code}",
     }
+
+
+def _mask_id(val: str) -> str:
+    if not val or not isinstance(val, str):
+        return "***"
+    return val[:8] + "..." if len(val) > 8 else val
+
+
+async def list_driver_profiles(
+    limit: Optional[int] = None,
+    offset: int = 0,
+) -> Dict[str, Any]:
+    """
+    Lista driver profiles de la flota Lima desde Yango Fleet API.
+
+    POST /v1/parks/driver-profiles/list
+
+    Devuelve resumen sanitizado: nunca PII, nombres completos, phones, ni licencias.
+    """
+    enabled = bool(settings.YANGO_API_ENABLED)
+    if not enabled:
+        return {
+            "ok": False,
+            "status_code": 0,
+            "elapsed_ms": 0,
+            "error_type": "disabled",
+            "error_code": "MODULE_DISABLED",
+            "error_message": "YANGO_API_ENABLED is false",
+        }
+
+    client_id = (settings.YANGO_CLIENT_ID or "").strip()
+    api_key = (settings.YANGO_API_KEY or "").strip()
+    park_id = (settings.YANGO_LIMA_PARK_ID or "").strip()
+
+    missing = []
+    if not client_id:
+        missing.append("YANGO_CLIENT_ID")
+    if not api_key:
+        missing.append("YANGO_API_KEY")
+    if not park_id:
+        missing.append("YANGO_LIMA_PARK_ID")
+    if missing:
+        return {
+            "ok": False,
+            "status_code": 0,
+            "elapsed_ms": 0,
+            "error_type": "missing_config",
+            "error_code": "MISSING_CONFIG",
+            "error_message": f"Missing: {', '.join(missing)}",
+        }
+
+    page_size = limit if limit is not None else settings.YANGO_DRIVER_PROFILES_PAGE_SIZE
+    page_size = min(page_size, 1000)
+
+    url = f"{settings.YANGO_API_BASE_URL.rstrip('/')}/v1/parks/driver-profiles/list"
+
+    try:
+        headers = _build_headers()
+    except ValueError as e:
+        return {
+            "ok": False,
+            "status_code": 0,
+            "elapsed_ms": 0,
+            "error_type": "missing_config",
+            "error_code": "MISSING_CONFIG",
+            "error_message": str(e),
+        }
+
+    body = {
+        "query": {
+            "park": {
+                "id": park_id,
+                "driver_profile": {
+                    "work_status": ["working", "not_working"]
+                },
+            },
+        },
+        "fields": {
+            "driver_profile": [
+                "id",
+                "park_id",
+                "created_date",
+                "first_name",
+                "last_name",
+                "work_rule_id",
+                "work_status",
+                "employment_type",
+                "has_contract_issue",
+            ],
+            "current_status": [
+                "status",
+                "status_updated_at",
+            ],
+            "car": [
+                "id",
+                "status",
+                "category",
+                "callsign",
+                "brand",
+                "model",
+                "year",
+                "number",
+            ],
+            "account": [
+                "id",
+                "balance",
+                "balance_limit",
+                "currency",
+                "last_transaction_date",
+            ],
+            "park": [
+                "id",
+                "city",
+                "name",
+            ],
+        },
+        "limit": page_size,
+        "offset": offset,
+    }
+
+    if settings.YANGO_API_DEBUG:
+        logger.debug(
+            "Yango driver-profiles/list: url=%s park=%s limit=%s offset=%s",
+            url,
+            park_id,
+            page_size,
+            offset,
+        )
+
+    start = time.perf_counter()
+    status_code, elapsed_ms, data = await _execute_with_retries(
+        url=url,
+        headers=headers,
+        body=body,
+        timeout_seconds=settings.YANGO_API_TIMEOUT_SECONDS,
+        max_retries=settings.YANGO_API_MAX_RETRIES,
+    )
+
+    if status_code == 200 and data and isinstance(data, dict):
+        profiles = data.get("driver_profiles") or []
+        total = data.get("total", len(profiles))
+        rlimit = data.get("limit", page_size)
+        roffset = data.get("offset", offset)
+
+        work_status_counts: Dict[str, int] = {}
+        current_status_counts: Dict[str, int] = {}
+        has_current_status = False
+        has_car = False
+        has_account = False
+        sample_profile_keys: List[str] = []
+
+        for p in profiles:
+            if not isinstance(p, dict):
+                continue
+            dp = p.get("driver_profile") or {}
+            ws = dp.get("work_status", "unknown")
+            work_status_counts[ws] = work_status_counts.get(ws, 0) + 1
+
+            cs = p.get("current_status") or {}
+            if cs:
+                has_current_status = True
+                cst = cs.get("status", "unknown")
+                current_status_counts[cst] = current_status_counts.get(cst, 0) + 1
+
+            if p.get("car"):
+                has_car = True
+            if p.get("account"):
+                has_account = True
+
+            if not sample_profile_keys and dp:
+                sample_profile_keys = sorted(
+                    [k for k in dp.keys() if not k.startswith("_") and k not in ("first_name", "last_name")]
+                )[:15]
+
+        logger.info(
+            "Yango driver-profiles/list OK: total=%s profiles=%s ws=%s cs=%s",
+            total,
+            len(profiles),
+            work_status_counts,
+            current_status_counts,
+        )
+
+        return {
+            "ok": True,
+            "status_code": status_code,
+            "elapsed_ms": elapsed_ms,
+            "total": total,
+            "limit": rlimit,
+            "offset": roffset,
+            "profiles_count": len(profiles),
+            "sample_profile_keys": sample_profile_keys,
+            "has_current_status": has_current_status,
+            "has_car": has_car,
+            "has_account": has_account,
+            "work_status_counts": work_status_counts,
+            "current_status_counts": current_status_counts,
+        }
+
+    error_type, error_code = _classify_error(status_code)
+    error_message = _safe_error_message(data)
+
+    logger.info(
+        "Yango driver-profiles/list error: status=%s type=%s code=%s",
+        status_code,
+        error_type,
+        error_code,
+    )
+
+    return {
+        "ok": False,
+        "status_code": status_code,
+        "elapsed_ms": elapsed_ms,
+        "error_type": error_type,
+        "error_code": error_code,
+        "error_message": error_message or f"Yango API returned status {status_code}",
+    }
+
+
+async def list_driver_profiles_raw(
+    limit: Optional[int] = None,
+    offset: int = 0,
+) -> Dict[str, Any]:
+    """
+    Igual que list_driver_profiles pero retorna los profiles completos (sin sanitizar)
+    para uso interno del discovery. NO exponer en endpoint público.
+    """
+    enabled = bool(settings.YANGO_API_ENABLED)
+    if not enabled:
+        return {"ok": False, "driver_profiles": []}
+
+    park_id = (settings.YANGO_LIMA_PARK_ID or "").strip()
+    if not park_id:
+        return {"ok": False, "driver_profiles": []}
+
+    page_size = limit if limit is not None else settings.YANGO_DRIVER_PROFILES_PAGE_SIZE
+    page_size = min(page_size, 1000)
+
+    url = f"{settings.YANGO_API_BASE_URL.rstrip('/')}/v1/parks/driver-profiles/list"
+
+    try:
+        headers = _build_headers()
+    except ValueError:
+        return {"ok": False, "driver_profiles": []}
+
+    body = {
+        "query": {
+            "park": {
+                "id": park_id,
+                "driver_profile": {
+                    "work_status": ["working", "not_working"]
+                },
+            },
+        },
+        "fields": {
+            "driver_profile": [
+                "id",
+                "park_id",
+                "created_date",
+                "first_name",
+                "last_name",
+                "work_rule_id",
+                "work_status",
+                "employment_type",
+                "has_contract_issue",
+            ],
+            "current_status": [
+                "status",
+                "status_updated_at",
+            ],
+            "car": [
+                "id",
+                "status",
+                "category",
+                "callsign",
+                "brand",
+                "model",
+                "year",
+                "number",
+            ],
+            "account": [
+                "id",
+                "balance",
+                "balance_limit",
+                "currency",
+                "last_transaction_date",
+            ],
+            "park": [
+                "id",
+                "city",
+                "name",
+            ],
+        },
+        "limit": page_size,
+        "offset": offset,
+    }
+
+    status_code, elapsed_ms, data = await _execute_with_retries(
+        url=url,
+        headers=headers,
+        body=body,
+        timeout_seconds=settings.YANGO_API_TIMEOUT_SECONDS,
+        max_retries=settings.YANGO_API_MAX_RETRIES,
+    )
+
+    if status_code == 200 and data and isinstance(data, dict):
+        return {
+            "ok": True,
+            "driver_profiles": data.get("driver_profiles") or [],
+        }
+
+    return {"ok": False, "driver_profiles": []}
+
+
+async def get_supply_hours(
+    contractor_profile_id: str,
+    period_from: str,
+    period_to: str,
+) -> Dict[str, Any]:
+    """
+    Consulta supply hours para un contractor profile id.
+
+    GET /v2/parks/contractors/supply-hours
+
+    Devuelve resumen sanitizado.
+    """
+    enabled = bool(settings.YANGO_API_ENABLED)
+    if not enabled:
+        return {
+            "ok": False,
+            "status_code": 0,
+            "elapsed_ms": 0,
+            "error_type": "disabled",
+            "error_code": "MODULE_DISABLED",
+        }
+
+    client_id = (settings.YANGO_CLIENT_ID or "").strip()
+    api_key = (settings.YANGO_API_KEY or "").strip()
+    park_id = (settings.YANGO_LIMA_PARK_ID or "").strip()
+
+    if not client_id or not api_key or not park_id:
+        return {
+            "ok": False,
+            "status_code": 0,
+            "elapsed_ms": 0,
+            "error_type": "missing_config",
+            "error_code": "MISSING_CONFIG",
+        }
+
+    url = f"{settings.YANGO_API_BASE_URL.rstrip('/')}/v2/parks/contractors/supply-hours"
+
+    headers = {
+        "X-Client-ID": client_id,
+        "X-API-Key": api_key,
+        "X-Park-ID": park_id,
+        "Accept-Language": "en",
+    }
+
+    params = {
+        "contractor_profile_id": contractor_profile_id,
+        "period_from": period_from,
+        "period_to": period_to,
+    }
+
+    start = time.perf_counter()
+
+    try:
+        async with httpx.AsyncClient(timeout=float(settings.YANGO_API_TIMEOUT_SECONDS)) as client:
+            resp = await client.get(url, headers=headers, params=params)
+            elapsed_ms = round((time.perf_counter() - start) * 1000)
+
+            if resp.status_code == 200:
+                try:
+                    data = resp.json()
+                except Exception:
+                    data = None
+
+                supply_seconds = 0
+                if isinstance(data, dict):
+                    supply_seconds = data.get("supply_duration_seconds", 0) or 0
+                    if isinstance(supply_seconds, float):
+                        supply_seconds = int(supply_seconds)
+
+                supply_hours_val = round(supply_seconds / 3600.0, 2) if supply_seconds else 0
+
+                return {
+                    "ok": True,
+                    "status_code": resp.status_code,
+                    "elapsed_ms": elapsed_ms,
+                    "contractor_profile_id_masked": _mask_id(contractor_profile_id),
+                    "supply_duration_seconds": supply_seconds,
+                    "supply_hours": supply_hours_val,
+                    "total_seconds": supply_seconds,
+                    "status_code": resp.status_code,
+                    "error_type": None,
+                }
+
+            error_type, error_code = _classify_error(resp.status_code)
+            try:
+                error_data = resp.json()
+            except Exception:
+                error_data = None
+            error_message = _safe_error_message(error_data)
+
+            return {
+                "ok": False,
+                "status_code": resp.status_code,
+                "elapsed_ms": elapsed_ms,
+                "contractor_profile_id_masked": _mask_id(contractor_profile_id),
+                "supply_duration_seconds": 0,
+                "supply_hours": 0,
+                "total_seconds": 0,
+                "error_type": error_type,
+            }
+
+    except httpx.TimeoutException:
+        elapsed_ms = round((time.perf_counter() - start) * 1000)
+        return {
+            "ok": False,
+            "status_code": 0,
+            "elapsed_ms": elapsed_ms,
+            "contractor_profile_id_masked": _mask_id(contractor_profile_id),
+            "supply_duration_seconds": 0,
+            "supply_hours": 0,
+            "total_seconds": 0,
+            "error_type": "timeout",
+        }
+    except Exception:
+        elapsed_ms = round((time.perf_counter() - start) * 1000)
+        return {
+            "ok": False,
+            "status_code": 0,
+            "elapsed_ms": elapsed_ms,
+            "contractor_profile_id_masked": _mask_id(contractor_profile_id),
+            "supply_duration_seconds": 0,
+            "supply_hours": 0,
+            "total_seconds": 0,
+            "error_type": "network_error",
+        }
+
+
+async def get_blocked_balance(
+    contractor_id: str,
+) -> Dict[str, Any]:
+    """
+    Consulta blocked balance para un contractor profile id.
+
+    GET /v1/parks/contractors/blocked-balance
+
+    Devuelve resumen sanitizado: nunca expone datos completos de balance.
+    """
+    enabled = bool(settings.YANGO_API_ENABLED)
+    if not enabled:
+        return {
+            "ok": False,
+            "status_code": 0,
+            "elapsed_ms": 0,
+            "error_type": "disabled",
+            "error_code": "MODULE_DISABLED",
+        }
+
+    api_key = (settings.YANGO_API_KEY or "").strip()
+    park_id = (settings.YANGO_LIMA_PARK_ID or "").strip()
+
+    if not api_key or not park_id:
+        return {
+            "ok": False,
+            "status_code": 0,
+            "elapsed_ms": 0,
+            "error_type": "missing_config",
+            "error_code": "MISSING_CONFIG",
+        }
+
+    url = f"{settings.YANGO_API_BASE_URL.rstrip('/')}/v1/parks/contractors/blocked-balance"
+
+    headers = {
+        "X-API-Key": api_key,
+        "X-Park-ID": park_id,
+        "Accept-Language": "en",
+    }
+
+    params = {
+        "contractor_id": contractor_id,
+    }
+
+    start = time.perf_counter()
+
+    try:
+        async with httpx.AsyncClient(timeout=float(settings.YANGO_API_TIMEOUT_SECONDS)) as client:
+            resp = await client.get(url, headers=headers, params=params)
+            elapsed_ms = round((time.perf_counter() - start) * 1000)
+
+            if resp.status_code == 200:
+                try:
+                    data = resp.json()
+                except Exception:
+                    data = None
+
+                has_balance = False
+                has_blocked = False
+                balance_val = None
+                blocked_val = None
+                detail_keys: List[str] = []
+
+                if isinstance(data, dict):
+                    if data.get("balance") is not None:
+                        has_balance = True
+                        balance_val = str(data.get("balance"))[:20]
+                    if data.get("blocked_balance") is not None:
+                        has_blocked = True
+                        blocked_val = str(data.get("blocked_balance"))[:20]
+                    detail_keys = sorted([k for k in data.keys() if not k.startswith("_")])[:15]
+
+                return {
+                    "ok": True,
+                    "status_code": resp.status_code,
+                    "elapsed_ms": elapsed_ms,
+                    "contractor_id_masked": _mask_id(contractor_id),
+                    "has_balance": has_balance,
+                    "has_blocked_balance": has_blocked,
+                    "balance": balance_val,
+                    "blocked_balance": blocked_val,
+                    "detail_keys": detail_keys,
+                    "error_type": None,
+                }
+
+            error_type, error_code = _classify_error(resp.status_code)
+            try:
+                error_data = resp.json()
+            except Exception:
+                error_data = None
+            error_message = _safe_error_message(error_data)
+
+            return {
+                "ok": False,
+                "status_code": resp.status_code,
+                "elapsed_ms": elapsed_ms,
+                "contractor_id_masked": _mask_id(contractor_id),
+                "has_balance": False,
+                "has_blocked_balance": False,
+                "balance": None,
+                "blocked_balance": None,
+                "detail_keys": [],
+                "error_type": error_type,
+            }
+
+    except httpx.TimeoutException:
+        elapsed_ms = round((time.perf_counter() - start) * 1000)
+        return {
+            "ok": False,
+            "status_code": 0,
+            "elapsed_ms": elapsed_ms,
+            "contractor_id_masked": _mask_id(contractor_id),
+            "has_balance": False,
+            "has_blocked_balance": False,
+            "balance": None,
+            "blocked_balance": None,
+            "detail_keys": [],
+            "error_type": "timeout",
+        }
+    except Exception:
+        elapsed_ms = round((time.perf_counter() - start) * 1000)
+        return {
+            "ok": False,
+            "status_code": 0,
+            "elapsed_ms": elapsed_ms,
+            "contractor_id_masked": _mask_id(contractor_id),
+            "has_balance": False,
+            "has_blocked_balance": False,
+            "balance": None,
+            "blocked_balance": None,
+            "detail_keys": [],
+            "error_type": "network_error",
+        }

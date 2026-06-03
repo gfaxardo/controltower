@@ -315,3 +315,174 @@ def history_summary() -> Dict[str, Any]:
 
 def history_sample(limit: int = 20) -> list:
     return repo_get_history_sample(limit)
+
+
+# ── Fase 2D-RH — Historical Continuity Hardening ──
+
+def inspect_trips_sources() -> Dict[str, Any]:
+    park_id = (settings.YANGO_LIMA_PARK_ID or "").strip()
+    if not park_id:
+        return {"ok": False, "error": "YANGO_LIMA_PARK_ID not configured"}
+
+    result: Dict[str, Any] = {"park_id": park_id[:8] + "****", "tables": {}}
+    params = _get_connection_params()
+    params["options"] = "-c statement_timeout=30000"
+    conn = psycopg2.connect(**params)
+    try:
+        for table in ["trips_2025", "trips_2026"]:
+            mapping, warnings = _detect_columns_from_conn(conn, table)
+            err = _validate_required(mapping, table)
+            if err:
+                result["tables"][table] = {"error": err}
+                continue
+
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            driver_col = mapping["driver_id"]
+            date_col = mapping["trip_date"]
+            park_col = mapping["park_id"]
+            status_col = mapping["status"]
+
+            cur.execute(f"SELECT COUNT(*) AS total FROM public.{table} WHERE {park_col} = %s AND LOWER({status_col}) = 'completado'", (park_id,))
+            total_trips = cur.fetchone()["total"]
+
+            cur.execute(f"SELECT COUNT(DISTINCT {driver_col}) FROM public.{table} WHERE {park_col} = %s AND LOWER({status_col}) = 'completado'", (park_id,))
+            unique_drivers = cur.fetchone()["count"]
+
+            cur.execute(f"SELECT MIN({date_col}), MAX({date_col}) FROM public.{table} WHERE {park_col} = %s AND LOWER({status_col}) = 'completado'", (park_id,))
+            r = cur.fetchone()
+
+            result["tables"][table] = {
+                "detected_columns": mapping,
+                "total_completed_trips": total_trips,
+                "unique_drivers": unique_drivers,
+                "min_date": str(r.get("min", r.get("min"))),
+                "max_date": str(r.get("max", r.get("max"))),
+                "warnings": warnings,
+            }
+            cur.close()
+
+        # Current history state
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT MIN(date), MAX(date), COUNT(*), COUNT(DISTINCT driver_profile_id) FROM growth.yango_lima_driver_history_daily")
+        r = cur.fetchone()
+        result["existing_history"] = {
+            "daily_min": str(r["min"]),
+            "daily_max": str(r["max"]),
+            "daily_rows": r["count"],
+            "unique_drivers": r["count"],
+        }
+        cur.close()
+
+        result["ok"] = True
+        return result
+    finally:
+        conn.close()
+
+
+def rebuild_history_until_cutover(cutover_date: str, from_date: Optional[str] = None, dry_run: bool = True) -> Dict[str, Any]:
+    cutover = date.fromisoformat(cutover_date)
+    start = date.fromisoformat(from_date) if from_date else date(2025, 1, 1)
+    end = cutover - timedelta(days=1)
+
+    if dry_run:
+        return _estimate_backfill(start, end)
+
+    return bootstrap_history(str(start), str(end))
+
+
+def _estimate_backfill(from_date: date, to_date: date) -> Dict[str, Any]:
+    park_id = (settings.YANGO_LIMA_PARK_ID or "").strip()
+    if not park_id:
+        return {"ok": False, "error": "YANGO_LIMA_PARK_ID not configured", "dry_run": True}
+
+    result = {"dry_run": True, "from_date": str(from_date), "to_date": str(to_date), "park_id": park_id[:8] + "****"}
+    total_trips = 0
+    total_drivers_set: set = set()
+
+    params = _get_connection_params()
+    params["options"] = "-c statement_timeout=30000"
+    conn = psycopg2.connect(**params)
+    try:
+        for table in ["trips_2025", "trips_2026"]:
+            mapping, _ = _detect_columns_from_conn(conn, table)
+            err = _validate_required(mapping, table)
+            if err:
+                continue
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            driver_col, date_col, park_col, status_col = (
+                mapping["driver_id"], mapping["trip_date"], mapping["park_id"], mapping["status"]
+            )
+            cur.execute(f"""
+                SELECT COUNT(*) AS trips, COUNT(DISTINCT {driver_col}) AS drivers
+                FROM public.{table}
+                WHERE {park_col} = %s
+                  AND LOWER({status_col}) = 'completado'
+                  AND {date_col} >= %s::timestamp
+                  AND {date_col} <= %s::timestamp
+            """, (park_id, f"{from_date} 00:00:00", f"{to_date} 23:59:59"))
+            r = cur.fetchone()
+            result[table] = {"estimated_trips": r["trips"], "estimated_drivers": r["drivers"]}
+            total_trips += r["trips"] or 0
+            cur.close()
+
+        result["estimated_total_trips"] = total_trips
+        result["estimated_daily_rows"] = "depends on date granularity"
+        result["note"] = "Run with dry_run=false to execute actual backfill"
+        result["ok"] = True
+        return result
+    finally:
+        conn.close()
+
+
+def continuity_check() -> Dict[str, Any]:
+    park_id = (settings.YANGO_LIMA_PARK_ID or "").strip()
+    cutover = settings.LIMA_GROWTH_API_CUTOVER_DATE
+
+    result: Dict[str, Any] = {"cutover_date": cutover}
+
+    with get_db() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        # History stats
+        cur.execute("SELECT MIN(date) AS mi, MAX(date) AS ma, COUNT(DISTINCT driver_profile_id) AS u FROM growth.yango_lima_driver_history_daily WHERE date < %s", (cutover,))
+        r = cur.fetchone()
+        result["history"] = {"min_date": str(r["mi"]), "max_date": str(r["ma"]), "unique_drivers": r["u"]}
+
+        # API stats (360_daily)
+        cur.execute("SELECT MIN(date) AS mi, MAX(date) AS ma, COUNT(DISTINCT driver_profile_id) AS u FROM growth.yango_lima_driver_360_daily WHERE date >= %s", (cutover,))
+        r = cur.fetchone()
+        result["api"] = {"min_date": str(r["mi"]), "max_date": str(r["ma"]), "unique_drivers": r["u"]}
+
+        # Overlap
+        cur.execute("""
+            SELECT COUNT(DISTINCT h.driver_profile_id)
+            FROM growth.yango_lima_driver_history_daily h
+            INNER JOIN growth.yango_lima_driver_360_daily a ON h.driver_profile_id = a.driver_profile_id
+        """)
+        result["overlapping_drivers"] = cur.fetchone()["count"]
+
+        cur.execute("""
+            SELECT COUNT(DISTINCT a.driver_profile_id)
+            FROM growth.yango_lima_driver_360_daily a
+            WHERE NOT EXISTS (
+                SELECT 1 FROM growth.yango_lima_driver_history_daily h WHERE h.driver_profile_id = a.driver_profile_id
+            )
+        """)
+        result["drivers_api_without_history"] = cur.fetchone()["count"] or 0
+
+        cur.execute("""
+            SELECT COUNT(DISTINCT h.driver_profile_id)
+            FROM growth.yango_lima_driver_history_daily h
+            WHERE NOT EXISTS (
+                SELECT 1 FROM growth.yango_lima_driver_360_daily a WHERE a.driver_profile_id = h.driver_profile_id AND a.date >= %s
+            )
+        """, (cutover,))
+        result["drivers_history_without_api"] = cur.fetchone()["count"] or 0
+
+        result["warnings"] = []
+        if result["drivers_api_without_history"] > 0:
+            result["warnings"].append(f"{result['drivers_api_without_history']} API drivers without historical record")
+        if result["drivers_history_without_api"] > 500:
+            result["warnings"].append(f"{result['drivers_history_without_api']} historical drivers not seen in API post-cutover")
+
+        return result
