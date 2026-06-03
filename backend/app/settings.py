@@ -351,6 +351,70 @@ class Settings(BaseSettings):
         description="Trips per supply hour sobre el cual se clasifica HIGH_PRODUCTIVITY.",
     )
 
+    # ── Lima Growth Loyalty Sub-50 (Fase 2B-R1) ──
+    LIMA_GROWTH_WEEKLY_TRIPS_TARGET: int = Field(
+        default=50,
+        ge=1,
+        le=200,
+        description="Target semanal de viajes para Loyalty Sub-50. Configurable a 30, 20, etc.",
+    )
+
+    # ── Lima Growth Unified Segmentation (Fase 2B-R2) ──
+    LIMA_GROWTH_DECLINE_WARNING_PCT: float = Field(
+        default=15.0, ge=0.0, le=100.0,
+        description="% caida vs avg_orders_4w para clasificar DECLINING.",
+    )
+    LIMA_GROWTH_DECLINE_RISK_PCT: float = Field(
+        default=30.0, ge=0.0, le=100.0,
+        description="% caida vs avg_orders_4w para clasificar CHURN_RISK.",
+    )
+    LIMA_GROWTH_CHURN_DAYS: int = Field(
+        default=30, ge=7, le=365,
+        description="Dias sin actividad para clasificar CHURNED.",
+    )
+    LIMA_GROWTH_RECOVERY_DAYS: int = Field(
+        default=14, ge=7, le=90,
+        description="Ventana de dias para considerar RECOVERED tras caida.",
+    )
+
+    # ── Lima Growth Control Loop (Fase 2C) ──
+    LIMA_GROWTH_IMPACT_WINDOW_DAYS: int = Field(
+        default=14, ge=7, le=90,
+        description="Dias de ventana post-accion para medir impacto.",
+    )
+    LIMA_GROWTH_IMPACT_BASELINE_DAYS: int = Field(
+        default=7, ge=3, le=30,
+        description="Dias pre-accion para calcular baseline de impacto.",
+    )
+    LIMA_GROWTH_ACTION_LIST_RESET_DAILY: bool = Field(
+        default=True,
+        description="Si True, las listas accionables no arrastran PENDING_ACTION al dia siguiente.",
+    )
+
+    # ── Lima Growth Segment Migration (Fase 2C.1) ──
+    LIMA_GROWTH_TRANSITION_LOOKBACK_DAYS: int = Field(
+        default=7, ge=1, le=30,
+        description="Dias hacia atras para buscar snapshot anterior en transicion.",
+    )
+    LIMA_GROWTH_ACTION_ATTRIBUTION_DAYS: int = Field(
+        default=7, ge=1, le=14,
+        description="Ventana maxima en dias para atribuir una accion a una transicion.",
+    )
+
+    # ── Lima Growth Impact Attribution (Fase 2C.2) ──
+    LIMA_GROWTH_ATTRIBUTION_WINDOW_DAYS: int = Field(
+        default=7, ge=1, le=14,
+        description="Ventana post-accion para medir atribucion de impacto.",
+    )
+    LIMA_GROWTH_TARGET_REACHED_MIN_DAYS: int = Field(
+        default=3, ge=1, le=7,
+        description="Dias minimos consecutivos en target para considerar reached.",
+    )
+    LIMA_GROWTH_IMPROVEMENT_MIN_ORDERS_DELTA: int = Field(
+        default=1, ge=0, le=10,
+        description="Delta minimo de ordenes para considerar mejora.",
+    )
+
     # ── Supply rate-limit hardening (Fase 2A.2) ──
     YANGO_SUPPLY_RATE_LIMIT_BACKOFF_MS: int = Field(
         default=3000,
