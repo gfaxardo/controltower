@@ -1,0 +1,22 @@
+{
+  "generated_at": "2026-06-05T06:35:04.469775-05:00",
+  "park_id": "08e20910***",
+  "date_from": "2026-06-04",
+  "date_to": "2026-06-05",
+  "is_raw_yango_empty": false,
+  "daily": [
+    {
+      "date": "2026-06-04",
+      "raw_trips": 1500,
+      "ct_trips": 0,
+      "trips_delta": 1500,
+      "trips_delta_pct": null,
+      "trips_classification": "API_ONLY",
+      "raw_revenue": 51.59,
+      "ct_revenue": 0.0,
+      "revenue_delta": 51.59,
+      "revenue_delta_pct": null,
+      "revenue_classification": "API_ONLY"
+    }
+  ]
+}

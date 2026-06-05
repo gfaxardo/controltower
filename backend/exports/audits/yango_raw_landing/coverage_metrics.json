@@ -1,0 +1,47 @@
+{
+  "generated_at": "2026-06-05T06:47:09.150983-05:00",
+  "park_id": "08e20910***",
+  "date_from": "2026-06-04",
+  "date_to": "2026-06-04",
+  "is_empty": false,
+  "orders_raw": {
+    "table": "orders_raw",
+    "exists": true,
+    "min_date": "2026-06-04",
+    "max_date": "2026-06-04",
+    "distinct_days": 1,
+    "total_rows": 1500,
+    "error": null
+  },
+  "transactions_raw": {
+    "table": "transactions_raw",
+    "exists": true,
+    "min_date": "2026-06-04",
+    "max_date": "2026-06-04",
+    "distinct_days": 1,
+    "total_rows": 500,
+    "error": null
+  },
+  "driver_profiles_raw": {
+    "table": "driver_profiles_raw",
+    "exists": true,
+    "min_date": "2026-06-05",
+    "max_date": "2026-06-05",
+    "distinct_days": 1,
+    "total_rows": 300,
+    "error": null
+  },
+  "revenue_candidates": {
+    "exists": true,
+    "count": 110,
+    "sum_abs_amount": 51.591,
+    "error": null
+  },
+  "missing_days": {
+    "orders_raw": [],
+    "transactions_raw": [],
+    "driver_profiles_raw": [
+      "2026-06-04"
+    ]
+  }
+}

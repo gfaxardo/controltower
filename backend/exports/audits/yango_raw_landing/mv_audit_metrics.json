@@ -1,0 +1,70 @@
+{
+  "generated_at": "2026-06-05T08:24:51.273545-05:00",
+  "mvs": [
+    {
+      "mv": "mv_orders_day",
+      "exists": true,
+      "row_count": 2,
+      "min_date": "2026-06-04",
+      "max_date": "2026-06-05",
+      "distinct_days": 2,
+      "distinct_parks": 1,
+      "null_rate_pct": 0.0,
+      "duplicate_keys": 0,
+      "refreshed_at": "2026-06-05T08:24:06.403636-05:00",
+      "error": null
+    },
+    {
+      "mv": "mv_transactions_day",
+      "exists": true,
+      "row_count": 31,
+      "min_date": "2026-06-04",
+      "max_date": "2026-06-05",
+      "distinct_days": 2,
+      "distinct_parks": 1,
+      "null_rate_pct": 0.0,
+      "duplicate_keys": 0,
+      "refreshed_at": "2026-06-05T08:24:07.893898-05:00",
+      "error": null
+    },
+    {
+      "mv": "mv_revenue_day",
+      "exists": true,
+      "row_count": 2,
+      "min_date": "2026-06-04",
+      "max_date": "2026-06-05",
+      "distinct_days": 2,
+      "distinct_parks": 1,
+      "null_rate_pct": 0.0,
+      "duplicate_keys": 0,
+      "refreshed_at": "2026-06-05T08:24:09.389171-05:00",
+      "error": null
+    },
+    {
+      "mv": "mv_driver_profiles_snapshot",
+      "exists": true,
+      "row_count": 800,
+      "min_date": "2026-06-05",
+      "max_date": "2026-06-05",
+      "distinct_days": 1,
+      "distinct_parks": 1,
+      "null_rate_pct": 0.0,
+      "duplicate_keys": 0,
+      "refreshed_at": "2026-06-05T08:24:10.867725-05:00",
+      "error": null
+    },
+    {
+      "mv": "mv_source_coverage_day",
+      "exists": true,
+      "row_count": 2,
+      "min_date": "2026-06-04",
+      "max_date": "2026-06-05",
+      "distinct_days": 2,
+      "distinct_parks": 1,
+      "null_rate_pct": 0.0,
+      "duplicate_keys": 0,
+      "refreshed_at": "2026-06-05T08:24:12.337215-05:00",
+      "error": null
+    }
+  ]
+}

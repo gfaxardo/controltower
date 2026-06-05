@@ -1,0 +1,6 @@
+mv,exists,row_count,min_date,max_date,distinct_days,distinct_parks,null_rate_pct,duplicate_keys,refreshed_at
+mv_orders_day,True,1,2026-06-04,2026-06-04,1,1,0.0,0,2026-06-05T07:04:26.483995-05:00
+mv_transactions_day,True,14,2026-06-04,2026-06-04,1,1,0.0,0,2026-06-05T07:04:27.966398-05:00
+mv_revenue_day,True,1,2026-06-04,2026-06-04,1,1,0.0,0,2026-06-05T07:04:29.433929-05:00
+mv_driver_profiles_snapshot,True,300,2026-06-05,2026-06-05,1,1,0.0,0,2026-06-05T07:04:30.904961-05:00
+mv_source_coverage_day,True,2,2026-06-04,2026-06-05,2,1,0.0,0,2026-06-05T07:04:32.388482-05:00

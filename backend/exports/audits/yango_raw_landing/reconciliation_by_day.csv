@@ -1,0 +1,2 @@
+date,raw_trips,ct_trips,trips_delta,trips_delta_pct,trips_classification,raw_revenue,ct_revenue,revenue_delta,revenue_delta_pct,revenue_classification
+2026-06-04,1500,0,1500,None,API_ONLY,51.59,0.0,51.59,None,API_ONLY

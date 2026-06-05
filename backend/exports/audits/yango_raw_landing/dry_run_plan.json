@@ -1,0 +1,16 @@
+{
+  "run_id": "ingest_20260605_071308",
+  "dry_run": true,
+  "endpoint_groups": [
+    "orders"
+  ],
+  "days": [
+    "2026-06-04"
+  ],
+  "max_pages_per_endpoint": 100,
+  "estimated_api_calls": 100,
+  "park_id_masked": "08e20910***",
+  "date_from": "2026-06-04",
+  "date_to": "2026-06-04",
+  "generated_at": "2026-06-05T07:13:08.517429-05:00"
+}

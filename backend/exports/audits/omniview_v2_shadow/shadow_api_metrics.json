@@ -1,0 +1,22 @@
+{
+  "generated_at": "2026-06-05T10:07:33.134274-05:00",
+  "total_elapsed_s": 12.98,
+  "results": {
+    "daily": {
+      "ok": true,
+      "elapsed_ms": 5674.8
+    },
+    "coverage": {
+      "ok": true,
+      "elapsed_ms": 1454.2
+    },
+    "reconciliation": {
+      "ok": true,
+      "elapsed_ms": 1457.7
+    },
+    "health": {
+      "ok": true,
+      "elapsed_ms": 4390.8
+    }
+  }
+}

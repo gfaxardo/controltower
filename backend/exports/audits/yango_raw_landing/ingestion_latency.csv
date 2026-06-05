@@ -1,0 +1,4 @@
+endpoint,day,page,elapsed_ms,status_code,error
+driver_profiles,N/A,1,4348.7,200,
+driver_profiles,N/A,2,1394.5,200,
+driver_profiles,N/A,3,1210.1,200,
