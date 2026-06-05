@@ -3,6 +3,14 @@ import {
   getLimaGrowthPrioritizedOpportunities,
   getLoopControlConfig,
   getLoopControlExports,
+  getLimaGrowthCapacityConfig,
+  getLimaGrowthCapacitySummary,
+  updateLimaGrowthCapacityConfig,
+  getLimaGrowthPriorityAllocation,
+  getLimaGrowthChannelAllocation,
+  getLimaGrowthOpportunityWorklist,
+  buildLimaGrowthAssignmentQueue,
+  getLimaGrowthAssignmentQueue,
 } from '../services/api.js'
 
 const TABS = [
@@ -14,6 +22,8 @@ const TABS = [
   { id: 'impacto', label: 'Impacto', color: '#059669' },
   { id: 'movimiento', label: 'Movimiento', color: '#7c3aed' },
   { id: 'atribucion', label: 'Atribucion', color: '#0891b2' },
+  { id: 'worklist', label: 'Worklist', color: '#059669' },
+  { id: 'assignment_queue', label: 'Queue', color: '#d97706' },
   { id: 'config', label: 'Configuracion', color: '#4b5563' },
 ]
 
@@ -22,6 +32,13 @@ const PROGRAMAS = [
   { code: 'PROGRAM_ACTIVE_GROWTH', name: 'Active Growth', objetivo: 'Incrementar viajes en activos', color: '#059669' },
   { code: 'PROGRAM_CHURN_PREVENTION', name: 'Churn Prevention', objetivo: 'Evitar fuga de conductores', color: '#dc2626' },
   { code: 'PROGRAM_HIGH_VALUE_RECOVERY', name: 'High Value Recovery', objetivo: 'Recuperar conductores de alto valor', color: '#d97706' },
+]
+
+// ── LG-2.2B: Default fallback si backend no disponible ──
+const DEFAULT_CAPACITY_CONFIG = [
+  { channel: 'Call Center', agents: 2, capacity_per_agent: 40 },
+  { channel: 'SAC', agents: 1, capacity_per_agent: 30 },
+  { channel: 'Bot / WhatsApp', agents: 1, capacity_per_agent: 200 },
 ]
 
 function formatNum(n) { if (n == null) return '—'; return Number(n).toLocaleString('es-PE') }
@@ -70,8 +87,21 @@ export default function LimaGrowthDashboard() {
   const [opportunities, setOpportunities] = useState(null)
   const [config, setConfig] = useState(null)
   const [exports, setExports] = useState(null)
+  const [capacityData, setCapacityData] = useState(null)
+  const [capacitySource, setCapacitySource] = useState(null)
   const [loading, setLoading] = useState({})
   const [errors, setErrors] = useState({})
+
+  const [editChannels, setEditChannels] = useState(null)
+  const [capacitySaving, setCapacitySaving] = useState(false)
+  const [priorityAllocation, setPriorityAllocation] = useState(null)
+  const [channelAllocation, setChannelAllocation] = useState(null)
+  const [worklist, setWorklist] = useState(null)
+  const [worklistFilters, setWorklistFilters] = useState({ program: '', channel: '', city: '' })
+  const [queue, setQueue] = useState(null)
+  const [queueFilters, setQueueFilters] = useState({ status: '', program: '', channel: '' })
+  const [buildingQueue, setBuildingQueue] = useState(false)
+  const [buildResult, setBuildResult] = useState(null)
 
   const today = '2026-06-02'
 
@@ -93,7 +123,31 @@ export default function LimaGrowthDashboard() {
     fetchSafely('opportunities', () => getLimaGrowthPrioritizedOpportunities({ opportunity_date: today, is_actionable_today: true, limit: 500 })).then(setOpportunities)
     fetchSafely('config', getLoopControlConfig).then(setConfig)
     fetchSafely('exports', () => getLoopControlExports({ limit: 10 })).then(setExports)
+    fetchSafely('capacity', () => getLimaGrowthCapacityConfig(today)).then((data) => {
+      if (data?.channels?.length) {
+        setCapacityData(data)
+        setCapacitySource('backend')
+      } else {
+        setCapacityData(null)
+        setCapacitySource('fallback')
+      }
+    }).catch(() => {
+      setCapacityData(null)
+      setCapacitySource('fallback')
+    })
+    fetchSafely('priorityAllocation', () => getLimaGrowthPriorityAllocation(today)).then(setPriorityAllocation)
+    fetchSafely('channelAllocation', () => getLimaGrowthChannelAllocation(today)).then(setChannelAllocation)
+    fetchSafely('worklist', () => getLimaGrowthOpportunityWorklist({ date: today, limit: 1000 })).then(setWorklist)
   }, [fetchSafely])
+
+  const fetchWorklist = useCallback(async (filters = {}) => {
+    const params = { date: today }
+    if (filters.program) params.program = filters.program
+    if (filters.channel) params.channel = filters.channel
+    if (filters.city) params.city = filters.city
+    const data = await fetchSafely('worklist', () => getLimaGrowthOpportunityWorklist(params))
+    if (data) setWorklist(data)
+  }, [fetchSafely, today])
 
   const opps = opportunities?.opportunities || []
   const oppsByProgram = {}
@@ -114,6 +168,15 @@ export default function LimaGrowthDashboard() {
   const actionableCount = opps.filter(o => o.is_actionable_today).length
   const totalOpps = opportunities?.total || opps.length
   const coveragePct = totalOpps > 0 ? Math.round((actionableCount / totalOpps) * 100) : 0
+
+  // ── LG-2.2B Daily Capacity Calculations (backend + fallback) ──
+  const activeCapacityChannels = capacityData?.channels?.length
+    ? capacityData.channels
+    : DEFAULT_CAPACITY_CONFIG
+  const totalCapacity = activeCapacityChannels.reduce((sum, c) => sum + (c.agents * (c.capacity_per_agent || c.capacityPerAgent || 0)), 0)
+  const capacityGap = actionableCount - totalCapacity
+  const coverageRate = actionableCount > 0 ? totalCapacity / actionableCount : 0
+  const utilizationStatus = coverageRate >= 1 ? 'green' : coverageRate >= 0.7 ? 'yellow' : 'red'
 
   const engineHealth = {
     loopcontrol: config?.enabled ? 'green' : config ? 'yellow' : 'red',
@@ -160,6 +223,13 @@ export default function LimaGrowthDashboard() {
     if (config?.enabled) execSummaryParts.push('LoopControl esta operativo')
     if (exportedCampaigns.length > 0) execSummaryParts.push(`Se exportaron ${formatNum(totalExported)} contactos en ${formatNum(exportedCampaigns.length)} campanas`)
     if (dominantRisk) execSummaryParts.push(`El riesgo dominante es ${dominantRisk[0]} (${formatNum(dominantRisk[1])} conductores)`)
+
+    if (priorityAllocation?.programs?.length) {
+      const allocParts = priorityAllocation.programs.map(p =>
+        `${Math.round(p.allocation_rate * 100)}% de ${p.program_name}`
+      )
+      execSummaryParts.push(`Capacidad asignada: ${allocParts.join(', ')}`)
+    }
     const execSummary = execSummaryParts.length > 0 ? execSummaryParts.join('. ') + '.' : 'Cargando datos operativos...'
 
     return (
@@ -218,6 +288,23 @@ export default function LimaGrowthDashboard() {
             subtitle={config?.enabled ? 'Integrado' : 'DRY RUN'}
             tooltip="Estado de la integracion con LoopControl"
           />
+        </div>
+
+        {/* ── Row 3: Daily Capacity ── */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <svg className="w-4 h-4 text-[#0891b2]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Capacidad Diaria</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ml-auto ${capacitySource === 'backend' ? 'text-green-600 bg-green-50' : 'text-amber-500 bg-amber-50'}`} title={capacitySource === 'backend' ? 'Config desde backend' : 'Fallback: config hardcodeada'}>
+              {capacitySource === 'backend' ? 'BACKEND' : 'FALLBACK'}
+            </span>
+          </div>
+          <div className="grid grid-cols-4 gap-3">
+            <ExecutiveKpiCard label="Capacidad Total" value={formatNum(totalCapacity)} color="#0891b2" subtitle={`${activeCapacityChannels.length} canales`} tooltip={capacitySource === 'backend' ? 'Capacidad operativa desde backend' : 'Capacidad operativa (fallback hardcodeado)'} />
+            <ExecutiveKpiCard label="Accionables Hoy" value={formatNum(actionableCount)} color="#059669" tooltip="Conductores con is_actionable_today = true" />
+            <ExecutiveKpiCard label="Gap" value={capacityGap > 0 ? `+${formatNum(capacityGap)}` : formatNum(capacityGap)} color={capacityGap > 0 ? '#dc2626' : '#059669'} subtitle={capacityGap > 0 ? 'Faltan gestiones' : 'Capacidad suficiente'} tooltip="Diferencia entre accionables y capacidad operativa" />
+            <ExecutiveKpiCard label="Cobertura" value={`${Math.round(coverageRate * 100)}%`} color={utilizationStatus === 'green' ? '#059669' : utilizationStatus === 'yellow' ? '#d97706' : '#dc2626'} subtitle={utilizationStatus === 'green' ? 'Verde' : utilizationStatus === 'yellow' ? 'Amarillo' : 'Rojo'} tooltip="Capacidad / Accionables" />
+          </div>
         </div>
 
         {/* ── Health Bar ── */}
@@ -302,6 +389,221 @@ export default function LimaGrowthDashboard() {
           {activeTab === 'resumen' && (
             <div className="space-y-5">
               <ExecutiveCommandCenter />
+
+              {/* ── LG-2.2B: Capacidad Operativa Hoy ── */}
+              <ModuleCard title="Capacidad Operativa Hoy" color="#0891b2">
+                <div className={`text-[10px] px-2 py-0.5 rounded font-medium mb-3 inline-block ${capacitySource === 'backend' ? 'text-green-600 bg-green-50' : 'text-amber-500 bg-amber-50'}`}>
+                  {capacitySource === 'backend' ? 'BACKEND — LG-2.2B' : 'FALLBACK — LG-2.2B'}
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  {activeCapacityChannels.map((ch) => {
+                    const chCapacity = ch.agents * (ch.capacity_per_agent || ch.capacityPerAgent || 0)
+                    const chCoveragePct = actionableCount > 0 ? Math.round((chCapacity / actionableCount) * 100) : 0
+                    return (
+                      <div key={ch.channel} className="bg-gray-50 rounded-xl p-4">
+                        <span className="text-xs font-semibold text-gray-700">{ch.channel}</span>
+                        <div className="mt-2 space-y-1.5">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-gray-400">Agentes</span>
+                            <span className="font-medium text-gray-700">{ch.agents}</span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-gray-400">Capacidad / Agente</span>
+                            <span className="font-medium text-gray-700">{ch.capacity_per_agent || ch.capacityPerAgent}</span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-gray-400">Capacidad Total</span>
+                            <span className="font-bold text-gray-800">{formatNum(chCapacity)}</span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-gray-400">% Backlog Cubierto</span>
+                            <span className={`font-bold ${chCoveragePct >= 30 ? 'text-green-600' : chCoveragePct >= 15 ? 'text-yellow-600' : 'text-red-600'}`}>{chCoveragePct}%</span>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* ── LG-2.2B: Decisión Ejecutiva ── */}
+                <div className={`mt-4 p-3 rounded-xl text-sm font-medium ${capacityGap > 0 ? 'bg-red-50 text-red-700 border border-red-100' : 'bg-green-50 text-green-700 border border-green-100'}`}>
+                  {capacityGap > 0
+                    ? `Faltan ${formatNum(capacityGap)} gestiones para cubrir la lista accionable de hoy.`
+                    : 'La capacidad cubre la lista accionable de hoy.'}
+                </div>
+              </ModuleCard>
+
+              {/* ── LG-2.3: Asignacion Priorizada de Capacidad ── */}
+              {priorityAllocation && (
+                <ModuleCard title="Asignacion Priorizada de Capacidad" color="#7c3aed">
+                  <div className="grid grid-cols-4 gap-3 mb-4">
+                    <div className="bg-gray-50 rounded-xl p-3 text-center">
+                      <span className="text-2xl font-bold text-gray-800">{formatNum(priorityAllocation.total_capacity)}</span>
+                      <p className="text-xs text-gray-400 mt-1">Capacidad Total</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-3 text-center">
+                      <span className="text-2xl font-bold text-gray-800">{formatNum(priorityAllocation.total_opportunities)}</span>
+                      <p className="text-xs text-gray-400 mt-1">Accionables Totales</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-3 text-center">
+                      <span className="text-2xl font-bold text-gray-800">{formatNum(priorityAllocation.total_allocated)}</span>
+                      <p className="text-xs text-gray-400 mt-1">Asignados</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-3 text-center">
+                      <span className={`text-2xl font-bold ${priorityAllocation.unmet_total > 0 ? 'text-red-600' : 'text-green-600'}`}>{formatNum(priorityAllocation.unmet_total)}</span>
+                      <p className="text-xs text-gray-400 mt-1">Sin Asignar</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    {priorityAllocation.programs.map((p) => {
+                      const pct = Math.round(p.allocation_rate * 100)
+                      const barColor = pct >= 100 ? '#059669' : pct > 0 ? '#d97706' : '#dc2626'
+                      const bgColor = pct >= 100 ? 'bg-green-50 border-green-200' : pct > 0 ? 'bg-yellow-50 border-yellow-200' : 'bg-red-50 border-red-200'
+                      return (
+                        <div key={p.program_code} className={`rounded-xl p-3 border ${bgColor}`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-semibold text-gray-500">P{p.priority_rank}</span>
+                              <span className="text-sm font-medium text-gray-700">{p.program_name}</span>
+                            </div>
+                            <div className="flex items-center gap-3 text-xs">
+                              <span className="text-gray-500">Disponible: <strong>{formatNum(p.available_opportunities)}</strong></span>
+                              <span className="text-gray-500">Asignado: <strong>{formatNum(p.allocated_capacity)}</strong></span>
+                              <span className={p.unmet_opportunities > 0 ? 'text-red-500' : 'text-green-500'}>
+                                Pendiente: <strong>{formatNum(p.unmet_opportunities)}</strong>
+                              </span>
+                              <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${pct >= 100 ? 'bg-green-100 text-green-700' : pct > 0 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                                {pct}%
+                              </span>
+                            </div>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className="h-2 rounded-full transition-all"
+                              style={{
+                                width: `${Math.min(pct, 100)}%`,
+                                backgroundColor: barColor,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </ModuleCard>
+              )}
+
+              {/* ── LG-2.4: Asignacion por Canal ── */}
+              {channelAllocation && (
+                <ModuleCard title="Asignación por Canal" color="#0891b2">
+                  {/* KPI summary row */}
+                  <div className="grid grid-cols-4 gap-3 mb-4">
+                    <div className="bg-gray-50 rounded-xl p-3 text-center">
+                      <span className="text-2xl font-bold text-gray-800">{formatNum(channelAllocation.total_channel_capacity)}</span>
+                      <p className="text-xs text-gray-400 mt-1">Capacidad Canales</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-3 text-center">
+                      <span className="text-2xl font-bold text-[#7c3aed]">{formatNum(channelAllocation.total_priority_allocated)}</span>
+                      <p className="text-xs text-gray-400 mt-1">Asignado por Prioridad</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-3 text-center">
+                      <span className="text-2xl font-bold text-[#0891b2]">{formatNum(channelAllocation.total_channel_allocated)}</span>
+                      <p className="text-xs text-gray-400 mt-1">Asignado a Canales</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-3 text-center">
+                      <span className={`text-2xl font-bold ${channelAllocation.unassigned_capacity > 0 ? 'text-red-600' : 'text-green-600'}`}>{formatNum(channelAllocation.unassigned_capacity)}</span>
+                      <p className="text-xs text-gray-400 mt-1">Sin Canal Asignado</p>
+                    </div>
+                  </div>
+
+                  {/* Channel utilization bars */}
+                  <div className="space-y-2 mb-4">
+                    {channelAllocation.channels.map((ch) => {
+                      const pct = Math.round(ch.utilization_rate * 100)
+                      return (
+                        <div key={ch.channel_code} className="flex items-center gap-3">
+                          <span className="text-xs font-medium text-gray-600 w-20">{ch.channel_name}</span>
+                          <div className="flex-1 bg-gray-200 rounded-full h-2.5">
+                            <div
+                              className="h-2.5 rounded-full"
+                              style={{
+                                width: `${Math.min(pct, 100)}%`,
+                                backgroundColor: pct >= 80 ? '#059669' : pct >= 40 ? '#d97706' : '#dc2626',
+                              }}
+                            />
+                          </div>
+                          <span className="text-xs text-gray-500 w-28 text-right">
+                            {formatNum(ch.allocated_capacity)} / {formatNum(ch.total_capacity)}
+                          </span>
+                          <span className={`text-xs font-medium w-10 ${pct >= 80 ? 'text-green-600' : pct >= 40 ? 'text-yellow-600' : 'text-red-600'}`}>
+                            {pct}%
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* Per-program channel breakdown */}
+                  <div className="space-y-2">
+                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Distribución por Programa</span>
+                    {channelAllocation.programs.filter(p => p.program_allocated_capacity > 0).map((prog) => {
+                      const pctAssigned = prog.program_allocated_capacity > 0
+                        ? Math.round(((prog.program_allocated_capacity - prog.unassigned_capacity) / prog.program_allocated_capacity) * 100)
+                        : 0
+                      return (
+                        <div key={prog.program_code} className="bg-gray-50 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-semibold text-gray-400">P{prog.priority_rank}</span>
+                              <span className="text-xs font-medium text-gray-700">{prog.program_name}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-500">Total: {formatNum(prog.program_allocated_capacity)}</span>
+                              {prog.unassigned_capacity > 0 && (
+                                <span className="text-xs text-red-500">Sin canal: {formatNum(prog.unassigned_capacity)}</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            {prog.channel_allocations.map((ca) => {
+                              const chanPct = prog.program_allocated_capacity > 0
+                                ? Math.round((ca.allocated_capacity / prog.program_allocated_capacity) * 100)
+                                : 0
+                              return (
+                                <div key={ca.channel_code} className="flex-1" title={`${ca.channel_name}: ${formatNum(ca.allocated_capacity)}`}>
+                                  <div className="bg-gray-300 rounded-full h-1.5 mb-0.5">
+                                    <div
+                                      className="h-1.5 rounded-full"
+                                      style={{
+                                        width: `${Math.min(chanPct, 100)}%`,
+                                        backgroundColor: ca.channel_code === 'CALL_CENTER' ? '#1a56db' : ca.channel_code === 'SAC' ? '#7c3aed' : '#0891b2',
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="flex justify-between text-[10px] text-gray-400">
+                                    <span>{ca.channel_name.split(' ')[0]}</span>
+                                    <span>{formatNum(ca.allocated_capacity)}</span>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                            {prog.unassigned_capacity > 0 && (
+                              <div className="flex-1" title={`Sin canal: ${formatNum(prog.unassigned_capacity)}`}>
+                                <div className="bg-red-100 rounded-full h-1.5 mb-0.5">
+                                  <div className="h-1.5 rounded-full bg-red-400" style={{ width: `${Math.min(Math.round((prog.unassigned_capacity / prog.program_allocated_capacity) * 100), 100)}%` }} />
+                                </div>
+                                <div className="text-[10px] text-red-400">Sin canal</div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </ModuleCard>
+              )}
+
               <div className="grid grid-cols-4 gap-3">
                 <KpiCard label="Oportunidades Totales" value={formatNum(opportunities?.total)} color="#1a56db" />
                 <KpiCard label="Accionables Hoy" value={formatNum(opps.filter(o => o.is_actionable_today).length)} color="#059669" />
@@ -515,6 +817,268 @@ export default function LimaGrowthDashboard() {
             </div>
           )}
 
+          {/* ======== WORKLIST ======== */}
+          {activeTab === 'worklist' && (
+            <div className="space-y-4">
+              {/* Filters */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Filtros</span>
+                  <select
+                    value={worklistFilters.program}
+                    onChange={(e) => { const f = { ...worklistFilters, program: e.target.value }; setWorklistFilters(f); fetchWorklist(f) }}
+                    className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600"
+                  >
+                    <option value="">Todos los programas</option>
+                    {['PROGRAM_HIGH_VALUE_RECOVERY', 'PROGRAM_CHURN_PREVENTION', 'PROGRAM_14_90', 'PROGRAM_ACTIVE_GROWTH'].map(p => (
+                      <option key={p} value={p}>{p.replace('PROGRAM_', '')}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={worklistFilters.channel}
+                    onChange={(e) => { const f = { ...worklistFilters, channel: e.target.value }; setWorklistFilters(f); fetchWorklist(f) }}
+                    className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600"
+                  >
+                    <option value="">Todos los canales</option>
+                    <option value="CALL_CENTER">Call Center</option>
+                    <option value="SAC">SAC</option>
+                    <option value="BOT">Bot / WhatsApp</option>
+                    <option value="UNASSIGNED">Sin canal</option>
+                  </select>
+                  <input
+                    type="text"
+                    placeholder="Ciudad..."
+                    value={worklistFilters.city}
+                    onChange={(e) => { const f = { ...worklistFilters, city: e.target.value }; setWorklistFilters(f); fetchWorklist(f) }}
+                    className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600 w-32"
+                  />
+                  <div className="flex-1" />
+                  <span className="text-xs text-gray-400">
+                    {worklist ? formatNum(worklist.total_records) : '...'} registros
+                  </span>
+                </div>
+              </div>
+
+              {/* Table */}
+              {!worklist ? (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#06244a] mx-auto mb-3" />
+                  <p className="text-sm text-gray-400">Cargando worklist...</p>
+                </div>
+              ) : worklist.records.length === 0 ? (
+                <EmptyState title="Sin registros" message="No se encontraron conductores accionables con los filtros actuales." />
+              ) : (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-gray-100 text-gray-400 bg-gray-50">
+                          <th className="text-left py-2.5 px-3 font-medium">Nombre</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Telefono</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Programa</th>
+                          <th className="text-left py-2.5 px-3 font-medium w-8">P</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Canal</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Motivo</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Ultimo Viaje</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Viajes Rec.</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Ciudad</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {worklist.records.map((r, i) => (
+                          <tr key={r.driver_id || i} className="border-b border-gray-50 hover:bg-gray-50">
+                            <td className="py-2 px-3 font-medium text-gray-700">{r.driver_name}</td>
+                            <td className="py-2 px-3 text-gray-500 font-mono">{r.phone || '—'}</td>
+                            <td className="py-2 px-3">
+                              <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">{r.program_code?.replace('PROGRAM_', '')}</span>
+                            </td>
+                            <td className="py-2 px-3 text-gray-400">P{r.priority_rank}</td>
+                            <td className="py-2 px-3">
+                              <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                                r.assigned_channel === 'CALL_CENTER' ? 'bg-blue-50 text-blue-700' :
+                                r.assigned_channel === 'SAC' ? 'bg-purple-50 text-purple-700' :
+                                r.assigned_channel === 'BOT' ? 'bg-cyan-50 text-cyan-700' :
+                                'bg-red-50 text-red-700'
+                              }`}>
+                                {r.assigned_channel === 'CALL_CENTER' ? 'Call Center' :
+                                 r.assigned_channel === 'SAC' ? 'SAC' :
+                                 r.assigned_channel === 'BOT' ? 'Bot' : 'Sin canal'}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-gray-500 max-w-[200px] truncate" title={r.opportunity_reason}>{r.opportunity_reason}</td>
+                            <td className="py-2 px-3 text-gray-500">{r.last_trip_date || '—'}</td>
+                            <td className="py-2 px-3 text-gray-700 font-medium">{r.recent_trips}</td>
+                            <td className="py-2 px-3 text-gray-500">{r.city}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ======== ASSIGNMENT QUEUE ======== */}
+          {activeTab === 'assignment_queue' && (
+            <div className="space-y-4">
+              {/* KPIs + Build Button */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-4">
+                    <div className="text-center px-3">
+                      <span className="text-xl font-bold text-gray-800">{queue ? formatNum(queue.total_records) : '—'}</span>
+                      <p className="text-xs text-gray-400">En Cola</p>
+                    </div>
+                    <div className="text-center px-3">
+                      <span className="text-xl font-bold text-green-600">{queue ? formatNum(queue.ready_count) : '—'}</span>
+                      <p className="text-xs text-gray-400">READY</p>
+                    </div>
+                    <div className="text-center px-3">
+                      <span className="text-xl font-bold text-yellow-600">{queue ? formatNum(queue.held_count) : '—'}</span>
+                      <p className="text-xs text-gray-400">HELD</p>
+                    </div>
+                    {buildResult && (
+                      <div className="text-center px-3 border-l border-gray-200">
+                        <span className="text-xs text-gray-400">Ultimo build</span>
+                        <p className="text-xs text-gray-500">+{buildResult.created_count} creados, {buildResult.skipped_duplicates} dup</p>
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={async () => {
+                      setBuildingQueue(true)
+                      try {
+                        const result = await buildLimaGrowthAssignmentQueue(today)
+                        setBuildResult(result)
+                        const q = await fetchSafely('queue', () => getLimaGrowthAssignmentQueue({ date: today }))
+                        if (q) setQueue(q)
+                      } finally {
+                        setBuildingQueue(false)
+                      }
+                    }}
+                    disabled={buildingQueue}
+                    className="text-xs bg-[#d97706] text-white px-4 py-2 rounded-lg hover:bg-[#b65c00] disabled:opacity-50 font-medium"
+                  >
+                    {buildingQueue ? 'Construyendo...' : 'Construir cola del dia'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Filters */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Filtros</span>
+                  <select
+                    value={queueFilters.status}
+                    onChange={(e) => {
+                      const f = { ...queueFilters, status: e.target.value }
+                      setQueueFilters(f)
+                      getLimaGrowthAssignmentQueue({ date: today, status: f.status || undefined, program: f.program || undefined, channel: f.channel || undefined }).then(setQueue)
+                    }}
+                    className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600"
+                  >
+                    <option value="">Todos</option>
+                    <option value="READY">READY</option>
+                    <option value="HELD">HELD</option>
+                  </select>
+                  <select
+                    value={queueFilters.program}
+                    onChange={(e) => {
+                      const f = { ...queueFilters, program: e.target.value }
+                      setQueueFilters(f)
+                      getLimaGrowthAssignmentQueue({ date: today, status: f.status || undefined, program: f.program || undefined, channel: f.channel || undefined }).then(setQueue)
+                    }}
+                    className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600"
+                  >
+                    <option value="">Todos los programas</option>
+                    {['PROGRAM_HIGH_VALUE_RECOVERY', 'PROGRAM_CHURN_PREVENTION', 'PROGRAM_14_90', 'PROGRAM_ACTIVE_GROWTH'].map(p => (
+                      <option key={p} value={p}>{p.replace('PROGRAM_', '')}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={queueFilters.channel}
+                    onChange={(e) => {
+                      const f = { ...queueFilters, channel: e.target.value }
+                      setQueueFilters(f)
+                      getLimaGrowthAssignmentQueue({ date: today, status: f.status || undefined, program: f.program || undefined, channel: f.channel || undefined }).then(setQueue)
+                    }}
+                    className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600"
+                  >
+                    <option value="">Todos los canales</option>
+                    <option value="CALL_CENTER">Call Center</option>
+                    <option value="SAC">SAC</option>
+                    <option value="BOT">Bot</option>
+                    <option value="UNASSIGNED">Sin canal</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Table */}
+              {!queue ? (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+                  <p className="text-sm text-gray-400">Usa "Construir cola del dia" para generar la cola.</p>
+                </div>
+              ) : queue.records.length === 0 ? (
+                <EmptyState title="Sin registros" message="No hay conductores en la cola con los filtros actuales." />
+              ) : (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-gray-100 text-gray-400 bg-gray-50">
+                          <th className="text-left py-2.5 px-3 font-medium">Nombre</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Telefono</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Programa</th>
+                          <th className="text-left py-2.5 px-3 font-medium w-8">P</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Canal</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Estado</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Motivo</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Ultimo Viaje</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Viajes Rec.</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {queue.records.map((r, i) => (
+                          <tr key={r.id || i} className="border-b border-gray-50 hover:bg-gray-50">
+                            <td className="py-2 px-3 font-medium text-gray-700">{r.driver_name || '—'}</td>
+                            <td className="py-2 px-3 text-gray-500 font-mono">{r.phone || '—'}</td>
+                            <td className="py-2 px-3">
+                              <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">{r.program_code?.replace('PROGRAM_', '')}</span>
+                            </td>
+                            <td className="py-2 px-3 text-gray-400">{r.priority_rank ? `P${r.priority_rank}` : '—'}</td>
+                            <td className="py-2 px-3">
+                              <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                                r.assigned_channel === 'CALL_CENTER' ? 'bg-blue-50 text-blue-700' :
+                                r.assigned_channel === 'SAC' ? 'bg-purple-50 text-purple-700' :
+                                r.assigned_channel === 'BOT' ? 'bg-cyan-50 text-cyan-700' :
+                                'bg-red-50 text-red-700'
+                              }`}>
+                                {r.assigned_channel === 'CALL_CENTER' ? 'Call Center' :
+                                 r.assigned_channel === 'SAC' ? 'SAC' :
+                                 r.assigned_channel === 'BOT' ? 'Bot' : 'Sin canal'}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3">
+                              <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                                r.queue_status === 'READY' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                              }`}>
+                                {r.queue_status}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-gray-500 max-w-[200px] truncate" title={r.opportunity_reason}>{r.opportunity_reason || '—'}</td>
+                            <td className="py-2 px-3 text-gray-500">{r.last_trip_date || '—'}</td>
+                            <td className="py-2 px-3 text-gray-700 font-medium">{r.recent_trips ?? '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ======== CONFIGURACION ======== */}
           {activeTab === 'config' && (
             <div className="space-y-5">
@@ -537,6 +1101,111 @@ export default function LimaGrowthDashboard() {
                 ) : (
                   <EmptyState title="Cargando configuracion..." />
                 )}
+              </ModuleCard>
+
+              {/* ── LG-2.2B: Capacidad Operativa ── */}
+              <ModuleCard title="Capacidad Operativa" color="#0891b2">
+                {(() => {
+                  const channelsForEdit = editChannels || activeCapacityChannels.map(ch => ({ ...ch, capacity_per_agent: ch.capacity_per_agent || ch.capacityPerAgent }))
+
+                  const handleEditChange = (idx, field, value) => {
+                    const next = [...channelsForEdit]
+                    next[idx] = { ...next[idx], [field]: field === 'agents' || field === 'capacity_per_agent' ? parseInt(value) || 0 : value }
+                    setEditChannels(next)
+                  }
+
+                  const handleSave = async () => {
+                    setCapacitySaving(true)
+                    try {
+                      const payload = {
+                        config_date: today,
+                        channels: channelsForEdit.map(ch => ({
+                          channel: ch.channel,
+                          agents: ch.agents,
+                          capacity_per_agent: ch.capacity_per_agent,
+                        })),
+                      }
+                      const result = await updateLimaGrowthCapacityConfig(payload)
+                      setCapacityData(result)
+                      setCapacitySource('backend')
+                      setEditChannels(null)
+                    } catch (e) {
+                      alert('Error al guardar: ' + (e.message || 'Error desconocido'))
+                    } finally {
+                      setCapacitySaving(false)
+                    }
+                  }
+
+                  return (
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs text-gray-400">Configuracion de capacidad operativa diaria por canal</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setEditChannels(null)}
+                            className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            onClick={handleSave}
+                            disabled={capacitySaving}
+                            className="text-xs bg-[#0891b2] text-white px-3 py-1.5 rounded-lg hover:bg-[#067a96] disabled:opacity-50"
+                          >
+                            {capacitySaving ? 'Guardando...' : 'Guardar configuracion'}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b border-gray-100 text-gray-400">
+                              <th className="text-left py-2 font-medium">Canal</th>
+                              <th className="text-left py-2 font-medium">Agentes</th>
+                              <th className="text-left py-2 font-medium">Capacidad / Agente</th>
+                              <th className="text-left py-2 font-medium">Capacidad Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {channelsForEdit.map((ch, idx) => {
+                              const total = ch.agents * (ch.capacity_per_agent || 0)
+                              return (
+                                <tr key={ch.channel} className="border-b border-gray-50">
+                                  <td className="py-2 font-medium text-gray-700">{ch.channel}</td>
+                                  <td className="py-2">
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={ch.agents}
+                                      onChange={(e) => handleEditChange(idx, 'agents', e.target.value)}
+                                      className="w-16 px-2 py-1 border border-gray-200 rounded text-gray-700 text-xs"
+                                    />
+                                  </td>
+                                  <td className="py-2">
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={ch.capacity_per_agent}
+                                      onChange={(e) => handleEditChange(idx, 'capacity_per_agent', e.target.value)}
+                                      className="w-20 px-2 py-1 border border-gray-200 rounded text-gray-700 text-xs"
+                                    />
+                                  </td>
+                                  <td className="py-2 font-bold text-gray-800">{formatNum(total)}</td>
+                                </tr>
+                              )
+                            })}
+                            <tr className="bg-gray-50">
+                              <td className="py-2 font-semibold text-gray-700">TOTAL</td>
+                              <td className="py-2 text-gray-500">{channelsForEdit.reduce((s, c) => s + (c.agents || 0), 0)}</td>
+                              <td className="py-2" />
+                              <td className="py-2 font-bold text-gray-800">{formatNum(channelsForEdit.reduce((s, c) => s + (c.agents || 0) * (c.capacity_per_agent || 0), 0))}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )
+                })()}
               </ModuleCard>
 
               <ModuleCard title="Opportunity Policy" color="#d97706">

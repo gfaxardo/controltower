@@ -1326,4 +1326,62 @@ export const getLoopControlExportDetail = async (exportId) => {
   return response.data
 }
 
+// ── Lima Growth — Daily Capacity (LG-2.2B) ──
+
+export const getLimaGrowthCapacityConfig = async (date = null) => {
+  const params = {}
+  if (date) params.date = date
+  const response = await api.get('/yego-lima-growth/capacity/config', { params, timeout: 15000 })
+  return response.data
+}
+
+export const getLimaGrowthCapacitySummary = async (date = null, actionableCount = 0) => {
+  const params = { actionable_count: actionableCount }
+  if (date) params.date = date
+  const response = await api.get('/yego-lima-growth/capacity/summary', { params, timeout: 15000 })
+  return response.data
+}
+
+export const updateLimaGrowthCapacityConfig = async (payload) => {
+  const response = await api.put('/yego-lima-growth/capacity/config', payload, { timeout: 15000 })
+  return response.data
+}
+
+// ── Lima Growth — Priority Allocation (LG-2.3) ──
+
+export const getLimaGrowthPriorityAllocation = async (date) => {
+  const response = await api.get('/yego-lima-growth/priority-allocation', { params: { date }, timeout: 15000 })
+  return response.data
+}
+
+// ── Lima Growth — Channel Allocation (LG-2.4) ──
+
+export const getLimaGrowthChannelAllocation = async (date) => {
+  const response = await api.get('/yego-lima-growth/channel-allocation', { params: { date }, timeout: 15000 })
+  return response.data
+}
+
+// ── Lima Growth — Opportunity Worklist (LG-2.5A) ──
+
+export const getLimaGrowthOpportunityWorklist = async (params = {}) => {
+  const response = await api.get('/yego-lima-growth/opportunity-worklist', { params, timeout: 30000 })
+  return response.data
+}
+
+// ── Lima Growth — Assignment Queue (LG-2.5B) ──
+
+export const buildLimaGrowthAssignmentQueue = async (date, filters = {}) => {
+  const params = { date }
+  if (filters.program) params.program = filters.program
+  if (filters.channel) params.channel = filters.channel
+  if (filters.city) params.city = filters.city
+  const response = await api.post('/yego-lima-growth/assignment-queue/build', null, { params, timeout: 60000 })
+  return response.data
+}
+
+export const getLimaGrowthAssignmentQueue = async (params = {}) => {
+  const response = await api.get('/yego-lima-growth/assignment-queue', { params, timeout: 30000 })
+  return response.data
+}
+
 export default api
