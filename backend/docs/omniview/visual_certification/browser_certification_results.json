@@ -1,0 +1,97 @@
+{
+  "captured": 15,
+  "failed": 0,
+  "total": 15,
+  "results": [
+    {
+      "grain": "daily",
+      "metric": "trips",
+      "file": "daily_trips.png",
+      "status": "captured"
+    },
+    {
+      "grain": "daily",
+      "metric": "revenue",
+      "file": "daily_revenue.png",
+      "status": "captured"
+    },
+    {
+      "grain": "daily",
+      "metric": "drivers",
+      "file": "daily_drivers.png",
+      "status": "captured"
+    },
+    {
+      "grain": "daily",
+      "metric": "ticket",
+      "file": "daily_ticket.png",
+      "status": "captured"
+    },
+    {
+      "grain": "daily",
+      "metric": "tpd",
+      "file": "daily_tpd.png",
+      "status": "captured"
+    },
+    {
+      "grain": "weekly",
+      "metric": "trips",
+      "file": "weekly_trips.png",
+      "status": "captured"
+    },
+    {
+      "grain": "weekly",
+      "metric": "revenue",
+      "file": "weekly_revenue.png",
+      "status": "captured"
+    },
+    {
+      "grain": "weekly",
+      "metric": "drivers",
+      "file": "weekly_drivers.png",
+      "status": "captured"
+    },
+    {
+      "grain": "weekly",
+      "metric": "ticket",
+      "file": "weekly_ticket.png",
+      "status": "captured"
+    },
+    {
+      "grain": "weekly",
+      "metric": "tpd",
+      "file": "weekly_tpd.png",
+      "status": "captured"
+    },
+    {
+      "grain": "monthly",
+      "metric": "trips",
+      "file": "monthly_trips.png",
+      "status": "captured"
+    },
+    {
+      "grain": "monthly",
+      "metric": "revenue",
+      "file": "monthly_revenue.png",
+      "status": "captured"
+    },
+    {
+      "grain": "monthly",
+      "metric": "drivers",
+      "file": "monthly_drivers.png",
+      "status": "captured"
+    },
+    {
+      "grain": "monthly",
+      "metric": "ticket",
+      "file": "monthly_ticket.png",
+      "status": "captured"
+    },
+    {
+      "grain": "monthly",
+      "metric": "tpd",
+      "file": "monthly_tpd.png",
+      "status": "captured"
+    }
+  ]
+}

@@ -1304,4 +1304,26 @@ export const getYegoProVehicleDrill = async (params = {}) => {
   return response.data
 }
 
+// ── Lima Growth ──
+
+export const getLimaGrowthPrioritizedOpportunities = async (params = {}) => {
+  const response = await api.get('/yego-lima-growth/policy/prioritized-opportunities', { params, timeout: 30000 })
+  return response.data
+}
+
+export const getLoopControlConfig = async () => {
+  const response = await api.get('/yego-lima-growth/loopcontrol/config', { timeout: 15000 })
+  return response.data
+}
+
+export const getLoopControlExports = async (params = {}) => {
+  const response = await api.get('/yego-lima-growth/loopcontrol/exports', { params, timeout: 15000 })
+  return response.data
+}
+
+export const getLoopControlExportDetail = async (exportId) => {
+  const response = await api.get(`/yego-lima-growth/loopcontrol/exports/${exportId}`, { timeout: 15000 })
+  return response.data
+}
+
 export default api

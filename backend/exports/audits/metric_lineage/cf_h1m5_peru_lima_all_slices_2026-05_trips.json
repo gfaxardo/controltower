@@ -1,0 +1,100 @@
+{
+  "meta": {
+    "script": "CF-H1M.5 Metric Lineage Audit",
+    "timestamp": "2026-06-04T20:00:56.263452",
+    "metric": "trips",
+    "grain": "month",
+    "period": "2026-05",
+    "start_date": "2026-05-01",
+    "end_date": "2026-06-01",
+    "country": "Peru",
+    "city": "Lima",
+    "business_slice": "__ALL__",
+    "park_id": null,
+    "fleet_room_reference": null
+  },
+  "total_kpi": {
+    "fact_value": 455669.0,
+    "fact_table": "ops.real_business_slice_month_fact",
+    "metric": "trips",
+    "unit": "viajes",
+    "raw_value": null,
+    "raw_source": "N/A (trips_2026 has no country/city columns)",
+    "raw_trips_2026": 0
+  },
+  "breakdown_park": [
+    {
+      "slice": "Auto regular",
+      "trips": 373681
+    },
+    {
+      "slice": "Tuk Tuk",
+      "trips": 31836
+    },
+    {
+      "slice": "YMA",
+      "trips": 24755
+    },
+    {
+      "slice": "PRO",
+      "trips": 14484
+    },
+    {
+      "slice": "Delivery",
+      "trips": 10114
+    },
+    {
+      "slice": "Carga",
+      "trips": 799
+    }
+  ],
+  "breakdown_fleet": [
+    {
+      "fleet_display_name": "Yego.",
+      "kpi_value": 373681.0
+    },
+    {
+      "fleet_display_name": "Yego Tuk Tuk",
+      "kpi_value": 31836.0
+    },
+    {
+      "fleet_display_name": "Yeg\u00f3 mi auto",
+      "kpi_value": 24755.0
+    },
+    {
+      "fleet_display_name": "Yego Pro",
+      "kpi_value": 14484.0
+    },
+    {
+      "fleet_display_name": "Yego Delivery Lima",
+      "kpi_value": 10114.0
+    },
+    {
+      "fleet_display_name": "Yego Cargo Lima",
+      "kpi_value": 799.0
+    }
+  ],
+  "breakdown_subfleet": [
+    {
+      "is_subfleet": false,
+      "subfleet_name": null,
+      "parent_fleet_name": null,
+      "kpi_value": 455669.0
+    }
+  ],
+  "top_drivers": [
+    {
+      "note": "Skipped \u2014 enriched base scan too expensive for audit script. Use targeted query."
+    }
+  ],
+  "reconciliation": {
+    "day_fact_sum": 455669.0,
+    "month_fact": 455669.0,
+    "delta": 0.0,
+    "delta_pct": 0.0,
+    "status": "PASS",
+    "threshold": "1%",
+    "note": "day_fact rollup vs month_fact"
+  },
+  "warnings": []
+}

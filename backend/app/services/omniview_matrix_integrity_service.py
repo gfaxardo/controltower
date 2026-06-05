@@ -49,6 +49,12 @@ OPERATIONAL_BLOCKED_CODES = frozenset(
         "MONTH_REVENUE_MISMATCH",
         "REVENUE_WITHOUT_COMPLETED",
         "NEGATIVE_REVENUE_ROWS",  # inconsistencia revenue / signo
+        # P0.1 — Trust Sensor Repair: external sensor hard blockers
+        "FACT_LAYER_EMPTY_WEEKLY",
+        "FACT_LAYER_EMPTY_DAILY",
+        "REVENUE_NULL_MASSIVE",
+        "SERVING_INTEGRITY_BLOCKED",
+        "FRESHNESS_GOVERNANCE_BREACH",
     }
 )
 OPERATIONAL_WARNING_CODES = frozenset(
@@ -67,6 +73,11 @@ OPERATIONAL_WARNING_CODES = frozenset(
         "ROLLUP_CHECK_FAILED",
         # FASE_KPI_CONSISTENCY: causa freshness-only del antiguo ROLLUP_MISMATCH.
         "STALE_MONTH_FACT",
+        # P0.1 — Trust Sensor Repair: warning-level external sensor codes
+        "TRUST_OSCILLATION",
+        "FACT_LAYER_THIN_WEEKLY",
+        "FACT_LAYER_THIN_DAILY",
+        "REVENUE_LOW_COVERAGE",
     }
 )
 
@@ -92,6 +103,16 @@ CODE_SEVERITY_WEIGHT: dict[str, int] = {
     "DAYS_BELOW_MIN": 56,
     # FASE_KPI_CONSISTENCY: warning explícito por staleness conocido.
     "STALE_MONTH_FACT": 65,
+    # P0.1 — Trust Sensor Repair: external sensor severity weights
+    "FACT_LAYER_EMPTY_WEEKLY": 92,
+    "FACT_LAYER_EMPTY_DAILY": 90,
+    "REVENUE_NULL_MASSIVE": 85,
+    "SERVING_INTEGRITY_BLOCKED": 88,
+    "FRESHNESS_GOVERNANCE_BREACH": 90,
+    "TRUST_OSCILLATION": 72,
+    "FACT_LAYER_THIN_WEEKLY": 56,
+    "FACT_LAYER_THIN_DAILY": 54,
+    "REVENUE_LOW_COVERAGE": 50,
 }
 
 DEFAULT_ACTION_PLAYBOOK: dict[str, str] = {
@@ -172,6 +193,16 @@ CONFIDENCE_CONSISTENCY_DEDUCTIONS: dict[str, float] = {
     "NEGATIVE_REVENUE_ROWS": 35.0,
     "ROLLUP_CHECK_FAILED": 20.0,
     "MONTH_COMPARE_FAILED": 18.0,
+    # P0.1 — external sensor deductions
+    "FACT_LAYER_EMPTY_WEEKLY": 80.0,
+    "FACT_LAYER_EMPTY_DAILY": 70.0,
+    "REVENUE_NULL_MASSIVE": 65.0,
+    "SERVING_INTEGRITY_BLOCKED": 55.0,
+    "FRESHNESS_GOVERNANCE_BREACH": 55.0,
+    "TRUST_OSCILLATION": 30.0,
+    "FACT_LAYER_THIN_WEEKLY": 25.0,
+    "FACT_LAYER_THIN_DAILY": 20.0,
+    "REVENUE_LOW_COVERAGE": 20.0,
 }
 
 CONFIDENCE_HARD_CAP_RULES: tuple[dict[str, Any], ...] = (
@@ -206,6 +237,37 @@ CONFIDENCE_HARD_CAP_RULES: tuple[dict[str, Any], ...] = (
         "min_gap_count": 7,
         "reason": "Huecos severos en day_fact dentro de la ventana operativa.",
     },
+    # P0.1 — Trust Sensor Repair: external sensor hard caps
+    {
+        "code": "FACT_LAYER_EMPTY_WEEKLY",
+        "max_score": 30,
+        "reason": "Week fact vacío: sin datos semanales no hay confianza operativa.",
+    },
+    {
+        "code": "FACT_LAYER_EMPTY_DAILY",
+        "max_score": 35,
+        "reason": "Day fact severamente vacío: sin datos diarios suficientes.",
+    },
+    {
+        "code": "REVENUE_NULL_MASSIVE",
+        "max_score": 40,
+        "reason": "Revenue NULL en la mayoría de celdas con viajes: datos incompletos.",
+    },
+    {
+        "code": "SERVING_INTEGRITY_BLOCKED",
+        "max_score": 35,
+        "reason": "Serving integrity guard bloqueado: los facts no son confiables.",
+    },
+    {
+        "code": "FRESHNESS_GOVERNANCE_BREACH",
+        "max_score": 35,
+        "reason": "Freshness governance en breach: pipeline de datos roto.",
+    },
+    {
+        "code": "TRUST_OSCILLATION",
+        "max_score": 50,
+        "reason": "Trust osciló BLOCKED→SAFE sin remediation: estado inestable.",
+    },
 )
 
 DECISION_MODE_BLOCKING_CODES = frozenset(
@@ -215,6 +277,12 @@ DECISION_MODE_BLOCKING_CODES = frozenset(
         "MONTH_TRIPS_MISMATCH",
         "MONTH_REVENUE_MISMATCH",
         "REVENUE_WITHOUT_COMPLETED",
+        # P0.1 — los sensores externos bloquean la decisión operativa
+        "FACT_LAYER_EMPTY_WEEKLY",
+        "FACT_LAYER_EMPTY_DAILY",
+        "REVENUE_NULL_MASSIVE",
+        "SERVING_INTEGRITY_BLOCKED",
+        "FRESHNESS_GOVERNANCE_BREACH",
     }
 )
 
@@ -1908,6 +1976,192 @@ def _get_matrix_trust_payload_blocking() -> dict[str, Any]:
         "snapshot": full.get("snapshot", {}),
     }
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# P0.1 — Trust Sensor Repair: External Sensor Cross-Validation
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _check_fact_layer_emptiness(findings: list[dict[str, Any]]) -> None:
+    """Verifica que los fact tables tengan datos reales. FACT_LAYER_EMPTY es bloqueante."""
+    try:
+        wk_count = _q_one(
+            "SELECT COUNT(*)::int AS n FROM ops.real_business_slice_week_fact"
+        )
+        weeks_n = int(wk_count.get("n") or 0)
+        if weeks_n == 0:
+            _add(
+                findings, "error", "external_sensor",
+                "FACT_LAYER_EMPTY_WEEKLY",
+                "ops.real_business_slice_week_fact tiene 0 filas. Sin datos semanales no hay confianza operativa.",
+                "Weekly Matrix vacía. WoW, comparativos semanales y rollups semanales no disponibles.",
+                "Ejecutar refresh de week_fact: POST /ops/business-slice/real-refresh-omniview con grain=week.",
+                {"week_fact_rows": 0},
+            )
+        elif weeks_n < 3:
+            _add(
+                findings, "warn", "external_sensor",
+                "FACT_LAYER_THIN_WEEKLY",
+                f"ops.real_business_slice_week_fact solo tiene {weeks_n} semanas (mínimo esperado 6).",
+                "Cobertura semanal insuficiente para análisis de tendencia confiable.",
+                "Ejecutar backfill de weeks faltantes.",
+                {"week_fact_rows": weeks_n},
+            )
+
+        day_count = _q_one(
+            "SELECT COUNT(DISTINCT trip_date)::int AS n FROM ops.real_business_slice_day_fact"
+        )
+        days_n = int(day_count.get("n") or 0)
+        if days_n == 0:
+            _add(
+                findings, "error", "external_sensor",
+                "FACT_LAYER_EMPTY_DAILY",
+                "ops.real_business_slice_day_fact tiene 0 fechas distintas. Sin datos diarios.",
+                "Daily Matrix vacía. DoD y comparativos diarios no disponibles.",
+                "Ejecutar refresh de day_fact.",
+                {"day_fact_distinct_dates": 0},
+            )
+        elif days_n < 7:
+            _add(
+                findings, "warn", "external_sensor",
+                "FACT_LAYER_THIN_DAILY",
+                f"ops.real_business_slice_day_fact solo tiene {days_n} fechas distintas (mínimo esperado 14).",
+                "Cobertura diaria insuficiente; gaps críticos detectados.",
+                "Backfill day_fact para el rango faltante.",
+                {"day_fact_distinct_dates": days_n},
+            )
+    except Exception as e:
+        logger.warning("check_fact_layer_emptiness error: %s", e)
+
+
+def _check_revenue_null_coverage(findings: list[dict[str, Any]]) -> None:
+    """Detecta revenue NULL masivo donde hay viajes completados, considerando _final y _net."""
+    try:
+        rows_with_trips = _q_one(
+            """
+            SELECT COUNT(*)::int AS total,
+                   COUNT(*) FILTER (
+                       WHERE (revenue_yego_net IS NULL OR revenue_yego_net = 0)
+                         AND (revenue_yego_final IS NULL OR revenue_yego_final = 0)
+                   )::int AS null_count,
+                   COUNT(*) FILTER (WHERE revenue_yego_final IS NOT NULL AND revenue_yego_final != 0)::int AS final_count
+            FROM ops.real_business_slice_day_fact
+            WHERE trips_completed > 0
+            """
+        )
+        total = int(rows_with_trips.get("total") or 0)
+        nulls = int(rows_with_trips.get("null_count") or 0)
+        final_ok = int(rows_with_trips.get("final_count") or 0)
+        if total > 0:
+            null_pct = (nulls / total) * 100.0
+            final_pct = (final_ok / total) * 100.0
+            if null_pct >= 90.0 and final_pct < 50.0:
+                _add(
+                    findings, "error", "external_sensor",
+                    "REVENUE_NULL_MASSIVE",
+                    f"Revenue NULL en {nulls}/{total} filas ({null_pct:.0f}%) con trips>0 en day_fact. "
+                    f"Tanto revenue_yego_net como revenue_yego_final estan ausentes. "
+                    f"Solo {final_ok}/{total} filas ({final_pct:.0f}%) tienen revenue_yego_final.",
+                    "Revenue invisible en grillas daily/weekly. Decisiones financieras imposibles.",
+                    "Verificar que el ETL esta poblando revenue_yego_final en los fact tables. "
+                    "Revisar COALESCE en el pipeline de carga incremental.",
+                    {"total_rows_with_trips": total, "null_revenue_rows": nulls, "null_pct": round(null_pct, 1),
+                     "final_ok_rows": final_ok, "final_pct": round(final_pct, 1)},
+                )
+            elif null_pct >= 90.0 and final_pct >= 50.0:
+                _add(
+                    findings, "warn", "external_sensor",
+                    "REVENUE_LOW_COVERAGE",
+                    f"Revenue_yego_net NULL en {nulls}/{total} filas ({null_pct:.0f}%) pero "
+                    f"revenue_yego_final disponible en {final_ok}/{total} filas ({final_pct:.0f}%). "
+                    f"El API payload debe usar COALESCE(_final, _net) para exponer el valor canónico.",
+                    "Revenue depende de _final via COALESCE en API. Verificar que completed_revenue_sum esta en el payload.",
+                    "El API debe incluir completed_revenue_sum = COALESCE(revenue_yego_final, revenue_yego_net) en la respuesta.",
+                    {"total_rows_with_trips": total, "null_revenue_rows": nulls, "null_pct": round(null_pct, 1),
+                     "final_ok_rows": final_ok, "final_pct": round(final_pct, 1)},
+                )
+            elif null_pct >= 50.0:
+                _add(
+                    findings, "warn", "external_sensor",
+                    "REVENUE_LOW_COVERAGE",
+                    f"Revenue NULL en {nulls}/{total} filas ({null_pct:.0f}%) con trips>0 en day_fact.",
+                    "Revenue visible solo parcialmente. Confianza financiera degradada.",
+                    "Revisar COALESCE revenue_yego_final en serving y payload API.",
+                    {"total_rows_with_trips": total, "null_revenue_rows": nulls, "null_pct": round(null_pct, 1)},
+                )
+    except Exception as e:
+        logger.warning("check_revenue_null_coverage error: %s", e)
+
+
+def _check_serving_integrity_sensor(findings: list[dict[str, Any]]) -> None:
+    """Cross-validate contra el serving integrity guard (startup check)."""
+    try:
+        from app.startup_state import get_startup_report
+        report = get_startup_report()
+        checks = report.get("checks") or []
+        for ch in checks:
+            name = str(ch.get("name") or "")
+            status = str(ch.get("status") or "")
+            if name == "omniview_serving_integrity" and status in ("blocked", "error"):
+                detail = str(ch.get("detail") or "")
+                _add(
+                    findings, "error", "external_sensor",
+                    "SERVING_INTEGRITY_BLOCKED",
+                    f"Serving integrity guard: {status}. {detail[:200]}",
+                    "Los facts no pasan la validación de integridad. Datos no confiables.",
+                    "Ejecutar refresh de los grains afectados según el mensaje del guard.",
+                    {"guard_name": name, "guard_status": status, "guard_detail": detail[:300]},
+                )
+                break
+
+        overall = report.get("omniview_freshness_status") or ""
+        if not overall:
+            for ch in checks:
+                if str(ch.get("name") or "") == "omniview_freshness":
+                    overall = str(ch.get("status") or "")
+                    break
+        if overall in ("breach", "blocked"):
+            _add(
+                findings, "error", "external_sensor",
+                "FRESHNESS_GOVERNANCE_BREACH",
+                f"Freshness governance: {overall}. El pipeline de datos tiene brechas activas.",
+                "Datos stale o incompletos. Confianza operativa imposible sin pipeline sano.",
+                "Revisar freshness governance: /ops/omniview/freshness. Ejecutar refresh de grains atrasados.",
+                {"freshness_status": overall},
+            )
+    except Exception as e:
+        logger.warning("check_serving_integrity_sensor error: %s", e)
+
+
+def _check_trust_stability(findings: list[dict[str, Any]]) -> None:
+    """Previene oscilación BLOCKED→SAFE sin remediation ejecutada."""
+    try:
+        history = fetch_trust_history_recent(6)
+        if len(history) < 2:
+            return
+        latest = history[0]
+        previous = history[1]
+        prev_mode = str(previous.get("decision_mode") or "").upper()
+        curr_mode = str(latest.get("decision_mode") or "").upper()
+        if prev_mode == "BLOCKED" and curr_mode == "SAFE":
+            prev_score = int(previous.get("confidence_score") or 0)
+            curr_score = int(latest.get("confidence_score") or 0)
+            score_jump = curr_score - prev_score
+            if score_jump >= 40:
+                _add(
+                    findings, "warn", "external_sensor",
+                    "TRUST_OSCILLATION",
+                    f"Trust saltó de BLOCKED (conf={prev_score}) a SAFE (conf={curr_score}) "
+                    f"en la última evaluación (+{score_jump} puntos). "
+                    "Posible falsa recuperación sin remediation ejecutada.",
+                    "El trust puede estar mostrando SAFE sobre datos temporalmente restaurados "
+                    "que volverán a perderse (CF-H1L.1 recurrente).",
+                    "Verificar que los refrescos de day_fact/week_fact son atómicos y persistentes. "
+                    "No declarar GO hasta que trust se mantenga SAFE por ≥3 evaluaciones consecutivas.",
+                    {"prev_mode": prev_mode, "curr_mode": curr_mode, "score_jump": score_jump,
+                     "prev_score": prev_score, "curr_score": curr_score},
+                )
+    except Exception as e:
+        logger.warning("check_trust_stability error: %s", e)
+
 
 def run_omniview_matrix_integrity_checks() -> dict[str, Any]:
     findings: list[dict[str, Any]] = []
@@ -1915,6 +2169,11 @@ def run_omniview_matrix_integrity_checks() -> dict[str, Any]:
     check_temporal_range(findings, snap)
     check_revenue(findings)
     check_consistency(findings)
+    # P0.1 — Trust Sensor Repair: cross-validate contra sensores externos
+    _check_fact_layer_emptiness(findings)
+    _check_revenue_null_coverage(findings)
+    _check_serving_integrity_sensor(findings)
+    _check_trust_stability(findings)
 
     tech_ok = not any(f["severity"] == "error" for f in findings)
     operational = derive_operational_trust(findings)

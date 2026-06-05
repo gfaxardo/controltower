@@ -125,7 +125,7 @@ export function resolveClosedPeriodAnchor({
       allPeriods.includes(calWeekKey)
 
   } else {
-    // Monthly: anchor = último mes con comparison_basis="full_month"
+    // Monthly: anchor = ultimo mes con comparison_basis="full_month"
     if (periodInfoMap) {
       for (let i = allPeriods.length - 1; i >= 0; i--) {
         const info = periodInfoMap.get(allPeriods[i])
@@ -137,15 +137,24 @@ export function resolveClosedPeriodAnchor({
         }
       }
     }
-    // Fallback: penúltimo mes
-    if (!anchorPeriodKey && allPeriods.length > 1) {
-      operationalClosedPeriodKey = allPeriods[allPeriods.length - 2]
-      anchorPeriodKey = allPeriods[allPeriods.length - 2]
-      anchorReason = 'penultimate_month_fallback'
-    } else if (!anchorPeriodKey) {
-      operationalClosedPeriodKey = allPeriods[allPeriods.length - 1]
-      anchorPeriodKey = allPeriods[allPeriods.length - 1]
-      anchorReason = 'last_in_range'
+    // P0.6: Fallback reparado — nunca usar penultimate_month_fallback ciego
+    if (!anchorPeriodKey) {
+      // 1. Buscar el ultimo mes con datos (maxDataKey o el mas reciente <= hoy)
+      const searchKey = maxDataKey || calendarCurrentPeriodKey
+      for (let i = allPeriods.length - 1; i >= 0; i--) {
+        if (allPeriods[i] <= searchKey) {
+          operationalClosedPeriodKey = allPeriods[i]
+          anchorPeriodKey = allPeriods[i]
+          anchorReason = maxDataKey ? 'freshness_closest_behind' : 'calendar_current_or_last_closed'
+          break
+        }
+      }
+      // 2. Si no se encontro ninguno (todos futuros), usar el primer periodo
+      if (!anchorPeriodKey && allPeriods.length > 0) {
+        operationalClosedPeriodKey = allPeriods[0]
+        anchorPeriodKey = allPeriods[0]
+        anchorReason = 'first_in_range'
+      }
     }
 
     // Is current month partial?

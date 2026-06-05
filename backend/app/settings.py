@@ -463,6 +463,35 @@ class Settings(BaseSettings):
         description="Maximo de reintentos tras 429 para supply-hours API.",
     )
 
+    # ── LoopControl Integration (Fase LC-1) ──
+    LOOPCONTROL_ENABLED: bool = Field(
+        default=False,
+        description="Habilita la exportacion de campanas DRAFT a LoopControl.",
+    )
+    LOOPCONTROL_BASE_URL: str = Field(
+        default="",
+        description="Base URL de LoopControl API.",
+    )
+    LOOPCONTROL_INTEGRATION_KEY: str = Field(
+        default="",
+        description="X-Integration-Key para LoopControl. NUNCA loggear.",
+    )
+
+    # ── LoopControl Auto Export Job (Fase LC-1.1) ──
+    LOOPCONTROL_AUTO_EXPORT_ENABLED: bool = Field(default=False)
+    LOOPCONTROL_EXPORT_HOUR: int = Field(default=8, ge=0, le=23)
+    LOOPCONTROL_EXPORT_MINUTE: int = Field(default=0, ge=0, le=59)
+    LOOPCONTROL_EXPORT_PROGRAMS: str = Field(
+        default="PROGRAM_CHURN_PREVENTION,PROGRAM_HIGH_VALUE_RECOVERY,PROGRAM_ACTIVE_GROWTH,PROGRAM_14_90")
+    LOOPCONTROL_LIMIT_CHURN_PREVENTION: int = Field(default=200, ge=1, le=500)
+    LOOPCONTROL_LIMIT_HIGH_VALUE_RECOVERY: int = Field(default=100, ge=1, le=500)
+    LOOPCONTROL_LIMIT_ACTIVE_GROWTH: int = Field(default=200, ge=1, le=500)
+    LOOPCONTROL_LIMIT_14_90: int = Field(default=100, ge=1, le=500)
+    LOOPCONTROL_CAMPAIGN_PREFIX: str = Field(default="YEGO_LIMA")
+    LOOPCONTROL_REQUIRE_FRESHNESS_GREEN: bool = Field(default=True)
+    LOOPCONTROL_PREVENT_DUPLICATE_EXPORT: bool = Field(default=True)
+    LOOPCONTROL_EXPORT_DRY_RUN: bool = Field(default=False)
+
     model_config = {
         "env_file": os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"),
         "case_sensitive": False,

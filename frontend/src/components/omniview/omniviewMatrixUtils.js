@@ -612,6 +612,11 @@ function enrichRow (row) {
   const total = trips + cancelled
   if (row.cancel_rate_pct == null && total > 0) row.cancel_rate_pct = cancelled / total
   if (row.trips_per_driver == null && drivers > 0) row.trips_per_driver = trips / drivers
+  // OMNI-COV-006-B2: canonical revenue = completed_revenue_sum (backend COALESCE) → _final → _net
+  const canonicalRev = row.completed_revenue_sum != null ? Number(row.completed_revenue_sum)
+    : row.revenue_yego_final != null ? Number(row.revenue_yego_final)
+    : Number(row.revenue_yego_net) || null
+  if (canonicalRev != null && !isNaN(canonicalRev)) row.revenue_yego_net = canonicalRev
   return row
 }
 

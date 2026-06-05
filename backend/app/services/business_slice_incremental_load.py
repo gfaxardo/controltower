@@ -1819,6 +1819,7 @@ def load_business_slice_week_for_month(
 
     stage_table = "_week_fact_stage"
     cur.execute(f"DROP TABLE IF EXISTS {stage_table}")
+    cur.execute(f"CREATE TEMP TABLE {stage_table} (LIKE {FACT_WEEK} INCLUDING DEFAULTS)")
     stage_sql = _RESOLVE_AND_AGG_WEEK_FROM_TEMP.format(fact_week=stage_table)
 
     grain = _effective_chunk_grain(chunk_grain)
@@ -1981,3 +1982,404 @@ def describe_month_load_sql_contract() -> dict[str, bool]:
         "hour_block_still_uses_resolved_view": "v_real_trips_business_slice_resolved"
         in _HOUR_AGG_SELECT,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CF-H1L.9 — REFRESH FAMILY ATOMICITY
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_STG_DAY = "_stg_real_business_slice_day_fact"
+_STG_WEEK = "_stg_real_business_slice_week_fact"
+_STG_MONTH = "_stg_real_business_slice_month_fact"
+_AUDIT_TABLE = "ops.omniview_real_slice_refresh_audit"
+
+_STG_GRAIN_MAP = {
+    "day": (_STG_DAY, FACT_DAY),
+    "week": (_STG_WEEK, FACT_WEEK),
+    "month": (_STG_MONTH, FACT_MONTH),
+}
+
+
+def _ensure_staging_tables(cur: Any) -> None:
+    """Crea tablas de staging si no existen (estructura igual a las productivas)."""
+    for stg, prod in _STG_GRAIN_MAP.values():
+        cur.execute(f"""
+            CREATE TABLE IF NOT EXISTS {stg} (LIKE {prod} INCLUDING ALL);
+            TRUNCATE {stg};
+        """)
+
+
+def _ensure_audit_table(cur: Any) -> None:
+    """Crea tabla de auditoria de refresh si no existe."""
+    cur.execute(f"""
+        CREATE TABLE IF NOT EXISTS {_AUDIT_TABLE} (
+            run_id        TEXT PRIMARY KEY,
+            started_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+            finished_at   TIMESTAMPTZ,
+            status        TEXT NOT NULL DEFAULT 'running',
+            start_date    DATE NOT NULL,
+            end_date      DATE NOT NULL,
+            grains        TEXT[] NOT NULL,
+            day_rows      INT,
+            week_rows     INT,
+            month_rows    INT,
+            day_trips     BIGINT,
+            week_trips    BIGINT,
+            month_trips   BIGINT,
+            raw_rows      INT,
+            error_message TEXT,
+            created_by    TEXT DEFAULT 'atomic_refresh'
+        );
+    """)
+
+
+def _populate_staging_day(cur: Any, start_date: date, end_date: date) -> dict:
+    """Puebla staging day_fact sin tocar la tabla productiva."""
+    t0 = time.perf_counter()
+    mat_rows = _materialize_enriched_direct(cur, start_date, end_date, None)
+    if mat_rows == 0:
+        return {"ok": False, "error": "no_raw_data", "rows": 0, "trips": 0}
+    cur.execute("SELECT DISTINCT country, city FROM _bs_enriched_month ORDER BY 1 NULLS FIRST, 2 NULLS FIRST")
+    chunks = cur.fetchall()
+    total_rows = 0
+    total_trips = 0
+    for country, city in chunks:
+        insert_sql = _RESOLVE_AND_AGG_DAY_FROM_TEMP.format(fact_day=_STG_DAY)
+        cur.execute(insert_sql, (country, city))
+        total_rows += cur.rowcount
+    cur.execute(f"SELECT COALESCE(SUM(trips_completed),0)::bigint FROM {_STG_DAY}")
+    total_trips = int((cur.fetchone() or (0,))[0])
+    return {"ok": True, "rows": total_rows, "trips": total_trips, "raw_rows": mat_rows,
+            "duration_seconds": round(time.perf_counter() - t0, 2)}
+
+
+def _populate_staging_week(cur: Any, start_date: date, end_date: date) -> dict:
+    """Puebla staging week_fact sin tocar la tabla productiva."""
+    t0 = time.perf_counter()
+    mat_rows = _materialize_enriched_direct(cur, start_date, end_date, None)
+    if mat_rows == 0:
+        return {"ok": False, "error": "no_raw_data", "rows": 0, "trips": 0}
+    cur.execute("SELECT DISTINCT country, city FROM _bs_enriched_month ORDER BY 1 NULLS FIRST, 2 NULLS FIRST")
+    chunks = cur.fetchall()
+    total_rows = 0
+    total_trips = 0
+    for country, city in chunks:
+        insert_sql = _RESOLVE_AND_AGG_WEEK_FROM_TEMP.format(fact_week=_STG_WEEK)
+        cur.execute(insert_sql, (country, city))
+        total_rows += cur.rowcount
+    cur.execute(f"SELECT COALESCE(SUM(trips_completed),0)::bigint FROM {_STG_WEEK}")
+    total_trips = int((cur.fetchone() or (0,))[0])
+    return {"ok": True, "rows": total_rows, "trips": total_trips, "raw_rows": mat_rows,
+            "duration_seconds": round(time.perf_counter() - t0, 2)}
+
+
+def _populate_staging_month(cur: Any, start_date: date, end_date: date) -> dict:
+    """Puebla staging month_fact sin tocar la tabla productiva.
+    CF-H1L.9: extiende a meses completos para evitar month_fact parcial."""
+    # Extender a meses completos: first_day del primer mes al first_day del mes siguiente al ultimo
+    mo_start = start_date.replace(day=1)
+    if end_date.day > 1:
+        mo_end = (end_date.replace(day=1) + timedelta(days=32)).replace(day=1)
+    else:
+        mo_end = end_date
+    t0 = time.perf_counter()
+    mat_rows = _materialize_enriched_direct(cur, mo_start, mo_end, None)
+    if mat_rows == 0:
+        return {"ok": False, "error": "no_raw_data", "rows": 0, "trips": 0}
+    cur.execute("SELECT DISTINCT country, city FROM _bs_enriched_month ORDER BY 1 NULLS FIRST, 2 NULLS FIRST")
+    chunks = cur.fetchall()
+    total_rows = 0
+    total_trips = 0
+    for country, city in chunks:
+        insert_sql = _RESOLVE_AND_AGG_FROM_TEMP.format(fact_month=_STG_MONTH)
+        cur.execute(insert_sql, (country, city))
+        total_rows += cur.rowcount
+    cur.execute(f"SELECT COALESCE(SUM(trips_completed),0)::bigint FROM {_STG_MONTH}")
+    total_trips = int((cur.fetchone() or (0,))[0])
+    return {"ok": True, "rows": total_rows, "trips": total_trips, "raw_rows": mat_rows,
+            "duration_seconds": round(time.perf_counter() - t0, 2)}
+
+
+def _validate_staging_family(cur: Any, staging_results: dict, start_date: date, end_date: date, grains: list[str] = None) -> list[str]:
+    """Valida que el staging tenga datos minimos antes del swap atomico."""
+    if grains is None:
+        grains = ["day", "week", "month"]
+    errors = []
+    for grain in grains:
+        r = staging_results.get(grain, {})
+        if not r.get("ok"):
+            errors.append(f"staging {grain} failed: {r.get('error', 'unknown')}")
+            continue
+        if r.get("rows", 0) == 0:
+            errors.append(f"staging {grain} has 0 rows")
+        if r.get("trips", 0) == 0:
+            errors.append(f"staging {grain} has 0 trips")
+
+    if errors:
+        return errors
+
+    if "day" in grains:
+        cur.execute(
+            f"SELECT COUNT(*) FROM {_STG_DAY} "
+            f"WHERE trip_date >= %s AND trip_date < %s",
+            (start_date, end_date),
+        )
+        if int((cur.fetchone() or (0,))[0]) == 0:
+            errors.append("staging day has 0 rows in target range")
+
+    if "week" in grains:
+        cur.execute(
+            f"SELECT COUNT(*) FROM {_STG_WEEK} "
+            f"WHERE week_start >= %s AND week_start < %s",
+            (start_date, end_date),
+        )
+        if int((cur.fetchone() or (0,))[0]) == 0:
+            errors.append("staging week has 0 rows in target range")
+
+    return errors
+
+
+def _swap_staging_to_production(cur: Any, grains: list[str], start_date: date, end_date: date) -> dict:
+    """Atomico: DELETE + INSERT desde staging a productivo en una sola funcion.
+    El caller debe manejar el COMMIT/ROLLBACK de la transaccion."""
+    results = {}
+
+    if "day" in grains:
+        # Delete via staging composite key para evitar gaps entre rangos
+        cur.execute(f"""
+            DELETE FROM {FACT_DAY} d
+            USING {_STG_DAY} s
+            WHERE d.trip_date = s.trip_date
+              AND COALESCE(d.country, '') = COALESCE(s.country, '')
+              AND COALESCE(d.city, '') = COALESCE(s.city, '')
+              AND COALESCE(d.business_slice_name, '') = COALESCE(s.business_slice_name, '')
+              AND COALESCE(d.fleet_display_name, '') = COALESCE(s.fleet_display_name, '')
+              AND COALESCE(d.is_subfleet, false) = COALESCE(s.is_subfleet, false)
+              AND COALESCE(d.subfleet_name, '') = COALESCE(s.subfleet_name, '')
+        """)
+        day_del = cur.rowcount
+        cur.execute(f"INSERT INTO {FACT_DAY} SELECT * FROM {_STG_DAY}")
+        day_ins = cur.rowcount
+        cur.execute(f"SELECT COALESCE(SUM(trips_completed),0)::bigint FROM {FACT_DAY}")
+        day_trips = int((cur.fetchone() or (0,))[0])
+        results["day"] = {"deleted": day_del, "inserted": day_ins, "trips": day_trips}
+
+    if "week" in grains:
+        # Delete solo las filas que existen en staging (evita conflictos de clave)
+        cur.execute(f"""
+            DELETE FROM {FACT_WEEK} w
+            USING {_STG_WEEK} s
+            WHERE w.week_start = s.week_start
+              AND COALESCE(w.country, '') = COALESCE(s.country, '')
+              AND COALESCE(w.city, '') = COALESCE(s.city, '')
+              AND COALESCE(w.business_slice_name, '') = COALESCE(s.business_slice_name, '')
+              AND COALESCE(w.fleet_display_name, '') = COALESCE(s.fleet_display_name, '')
+              AND COALESCE(w.is_subfleet, false) = COALESCE(s.is_subfleet, false)
+              AND COALESCE(w.subfleet_name, '') = COALESCE(s.subfleet_name, '')
+        """)
+        wk_del = cur.rowcount
+        cur.execute(f"INSERT INTO {FACT_WEEK} SELECT * FROM {_STG_WEEK}")
+        wk_ins = cur.rowcount
+        cur.execute(f"SELECT COALESCE(SUM(trips_completed),0)::bigint FROM {FACT_WEEK}")
+        wk_trips = int((cur.fetchone() or (0,))[0])
+        results["week"] = {"deleted": wk_del, "inserted": wk_ins, "trips": wk_trips}
+
+    if "month" in grains:
+        # Delete solo las filas que existen en staging (mismo month + composite key)
+        # Esto preserva slices de otros meses no afectados por el rango
+        cur.execute(f"""
+            DELETE FROM {FACT_MONTH} m
+            USING {_STG_MONTH} s
+            WHERE m.month = s.month
+              AND COALESCE(m.country, '') = COALESCE(s.country, '')
+              AND COALESCE(m.city, '') = COALESCE(s.city, '')
+              AND COALESCE(m.business_slice_name, '') = COALESCE(s.business_slice_name, '')
+              AND COALESCE(m.fleet_display_name, '') = COALESCE(s.fleet_display_name, '')
+              AND COALESCE(m.is_subfleet, false) = COALESCE(s.is_subfleet, false)
+              AND COALESCE(m.subfleet_name, '') = COALESCE(s.subfleet_name, '')
+        """)
+        total_mo_del = cur.rowcount
+        cur.execute(f"INSERT INTO {FACT_MONTH} SELECT * FROM {_STG_MONTH}")
+        mo_ins = cur.rowcount
+        cur.execute(f"SELECT COALESCE(SUM(trips_completed),0)::bigint FROM {FACT_MONTH}")
+        mo_trips = int((cur.fetchone() or (0,))[0])
+        results["month"] = {"deleted": total_mo_del, "inserted": mo_ins, "trips": mo_trips}
+
+    return results
+
+
+def _cleanup_staging(cur: Any) -> None:
+    """Limpia tablas de staging."""
+    for stg in (_STG_DAY, _STG_WEEK, _STG_MONTH):
+        try:
+            cur.execute(f"TRUNCATE {stg}")
+        except Exception:
+            pass
+
+
+def _write_refresh_audit(cur: Any, run_id: str, status: str, start_date: date,
+                         end_date: date, grains: list[str], staging: dict,
+                         swap: dict, raw_rows: int, error: str = None) -> None:
+    """Escribe registro de auditoria del refresh atomico."""
+    try:
+        cur.execute(f"""
+            UPDATE {_AUDIT_TABLE} SET
+                finished_at = now(),
+                status = %s,
+                day_rows = %s, week_rows = %s, month_rows = %s,
+                day_trips = %s, week_trips = %s, month_trips = %s,
+                raw_rows = %s, error_message = %s
+            WHERE run_id = %s
+        """, (
+            status,
+            staging.get("day", {}).get("rows") if swap else (staging.get("day", {}).get("rows")),
+            staging.get("week", {}).get("rows") if swap else (staging.get("week", {}).get("rows")),
+            staging.get("month", {}).get("rows") if swap else (staging.get("month", {}).get("rows")),
+            staging.get("day", {}).get("trips") if swap else (staging.get("day", {}).get("trips")),
+            staging.get("week", {}).get("trips") if swap else (staging.get("week", {}).get("trips")),
+            staging.get("month", {}).get("trips") if swap else (staging.get("month", {}).get("trips")),
+            raw_rows, error, run_id,
+        ))
+    except Exception:
+        pass
+
+
+def refresh_omniview_real_slice_family_atomic(
+    conn: Any, start_date: date, end_date: date,
+    grains: Optional[list[str]] = None,
+) -> dict:
+    """
+    CF-H1L.9: Refresco atomico de la familia de facts (day + week + month).
+
+    Principio: NUNCA borrar facts productivos hasta que el staging este completo y validado.
+
+    Flujo:
+    1. Crear staging tables (si no existen)
+    2. Poblar staging para cada grain
+    3. Validar staging (rows > 0, trips > 0, rango cubierto)
+    4. Si validacion falla → abortar, productivo intacto
+    5. Si validacion OK → DELETE + INSERT atomico en UNA transaccion
+    6. Si swap falla → ROLLBACK completo, productivo intacto
+    7. Registrar audit log
+
+    Returns dict with ok, staging, swap, audit_run_id, error.
+    """
+    import uuid
+
+    if grains is None:
+        grains = ["day", "week", "month"]
+
+    run_id = uuid.uuid4().hex[:12]
+    t0 = time.perf_counter()
+    staging_results = {}
+    swap_results = {}
+    raw_rows = 0
+    error_msg = None
+
+    cur = conn.cursor()
+
+    try:
+        _ensure_staging_tables(cur)
+        _ensure_audit_table(cur)
+        conn.commit()
+
+        cur.execute(f"""
+            INSERT INTO {_AUDIT_TABLE} (run_id, start_date, end_date, grains, status)
+            VALUES (%s, %s, %s, %s, 'running')
+        """, (run_id, start_date, end_date, grains))
+        conn.commit()
+
+        # ── Fase 1: Poblar staging ──
+        print(f"CF-H1L.9 atomic staging: {start_date} -> {end_date} grains={grains} run={run_id}", flush=True)
+
+        if "day" in grains:
+            print("  staging day_fact...", flush=True)
+            staging_results["day"] = _populate_staging_day(cur, start_date, end_date)
+            raw_rows = max(raw_rows, staging_results["day"].get("raw_rows", 0))
+            print(f"    day staging: {staging_results['day'].get('rows', 0)} rows, {staging_results['day'].get('trips', 0)} trips", flush=True)
+
+        if "week" in grains:
+            print("  staging week_fact...", flush=True)
+            staging_results["week"] = _populate_staging_week(cur, start_date, end_date)
+            raw_rows = max(raw_rows, staging_results["week"].get("raw_rows", 0))
+            print(f"    week staging: {staging_results['week'].get('rows', 0)} rows, {staging_results['week'].get('trips', 0)} trips", flush=True)
+
+        if "month" in grains:
+            print("  staging month_fact...", flush=True)
+            staging_results["month"] = _populate_staging_month(cur, start_date, end_date)
+            raw_rows = max(raw_rows, staging_results["month"].get("raw_rows", 0))
+            print(f"    month staging: {staging_results['month'].get('rows', 0)} rows, {staging_results['month'].get('trips', 0)} trips", flush=True)
+
+        # ── Fase 2: Validar staging ──
+        print("  validating staging...", flush=True)
+        val_errors = _validate_staging_family(cur, staging_results, start_date, end_date, grains)
+        if val_errors:
+            error_msg = "staging validation failed: " + "; ".join(val_errors)
+            print(f"  FAIL: {error_msg}", flush=True)
+            _write_refresh_audit(cur, run_id, "staging_failed", start_date, end_date, grains,
+                                 staging_results, {}, raw_rows, error_msg)
+            conn.commit()
+            _cleanup_staging(cur)
+            conn.commit()
+            return {
+                "ok": False, "error": error_msg, "run_id": run_id,
+                "staging": staging_results, "duration_seconds": round(time.perf_counter() - t0, 2),
+            }
+
+        # ── Fase 3: Swap atomico ──
+        print("  atomic swap staging -> production...", flush=True)
+        try:
+            swap_results = _swap_staging_to_production(cur, grains, start_date, end_date)
+            conn.commit()
+            print(f"  swap OK: day={swap_results.get('day',{}).get('inserted',0)} "
+                  f"week={swap_results.get('week',{}).get('inserted',0)} "
+                  f"month={swap_results.get('month',{}).get('inserted',0)}", flush=True)
+
+            _write_refresh_audit(cur, run_id, "success", start_date, end_date, grains,
+                                 staging_results, swap_results, raw_rows)
+            conn.commit()
+        except Exception as swap_err:
+            conn.rollback()
+            error_msg = f"swap failed, rolled back: {swap_err}"
+            print(f"  ROLLBACK: {error_msg}", flush=True)
+            _write_refresh_audit(cur, run_id, "swap_failed", start_date, end_date, grains,
+                                 staging_results, {}, raw_rows, str(swap_err)[:500])
+            conn.commit()
+            _cleanup_staging(cur)
+            conn.commit()
+            return {
+                "ok": False, "error": error_msg, "run_id": run_id,
+                "staging": staging_results, "duration_seconds": round(time.perf_counter() - t0, 2),
+            }
+
+        _cleanup_staging(cur)
+        conn.commit()
+
+        dt = round(time.perf_counter() - t0, 2)
+        return {
+            "ok": True, "run_id": run_id, "mode": "atomic",
+            "start_date": str(start_date), "end_date": str(end_date),
+            "days": (end_date - start_date).days,
+            "staging": staging_results, "swap": swap_results,
+            "raw_rows": raw_rows, "duration_seconds": dt,
+        }
+
+    except Exception as e:
+        conn.rollback()
+        error_msg = str(e)[:500]
+        print(f"  FATAL: {error_msg}", flush=True)
+        try:
+            _write_refresh_audit(cur, run_id, "fatal_error", start_date, end_date, grains,
+                                 staging_results, {}, raw_rows, error_msg)
+            conn.commit()
+        except Exception:
+            pass
+        return {
+            "ok": False, "error": error_msg, "run_id": run_id,
+            "staging": staging_results, "duration_seconds": round(time.perf_counter() - t0, 2),
+        }
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass

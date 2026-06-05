@@ -656,11 +656,14 @@ async def omniview_freshness_governance_endpoint():
     Status: ok / warning / blocked / breach. Remediation copy incluida.
 
     CF-H1J.7: incluye per-grain freshness, serving grains, cross-validation, scheduler_status.
+    CF-H1L.2: incluye serving_integrity guard (post-migration serving fact validation).
     """
     try:
         from app.services.scheduler_status_service import get_scheduler_status
+        from app.services.omniview_serving_integrity_guard import validate_omniview_serving_integrity
         payload = get_omniview_freshness_governance()
         payload["scheduler_status"] = get_scheduler_status()["status"]
+        payload["serving_integrity"] = validate_omniview_serving_integrity()
         return sanitize_for_json(payload)
     except Exception as e:
         logger.exception("omniview/freshness")

@@ -116,6 +116,31 @@ def executive_summary(query_date: Optional[str] = None) -> Dict[str, Any]:
             cur.execute(f"SELECT MAX(opportunity_date) FROM {TABLE_OPPORTUNITY}")
             fopp = str(cur.fetchone()["max"])
 
+            # Fase 4A — Productivity KPIs (read from 360 + history fallback)
+            prod_active = active
+            prod_orders = orders_total
+            prod_supply_hours = supply_total
+
+            cur.execute("""
+                SELECT COUNT(DISTINCT driver_profile_id) AS supply_drivers
+                FROM growth.yango_lima_driver_360_daily
+                WHERE date = %(d)s AND supply_hours > 0
+            """, {"d": query_date})
+            supply_row = cur.fetchone()
+            prod_supply_drivers = int(supply_row["supply_drivers"] or 0) if supply_row else 0
+
+            if prod_active == 0:
+                cur.execute("""
+                    SELECT COUNT(DISTINCT driver_profile_id) AS active,
+                           SUM(completed_orders) AS orders
+                    FROM growth.yango_lima_driver_history_daily
+                    WHERE date = %(d)s AND completed_orders > 0
+                """, {"d": query_date})
+                h = cur.fetchone()
+                if h and h["active"]:
+                    prod_active = int(h["active"])
+                    prod_orders = int(h["orders"] or 0)
+
             return {
                 "date": query_date,
                 "source": "state_based",
@@ -132,6 +157,15 @@ def executive_summary(query_date: Optional[str] = None) -> Dict[str, Any]:
                 "avg_orders_per_driver": round(orders_total / active, 1) if active else 0,
                 "total_supply_hours": round(supply_total, 2),
                 "avg_trips_per_supply_hour": round(orders_total / supply_total, 2) if supply_total else 0,
+                "productivity": {
+                    "active_drivers": prod_active,
+                    "trips_per_active_driver": round(prod_orders / prod_active, 1) if prod_active else 0,
+                    "supply_drivers": prod_supply_drivers,
+                    "supply_hours": round(prod_supply_hours, 2),
+                    "supply_to_active_conversion": round(prod_active / prod_supply_drivers * 100, 1) if prod_supply_drivers else None,
+                    "trips_per_supply_hour": round(prod_orders / prod_supply_hours, 2) if prod_supply_hours else None,
+                    "source": "driver_360_daily + history_daily_fallback",
+                },
                 "freshness": {
                     "driver_state_max_date": fstate,
                     "program_eligibility_max_date": fprog,
@@ -189,6 +223,31 @@ def executive_summary(query_date: Optional[str] = None) -> Dict[str, Any]:
             total_drivers = sum(l1.values())
             managed = int(actions.get("confirmed") or 0) + int(actions.get("attempted") or 0)
 
+            # Fase 4A — Productivity KPIs
+            prod_active = active
+            prod_orders = orders_total
+            prod_supply_hours = supply_total
+
+            cur.execute("""
+                SELECT COUNT(DISTINCT driver_profile_id) AS supply_drivers
+                FROM growth.yango_lima_driver_360_daily
+                WHERE date = %(d)s AND supply_hours > 0
+            """, {"d": query_date})
+            supply_row = cur.fetchone()
+            prod_supply_drivers = int(supply_row["supply_drivers"] or 0) if supply_row else 0
+
+            if prod_active == 0:
+                cur.execute("""
+                    SELECT COUNT(DISTINCT driver_profile_id) AS active,
+                           SUM(completed_orders) AS orders
+                    FROM growth.yango_lima_driver_history_daily
+                    WHERE date = %(d)s AND completed_orders > 0
+                """, {"d": query_date})
+                h = cur.fetchone()
+                if h and h["active"]:
+                    prod_active = int(h["active"])
+                    prod_orders = int(h["orders"] or 0)
+
             return {
                 "date": query_date,
                 "source": "legacy_fallback",
@@ -202,6 +261,15 @@ def executive_summary(query_date: Optional[str] = None) -> Dict[str, Any]:
                 "avg_orders_per_driver": round(orders_total / active, 1) if active else 0,
                 "total_supply_hours": round(supply_total, 2),
                 "avg_trips_per_supply_hour": round(orders_total / supply_total, 2) if supply_total else 0,
+                "productivity": {
+                    "active_drivers": prod_active,
+                    "trips_per_active_driver": round(prod_orders / prod_active, 1) if prod_active else 0,
+                    "supply_drivers": prod_supply_drivers,
+                    "supply_hours": round(prod_supply_hours, 2),
+                    "supply_to_active_conversion": round(prod_active / prod_supply_drivers * 100, 1) if prod_supply_drivers else None,
+                    "trips_per_supply_hour": round(prod_orders / prod_supply_hours, 2) if prod_supply_hours else None,
+                    "source": "driver_360_daily + history_daily_fallback",
+                },
                 "freshness": {"driver360_max_date": f360, "segment_snapshot_max_date": fseg, "attribution_max_date": fatt},
             }
 

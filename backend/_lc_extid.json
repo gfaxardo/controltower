@@ -1,0 +1,21 @@
+{
+  "name": "ISO_EXTID",
+  "description": "HV",
+  "dialer_mode": "progressive",
+  "max_concurrent": 1,
+  "max_attempts": 1,
+  "ring_timeout": 30,
+  "schedule_start": "09:00",
+  "schedule_end": "18:00",
+  "schedule_days": "12345",
+  "script": "Hola",
+  "contacts": [
+    {
+      "phone": "51977777774",
+      "name": "Test",
+      "document": "DOC1",
+      "contractor_id": "0b8d1852f90a410c9543",
+      "city": "Lima"
+    }
+  ]
+}

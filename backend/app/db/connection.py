@@ -116,24 +116,46 @@ def get_db():
         init_db_pool()
     
     conn = None
-    try:
-        conn = connection_pool.getconn()
-        register_active_pg_connection(conn)
-        yield conn
-        conn.commit()
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        msg = str(e)
-        if "does not exist" in msg.lower():
-            logger.debug("Transacción: relación/vista no existe (ej. vista no creada aún): %s", msg[:200])
-        else:
-            logger.error(f"Error en transacción de base de datos: {e}")
-        raise
-    finally:
+    max_attempts = 2
+    for attempt in range(max_attempts):
+        try:
+            conn = connection_pool.getconn()
+            if conn.closed:
+                connection_pool.putconn(conn, close=True)
+                conn = None
+                continue
+            conn.reset()
+            register_active_pg_connection(conn)
+            yield conn
+            conn.commit()
+            return
+        except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
+            if conn and not conn.closed:
+                try: conn.rollback()
+                except: pass
+            if attempt < max_attempts - 1:
+                logger.warning("DB connection reset, retrying (attempt %d): %s", attempt + 1, e)
+                continue
+            raise
+        except Exception as e:
+            if conn:
+                try: conn.rollback()
+                except: pass
+            msg = str(e)
+            if "does not exist" in msg.lower():
+                logger.debug("Transaccion: relacion/vista no existe: %s", msg[:200])
+            else:
+                logger.error(f"Error en transaccion de base de datos: {e}")
+            raise
+        finally:
+            if conn:
+                unregister_active_pg_connection(conn)
+                connection_pool.putconn(conn)
+    else:
         if conn:
             unregister_active_pg_connection(conn)
             connection_pool.putconn(conn)
+        raise psycopg2.InterfaceError("Could not obtain valid DB connection after retries")
 
 
 def _get_connection_with_timeout(timeout_ms: int):

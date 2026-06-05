@@ -1,0 +1,21 @@
+{
+  "name": "ISO_LONG_SCRIPT",
+  "description": "HV",
+  "dialer_mode": "progressive",
+  "max_concurrent": 1,
+  "max_attempts": 1,
+  "ring_timeout": 30,
+  "schedule_start": "09:00",
+  "schedule_end": "18:00",
+  "schedule_days": "12345",
+  "script": "Lima Growth PROGRAM_HIGH_VALUE_RECOVERY -- contacto diario de productividad",
+  "contacts": [
+    {
+      "phone": "51977777777",
+      "name": "Test",
+      "document": "DOC1",
+      "contractor_id": "C1",
+      "city": "Lima"
+    }
+  ]
+}

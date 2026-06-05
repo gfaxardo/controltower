@@ -187,3 +187,80 @@ def test_omniview_refresh_has_cooldown_configured():
     cooldown = settings.OMNIVIEW_REAL_REFRESH_MIN_INTERVAL_MINUTES
     assert cooldown > 0
     assert cooldown <= 1440, "Cooldown should be at most 1440 minutes (1 day)"
+
+
+# ── CF-H1L.2: Post-Migration Serving Integrity Guard ──
+
+def test_post_migration_guard_returns_expected_structure():
+    from app.services.omniview_serving_integrity_guard import validate_omniview_serving_integrity
+
+    result = validate_omniview_serving_integrity()
+    assert isinstance(result, dict)
+    assert "status" in result
+    assert result["status"] in ("ok", "warning", "blocked", "error")
+    assert "message" in result
+    assert "checks" in result
+    assert isinstance(result["checks"], list)
+    assert "missing_periods" in result
+    assert isinstance(result["missing_periods"], list)
+    assert "closed_months" in result
+    assert "closed_weeks" in result
+    assert "remediation" in result
+    assert "evaluated_at" in result
+
+
+def test_post_migration_guard_passes_when_facts_present():
+    from app.services.omniview_serving_integrity_guard import validate_omniview_serving_integrity
+
+    result = validate_omniview_serving_integrity()
+    assert result["status"] in ("ok", "warning", "blocked"), (
+        f"Status should be ok/warning/blocked, got {result['status']}. "
+        f"Message: {result.get('message')}"
+    )
+    assert len(result["checks"]) > 0, "Should have at least one check entry"
+    if result["status"] in ("warning", "blocked"):
+        assert result.get("remediation") is not None, (
+            f"{result['status']} status should have remediation text"
+        )
+        assert len(result["missing_periods"]) > 0, (
+            f"{result['status']} status should list missing periods"
+        )
+
+
+def test_post_migration_guard_returns_remediation_not_runtime_refresh():
+    from app.services.omniview_serving_integrity_guard import validate_omniview_serving_integrity
+
+    result = validate_omniview_serving_integrity()
+
+    if result["status"] == "blocked":
+        remediation = result.get("remediation")
+        assert remediation is not None, "BLOCKED must have remediation text"
+        assert "refresh_omniview_real_slice_incremental" in remediation.lower(), (
+            "Remediation should point to the canonical refresh script"
+        )
+        assert "CT_SCHEDULER_ENABLED" in remediation, (
+            "Remediation should mention scheduler status"
+        )
+    elif result["status"] == "ok":
+        assert result.get("remediation") is None, "OK status should have no remediation"
+    else:
+        pass
+
+
+def test_post_migration_guard_periods_are_in_past():
+    from app.services.omniview_serving_integrity_guard import (
+        _closed_iso_weeks,
+        _closed_months,
+    )
+    from datetime import date
+
+    weeks = _closed_iso_weeks(5)
+    months = _closed_months(2)
+    today = date.today()
+
+    for w in weeks:
+        assert w < today, f"Closed week {w} should be in the past"
+    for m in months:
+        assert m < date(today.year, today.month, 1), (
+            f"Closed month {m} should be before current month start"
+        )

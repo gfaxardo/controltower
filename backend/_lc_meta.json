@@ -1,0 +1,32 @@
+{
+  "name": "ISO_META",
+  "description": "HV",
+  "dialer_mode": "progressive",
+  "max_concurrent": 1,
+  "max_attempts": 1,
+  "ring_timeout": 30,
+  "schedule_start": "09:00",
+  "schedule_end": "18:00",
+  "schedule_days": "12345",
+  "script": "Hola",
+  "contacts": [
+    {
+      "phone": "51977777773",
+      "name": "Test",
+      "document": "DOC1",
+      "contractor_id": "C1",
+      "city": "Lima",
+      "metadata": {
+        "driver_profile_id": "0b8d1852f90a4a4f8e3c6b1a5d9f2c3e",
+        "program": "PROGRAM_HIGH_VALUE_RECOVERY",
+        "lifecycle": "ESTABLISHED",
+        "performance": "LOW",
+        "orders_week": 0,
+        "best_week": 0,
+        "score": 200.85,
+        "rank": 1,
+        "bucket": "Critical"
+      }
+    }
+  ]
+}

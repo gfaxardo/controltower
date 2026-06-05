@@ -126,25 +126,26 @@ Everything else remains BACKLOG.
 # CURRENT REAL STATUS
 
 Control Foundation:
-GO
+**REOPENED / P0** — Omniview False GO Recovery (OMNI-P0)
+Previous closure (2026-06-03) INVALIDATED by user visual validation
 
 Diagnostic Engine:
-ACTIVE (2A.3)
+**PAUSED** — blocked until Omniview P0 Recovery achieves real GO
 
 Reachability:
 BACKLOG
 
 Forecast:
-PROTOTYPE ONLY — NOT ACTIVE
+BLOCKED
 
 Suggestion:
-PROTOTYPE ONLY — NOT ACTIVE
+BLOCKED
 
 Decision:
-PROTOTYPE ONLY — NOT ACTIVE
+BLOCKED
 
 Action:
-PROTOTYPE ONLY — NOT ACTIVE
+BLOCKED
 
 AI Copilot:
 BACKLOG
@@ -156,13 +157,18 @@ PROTOTYPE ONLY — NOT ACTIVE
 
 # CURRENT OPERATIONAL PRIORITY
 
-Operational hardening:
-- serving governance
-- refresh reliability
-- observability
-- runtime protection
-- coverage validation
-- performance consistency
+ACTIVE: Omniview P0 Recovery — False GO Recovery & Vs Proy Canonicalization
+
+- Deprecar Evolution como vista operativa
+- Canonizar Vs Proy como única vista operacional válida
+- Definir contrato canónico de grid cross-métrica
+- Resolver Revenue vacío/incompleto
+- Clarificar CLOSED/PARTIAL/CURRENT/FUTURE en cada celda
+- Auditar y resolver alerts/rollup/mismatch
+- Certificar Vs Proy con validación semántica real (no DOM tokens)
+
+READY NEXT: Diagnostic Engine 2A.3 (PAUSED)
+BACKLOG: Forecast, Suggestion, Decision, Action, AI Copilot, Learning
 
 ---
 

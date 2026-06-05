@@ -1,0 +1,24 @@
+{
+  "name": "ISO_10CT",
+  "description": "HV",
+  "dialer_mode": "progressive",
+  "max_concurrent": 1,
+  "max_attempts": 1,
+  "ring_timeout": 30,
+  "schedule_start": "09:00",
+  "schedule_end": "18:00",
+  "schedule_days": "12345",
+  "script": "Hola",
+  "contacts": [
+    {"phone":"51900000001","name":"T1","document":"D1","contractor_id":"C1","city":"Lima"},
+    {"phone":"51900000002","name":"T2","document":"D2","contractor_id":"C2","city":"Lima"},
+    {"phone":"51900000003","name":"T3","document":"D3","contractor_id":"C3","city":"Lima"},
+    {"phone":"51900000004","name":"T4","document":"D4","contractor_id":"C4","city":"Lima"},
+    {"phone":"51900000005","name":"T5","document":"D5","contractor_id":"C5","city":"Lima"},
+    {"phone":"51900000006","name":"T6","document":"D6","contractor_id":"C6","city":"Lima"},
+    {"phone":"51900000007","name":"T7","document":"D7","contractor_id":"C7","city":"Lima"},
+    {"phone":"51900000008","name":"T8","document":"D8","contractor_id":"C8","city":"Lima"},
+    {"phone":"51900000009","name":"T9","document":"D9","contractor_id":"C9","city":"Lima"},
+    {"phone":"51900000010","name":"T10","document":"D10","contractor_id":"C10","city":"Lima"}
+  ]
+}

@@ -347,6 +347,12 @@ async def stabilize_driver_360_day(
 
     duration_ms = round((time.perf_counter() - start_time) * 1000)
 
+    try:
+        from app.services.yego_lima_freshness_service import record_driver360_sync
+        record_driver360_sync(date_str, drivers_processed, duration_ms / 1000.0)
+    except Exception:
+        pass
+
     return {
         "ok": True,
         "date": date_str,

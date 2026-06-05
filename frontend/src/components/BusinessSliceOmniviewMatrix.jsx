@@ -115,6 +115,8 @@ const miniSelectCls =
 
 /** Si true (p. ej. VITE_OMNIVIEW_MATRIX_MANUAL_LOAD en .env.development), no se llama a la API pesada hasta pulsar «Cargar datos». */
 const MANUAL_LOAD = import.meta.env.VITE_OMNIVIEW_MATRIX_MANUAL_LOAD === 'true'
+/** Si false (default), Evolution queda oculto como modo operativo. Solo debug con flag=true. */
+const EVOLUTION_LEGACY = import.meta.env.VITE_OMNIVIEW_EVOLUTION_LEGACY === 'true'
 /** Tras cargar la matriz: breve pausa antes de coverage-summary (antes 3s; backend devuelve datos en el primer miss con filtros). */
 const COVERAGE_FETCH_DELAY_MS = 400
 
@@ -283,6 +285,8 @@ export default function BusinessSliceOmniviewMatrix () {
   const [insightUserPatch, setInsightUserPatch] = useState(() => loadInsightUserPatch() ?? {})
   const [insightSettingsOpen, setInsightSettingsOpen] = useState(false)
   const [factStatusOpen, setFactStatusOpen] = useState(false)
+  const [dataHelpOpen, setDataHelpOpen] = useState(false)
+  const [surfaceOpen, setSurfaceOpen] = useState(false)
   const prevInsightMode = useRef(insightMode)
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
@@ -304,7 +308,11 @@ export default function BusinessSliceOmniviewMatrix () {
     return () => window.removeEventListener('keydown', onKey)
   }, [selection])
 
-  const [viewMode, setViewMode] = useState(saved?.viewMode || 'evolucion')
+  const [viewMode, setViewMode] = useState(
+    EVOLUTION_LEGACY
+      ? (saved?.viewMode || 'evolucion')
+      : 'proyeccion'  // P0.6: Vs Proy es la vista canónica default
+  )
   const [operationalMode, setOperationalMode] = useState('operational')
   const [perspective, setPerspective] = useState('operational') // FASE 1.1 — Perspective Engine
   const [ownershipRows, setOwnershipRows] = useState([])
@@ -1453,30 +1461,25 @@ export default function BusinessSliceOmniviewMatrix () {
           <OmniviewMomentumPriorityStrip cities={isProjectionMode ? projMatrix?.cities ?? null : baseMatrix?.cities ?? null} allPeriods={isProjectionMode ? projMatrix?.allPeriods ?? [] : baseMatrix?.allPeriods ?? []} grain={grain} maxItems={5} />
         </div>
 
-        {/* Controls — unified inside shell */}
+        {/* Controls — unified compact strip */}
         <div className="overflow-hidden">
-          <div className="flex flex-wrap items-end gap-x-2 gap-y-1 px-3 py-1">
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-2 py-1 bg-ct-bg/60">
             {/* Grano temporal */}
-            <div className="flex flex-col gap-1">
-              <span className="text-2xs font-semibold text-ct-text3 uppercase tracking-wider">Grano</span>
-              <div className="flex gap-1">
-                {GRAINS.map((g) => (
-                  <button key={g.id} type="button" className={`${btnCls(grain === g.id)} uppercase tracking-wide`} onClick={() => setGrain(g.id)}>{g.label}</button>
-                ))}
-              </div>
+            <div className="flex gap-0.5">
+              {GRAINS.map((g) => (
+                <button key={g.id} type="button" className={`${btnCls(grain === g.id)} uppercase tracking-wide text-[10px]`} onClick={() => setGrain(g.id)}>{g.label}</button>
+              ))}
             </div>
 
-            {/* Separador vertical */}
-            <div className="hidden sm:block self-stretch w-px bg-gray-100 mx-1" />
+            <div className="w-px h-3.5 bg-gray-200 hidden sm:block" />
 
             {/* Filtros dimensionales */}
-            <FilterSelect label="País" value={country} onChange={setCountry} options={countries} placeholder="Todos los países" required={needsCountry} />
-            <FilterSelect label="Ciudad" value={city} onChange={setCity} options={citiesForCountry} placeholder="Todas las ciudades" />
-            <FilterSelect label="Tajada" value={businessSlice} onChange={setBusinessSlice} options={slices} placeholder="Todas las tajadas" />
-            {grain === 'monthly' && <FilterSelect label="Flota" value={fleet} onChange={setFleet} options={fleets} placeholder="Todas las flotas" />}
+            <FilterSelect label="País" value={country} onChange={setCountry} options={countries} placeholder="Todos" required={needsCountry} />
+            <FilterSelect label="Ciudad" value={city} onChange={setCity} options={citiesForCountry} placeholder="Todas" />
+            <FilterSelect label="Tajada" value={businessSlice} onChange={setBusinessSlice} options={slices} placeholder="Todas" />
+            {grain === 'monthly' && <FilterSelect label="Flota" value={fleet} onChange={setFleet} options={fleets} placeholder="Todas" />}
 
-            {/* Separador vertical */}
-            <div className="hidden sm:block self-stretch w-px bg-gray-100 mx-1" />
+            <div className="w-px h-3.5 bg-gray-200 hidden sm:block" />
 
             {/* Periodo */}
             <YearSelect value={year} onChange={setYear} />
@@ -1485,27 +1488,24 @@ export default function BusinessSliceOmniviewMatrix () {
               <MonthSelect value={month} onChange={setMonth} />
             )}
             {grain === 'weekly' && (
-              <div className="flex flex-col gap-1 self-end pb-1">
-                <span className="text-[10px] font-semibold text-ct-text3 uppercase tracking-wider">Scope semanal</span>
-                <span
-                  className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-blue-700"
-                  title={ISO_WEEK_SCOPE_TOOLTIP}
-                >
-                  Semanas ISO (pueden cruzar meses)
-                </span>
-              </div>
+              <span
+                className="inline-flex items-center rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700"
+                title={ISO_WEEK_SCOPE_TOOLTIP}
+              >
+                Semanas ISO
+              </span>
             )}
             {grain === 'weekly' && (
-              <label className="flex items-center gap-1.5 text-xs text-ct-text2 cursor-pointer select-none self-end pb-1.5 uppercase tracking-wide">
+              <label className="flex items-center gap-1 text-[10px] text-ct-text2 cursor-pointer select-none">
                 <input type="checkbox" checked={!weekFocusOnly} onChange={(e) => setWeekFocusOnly(!e.target.checked)}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5" />
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-3 w-3" />
                 Año completo
               </label>
             )}
 
-            <label className="flex items-center gap-1.5 text-xs text-ct-text2 cursor-pointer select-none self-end pb-1.5 uppercase tracking-wide">
+            <label className="flex items-center gap-1 text-[10px] text-ct-text2 cursor-pointer select-none">
               <input type="checkbox" checked={showSubfleets} onChange={(e) => setShowSubfleets(e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5" />
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-3 w-3" />
               Subflotas
             </label>
 
@@ -1514,238 +1514,189 @@ export default function BusinessSliceOmniviewMatrix () {
               setYear(normalizeOmniviewYear(new Date().getFullYear())); setMonth('')
               setSortKey('alpha'); setFocusedKpi('trips_completed')
             }}
-              className="self-end pb-1.5 px-2 py-0.5 rounded text-[10px] text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              className="px-1.5 py-0.5 rounded text-[10px] text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
               title="Restablecer filtros">
               Reset
             </button>
 
             {/* Weekday Focus — solo visible en grain daily */}
             {grain === 'daily' && (
-              <div className="flex flex-col gap-1 self-end">
-                <span className="text-2xs font-semibold text-ct-text3 uppercase tracking-wider">
-                  {weekdayFocus != null
-                    ? `Comparando ${['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'][weekdayFocus]} vs ${['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'][weekdayFocus]}`
-                    : 'Todos los días'}
-                  <span className="text-ct-text3/50 font-normal ml-1 lowercase">{weekdayFocus != null ? `· ${displayMatrix?.allPeriods?.length || 0} semanas` : ''}</span>
-                </span>
-                <div className="flex gap-0.5">
-                  {['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'].map((label, idx) => {
-                    const isActive = weekdayFocus === idx
-                    return (
-                      <button
-                        key={label}
-                        type="button"
-                        onClick={() => setWeekdayFocus(isActive ? null : idx)}
-                        className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
-                          isActive
-                            ? 'bg-blue-600 text-white shadow-[0_0_12px_rgba(59,130,246,0.35)] ring-1 ring-blue-400/50 scale-110'
-                            : 'text-ct-text3 hover:text-ct-text hover:bg-ct-border/50'
-                        }`}
-                        title={isActive ? `Mostrar todos los días` : `Ver solo ${label} — comparar ${label} contra ${label}`}
-                      >
-                        {label}
-                      </button>
-                    )
-                  })}
-                </div>
+              <div className="flex gap-0.5">
+                {['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'].map((label, idx) => {
+                  const isActive = weekdayFocus === idx
+                  return (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => setWeekdayFocus(isActive ? null : idx)}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all ${
+                        isActive
+                          ? 'bg-blue-600 text-white shadow-sm scale-105'
+                          : 'text-ct-text3 hover:text-ct-text hover:bg-ct-border/50'
+                      }`}
+                      title={isActive ? 'Todos los días' : `Solo ${label}`}
+                    >
+                      {label}
+                    </button>
+                  )
+                })}
               </div>
             )}
-          </div>
 
-          <div className="px-3 py-1 border-t border-ct-border bg-ct-surface/40">
-            {!focusMode && <OmniviewDataHelp />}
-          </div>
+            {!focusMode && <div className="w-px h-3.5 bg-gray-200 hidden sm:block" />}
 
-          {/* Fila 2: Controles de visualización + KPI selector compacto */}
-          <div className="px-3 py-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 bg-ct-bg/60">
-            {/* Modo Evolución / Vs Proyección */}
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] font-medium text-ct-text3 mr-1">Modo</span>
-              <div className="flex gap-0.5">
-                <button type="button" className={btnCls(viewMode === 'evolucion')} onClick={() => setViewMode('evolucion')}>Evolución</button>
-                <button type="button" className={btnCls(viewMode === 'proyeccion')} onClick={() => setViewMode('proyeccion')}>Vs Proyección</button>
-              </div>
+            {/* Modo Evolucion / Vs Proyeccion — P0.6: Evolution solo debug */}
+            {EVOLUTION_LEGACY && (
+            <div className="flex gap-0.5">
+              <button type="button" className={btnCls(viewMode === 'evolucion')} onClick={() => setViewMode('evolucion')}>Evolucion</button>
+              <button type="button" className={btnCls(viewMode === 'proyeccion')} onClick={() => setViewMode('proyeccion')}>Vs Proy.</button>
             </div>
-
-            {/* FASE 1.1 — Perspective Selector (solo en modo Proyección) */}
-            {isProjectionMode && (
-              <>
-                <div className="w-px h-4 bg-gray-200 hidden sm:block" />
-                <div className="flex items-center gap-1">
-                  <span className="text-[11px] font-medium text-ct-text3 mr-1">Perspectiva</span>
-                  <div className="flex gap-1">
-                    <button
-                      type="button"
-                      className={btnCls(perspective === 'operational')}
-                      onClick={() => setPerspective('operational')}
-                    >
-                      Operational
-                    </button>
-                    <button
-                      type="button"
-                      className={btnCls(perspective === 'ownership')}
-                      onClick={() => setPerspective('ownership')}
-                    >
-                      Ownership
-                    </button>
-                  </div>
-                </div>
-              </>
             )}
-            {/* ── KPI selector compacto (inline) ── */}
-            <div className="w-px h-4 bg-gray-200 hidden sm:block" />
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] font-medium text-ct-text3 mr-1">KPI</span>
+
+            {isProjectionMode && (
               <div className="flex gap-0.5">
-                {KPI_FOCUS_OPTIONS.map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => setFocusedKpi(option.id)}
-                    className={btnCls(focusedKpi === option.id)}
-                    title={option.label}
-                  >
-                    {option.short || option.label}
-                  </button>
-                ))}
+                <button type="button" className={btnCls(perspective === 'operational')} onClick={() => setPerspective('operational')}>Oper</button>
+                <button type="button" className={btnCls(perspective === 'ownership')} onClick={() => setPerspective('ownership')}>Owner</button>
               </div>
+            )}
+
+            <div className="w-px h-3.5 bg-gray-200 hidden sm:block" />
+
+            {/* KPI selector */}
+            <div className="flex gap-0.5">
+              {KPI_FOCUS_OPTIONS.map((option) => (
+                <button key={option.id} type="button" onClick={() => setFocusedKpi(option.id)}
+                  className={btnCls(focusedKpi === option.id)} title={option.label}>
+                  {option.short || option.label}
+                </button>
+              ))}
             </div>
 
             {isProjectionMode && (
-              <>
-                <div className="w-px h-4 bg-gray-200 hidden sm:block" />
-                <div className="flex items-center gap-1.5">
-                  <ProjectionVersionSelector
-                    versions={planVersions}
-                    selectedVersionKey={planVersion}
-                    onChange={(key) => setPlanVersion(key)}
-                    onRenameSuccess={() => loadPlanVersions()}
-                    servingVersionKeys={servingVersionKeys}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => { setUploadModalOpen(true); setUploadError(null); setUploadSuccess(null) }}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-                    title="Subir archivo de proyección"
-                  >
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                    </svg>
-                    Subir
-                  </button>
-                </div>
-              </>
-            )}
-
-            <div className="w-px h-4 bg-gray-200 hidden sm:block" />
-
-            {/* Modo Data / Insight */}
-            {!isProjectionMode && (
-            <div className="flex items-center gap-1">
-              <span className="text-[11px] font-medium text-ct-text3 mr-1">Vista</span>
-              <div className="flex gap-1">
-                <button type="button" className={modeCls(!insightMode)} onClick={() => setInsightMode(false)}>Data</button>
-                <button type="button" className={modeCls(insightMode)} onClick={() => setInsightMode(true)}>
-                  Insight
-                  {insights.length > 0 && (
-                    <span className="ml-1.5 px-1.5 py-px rounded-full text-[9px] font-bold bg-red-500 text-white">{insights.length}</span>
-                  )}
+              <div className="flex items-center gap-1">
+                <ProjectionVersionSelector
+                  versions={planVersions}
+                  selectedVersionKey={planVersion}
+                  onChange={(key) => setPlanVersion(key)}
+                  onRenameSuccess={() => loadPlanVersions()}
+                  servingVersionKeys={servingVersionKeys}
+                />
+                <button type="button" onClick={() => { setUploadModalOpen(true); setUploadError(null); setUploadSuccess(null) }}
+                  className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                  title="Subir archivo de proyección">
+                  <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                  Subir
                 </button>
               </div>
-            </div>
             )}
 
-            <div className="w-px h-4 bg-gray-200 hidden sm:block" />
+            <div className="w-px h-3.5 bg-gray-200" />
 
             {/* Orden */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] font-medium text-ct-text3">Orden</span>
-              <select className={miniSelectCls} value={sortKey} onChange={(e) => setSortKey(e.target.value)}>
-                {sortSelectOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-              </select>
-            </div>
-
-            <div className="w-px h-4 bg-gray-200 hidden sm:block" />
+            <select className={miniSelectCls} value={sortKey} onChange={(e) => setSortKey(e.target.value)} title="Orden">
+              {sortSelectOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+            </select>
 
             {/* Densidad */}
-            <div className="flex items-center gap-1">
-              <span className="text-[11px] font-medium text-ct-text3 mr-1">Densidad</span>
-              <div className="flex gap-1">
-                <button type="button" className={densityCls(!compact)} onClick={() => setCompact(false)}>Cómodo</button>
-                <button type="button" className={densityCls(compact)} onClick={() => setCompact(true)}>Compacto</button>
-              </div>
+            <div className="flex gap-0.5">
+              <button type="button" className={densityCls(!compact)} onClick={() => setCompact(false)} title="Modo cómodo">Cómodo</button>
+              <button type="button" className={densityCls(compact)} onClick={() => setCompact(true)} title="Modo compacto">Compacto</button>
             </div>
 
-            <div className="w-px h-4 bg-gray-200 hidden sm:block" />
-
-            {/* Zoom de matriz — FASE 1H.2C */}
-            <div className="flex items-center gap-1">
-              <span className="text-[11px] font-medium text-ct-text3 mr-1">Zoom</span>
-              <div className="flex gap-0.5">
-                <button type="button" onClick={() => { const idx = ZOOM_LEVELS.indexOf(matrixZoom); if (idx > 0) persistZoom(ZOOM_LEVELS[idx - 1]) }}
-                  className="px-1.5 py-1 rounded-l-md text-xs font-medium text-ct-text2 bg-ct-card border border-ct-border hover:border-gray-300 hover:bg-ct-bg transition-colors"
-                  title="Reducir zoom" disabled={matrixZoom <= ZOOM_LEVELS[0]}>−</button>
-                <button type="button" onClick={() => persistZoom(100)}
-                  className="px-2 py-1 text-[11px] font-semibold text-ct-text2 bg-ct-card border-y border-ct-border hover:bg-ct-bg transition-colors"
-                  title="Reset zoom 100%">{matrixZoom}%</button>
-                <button type="button" onClick={() => { const idx = ZOOM_LEVELS.indexOf(matrixZoom); if (idx < ZOOM_LEVELS.length - 1) persistZoom(ZOOM_LEVELS[idx + 1]) }}
-                  className="px-1.5 py-1 rounded-r-md text-xs font-medium text-ct-text2 bg-ct-card border border-ct-border hover:border-gray-300 hover:bg-ct-bg transition-colors"
-                  title="Aumentar zoom" disabled={matrixZoom >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}>+</button>
-              </div>
+            {/* Zoom */}
+            <div className="flex gap-0.5">
+              <button type="button" onClick={() => { const idx = ZOOM_LEVELS.indexOf(matrixZoom); if (idx > 0) persistZoom(ZOOM_LEVELS[idx - 1]) }}
+                className="px-1 py-0.5 rounded-l text-[10px] font-medium text-ct-text2 bg-ct-card border border-ct-border hover:border-gray-300 transition-colors"
+                disabled={matrixZoom <= ZOOM_LEVELS[0]}>−</button>
+              <button type="button" onClick={() => persistZoom(100)}
+                className="px-1.5 py-0.5 text-[10px] font-semibold text-ct-text2 bg-ct-card border-y border-ct-border hover:bg-ct-bg transition-colors"
+                title="Reset zoom">{matrixZoom}%</button>
+              <button type="button" onClick={() => { const idx = ZOOM_LEVELS.indexOf(matrixZoom); if (idx < ZOOM_LEVELS.length - 1) persistZoom(ZOOM_LEVELS[idx + 1]) }}
+                className="px-1 py-0.5 rounded-r text-[10px] font-medium text-ct-text2 bg-ct-card border border-ct-border hover:border-gray-300 transition-colors"
+                disabled={matrixZoom >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}>+</button>
             </div>
 
-            <div className="w-px h-4 bg-gray-200 hidden sm:block" />
-
-            {/* Focus Mode — FASE 1H.2C */}
+            {/* Focus Mode */}
             <button type="button" onClick={() => setFocusMode((f) => !f)}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+              className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium transition-all ${
                 focusMode ? 'bg-blue-600 text-white shadow-sm' : 'text-ct-text2 bg-ct-card border border-ct-border hover:border-blue-300 hover:text-blue-600'
               }`}
-              title={focusMode ? 'Salir de modo foco (Esc)' : 'Enfocar matriz — oculta elementos no esenciales'}>
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              title={focusMode ? 'Salir de modo foco' : 'Enfocar matriz'}>
+              <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12c1.293 4.338 5.31 7.68 10.066 7.68.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.32c4.756 0 8.773 3.342 10.065 7.68a10.462 10.462 0 01-1.8 3.064M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
-              {focusMode ? 'Salir foco' : 'Enfocar'}
+              {focusMode ? 'Salir' : 'Foco'}
             </button>
 
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto flex items-center gap-1">
+              {!focusMode && !isProjectionMode && (
+                <button type="button" onClick={() => setDataHelpOpen((o) => !o)}
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${dataHelpOpen ? 'bg-slate-700 text-white' : 'text-ct-text3 hover:text-ct-text hover:bg-ct-border/40'}`}
+                  title="¿Qué significan estos números?">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Ayuda
+                </button>
+              )}
               {!focusMode && (
               <button type="button"
                 onClick={() => setFactStatusOpen((o) => !o)}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all border ${factStatusOpen ? 'bg-slate-800 text-white border-slate-800' : 'text-ct-text2 bg-ct-card border-ct-border hover:border-gray-300 hover:bg-ct-bg'}`}
-                title="Ver estado de materialización de FACT tables">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-all border ${factStatusOpen ? 'bg-slate-800 text-white border-slate-800' : 'text-ct-text2 bg-ct-card border-ct-border hover:border-gray-300 hover:bg-ct-bg'}`}
+                title="Estado FACT tables">
+                <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7M4 7c0-2 1-3 3-3h10c2 0 3 1 3 3M4 7h16" />
                 </svg>
-                FACT tables
+                FACT
               </button>
               )}
               {(rows.length > 0 || (isProjectionMode && projectionRows.length > 0)) && (
                 <>
-                  <div className="w-px h-4 bg-gray-200" />
                   <button type="button" onClick={handleExport}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-ct-text2 bg-ct-card border border-ct-border hover:border-gray-300 hover:bg-ct-bg transition-all"
-                    title="Descargar Omniview Matrix (CSV)">
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium text-ct-text2 bg-ct-card border border-ct-border hover:border-gray-300 hover:bg-ct-bg transition-all"
+                    title="Descargar CSV">
+                    <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V3" />
                     </svg>
-                    Descargar
+                    CSV
                   </button>
                   <button type="button" onClick={() => { userHasScrolledRef.current = false; scrollToCurrentPeriod() }}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 hover:border-blue-300 transition-all"
-                    title={isProjectionMode && closedPeriodAnchor ? getAnchorButtonLabel(grain, closedPeriodAnchor.isCalendarCurrentPartial) : grain === 'daily' ? 'Ir a hoy' : grain === 'weekly' ? 'Ir a semana actual' : 'Ir a mes actual'}>
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    className="flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-all"
+                    title="Ir al periodo actual">
+                    <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    {isProjectionMode && closedPeriodAnchor ? getAnchorButtonLabel(grain, closedPeriodAnchor.isCalendarCurrentPartial) : grain === 'daily' ? 'Ir a hoy' : grain === 'weekly' ? 'Ir a sem. actual' : 'Ir a mes actual'}
+                    Ahora
                   </button>
                 </>
               )}
             </div>
           </div>
 
+          {!focusMode && dataHelpOpen && <OmniviewDataHelp />}
+          {!focusMode && !dataHelpOpen && viewMode !== 'proyeccion' && (
+            <div className="px-2 py-0.5 text-[9px] text-ct-text3/60 italic">
+              {MATRIX_KPIS.map(k => k.label).join(' · ')}
+            </div>
+          )}
+
+          {!focusMode && !isProjectionMode && (
+            <div className="px-2 py-0.5 text-[10px] text-ct-text3/50 border-t border-ct-border/30">
+              <span className="font-medium">{viewMode === 'proyeccion' ? 'Modo Proyección' : 'Modo Evolución'}</span>
+              {!isProjectionMode && (
+                <span className="ml-1">
+                  <button type="button" className={modeCls(!insightMode)} onClick={() => setInsightMode(false)}>Data</button>
+                  <span className="mx-0.5 text-ct-border/40">|</span>
+                  <button type="button" className={modeCls(insightMode)} onClick={() => setInsightMode(true)}>Insight{insights.length > 0 && <span className="ml-1 px-1 py-px rounded-full text-[8px] font-bold bg-red-500 text-white">{insights.length}</span>}</button>
+                </span>
+              )}
+            </div>
+          )}
+
           {blockedByCountry && heavyQueriesEnabled && (
-            <div className="px-4 py-2 text-xs text-amber-800 bg-amber-50 border-t border-amber-100 font-medium flex items-center gap-2">
+            <div className="px-3 py-1.5 text-xs text-amber-800 bg-amber-50 border-t border-amber-100 font-medium flex items-center gap-2">
               <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z" />
               </svg>
@@ -1758,7 +1709,7 @@ export default function BusinessSliceOmniviewMatrix () {
           )}
 
           {factStatusOpen && (
-            <div className="mt-3">
+            <div className="mt-2">
               <FactStatusPanel onClose={() => setFactStatusOpen(false)} />
             </div>
           )}
@@ -1793,110 +1744,150 @@ export default function BusinessSliceOmniviewMatrix () {
           )}
         </div>
 
-        {/* ── Barra de actividad: muestra qué requests están en vuelo + botón Detener ── */}
+        {/* ── Barra de actividad ── */}
         {activeTasks.length > 0 && (
-          <div className="mt-2 flex items-center gap-2.5 px-3 py-1.5 rounded-lg border border-blue-100 bg-blue-50 text-xs text-blue-700">
-            <span className="inline-block w-3 h-3 border-[1.5px] border-blue-300 border-t-blue-600 rounded-full animate-spin flex-shrink-0" />
-            <span className="flex-1 min-w-0 truncate font-medium">
-              {activeTasks.join(' · ')}
-            </span>
-            <button
-              type="button"
-              onClick={cancelAll}
-              className="flex-shrink-0 px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-100 hover:bg-red-100 hover:text-red-700 text-blue-700 border border-blue-200 hover:border-red-200 transition-colors"
-              title="Cancelar todas las consultas en vuelo"
-            >
+          <div className="flex items-center gap-2 px-2 py-1 text-[11px] text-blue-700 bg-blue-50 border-b border-blue-100">
+            <span className="inline-block w-2.5 h-2.5 border-[1.5px] border-blue-300 border-t-blue-600 rounded-full animate-spin flex-shrink-0" />
+            <span className="flex-1 min-w-0 truncate font-medium">{activeTasks.join(' · ')}</span>
+            <button type="button" onClick={cancelAll}
+              className="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 hover:bg-red-100 hover:text-red-700 text-blue-700 border border-blue-200 transition-colors">
               Detener
             </button>
           </div>
         )}
 
-        {!focusMode && heavyQueriesEnabled && !blockedByCountry && !isProjectionMode && (
-          <OperationalStatusBar
-            grain={grain} periodStates={periodStates} allPeriods={matrix.allPeriods}
-            freshnessInfo={freshnessInfo} sliceMaxTripDate={sliceMaxTripDate}
-            coverageSummary={coverageSummary} matrixMeta={matrixMeta}
-            matrixTrust={matrixTrust} execKpis={execKpis}
-            compact={compact}
-          />
-        )}
-        {sliceRealFreshnessBanner}
+        {/* ── Operational Surface Summary ── */}
+        {!focusMode && heavyQueriesEnabled && !blockedByCountry && (
+          <div className="flex items-center gap-2 px-2 py-1 border-b border-ct-border/30 bg-ct-bg/40">
+            {/* Status dot */}
+            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+              matrixTrust?.trust_status === 'blocked' ? 'bg-red-500 animate-pulse' :
+              matrixTrust?.trust_status === 'warning' ? 'bg-amber-500' :
+              'bg-emerald-500'
+            }`} />
+            <span className="text-[10px] font-semibold text-ct-text2 uppercase tracking-wide">
+              {matrixTrust?.trust_status === 'blocked' ? 'Bloqueado' :
+               matrixTrust?.trust_status === 'warning' ? 'Precaución' : 'Operativo'}
+            </span>
 
-        {/* ── Capa de integridad (Vs Proyección) — FASE 3.7 ───── */}
-        {!focusMode && heavyQueriesEnabled && isProjectionMode && projectionReady && projectionMeta?.integrity_status && (
-          <ProjectionIntegrityBanner integrity={projectionMeta.integrity_status} compact={compact} />
-        )}
+            {/* Confidence & coverage */}
+            <span className="text-[10px] text-ct-text3">
+              Confianza {(() => { const c = matrixTrust?.operational_decision?.confidence; if (c == null) return '—'; const s = typeof c === 'object' ? c.score : Number(c); return s != null && !isNaN(s) ? `${Math.round(s)}%` : '—' })()}
+              {coverageSummary?.coverage_pct != null && ` · Cob ${coverageSummary.coverage_pct}%`}
+            </span>
 
-        {/* ── YTD resumido (Vs Proyección) — FASE 3.5 ─────────── */}
-        {!focusMode && heavyQueriesEnabled && isProjectionMode && projectionReady && !projectionContractReport.ok && (
-          <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs text-amber-950 shadow-sm">
-            <span className="font-semibold">Datos de proyección incompletos. </span>
-            <span>{projectionContractReport.issues.map((it) => it.message).join(' · ')}</span>
-            <span className="text-amber-800/90"> Revisa la consola para detalle.</span>
+            {/* Alert count badges */}
+            {matrixTrust?.executive?.blocked_count > 0 && (
+              <span className="px-1.5 py-px rounded-full text-[9px] font-bold bg-red-100 text-red-700 border border-red-200">{matrixTrust.executive.blocked_count}</span>
+            )}
+            {matrixTrust?.executive?.warning_count > 0 && (
+              <span className="px-1.5 py-px rounded-full text-[9px] font-bold bg-amber-100 text-amber-700 border border-amber-200">{matrixTrust.executive.warning_count}</span>
+            )}
+
+            <span className="flex-1" />
+
+            {/* Toggle button */}
+            <button
+              type="button"
+              onClick={() => setSurfaceOpen(o => !o)}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                surfaceOpen ? 'bg-slate-700 text-white' : 'text-ct-text3 hover:text-ct-text hover:bg-ct-border/40'
+              }`}
+              title={surfaceOpen ? 'Ocultar detalles operativos' : 'Ver detalles operativos'}
+            >
+              <svg className={`w-2.5 h-2.5 transition-transform ${surfaceOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+              Detalles
+              {(matrixTrust?.trust_status === 'blocked') && (
+                <span className="ml-0.5 px-1 py-px rounded-full text-[8px] font-bold bg-red-500 text-white">!</span>
+              )}
+            </button>
           </div>
         )}
 
-        {!focusMode && heavyQueriesEnabled && isProjectionMode && projectionMeta?.ytd_summary && !projectionMeta.ytd_summary.error && (
-          <ProjectionYtdSummaryBar ytd={projectionMeta.ytd_summary} grain={grain} compact={compact} />
+        {/* ── Collapsible Operational Surface ── */}
+        {!focusMode && heavyQueriesEnabled && !blockedByCountry && surfaceOpen && (
+          <div className="divide-y divide-ct-border/20 border-b border-ct-border/30">
+            {!isProjectionMode && (
+              <OperationalStatusBar
+                grain={grain} periodStates={periodStates} allPeriods={matrix.allPeriods}
+                freshnessInfo={freshnessInfo} sliceMaxTripDate={sliceMaxTripDate}
+                coverageSummary={coverageSummary} matrixMeta={matrixMeta}
+                matrixTrust={matrixTrust} execKpis={execKpis}
+                compact={true}
+              />
+            )}
+            {sliceRealFreshnessBanner}
+
+            {isProjectionMode && projectionReady && projectionMeta?.integrity_status && (
+              <ProjectionIntegrityBanner integrity={projectionMeta.integrity_status} compact={true} />
+            )}
+
+            {isProjectionMode && projectionReady && !projectionContractReport.ok && (
+              <div className="px-3 py-1.5 text-[11px] text-amber-950 bg-amber-50">
+                <span className="font-semibold">Proyección incompleta. </span>
+                {projectionContractReport.issues.map((it) => it.message).join(' · ')}
+              </div>
+            )}
+
+            {isProjectionMode && projectionMeta?.ytd_summary && !projectionMeta.ytd_summary.error && (
+              <ProjectionYtdSummaryBar ytd={projectionMeta.ytd_summary} grain={grain} compact={true} />
+            )}
+
+            {isProjectionMode && Array.isArray(projectionMeta?.ytd_alerts) && projectionMeta.ytd_alerts.length > 0 && !projectionIntegrityBroken && (
+              <ProjectionYtdAlertsBlock alerts={projectionMeta.ytd_alerts} compact={true} />
+            )}
+
+            {isProjectionMode && projectionReady && projectionMeta && (
+              <OperationalOpportunitiesSummary projectionMeta={projectionMeta} compact={true} />
+            )}
+
+            {isProjectionMode && (
+              <OmniviewFreshnessGovernanceCard compact={true} />
+            )}
+
+            {isProjectionMode && (
+              <ProjectionContextBar
+                grain={grain} projMatrix={projMatrix} projectionMeta={projectionMeta}
+                planVersion={planVersion} compact={true}
+                focusedKpi={focusedKpi} closedPeriodAnchor={closedPeriodAnchor}
+              />
+            )}
+
+            {isProjectionMode && projectionReady && (
+              <OperationalPriorityLayer
+                projMatrix={displayProjMatrix}
+                focusedKpi={focusedKpi}
+                grain={grain}
+                compact={true}
+                onCellNavigate={(cellId, nav) => {
+                  setSelectedCell(cellId)
+                  setSelection({
+                    id: cellId,
+                    cityKey: nav.cityKey,
+                    lineKey: nav.lineKey,
+                    period: nav.period,
+                    kpiKey: nav.kpiKey,
+                    lineData: nav.lineData,
+                    periodDeltas: nav.periodDeltas,
+                    raw: nav.raw,
+                  })
+                }}
+              />
+            )}
+
+            {isProjectionMode && projectionReady && projectionMeta?.unresolved?.count > 0 && (
+              <UnmappedBadge
+                count={projectionMeta.unresolved.count}
+                rows={projectionMeta.unresolved.rows}
+                planVersion={planVersion}
+              />
+            )}
+          </div>
         )}
 
-        {!focusMode && heavyQueriesEnabled && isProjectionMode && Array.isArray(projectionMeta?.ytd_alerts) && projectionMeta.ytd_alerts.length > 0 && !projectionIntegrityBroken && (
-          <ProjectionYtdAlertsBlock alerts={projectionMeta.ytd_alerts} compact={compact} />
-        )}
-
-        {!focusMode && heavyQueriesEnabled && isProjectionMode && projectionReady && projectionMeta && (
-          <OperationalOpportunitiesSummary projectionMeta={projectionMeta} compact={compact} />
-        )}
-
-        {/* ── Freshness Governance (CF-H1D) ──────────────────── */}
-        {!focusMode && heavyQueriesEnabled && isProjectionMode && (
-          <OmniviewFreshnessGovernanceCard compact={compact} />
-        )}
-
-        {/* ── Context bar (Vs Proyección) ─────────────────────── */}
-        {!focusMode && heavyQueriesEnabled && isProjectionMode && (
-          <ProjectionContextBar
-            grain={grain} projMatrix={projMatrix} projectionMeta={projectionMeta}
-            planVersion={planVersion} compact={compact}
-            focusedKpi={focusedKpi} closedPeriodAnchor={closedPeriodAnchor}
-          />
-        )}
-
-        {/* ── Operational Priority Layer (RC-1) ───────────────── */}
-        {!focusMode && heavyQueriesEnabled && isProjectionMode && projectionReady && (
-          <OperationalPriorityLayer
-            projMatrix={displayProjMatrix}
-            focusedKpi={focusedKpi}
-            grain={grain}
-            compact={compact}
-            onCellNavigate={(cellId, nav) => {
-              setSelectedCell(cellId)
-              setSelection({
-                id: cellId,
-                cityKey: nav.cityKey,
-                lineKey: nav.lineKey,
-                period: nav.period,
-                kpiKey: nav.kpiKey,
-                lineData: nav.lineData,
-                periodDeltas: nav.periodDeltas,
-                raw: nav.raw,
-              })
-            }}
-          />
-        )}
-
-        {/* ── Badge de filas no mapeadas (interactivo) ───────────────────── */}
-        {!focusMode && heavyQueriesEnabled && projectionReady && isProjectionMode && projectionMeta?.unresolved?.count > 0 && (
-          <UnmappedBadge
-            count={projectionMeta.unresolved.count}
-            rows={projectionMeta.unresolved.rows}
-            planVersion={planVersion}
-          />
-        )}
-
-        {/* ── KPI focus mode ── merged into controls row (inline) ── */}
-
-        {/* ── Insights Panel (additive, between focus and Matrix) ── */}
+        {/* ── Insights Panel (additive) ── */}
         {!focusMode && heavyQueriesEnabled && !blockedByCountry && !isProjectionMode && insights.length > 0 && (
           <BusinessSliceInsightsPanel
             insights={insights}

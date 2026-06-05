@@ -55,15 +55,22 @@ export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, 
           const trustTop =
             periodTrust === 'blocked' ? 'border-t-[3px] border-t-red-500' : periodTrust === 'warning' ? 'border-t-[3px] border-t-amber-500' : ''
 
+          const isPresent = currentPeriodKey != null && (currentPeriodKey === pk)
+          const presentBadge = isPresent ? getCurrentPeriodBadge(pk, grain) : null
+
           const fontScale = tierEmphasis.scale
-          const fontSize1 = tier === TEMPORAL_VISUAL_TIERS.LATEST_CLOSED
+          const fontSize1 = isPresent
+            ? compact ? 'text-[16px]' : 'text-[19px]'
+            : tier === TEMPORAL_VISUAL_TIERS.LATEST_CLOSED
             ? compact ? 'text-[14px]' : 'text-[17px]'
             : tier === TEMPORAL_VISUAL_TIERS.CURRENT_PARTIAL
               ? compact ? 'text-[13px]' : 'text-[15px]'
               : tier === TEMPORAL_VISUAL_TIERS.FUTURE
                 ? compact ? 'text-[8px]' : 'text-[10px]'
                 : baseFont1
-          const fontSize2 = tier === TEMPORAL_VISUAL_TIERS.LATEST_CLOSED
+          const fontSize2 = isPresent
+            ? compact ? 'text-[11px]' : 'text-[13px]'
+            : tier === TEMPORAL_VISUAL_TIERS.LATEST_CLOSED
             ? compact ? 'text-[11px]' : 'text-[13px]'
             : tier === TEMPORAL_VISUAL_TIERS.CURRENT_PARTIAL
               ? compact ? 'text-[10px]' : 'text-[12px]'
@@ -72,7 +79,9 @@ export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, 
                 : baseFont2
 
           const textColor = tierEmphasis.text || 'text-white'
-          const secondaryColor = tier === TEMPORAL_VISUAL_TIERS.LATEST_CLOSED
+          const secondaryColor = isPresent
+            ? 'text-blue-200'
+            : tier === TEMPORAL_VISUAL_TIERS.LATEST_CLOSED
             ? 'text-emerald-300'
             : tier === TEMPORAL_VISUAL_TIERS.CURRENT_PARTIAL
               ? 'text-sky-300'
@@ -85,10 +94,14 @@ export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, 
           const tierBorder = tierEmphasis.border || (idx % 2 === 1 ? '' : '')
           const tierGlow = tierEmphasis.glow || ''
 
+          const presentFocus = isPresent
+            ? 'ring-2 ring-inset ring-blue-400/70 shadow-[inset_0_0_24px_rgba(59,130,246,0.12)] border-l-2 border-blue-400/70 bg-blue-950/70'
+            : ''
+
           let bgStyle = {}
-          if (tierBg) {
+          if (!isPresent && tierBg) {
             // tier bg overrides zebra
-          } else if (idx % 2 === 1) {
+          } else if (idx % 2 === 1 && !isPresent) {
             bgStyle = { backgroundColor: 'rgb(40,50,70)' }
           }
 
@@ -102,7 +115,7 @@ export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, 
             <th
               key={pk}
               colSpan={1}
-              className={`px-0 ${py1} text-center ${fontSize1} font-bold uppercase tracking-wide border-l-2 border-slate-500 ${tierBg} ${tierBorder} ${tierGlow} ${trustTop} ${textColor}`}
+              className={`px-0 ${py1} text-center ${fontSize1} font-bold uppercase tracking-wide border-l-2 border-slate-500 ${tierBg} ${tierBorder} ${tierGlow} ${trustTop} ${presentFocus} ${textColor}`}
               style={Object.keys(bgStyle).length ? bgStyle : undefined}
               title={periodTrust && trustTip ? trustTip : undefined}
             >
@@ -114,12 +127,17 @@ export default function BusinessSliceOmniviewMatrixHeader ({ allPeriods, grain, 
                   </span>
                 )}
               </div>
-              {tierLabel && (
+              {presentBadge && (
+                <span className="ml-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-blue-500 text-white shadow-sm">
+                  {presentBadge}
+                </span>
+              )}
+              {!presentBadge && tierLabel && (
                 <span className={`ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${tierBadge} normal-case shadow-sm`}>
                   {tierLabel}
                 </span>
               )}
-              {!tierLabel && badge && tier !== TEMPORAL_VISUAL_TIERS.FUTURE && (
+              {!presentBadge && !tierLabel && badge && tier !== TEMPORAL_VISUAL_TIERS.FUTURE && (
                 <span className={`ml-1.5 px-1 py-px rounded text-[8px] font-bold normal-case ${badgeCls}`}>
                   {periodStateLabel(state)}
                 </span>

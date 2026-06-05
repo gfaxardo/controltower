@@ -39,6 +39,7 @@ from app.services.business_slice_canonical_service import (
 from app.services.business_slice_service import (
     FACT_DAILY,
     FACT_MONTHLY,
+    FACT_MONTHLY_RAW,
     FACT_WEEKLY,
     V_RESOLVED,
     _json_safe_scalar,
@@ -263,8 +264,9 @@ def build_metrics_from_components(c: dict[str, Any]) -> dict[str, Any]:
     ad = c.get("active_drivers")
     ad_i = int(ad) if ad is not None else 0
     avg_ticket = _json_safe_scalar(c.get("avg_ticket"))
-    revenue = _json_safe_scalar(c.get("revenue_yego_net"))
-    cr_sum = c.get("completed_revenue_sum")
+    cr_coalesce = c.get("completed_revenue_sum")
+    revenue = _json_safe_scalar(cr_coalesce if cr_coalesce is not None else c.get("revenue_yego_net"))
+    cr_sum = cr_coalesce
     tf_sum = c.get("completed_total_fare_sum")
     if cr_sum is not None and tf_sum is not None:
         comm = commission_pct_from_sums(cr_sum, tf_sum)
@@ -765,38 +767,48 @@ def _fetch_monthly_fact_rows(
     cur, month: date, country: Optional[str], city: Optional[str], business_slice: Optional[str],
     fleet: Optional[str], subfleet: Optional[str], include_subfleets: bool, limit: int,
 ) -> list[dict[str, Any]]:
-    w: list[str] = ["month = %s"]
+    w: list[str] = ["v.month = %s"]
     p: list[Any] = [month]
     if country and str(country).strip():
-        w.append("country IS NOT NULL AND LOWER(TRIM(country::text)) = LOWER(TRIM(%s))")
+        w.append("v.country IS NOT NULL AND LOWER(TRIM(v.country::text)) = LOWER(TRIM(%s))")
         p.append(str(country).strip())
     if city and str(city).strip():
-        w.append("city IS NOT NULL AND LOWER(TRIM(city::text)) = LOWER(TRIM(%s))")
+        w.append("v.city IS NOT NULL AND LOWER(TRIM(v.city::text)) = LOWER(TRIM(%s))")
         p.append(str(city).strip())
     if business_slice and str(business_slice).strip():
         variants = business_slice_filter_variants(business_slice)
         placeholders = ", ".join(["%s"] * len(variants))
         w.append(
-            f"business_slice_name IS NOT NULL AND LOWER(TRIM(business_slice_name::text)) IN ({placeholders})"
+            f"v.business_slice_name IS NOT NULL AND LOWER(TRIM(v.business_slice_name::text)) IN ({placeholders})"
         )
         p.extend(normalize_business_slice_key(v) for v in variants)
     if fleet and str(fleet).strip():
         w.append(
-            "fleet_display_name IS NOT NULL AND LOWER(TRIM(fleet_display_name::text)) = LOWER(TRIM(%s))"
+            "v.fleet_display_name IS NOT NULL AND LOWER(TRIM(v.fleet_display_name::text)) = LOWER(TRIM(%s))"
         )
         p.append(str(fleet).strip())
     if subfleet and str(subfleet).strip():
         w.append(
-            "subfleet_name IS NOT NULL AND LOWER(TRIM(subfleet_name::text)) = LOWER(TRIM(%s))"
+            "v.subfleet_name IS NOT NULL AND LOWER(TRIM(v.subfleet_name::text)) = LOWER(TRIM(%s))"
         )
         p.append(str(subfleet).strip())
     if not include_subfleets:
-        w.append("is_subfleet IS NOT TRUE")
+        w.append("v.is_subfleet IS NOT TRUE")
     sql = f"""
-        SELECT *
-        FROM {FACT_MONTHLY}
+        SELECT v.*,
+               COALESCE(mf.revenue_yego_final, v.revenue_yego_net) AS completed_revenue_sum
+        FROM {FACT_MONTHLY} v
+        LEFT JOIN ops.real_business_slice_month_fact mf
+            ON v.month = mf.month
+            AND COALESCE(v.country, '') IS NOT DISTINCT FROM COALESCE(mf.country, '')
+            AND COALESCE(v.city, '') IS NOT DISTINCT FROM COALESCE(mf.city, '')
+            AND COALESCE(v.business_slice_name, '') IS NOT DISTINCT FROM COALESCE(mf.business_slice_name, '')
+            AND COALESCE(v.fleet_display_name, '') IS NOT DISTINCT FROM COALESCE(mf.fleet_display_name, '')
+            AND COALESCE(v.is_subfleet, false) IS NOT DISTINCT FROM COALESCE(mf.is_subfleet, false)
+            AND COALESCE(v.subfleet_name, '') IS NOT DISTINCT FROM COALESCE(mf.subfleet_name, '')
+            AND COALESCE(v.parent_fleet_name, '') IS NOT DISTINCT FROM COALESCE(mf.parent_fleet_name, '')
         WHERE {" AND ".join(w)}
-        ORDER BY trips_completed DESC
+        ORDER BY v.trips_completed DESC
         LIMIT %s
     """
     p.append(min(max(limit, 1), 10000))
@@ -809,7 +821,7 @@ def _fetch_monthly_fact_rows(
 
 def _month_fact_row_to_metric_row(r: dict[str, Any]) -> dict[str, Any]:
     """Enriquece con componentes para rollup (recupera total_fare implícito desde ratio canónico)."""
-    rev = r.get("revenue_yego_net")
+    rev = r.get("completed_revenue_sum") if r.get("completed_revenue_sum") is not None else r.get("revenue_yego_net")
     cp = r.get("commission_pct")
     tf = None
     if rev is not None and cp is not None:
@@ -869,11 +881,11 @@ def get_business_slice_omniview(
                     fleet, subfleet, include_subfleets, limit_rows,
                 )
                 rc_rollup, rc_total = _fetch_fact_rollup_by_country(
-                    cur, FACT_MONTHLY, "month", win.current_start,
+                    cur, FACT_MONTHLY_RAW, "month", win.current_start,
                     country, city, business_slice, fleet, subfleet, include_subfleets,
                 )
                 rp_rollup, rp_total = _fetch_fact_rollup_by_country(
-                    cur, FACT_MONTHLY, "month", win.previous_start,
+                    cur, FACT_MONTHLY_RAW, "month", win.previous_start,
                     country, city, business_slice, fleet, subfleet, include_subfleets,
                 )
                 cur_cur = aggregate_business_slice_rows(

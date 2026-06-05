@@ -239,6 +239,12 @@ async def capture_orders_range(
 
     duration_ms = round((time.perf_counter() - start_time) * 1000)
 
+    try:
+        from app.services.yego_lima_freshness_service import record_orders_sync
+        record_orders_sync(from_str, to_str, total_seen, duration_ms / 1000.0)
+    except Exception:
+        pass
+
     ok = len(errors) == 0 or total_seen > 0
 
     return {

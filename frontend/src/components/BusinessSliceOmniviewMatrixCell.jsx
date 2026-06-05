@@ -177,17 +177,19 @@ export default memo(function BusinessSliceOmniviewMatrixCell ({
 
   const cellBg = isSelected
     ? 'bg-blue-50 ring-1 ring-inset ring-blue-300'
-    : hasInsight
-      ? insightBorder
-      : isLatestClosed
-        ? `bg-white/95 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.15)]`
-        : isCurrentPartial
-          ? `bg-sky-50/20 ${zebra ? '' : ''}`
-          : isFuture
-            ? 'bg-slate-50/10'
-            : zebra
-              ? 'bg-slate-50/50 hover:bg-blue-50/40'
-              : 'hover:bg-blue-50/40'
+    : isCurrentPeriod
+      ? 'bg-blue-50/50 ring-1 ring-inset ring-blue-400/40 shadow-[inset_0_0_16px_rgba(59,130,246,0.06)]'
+      : hasInsight
+        ? insightBorder
+        : isLatestClosed
+          ? `bg-white/95 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.15)]`
+          : isCurrentPartial
+            ? `bg-sky-50/20 ${zebra ? '' : ''}`
+            : isFuture
+              ? 'bg-slate-50/10'
+              : zebra
+                ? 'bg-slate-50/50 hover:bg-blue-50/40'
+                : 'hover:bg-blue-50/40'
 
   const valueColor = isFuture ? 'text-gray-400' : 'text-gray-900'
 

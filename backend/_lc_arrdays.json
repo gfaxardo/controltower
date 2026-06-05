@@ -1,0 +1,21 @@
+{
+  "name": "ISO_ARR_DAYS",
+  "description": "HV",
+  "dialer_mode": "progressive",
+  "max_concurrent": 1,
+  "max_attempts": 1,
+  "ring_timeout": 30,
+  "schedule_start": "09:00",
+  "schedule_end": "18:00",
+  "schedule_days": ["MON", "TUE", "WED", "THU", "FRI"],
+  "script": "Hola",
+  "contacts": [
+    {
+      "phone": "51999999999",
+      "name": "Test",
+      "document": "DOC1",
+      "contractor_id": "C1",
+      "city": "Lima"
+    }
+  ]
+}

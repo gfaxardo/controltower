@@ -117,6 +117,9 @@ def run_startup_checks() -> Dict[str, Any]:
     # ── CF-H1G: Omniview Freshness Lightweight Check ──
     _run_omniview_freshness_startup_check(report)
 
+    # ── CF-H1L.2: Serving Integrity Post-Migration Guard ──
+    _run_serving_integrity_startup_check(report)
+
     return report
 
 
@@ -171,6 +174,59 @@ def _run_omniview_freshness_startup_check(report: Dict[str, Any]) -> None:
         report["checks"].append(
             {
                 "name": "omniview_freshness",
+                "status": "failed",
+                "tier": "non_blocking",
+                "detail": str(e),
+            }
+        )
+
+
+def _run_serving_integrity_startup_check(report: Dict[str, Any]) -> None:
+    """
+    CF-H1L.2 — Post-Migration Serving Integrity Guard.
+
+    Valida que day_fact, month_fact y week_fact tengan datos para los
+    periodos cerrados recientes. Solo COUNT — sin refresh, sin bloqueo.
+    """
+    try:
+        from app.services.omniview_serving_integrity_guard import validate_omniview_serving_integrity
+
+        integrity = validate_omniview_serving_integrity()
+        status = integrity.get("status", "unknown")
+        missing = integrity.get("missing_periods", [])
+        message = integrity.get("message", "")
+
+        if status == "blocked":
+            logger.warning(
+                "Startup Serving Integrity BLOCKED: %s missing_periods=%s",
+                message,
+                [(p.get("grain"), p.get("period")) for p in missing[:10]],
+            )
+        elif status == "warning":
+            logger.warning("Startup Serving Integrity WARNING: %s", message)
+        else:
+            logger.info("Startup Serving Integrity: %s", message)
+
+        report["serving_integrity_startup"] = {
+            "status": status,
+            "message": message,
+            "missing_periods": missing,
+            "remediation": integrity.get("remediation") if status != "ok" else None,
+        }
+        report["checks"].append(
+            {
+                "name": "omniview_serving_integrity",
+                "status": "ok" if status == "ok" else "warning",
+                "tier": "non_blocking",
+                "detail": f"status={status} missing={len(missing)} {message[:120]}",
+            }
+        )
+    except Exception as e:
+        logger.warning("Startup Serving Integrity check error: %s", e)
+        report["serving_integrity_startup"] = {"status": "error", "error": str(e)}
+        report["checks"].append(
+            {
+                "name": "omniview_serving_integrity",
                 "status": "failed",
                 "tier": "non_blocking",
                 "detail": str(e),

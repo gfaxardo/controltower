@@ -163,6 +163,12 @@ async def run_supply_batch(
     duration_ms = round((time.perf_counter() - start_time) * 1000)
     total_supply_hours = round(total_supply_seconds / 3600.0, 2)
 
+    try:
+        from app.services.yego_lima_freshness_service import record_supply_sync
+        record_supply_sync(drivers_attempted, duration_ms / 1000.0)
+    except Exception:
+        pass
+
     logger.info(
         "Supply batch complete: tier=%s attempted=%s success=%s rate_limited=%s supply_h=%s",
         tier_upper, drivers_attempted, success, rate_limited, total_supply_hours,

@@ -2190,7 +2190,20 @@ def get_business_slice_monthly(
     order_m = "ASC" if year is not None else "DESC"
     sql = f"""
         SELECT *
-        FROM {MV_MONTHLY}
+        FROM (
+            SELECT v.*,
+                   COALESCE(mf.revenue_yego_final, v.revenue_yego_net) AS completed_revenue_sum
+            FROM {MV_MONTHLY} v
+            LEFT JOIN ops.real_business_slice_month_fact mf
+                ON v.month = mf.month
+                AND COALESCE(v.country, '') IS NOT DISTINCT FROM COALESCE(mf.country, '')
+                AND COALESCE(v.city, '') IS NOT DISTINCT FROM COALESCE(mf.city, '')
+                AND COALESCE(v.business_slice_name, '') IS NOT DISTINCT FROM COALESCE(mf.business_slice_name, '')
+                AND COALESCE(v.fleet_display_name, '') IS NOT DISTINCT FROM COALESCE(mf.fleet_display_name, '')
+                AND COALESCE(v.is_subfleet, false) IS NOT DISTINCT FROM COALESCE(mf.is_subfleet, false)
+                AND COALESCE(v.subfleet_name, '') IS NOT DISTINCT FROM COALESCE(mf.subfleet_name, '')
+                AND COALESCE(v.parent_fleet_name, '') IS NOT DISTINCT FROM COALESCE(mf.parent_fleet_name, '')
+        ) sub
         {where_sql}
         ORDER BY month {order_m}, country, city, business_slice_name, fleet_display_name
         LIMIT %s
@@ -2924,7 +2937,8 @@ def _weekly_from_fact(
         SELECT week_start, country, city, business_slice_name, fleet_display_name,
                is_subfleet, subfleet_name,
                trips_completed, trips_cancelled, active_drivers,
-               avg_ticket, revenue_yego_net, commission_pct, trips_per_driver, cancel_rate_pct
+               avg_ticket, revenue_yego_net, commission_pct, trips_per_driver, cancel_rate_pct,
+               COALESCE(revenue_yego_final, revenue_yego_net) AS completed_revenue_sum
         FROM {FACT_WEEKLY}
         {where_sql}
         ORDER BY week_start ASC
@@ -3123,7 +3137,8 @@ def _daily_from_fact(
         SELECT trip_date, country, city, business_slice_name, fleet_display_name,
                is_subfleet, subfleet_name,
                trips_completed, trips_cancelled, active_drivers,
-               avg_ticket, revenue_yego_net, commission_pct, trips_per_driver, cancel_rate_pct
+               avg_ticket, revenue_yego_net, commission_pct, trips_per_driver, cancel_rate_pct,
+               COALESCE(revenue_yego_final, revenue_yego_net) AS completed_revenue_sum
         FROM {FACT_DAILY}
         {where_sql}
         ORDER BY trip_date ASC
