@@ -1,1 +1,3 @@
 endpoint,day,page,status_code,error,elapsed_ms
+orders,2026-06-04,9,429,rate_limited,255.2
+orders,2026-06-04,9,429,rate_limited,242.2

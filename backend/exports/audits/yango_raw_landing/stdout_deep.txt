@@ -1,0 +1,20 @@
+
+[ingest] Yango Raw Landing
+  Park: 08e20910***
+  Range: 2026-06-04 -> 2026-06-04
+  Endpoints: ['orders']
+  Dry run: False
+  Max pages: 60
+  Concurrency: 5
+  Output: C:\Users\Pc\Documents\Cursor Proyectos\YEGO CONTROL TOWER\backend\exports\audits\yango_raw_landing
+
+[ingest] orders — 1 ...
+
+[ingest] COVERAGE FAIL: orders ingested 4085 / 11085 = 36.9% < 90% threshold
+
+[ingest] Done.
+  summary: C:\Users\Pc\Documents\Cursor Proyectos\YEGO CONTROL TOWER\backend\exports\audits\yango_raw_landing\ingestion_summary.md
+  metrics: C:\Users\Pc\Documents\Cursor Proyectos\YEGO CONTROL TOWER\backend\exports\audits\yango_raw_landing\ingestion_metrics.json
+  errors_csv: C:\Users\Pc\Documents\Cursor Proyectos\YEGO CONTROL TOWER\backend\exports\audits\yango_raw_landing\ingestion_errors.csv
+  latency_csv: C:\Users\Pc\Documents\Cursor Proyectos\YEGO CONTROL TOWER\backend\exports\audits\yango_raw_landing\ingestion_latency.csv
+  Pages: 24 | Records: 4085 | Errors: 2 | 429s: 2

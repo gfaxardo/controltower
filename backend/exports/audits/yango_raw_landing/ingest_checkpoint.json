@@ -1,6 +1,6 @@
 {
   "config": {
-    "run_id": "ingest_20260605_195717",
+    "run_id": "ingest_20260605_205939",
     "park_id_masked": "08e20910***",
     "date_from": "2026-06-04",
     "date_to": "2026-06-04",
@@ -9,30 +9,10 @@
       "orders"
     ],
     "dry_run": false,
-    "max_pages": 60,
+    "max_pages": 10,
     "max_concurrency": 5
   },
   "completed_pages": {
-    "orders_2026-06-04_0": true,
-    "orders_2026-06-04_1": true,
-    "orders_2026-06-04_2": true,
-    "orders_2026-06-04_3": true,
-    "orders_2026-06-04_4": true,
-    "orders_2026-06-04_5": true,
-    "orders_2026-06-04_6": true,
-    "orders_2026-06-04_7": true,
-    "orders_2026-06-04_8": true,
-    "orders_2026-06-04_9": true,
-    "orders_2026-06-04_10": true,
-    "orders_2026-06-04_11": true,
-    "orders_2026-06-04_12": true,
-    "orders_2026-06-04_13": true,
-    "orders_2026-06-04_14": true,
-    "orders_2026-06-04_15": true,
-    "orders_2026-06-04_16": true,
-    "orders_2026-06-04_17": true,
-    "orders_2026-06-04_18": true,
-    "orders_2026-06-04_19": true,
-    "orders_2026-06-04_20": true
+    "orders_2026-06-04_0": true
   }
 }

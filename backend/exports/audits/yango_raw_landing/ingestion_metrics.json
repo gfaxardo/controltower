@@ -1,8 +1,8 @@
 {
-  "run_id": "ingest_20260605_194543",
-  "generated_at": "2026-06-05T19:45:46.498017-05:00",
+  "run_id": "ingest_20260605_195717",
+  "generated_at": "2026-06-05T20:34:39.786068-05:00",
   "config": {
-    "run_id": "ingest_20260605_194543",
+    "run_id": "ingest_20260605_195717",
     "park_id_masked": "08e20910***",
     "date_from": "2026-06-04",
     "date_to": "2026-06-04",
@@ -11,16 +11,16 @@
       "orders"
     ],
     "dry_run": false,
-    "max_pages": 15,
+    "max_pages": 60,
     "max_concurrency": 5
   },
   "counts": {
-    "requests": 0,
-    "success": 0,
-    "errors": 0,
-    "rate_limits_429": 0,
-    "total_pages": 0,
-    "total_records": 0
+    "requests": 26,
+    "success": 24,
+    "errors": 2,
+    "rate_limits_429": 2,
+    "total_pages": 24,
+    "total_records": 4085
   },
-  "elapsed_total_seconds": 0.9
+  "elapsed_total_seconds": 2240.7
 }
