@@ -1,0 +1,20 @@
+funcionalidad,backend_endpoint,frontend_api_function,ux_tab,componente,estado
+Operational Summary,/yego-lima-growth/operational-summary,getLimaGrowthOperationalSummary,Resumen + Config,ExecutiveKpiCard + Pipeline bar,VISIBLE_AND_WORKING
+Driver State Summary,/yego-lima-growth/driver-state/summary,getLimaGrowthDriverStateSummary,Estado del Conductor,Bar charts + ModuleCard,VISIBLE_AND_WORKING
+Programs Summary,/yego-lima-growth/programs/summary,getLimaGrowthProgramsSummary,Programas,ModuleCard grid,VISIBLE_AND_WORKING
+Prioritized Opportunities,/yego-lima-growth/policy/prioritized-opportunities,getLimaGrowthPrioritizedOpportunities,Oportunidades,Table,VISIBLE_AND_WORKING
+Priority Allocation,/yego-lima-growth/priority-allocation,getLimaGrowthPriorityAllocation,Resumen,ModuleCard with bars,VISIBLE_AND_WORKING
+Channel Allocation,/yego-lima-growth/channel-allocation,getLimaGrowthChannelAllocation,Resumen,ModuleCard with bars,VISIBLE_AND_WORKING
+Capacity Config,/yego-lima-growth/capacity/config,get/updateLimaGrowthCapacityConfig,Configuracion,Editable table,VISIBLE_AND_WORKING
+Opportunity Worklist,/yego-lima-growth/opportunity-worklist,getLimaGrowthOpportunityWorklist,Worklist,Filtered table,VISIBLE_AND_WORKING
+Assignment Queue,/yego-lima-growth/assignment-queue,build/getLimaGrowthAssignmentQueue,Queue,Filtered table + Build button,VISIBLE_AND_WORKING
+Queue Build,/yego-lima-growth/assignment-queue/build,buildLimaGrowthAssignmentQueue,Queue,Build button with result,VISIBLE_AND_WORKING
+Queue Export,/yego-lima-growth/assignment-queue/export,N/A (no UI button),Queue (missing),Falta boton Exportar,BACKEND_ONLY
+LoopControl Config,/yego-lima-growth/loopcontrol/config,getLoopControlConfig,Configuracion + Resumen,Status cards,VISIBLE_AND_WORKING
+LoopControl Export Ledger,/yego-lima-growth/loopcontrol/exports,getLoopControlExports,Ejecucion Loop,Table,VISIBLE_AND_WORKING
+Result Sync,/yego-lima-growth/loopcontrol/results/*,N/A (no UI calls),Impacto,EmptyState No certificada,BACKEND_ONLY
+Impact Attribution,N/A (placeholder router),N/A,Impacto,EmptyState No certificada,PLACEHOLDER
+Driver Movement,N/A (placeholder router),N/A,Movimiento,EmptyState No certificada,PLACEHOLDER
+Agent/Campaign Attribution,N/A (placeholder router),N/A,Atribucion,EmptyState No certificada,PLACEHOLDER
+Risk Panel,N/A (placeholder router),N/A,N/A (no tab),N/A,PLACEHOLDER
+Impact Dashboard,N/A (placeholder router),N/A,N/A (no tab),N/A,PLACEHOLDER

@@ -1,0 +1,1 @@
+Ingestion run failed: run=ingest_2*** error=coverage_insufficient: 2500/11085 = 22.6%

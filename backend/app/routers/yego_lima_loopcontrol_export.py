@@ -13,6 +13,7 @@ from app.services.yego_lima_loopcontrol_export_service import (
     validate_loopcontrol_config,
     build_contacts_payload,
     export_campaign_draft,
+    export_from_contacts,
     get_export_history,
     get_export_status,
 )

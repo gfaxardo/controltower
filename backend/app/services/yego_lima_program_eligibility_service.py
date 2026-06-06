@@ -20,6 +20,8 @@ from psycopg2.extras import RealDictCursor
 
 from app.db.connection import get_db
 from app.settings import settings
+from app.services.freshness_service import compute_freshness
+from app.services.lima_growth_explainability_service import explain_kpi
 
 logger = logging.getLogger(__name__)
 
@@ -215,7 +217,109 @@ def get_program_summary(eligibility_date_str: Optional[str] = None) -> Dict[str,
         """, {"d": eligibility_date_str})
         programs = [dict(r) for r in cur.fetchall()]
 
-        return {"eligibility_date": eligibility_date_str, "programs": programs}
+        # Enrich with prioritized + actionable counts
+        cur.execute(
+            "SELECT selected_program_code, COUNT(*) as prioritized, "
+            "SUM(CASE WHEN is_actionable_today THEN 1 ELSE 0 END) as actionable "
+            "FROM growth.yango_lima_prioritized_opportunity_daily "
+            "WHERE opportunity_date = %(d)s GROUP BY selected_program_code",
+            {"d": eligibility_date_str},
+        )
+        prioritized_map = {
+            r["selected_program_code"]: {"prioritized_total": r["prioritized"], "actionable_today": r["actionable"]}
+            for r in cur.fetchall()
+        }
+
+        cur.execute(
+            "SELECT program_code, COUNT(*) as queued "
+            "FROM growth.yego_lima_assignment_queue "
+            "WHERE assignment_date = %(d)s GROUP BY program_code",
+            {"d": eligibility_date_str},
+        )
+        queued_map = {r["program_code"]: r["queued"] for r in cur.fetchall()}
+
+        cur.execute(
+            "SELECT program_code, SUM(contacts_inserted) as exported "
+            "FROM growth.yango_lima_loopcontrol_campaign_export "
+            "WHERE export_status = 'exported' GROUP BY program_code"
+        )
+        exported_map = {r["program_code"] or "": r["exported"] for r in cur.fetchall()}
+
+        freshness = compute_freshness("program_eligibility", eligibility_date_str, "growth.yango_lima_program_eligibility_daily")
+
+        enriched = []
+        for p in programs:
+            code = p["program_code"]
+            prio = prioritized_map.get(code, {})
+            eligible = p["total"]
+            prioritized = prio.get("prioritized_total", 0)
+            actionable = prio.get("actionable_today", 0)
+            queued = queued_map.get(code, 0)
+            exported = exported_map.get(code, 0)
+
+            # Operational status
+            if freshness["status"] == "STALE":
+                op_status = "STALE"
+            elif freshness["status"] == "UNKNOWN":
+                op_status = "UNKNOWN"
+            elif eligible == 0:
+                op_status = "EMPTY"
+            elif actionable > 0:
+                op_status = "READY"
+            elif eligible > 0:
+                op_status = "ACTIVE"
+            else:
+                op_status = "UNKNOWN"
+
+            blockers = []
+            if freshness["status"] == "STALE":
+                blockers.append({"type": "STALE_DATA", "message": f"Data is {freshness.get('age_minutes', '?')}min old"})
+            if freshness["status"] == "UNKNOWN":
+                blockers.append({"type": "UNKNOWN_FRESHNESS", "message": "No timestamp available"})
+            if eligible == 0 and op_status != "STALE":
+                blockers.append({"type": "NO_ELIGIBLE", "message": "No eligible drivers for this program"})
+
+            remediation = []
+            if freshness["status"] in ("STALE", "UNKNOWN"):
+                remediation.append("Refresh program eligibility data")
+            if eligible == 0:
+                remediation.append("Run POST /programs/build-eligibility to generate eligibility")
+
+            program_name_map = {
+                "PROGRAM_HIGH_VALUE_RECOVERY": "High Value Recovery",
+                "PROGRAM_CHURN_PREVENTION": "Churn Prevention",
+                "PROGRAM_14_90": "14/90",
+                "PROGRAM_ACTIVE_GROWTH": "Active Growth",
+            }
+            display_name = program_name_map.get(code, code.replace("PROGRAM_", ""))
+
+            enriched.append({
+                **p,
+                "program_name": display_name,
+                "eligible_total": eligible,
+                "prioritized_total": prioritized,
+                "actionable_today": actionable,
+                "queued_total": queued,
+                "exported_total": exported,
+                "exported_campaigns_count": 1 if exported > 0 else 0,
+                "status": op_status,
+                "last_run_at": eligibility_date_str,
+                "freshness": freshness,
+                "explainability": explain_kpi("eligible_total", eligible, freshness, {"universe_total": 0}),
+                "blockers": blockers,
+                "remediation": remediation,
+                "source": "STATIC_REGISTRY",
+            })
+
+        return {
+            "eligibility_date": eligibility_date_str,
+            "programs": enriched,
+            "source": "STATIC_REGISTRY",
+            "notice": "Programas definidos en registry estatico. Program Builder pendiente P2.",
+            "freshness": {
+                "program_eligibility": freshness,
+            },
+        }
 
 
 def get_program_drivers(

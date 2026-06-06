@@ -13,6 +13,7 @@ from app.repositories.omniview_v2_shadow_repository import (
     get_coverage_by_day,
     get_source_health,
     get_reconciliation_vs_ct,
+    get_driver_profiles_count,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,15 @@ def _build_warnings(
         "severity": "info",
     })
 
+    # Merge CT fallback warnings
+    for ctw in reconciliation.get("warnings", []):
+        if ctw:
+            warnings.append({
+                "code": "CT_FALLBACK",
+                "message": ctw,
+                "severity": "warning",
+            })
+
     return warnings
 
 
@@ -67,6 +77,7 @@ def build_shadow_response(
     coverage_rows = get_coverage_by_day(park_id, date_from, date_to)
     health = get_source_health(park_id)
     reconciliation = get_reconciliation_vs_ct(park_id, date_from, date_to)
+    driver_profiles = get_driver_profiles_count(park_id, date_from, date_to)
     warnings = _build_warnings(health, reconciliation)
 
     total_orders = sum(r.get("orders_completed", 0) or 0 for r in kpi_rows)
@@ -86,7 +97,7 @@ def build_shadow_response(
             "orders": total_orders,
             "revenue_partner_fee": round(total_revenue, 2),
             "revenue_per_order": round(total_revenue / total_orders, 4) if total_orders > 0 else 0,
-            "driver_profiles": health.get("total_days", 0),
+            "driver_profiles": driver_profiles,
             "coverage_pct": health.get("coverage_pct", 0),
         },
         "coverage": {

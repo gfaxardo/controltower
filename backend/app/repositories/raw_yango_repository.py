@@ -788,3 +788,349 @@ def get_raw_coverage_summary(
             }
         finally:
             cur.close()
+
+
+# ---------------------------------------------------------------------------
+# Ingestion Reliability Hardening (OV2-B.6B)
+# ---------------------------------------------------------------------------
+
+
+def update_ingestion_heartbeat(run_id: str, current_page: int = 0,
+                                last_cursor: Optional[str] = None,
+                                next_cursor: Optional[str] = None) -> bool:
+    """Update heartbeat timestamp and page progress."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                UPDATE raw_yango.api_ingestion_run
+                SET heartbeat_at = now(),
+                    current_page = COALESCE(%(current_page)s, current_page),
+                    last_cursor = COALESCE(%(last_cursor)s, last_cursor),
+                    next_cursor = %(next_cursor)s
+                WHERE run_id = %(run_id)s
+                """,
+                {
+                    "run_id": run_id,
+                    "current_page": current_page,
+                    "last_cursor": last_cursor,
+                    "next_cursor": next_cursor,
+                },
+            )
+            return cur.rowcount > 0
+        finally:
+            cur.close()
+
+
+def update_ingestion_counters(run_id: str, fetched: int = 0, inserted: int = 0,
+                               updated: int = 0, skipped: int = 0,
+                               errors: int = 0, pages_completed: int = 0) -> bool:
+    """Increment counters during ingestion."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                UPDATE raw_yango.api_ingestion_run
+                SET records_fetched = COALESCE(records_fetched, 0) + %(fetched)s,
+                    records_inserted = COALESCE(records_inserted, 0) + %(inserted)s,
+                    records_updated = COALESCE(records_updated, 0) + %(updated)s,
+                    record_skips = COALESCE(record_skips, 0) + %(skipped)s,
+                    error_count = COALESCE(error_count, 0) + %(errors)s,
+                    pages_completed = COALESCE(pages_completed, 0) + %(pages_completed)s,
+                    heartbeat_at = now()
+                WHERE run_id = %(run_id)s
+                """,
+                {
+                    "run_id": run_id,
+                    "fetched": fetched,
+                    "inserted": inserted,
+                    "updated": updated,
+                    "skipped": skipped,
+                    "errors": errors,
+                    "pages_completed": pages_completed,
+                },
+            )
+            return cur.rowcount > 0
+        finally:
+            cur.close()
+
+
+def set_ingestion_expected_pages(run_id: str, expected: int) -> bool:
+    """Set expected total pages for coverage tracking."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "UPDATE raw_yango.api_ingestion_run SET expected_pages = %s WHERE run_id = %s",
+                (expected, run_id),
+            )
+            return cur.rowcount > 0
+        finally:
+            cur.close()
+
+
+def set_ingestion_status(run_id: str, status: str) -> bool:
+    """Explicitly set run status. Use for stalled/recovery transitions."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "UPDATE raw_yango.api_ingestion_run SET status = %s, finished_at = CASE WHEN %s IN ('completed','failed','stalled','cancelled') THEN now() ELSE finished_at END WHERE run_id = %s",
+                (status, status, run_id),
+            )
+            return cur.rowcount > 0
+        finally:
+            cur.close()
+
+
+def mark_stalled_runs(park_id: str, stale_minutes: int = 30) -> int:
+    """Mark runs with stale heartbeat as stalled. Returns count affected."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                UPDATE raw_yango.api_ingestion_run
+                SET status = 'stalled',
+                    finished_at = now(),
+                    notes = COALESCE(notes, '') || ' [auto-stalled: no heartbeat for ' || %s || ' min]'
+                WHERE park_id = %s
+                  AND status IN ('started', 'running')
+                  AND (heartbeat_at IS NULL OR heartbeat_at < now() - make_interval(mins := %s))
+                """,
+                (str(stale_minutes), park_id, stale_minutes),
+            )
+            count = cur.rowcount
+            logger.warning(
+                "Marked %s stalled runs for park %s (stale > %s min)",
+                count, _mask_id(park_id), stale_minutes,
+            )
+            return count
+        finally:
+            cur.close()
+
+
+def get_stalled_runs(park_id: str, stale_minutes: int = 30) -> list:
+    """Get list of runs that appear stalled."""
+    with get_db() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute(
+                """
+                SELECT run_id, endpoint_group, status, current_page,
+                       last_cursor, next_cursor, pages_completed, expected_pages,
+                       records_fetched, records_inserted, error_count,
+                       started_at, heartbeat_at,
+                       EXTRACT(EPOCH FROM (now() - COALESCE(heartbeat_at, started_at)))/60 AS stale_min
+                FROM raw_yango.api_ingestion_run
+                WHERE park_id = %s
+                  AND status IN ('started', 'running')
+                  AND (heartbeat_at IS NULL OR heartbeat_at < now() - make_interval(mins := %s))
+                ORDER BY started_at
+                """,
+                (park_id, stale_minutes),
+            )
+            return [dict(r) for r in cur.fetchall()]
+        finally:
+            cur.close()
+
+
+def get_completed_runs(park_id: str, date_from: Optional[str] = None,
+                       date_to: Optional[str] = None) -> list:
+    """Get completed/succeeded runs for a park/date range."""
+    with get_db() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            params = [park_id]
+            extras = ""
+            if date_from:
+                params.append(date_from)
+                extras += " AND date_from = %s"
+            if date_to:
+                params.append(date_to)
+                extras += " AND date_to = %s"
+
+            cur.execute(
+                f"""
+                SELECT run_id, endpoint_group, status,
+                       records_fetched, records_inserted,
+                       pages_completed, expected_pages,
+                       started_at, finished_at
+                FROM raw_yango.api_ingestion_run
+                WHERE park_id = %s AND status = 'completed'{extras}
+                ORDER BY started_at
+                """,
+                tuple(params),
+            )
+            return [dict(r) for r in cur.fetchall()]
+        finally:
+            cur.close()
+
+
+# ── Page Checkpoint ──────────────────────────────────────────
+
+
+def init_page_checkpoints(run_id: str, park_id: str, endpoint_group: str,
+                          target_date: str, total_pages: int,
+                          partition_key: Optional[str] = None) -> int:
+    """Initialize checkpoint rows for all expected pages. Returns count created."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        try:
+            from psycopg2.extras import execute_values
+
+            rows = [
+                (run_id, park_id, endpoint_group, target_date,
+                 partition_key, page_num, None, "pending")
+                for page_num in range(1, total_pages + 1)
+            ]
+            execute_values(
+                cur,
+                """
+                INSERT INTO raw_yango.api_ingestion_page_checkpoint
+                    (run_id, park_id, endpoint_group, target_date,
+                     partition_key, page_number, cursor_value, status)
+                VALUES %s
+                ON CONFLICT (run_id, page_number) DO NOTHING
+                """,
+                rows,
+                page_size=100,
+            )
+            count = cur.rowcount
+            logger.info(
+                "Initialized %s page checkpoints for run %s (%s pages)",
+                count, _mask_id(run_id), total_pages,
+            )
+            return count
+        finally:
+            cur.close()
+
+
+def record_page_completed(run_id: str, page_number: int,
+                          records_count: int = 0,
+                          records_inserted: int = 0,
+                          cursor_value: Optional[str] = None) -> bool:
+    """Mark a page as completed in the checkpoint registry."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                INSERT INTO raw_yango.api_ingestion_page_checkpoint
+                    (run_id, park_id, endpoint_group, target_date,
+                     partition_key, page_number, cursor_value, status,
+                     records_count, records_inserted, started_at, finished_at)
+                VALUES (%(run_id)s, '', '', '1970-01-01',
+                        '', %(page_number)s, %(cursor_value)s, 'inserted',
+                        %(records_count)s, %(records_inserted)s, now(), now())
+                ON CONFLICT (run_id, page_number)
+                DO UPDATE SET
+                    status = 'inserted',
+                    records_count = EXCLUDED.records_count,
+                    records_inserted = EXCLUDED.records_inserted,
+                    cursor_value = COALESCE(EXCLUDED.cursor_value,
+                                            api_ingestion_page_checkpoint.cursor_value),
+                    finished_at = now(),
+                    updated_at = now()
+                """,
+                {
+                    "run_id": run_id,
+                    "page_number": page_number,
+                    "cursor_value": cursor_value,
+                    "records_count": records_count,
+                    "records_inserted": records_inserted,
+                },
+            )
+            return cur.rowcount > 0
+        finally:
+            cur.close()
+
+
+def record_page_failed(run_id: str, page_number: int,
+                       error_message: Optional[str] = None) -> bool:
+    """Mark a page as failed."""
+    with get_db() as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                INSERT INTO raw_yango.api_ingestion_page_checkpoint
+                    (run_id, park_id, endpoint_group, target_date,
+                     partition_key, page_number, status, error_message_sanitized,
+                     started_at, finished_at)
+                VALUES (%(run_id)s, '', '', '1970-01-01',
+                        '', %(page_number)s, 'failed', %(error)s, now(), now())
+                ON CONFLICT (run_id, page_number)
+                DO UPDATE SET
+                    status = 'failed',
+                    error_message_sanitized = %(error)s,
+                    finished_at = now(),
+                    updated_at = now()
+                """,
+                {
+                    "run_id": run_id,
+                    "page_number": page_number,
+                    "error": _sanitize_message(error_message)[:500] if error_message else None,
+                },
+            )
+            return cur.rowcount > 0
+        finally:
+            cur.close()
+
+
+def get_missing_pages(run_id: str) -> list:
+    """Get pages not yet inserted for a run."""
+    with get_db() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute(
+                """
+                SELECT page_number, status, cursor_value, records_count,
+                       error_message_sanitized
+                FROM raw_yango.api_ingestion_page_checkpoint
+                WHERE run_id = %s AND status != 'inserted'
+                ORDER BY page_number
+                """,
+                (run_id,),
+            )
+            return [dict(r) for r in cur.fetchall()]
+        finally:
+            cur.close()
+
+
+def get_page_checkpoint_summary(run_id: str) -> Dict[str, Any]:
+    """Get summary of page checkpoint progress."""
+    with get_db() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute(
+                """
+                SELECT
+                    COUNT(*) AS total_pages,
+                    COUNT(*) FILTER (WHERE status = 'pending') AS pending_pages,
+                    COUNT(*) FILTER (WHERE status = 'inserted') AS completed_pages,
+                    COUNT(*) FILTER (WHERE status = 'failed') AS failed_pages,
+                    COUNT(*) FILTER (WHERE status = 'fetched') AS fetched_pages,
+                    SUM(records_count) AS total_records,
+                    SUM(records_inserted) AS total_inserted
+                FROM raw_yango.api_ingestion_page_checkpoint
+                WHERE run_id = %s
+                """,
+                (run_id,),
+            )
+            r = cur.fetchone()
+            if not r:
+                return {}
+            return {
+                "total_pages": int(r["total_pages"] or 0),
+                "pending": int(r["pending_pages"] or 0),
+                "completed": int(r["completed_pages"] or 0),
+                "failed": int(r["failed_pages"] or 0),
+                "fetched": int(r["fetched_pages"] or 0),
+                "total_records": int(r["total_records"] or 0),
+                "total_inserted": int(r["total_inserted"] or 0),
+            }
+        finally:
+            cur.close()

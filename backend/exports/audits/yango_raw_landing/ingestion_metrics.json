@@ -1,26 +1,26 @@
 {
-  "run_id": "ingest_20260605_064507",
-  "generated_at": "2026-06-05T06:46:14.616150-05:00",
+  "run_id": "ingest_20260605_194543",
+  "generated_at": "2026-06-05T19:45:46.498017-05:00",
   "config": {
-    "run_id": "ingest_20260605_064507",
+    "run_id": "ingest_20260605_194543",
     "park_id_masked": "08e20910***",
     "date_from": "2026-06-04",
     "date_to": "2026-06-04",
     "days_count": 1,
     "endpoint_group": [
-      "driver_profiles"
+      "orders"
     ],
     "dry_run": false,
-    "max_pages": 3,
-    "max_concurrency": 2
+    "max_pages": 15,
+    "max_concurrency": 5
   },
   "counts": {
-    "requests": 3,
-    "success": 3,
+    "requests": 0,
+    "success": 0,
     "errors": 0,
     "rate_limits_429": 0,
-    "total_pages": 3,
-    "total_records": 300
+    "total_pages": 0,
+    "total_records": 0
   },
-  "elapsed_total_seconds": 65.2
+  "elapsed_total_seconds": 0.9
 }

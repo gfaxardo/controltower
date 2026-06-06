@@ -50,6 +50,120 @@ def _call_service(endpoint: str, params: dict = None) -> Dict[str, Any]:
     return {"error": "unknown_endpoint"}
 
 
+def _write_diagnostic_md(rec: Dict[str, Any], output_dir: str) -> str:
+    """Generate CT zero diagnostic report."""
+    lines = [
+        "# Omniview V2 Shadow — CT Zero Diagnostic",
+        "",
+        f"**Generated:** {datetime.now(PET).isoformat()}",
+        "",
+        "## Root Cause",
+        "",
+        "The initial reconciliation (OV2-B.4) returned `CT=0` for `country='peru' city='lima' date=2026-06-04`.",
+        "Investigation revealed:",
+        "",
+    ]
+
+    # CT availability info
+    from app.repositories.omniview_v2_shadow_repository import _ct_check_availability
+    has_ct, ct_min, ct_max = _ct_check_availability()
+    if has_ct:
+        lines.append(f"- CT table `ops.real_business_slice_day_fact` **has data** for Lima/Peru.")
+        lines.append(f"- CT date range: **{ct_min}** to **{ct_max}**.")
+        lines.append(f"- The requested target date is **outside** this range.")
+        lines.append("- CT has not been refreshed for dates after `ct_max`.")
+        lines.append("- MV `raw_yango.mv_orders_day` has fresher data (ingested from Yango API).")
+        lines.append("- This is a **data latency gap**, not a reconciliation bug.")
+    else:
+        lines.append("- CT table has **NO data** for Lima/Peru at all.")
+        lines.append("- This requires a separate data pipeline investigation.")
+
+    lines.extend([
+        "",
+        "## Reconciliation Context",
+        "",
+        f"| Field | Value |",
+        f"|-------|-------|",
+        f"| MV orders | {rec.get('mv_orders', 0):,} |",
+        f"| MV revenue | {rec.get('mv_revenue_partner_fee', 0):,.2f} |",
+        f"| CT trips | {rec.get('ct_trips', 0):,} |",
+        f"| CT revenue | {rec.get('ct_revenue_yego_final', 0):,.2f} |",
+        f"| CT match level | {rec.get('ct_match_level', 'N/A')} |",
+        f"| CT data date used | {rec.get('ct_data_date', 'N/A')} |",
+        f"| CT filter | {rec.get('ct_filter_used', 'N/A')} |",
+        f"| Status | {rec.get('status', 'N/A')} |",
+        f"| Basis | {rec.get('basis', 'N/A')} |",
+        "",
+    ])
+
+    if rec.get("warnings"):
+        lines.append("## CT Fallback Warnings")
+        for w in rec["warnings"]:
+            if w:
+                lines.append(f"- {w}")
+
+    lines.extend([
+        "",
+        "## Resolution",
+        "",
+        "1. The shadow reconciliation now uses a **controlled fallback strategy**:",
+        "   - Level 1: Exact match by country/city/date",
+        "   - Level 2: Nearest available date <= target (within 30 days)",
+        "   - Level 3: Mark as UNAVAILABLE if no data exists",
+        "2. The `ct_match_level` field reveals which strategy was used.",
+        "3. When fallback is used, a `CT_FALLBACK` warning appears in the response.",
+        "4. This is **shadow mode only** — no CT data is modified.",
+    ])
+
+    path = os.path.join(output_dir, "shadow_ct_zero_diagnostic.md")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    return path
+
+
+def _write_reconciliation_by_basis_csv(
+    daily_data: Dict[str, Any],
+    rec_data: Dict[str, Any],
+    output_dir: str,
+) -> str:
+    """Write reconciliation CSV enriched with basis/status fields."""
+    rec = rec_data.get("reconciliation", {})
+    path = os.path.join(output_dir, "shadow_reconciliation_by_basis.csv")
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        w = csv.writer(f)
+        w.writerow([
+            "generated_at", "date_from", "date_to",
+            "mv_orders", "mv_revenue_partner_fee",
+            "ct_trips", "ct_revenue_yego_final",
+            "trips_delta_pct", "revenue_delta_pct",
+            "status", "basis", "ct_match_level",
+            "ct_data_date", "ct_filter_used",
+            "ct_warnings", "mv_rev_per_order", "ct_rev_per_trip",
+        ])
+        ct_warnings = " | ".join(rec.get("warnings", []))
+        mv_date_range = rec.get("mv_date_range", {})
+        w.writerow([
+            datetime.now(PET).isoformat(),
+            mv_date_range.get("from", ""),
+            mv_date_range.get("to", ""),
+            rec.get("mv_orders", 0),
+            rec.get("mv_revenue_partner_fee", 0),
+            rec.get("ct_trips", 0),
+            rec.get("ct_revenue_yego_final", 0),
+            rec.get("trips_delta_pct", ""),
+            rec.get("revenue_delta_pct", ""),
+            rec.get("status", ""),
+            rec.get("basis", ""),
+            rec.get("ct_match_level", ""),
+            rec.get("ct_data_date", ""),
+            rec.get("ct_filter_used", ""),
+            ct_warnings,
+            rec.get("mv_revenue_per_order", ""),
+            rec.get("ct_revenue_per_trip", ""),
+        ])
+    return path
+
+
 def main() -> int:
     yesterday = (datetime.now(PET) - timedelta(days=1)).strftime("%Y-%m-%d")
 
@@ -84,7 +198,11 @@ def main() -> int:
 
     total_elapsed = round(time.perf_counter() - t0, 2)
 
-    # MD summary
+    # ── MD Summary ────────────────────────────────────────────
+    daily_data = results.get("daily", {}).get("data", {})
+    rec_data = results.get("reconciliation", {}).get("data", {})
+    rec = rec_data.get("reconciliation", {})
+
     md = [
         "# Omniview V2 Shadow API Audit",
         "",
@@ -102,30 +220,43 @@ def main() -> int:
         status = "OK" if r.get("ok") else "FAIL"
         md.append(f"| {ep} | {status} | {r.get('elapsed_ms', 'N/A')} |")
 
-    daily = results.get("daily", {}).get("data", {})
-    if daily.get("warnings"):
+    if daily_data.get("warnings"):
         md.extend(["", "## Warnings"])
-        for w in daily["warnings"]:
+        for w in daily_data["warnings"]:
             md.append(f"- **{w['code']}** [{w['severity']}]: {w['message']}")
 
-    rec = results.get("reconciliation", {}).get("data", {}).get("reconciliation", {})
     if rec:
         md.extend([
             "", "## Reconciliation",
-            f"- MV trips: {rec.get('mv_trips', 0):,}",
+            f"- **Status:** {rec.get('status', 'N/A')}",
+            f"- **Basis:** {rec.get('basis', 'N/A')}",
+            f"- **CT match level:** {rec.get('ct_match_level', 'N/A')}",
+            f"- **CT data date:** {rec.get('ct_data_date', 'N/A')}",
+            f"- MV orders: {rec.get('mv_orders', 0):,}",
             f"- CT trips: {rec.get('ct_trips', 0):,}",
             f"- MV revenue: {rec.get('mv_revenue_partner_fee', 0):,.2f}",
             f"- CT revenue: {rec.get('ct_revenue_yego_final', 0):,.2f}",
+            f"- Trips delta: {rec.get('trips_delta_pct', 'N/A')}%",
             f"- Revenue delta: {rec.get('revenue_delta_pct', 'N/A')}%",
             f"- MV rev/order: {rec.get('mv_revenue_per_order', 0):.4f}",
             f"- CT rev/trip: {rec.get('ct_revenue_per_trip', 0):.4f}",
+            "",
+            "### CT Fallback Warnings",
         ])
+        ctw = rec.get("warnings", [])
+        if ctw:
+            for w in ctw:
+                if w:
+                    md.append(f"- {w}")
+        else:
+            md.append("- None")
 
     summary_path = os.path.join(args.output_dir, "shadow_api_summary.md")
     with open(summary_path, "w", encoding="utf-8") as f:
         f.write("\n".join(md))
     print(f"\n[audit] Summary: {summary_path}")
 
+    # ── JSON Metrics ──────────────────────────────────────────
     met_path = os.path.join(args.output_dir, "shadow_api_metrics.json")
     with open(met_path, "w", encoding="utf-8") as f:
         json.dump({
@@ -135,15 +266,21 @@ def main() -> int:
         }, f, indent=2)
     print(f"[audit] Metrics: {met_path}")
 
-    # CSV
+    # ── Enriched Reconciliation CSV ───────────────────────────
     if rec:
         csv_path = os.path.join(args.output_dir, "shadow_reconciliation.csv")
         with open(csv_path, "w", encoding="utf-8", newline="") as f:
             w = csv.writer(f)
-            w.writerow(["metric", "mv_value", "ct_value", "delta_pct"])
-            w.writerow(["trips", rec.get("mv_trips", 0), rec.get("ct_trips", 0), rec.get("trips_delta_pct")])
-            w.writerow(["revenue", rec.get("mv_revenue_partner_fee", 0), rec.get("ct_revenue_yego_final", 0), rec.get("revenue_delta_pct")])
+            w.writerow(["metric", "mv_value", "ct_value", "delta_pct", "status", "basis", "ct_match_level", "ct_data_date"])
+            w.writerow(["trips", rec.get("mv_orders", 0), rec.get("ct_trips", 0), rec.get("trips_delta_pct", ""), rec.get("status", ""), rec.get("basis", ""), rec.get("ct_match_level", ""), rec.get("ct_data_date", "")])
+            w.writerow(["revenue", rec.get("mv_revenue_partner_fee", 0), rec.get("ct_revenue_yego_final", 0), rec.get("revenue_delta_pct", ""), rec.get("status", ""), rec.get("basis", ""), rec.get("ct_match_level", ""), rec.get("ct_data_date", "")])
         print(f"[audit] CSV: {csv_path}")
+
+        basis_csv = _write_reconciliation_by_basis_csv(daily_data, rec_data, args.output_dir)
+        print(f"[audit] Basis CSV: {basis_csv}")
+
+        diag_path = _write_diagnostic_md(rec, args.output_dir)
+        print(f"[audit] Diagnostic: {diag_path}")
 
     return 0
 

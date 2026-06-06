@@ -29,6 +29,14 @@ from app.repositories.raw_yango_repository import (
     create_ingestion_run,
     finish_ingestion_run,
     fail_ingestion_run,
+    update_ingestion_heartbeat,
+    update_ingestion_counters,
+    set_ingestion_expected_pages,
+    set_ingestion_status,
+    init_page_checkpoints,
+    record_page_completed,
+    record_page_failed,
+    get_missing_pages,
 )
 import httpx
 
@@ -606,6 +614,24 @@ async def _ingest_endpoint(
                 inserted = insert_fn(items, park_id, run_id)
                 total_records += inserted
 
+                # ── Heartbeat + counters (OV2-B.6B) ──────────────────
+                try:
+                    update_ingestion_counters(
+                        run_id,
+                        fetched=len(items),
+                        inserted=inserted,
+                        pages_completed=1,
+                    )
+                    update_ingestion_heartbeat(
+                        run_id, current_page=pages_fetched + 1, next_cursor=next_cursor
+                    )
+                    try:
+                        record_page_completed(run_id, pages_fetched + 1, len(items), inserted, next_cursor)
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+
             next_cursor = data.get("cursor") or data.get("next_cursor") if data and isinstance(data, dict) else None
             cursor = next_cursor if (next_cursor and items) else None
             pages_fetched += 1
@@ -744,6 +770,10 @@ async def run_ingestion(
     hour_window_size: int = 2,
     max_partitions_parallel: int = 2,
     max_pages_per_partition: int = 50,
+    resume_run_id: Optional[str] = None,
+    expected_total: Optional[int] = None,
+    fail_on_coverage_below: Optional[float] = None,
+    mark_stalled_after_minutes: int = 30,
 ) -> int:
     base_url = (settings.YANGO_API_BASE_URL or "").strip()
     client_id = (settings.YANGO_CLIENT_ID or "").strip()
@@ -904,14 +934,14 @@ async def run_ingestion(
                         output_dir=output_dir,
                         dry_run=False,
                         name=f"{ep}_{part_key}",
-                        run_id=run_id,
-                        insert_fn=insert_map[ep],
-                    )
-                    total = r.get("total_records", 0)
-                    pages = r.get("pages_fetched", 0)
-                    part_checkpoint[part_key] = "done" if total == 0 else f"done:{total}"
-                    _save_partitioned_checkpoint(output_dir, part_checkpoint)
-                    return {"partition": part_key, "records": total, "pages": pages, "status": "ok"}
+                    run_id=f"{run_id}_{ep}",
+                    insert_fn=insert_map[ep],
+                )
+                total = r.get("total_records", 0)
+                pages = r.get("pages_fetched", 0)
+                part_checkpoint[part_key] = "done" if total == 0 else f"done:{total}"
+                _save_partitioned_checkpoint(output_dir, part_checkpoint)
+                return {"partition": part_key, "records": total, "pages": pages, "status": "ok"}
 
             tasks = [_run_partition(d, hf, ht) for d, hf, ht in partitions]
             part_results = await asyncio.gather(*tasks)
@@ -944,34 +974,58 @@ async def run_ingestion(
                 output_dir=output_dir,
                 dry_run=False,
                 name=ep,
-                run_id=run_id,
+                run_id=f"{run_id}_{ep}",
                 insert_fn=insert_map[ep],
             )
 
     # ── Finalize ingestion run tracking ─────────────────────────
     has_errors = len(errors) > 0
     total_recs = sum(r.get("total_records", 0) for r in results.values())
+    total_pages = sum(r.get("pages_fetched", 0) for r in results.values())
+
     for ep in endpoint_groups:
         ep_run_id = f"{run_id}_{ep}"
         ep_res = results.get(ep, {})
         ep_recs = ep_res.get("total_records", 0)
         ep_pages = ep_res.get("pages_fetched", 0)
+
+        # ── Completion guard (OV2-B.6B) ─────────────────────────
+        coverage_ok = True
+        if expected_total and expected_total > 0:
+            coverage = ep_recs / expected_total
+            if coverage < (fail_on_coverage_below or 0.95):
+                print(
+                    f"\n[ingest] COVERAGE FAIL: {ep} ingested {ep_recs} / {expected_total} "
+                    f"= {coverage*100:.1f}% < {fail_on_coverage_below*100:.0f}% threshold"
+                )
+                coverage_ok = False
+            else:
+                print(f"\n[ingest] COVERAGE OK: {ep} = {coverage*100:.1f}%")
+
         try:
             if ep_recs == 0 and not ep_res.get("dry_run", False):
-                fail_ingestion_run(
-                    ep_run_id,
-                    "no_records" if not has_errors else "partial_or_no_records",
-                    ep_recs, ep_recs, 0,
-                )
+                fail_ingestion_run(ep_run_id, "no_records" if not has_errors else "partial_or_no_records",
+                                   ep_recs, ep_recs, 0)
+            elif not coverage_ok:
+                set_ingestion_status(ep_run_id, "failed")
+                ep_run_id_fail = ep_run_id
+                try:
+                    fail_ingestion_run(
+                        ep_run_id,
+                        f"coverage_insufficient: {ep_recs}/{expected_total} = {ep_recs/expected_total*100:.1f}%",
+                        ep_recs, ep_recs, len([e for e in errors if e.get("endpoint") == ep]),
+                    )
+                except Exception:
+                    pass
             else:
                 finish_ingestion_run(
-                    ep_run_id,
-                    ep_recs,
-                    ep_recs,
-                    0,
-                    0,
+                    ep_run_id, ep_recs, ep_recs, 0, 0,
                     error_count=len([e for e in errors if e.get("endpoint") == ep]),
                 )
+                try:
+                    set_ingestion_expected_pages(ep_run_id, total_pages)
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -1060,6 +1114,29 @@ def main() -> int:
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--env-var-name", default=None)
     ap.add_argument(
+        "--resume-run-id",
+        default=None,
+        help="Resume a specific run ID instead of creating a new one",
+    )
+    ap.add_argument(
+        "--expected-total",
+        type=int,
+        default=None,
+        help="Expected total records (for coverage validation)",
+    )
+    ap.add_argument(
+        "--fail-on-coverage-below",
+        type=float,
+        default=None,
+        help="Fail if coverage below this fraction (e.g. 0.99 for 99%%)",
+    )
+    ap.add_argument(
+        "--mark-stalled-after-minutes",
+        type=int,
+        default=30,
+        help="Mark old runs as stalled after N minutes (default: 30)",
+    )
+    ap.add_argument(
         "--output-audit-dir",
         default=os.path.join(
             _project_root(), "exports", "audits", "yango_raw_landing"
@@ -1147,6 +1224,10 @@ def main() -> int:
             hour_window_size=args.hour_window_size,
             max_partitions_parallel=args.max_partitions_parallel,
             max_pages_per_partition=args.max_pages_per_partition,
+            resume_run_id=args.resume_run_id,
+            expected_total=args.expected_total,
+            fail_on_coverage_below=args.fail_on_coverage_below,
+            mark_stalled_after_minutes=args.mark_stalled_after_minutes,
         )
     )
 

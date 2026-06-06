@@ -1,0 +1,2 @@
+generated_at,park_id,park_name,start_dt,end_dt,timezone,external_trips,external_provided,ov2_raw_total,ov2_raw_completed,ov2_raw_cancelled,ov2_mv_completed,v1_raw_total,v1_raw_completed,v1_raw_available,v1_ct_trips,v1_ct_available,ov2_vs_external_delta_pct,v1_vs_external_delta_pct,verdict
+2026-06-05T16:41:09.462253-05:00,08e20910d81d42658d4334d3f6d10ac0,Yego (Lima),2026-06-04 00:00:00-05,2026-06-05 00:00:00-05,America/Lima,,no,4500,4500,0,2977,0,0,no,14213,yes,,,EXTERNAL_NOT_PROVIDED

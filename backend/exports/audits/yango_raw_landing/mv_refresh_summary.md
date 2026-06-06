@@ -1,6 +1,6 @@
 # raw_yango MV Refresh Report
 
-**Generated:** 2026-06-05T09:34:10.864553-05:00
+**Generated:** 2026-06-05T19:48:44.734267-05:00
 **Concurrently:** False
 
 | MV | Status | Rows | Elapsed (s) |

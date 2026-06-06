@@ -1,0 +1,6 @@
+row,driver_id,driver_name,phone,program_code,assigned_channel,campaign_id_external,export_batch_id,ledger_found,ct_mirror_found
+1,6a49ba1806f848d7bd8c40d2f7e39ea1,Franco Ismael,+51918949113,PROGRAM_CHURN_PREVENTION,BOT,120,7e7df6c4-ee1a-40b6-ab99-570ae015b79d,YES,YES
+2,2b13da5c4c1a46d391d7155212ea0285,Gonzalo Eduardo Cahuana,+51975603876,PROGRAM_CHURN_PREVENTION,BOT,120,7e7df6c4-ee1a-40b6-ab99-570ae015b79d,YES,YES
+3,8d07c3b020574995b887a09abdc3add8,Guimarey Fernandez Carlos,+51958541255,PROGRAM_CHURN_PREVENTION,BOT,120,7e7df6c4-ee1a-40b6-ab99-570ae015b79d,YES,YES
+4,4e569aec6f4749b7bb10f357992ae823,Medina Pimentel Darwin Josué,+51968682389,PROGRAM_CHURN_PREVENTION,BOT,120,7e7df6c4-ee1a-40b6-ab99-570ae015b79d,YES,YES
+5,77076813bb39478d8bb494468f6c956e,Paredes Zambrano,+51978408206,PROGRAM_CHURN_PREVENTION,BOT,120,7e7df6c4-ee1a-40b6-ab99-570ae015b79d,YES,YES

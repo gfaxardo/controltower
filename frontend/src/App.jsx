@@ -64,7 +64,7 @@ const DriverOperatorView = lazy(() => import('./components/driver/DriverOperator
 const DriverSupervisorView = lazy(() => import('./components/driver/DriverSupervisorView.jsx'))
 const DriverStrategyView = lazy(() => import('./components/driver/DriverStrategyView.jsx'))
 const DriverAdminDataView = lazy(() => import('./components/driver/DriverAdminDataView.jsx'))
-const LimaGrowthDashboard = lazy(() => import('./pages/LimaGrowthDashboard.jsx'))
+const LimaGrowthDashboard = lazy(() => import('./pages/LimaGrowthDashboardV2.jsx'))
 
 const DRIVER_CAPABILITY_GROUPS = [
   {

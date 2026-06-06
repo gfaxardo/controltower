@@ -1,0 +1,47 @@
+{
+  "generated_at": "2026-06-05T16:41:09.463258-05:00",
+  "park": {
+    "id": "08e20910d81d42658d4334d3f6d10ac0",
+    "name": "Yego (Lima)"
+  },
+  "range": {
+    "start": "2026-06-04 00:00:00-05",
+    "end": "2026-06-05 00:00:00-05",
+    "timezone": "America/Lima"
+  },
+  "external": {
+    "trips": null,
+    "provided": false
+  },
+  "ov2_raw": {
+    "total": 4500,
+    "completed": 4500,
+    "cancelled": 0,
+    "other": 0,
+    "time_col_used": "order_created_at",
+    "first_trip": "2026-06-04 13:39:17.093000-05:00",
+    "last_trip": "2026-06-04 23:52:45.800000-05:00"
+  },
+  "ov2_mv": {
+    "completed": 2977
+  },
+  "v1_raw": {
+    "total": 0,
+    "completed": 0,
+    "cancelled": 0,
+    "other": 0,
+    "available": false,
+    "note": "V1 trips_all has NO data after 2026-01-25. Range: 2025-02-28 -> 2026-01-25"
+  },
+  "v1_ct": {
+    "trips": 14213,
+    "revenue": 5832.272,
+    "slices": 6,
+    "available": true
+  },
+  "deltas": {
+    "ov2_vs_external_pct": null,
+    "v1_vs_external_pct": null
+  },
+  "verdict": "EXTERNAL_NOT_PROVIDED"
+}

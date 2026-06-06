@@ -1,0 +1,365 @@
+{
+  "audit_date": "2026-06-05T19:48:10.131312-05:00",
+  "park": {
+    "id": "08e20910d81d42658d4334d3f6d10ac0",
+    "name": "Yego (Lima)"
+  },
+  "target_date": "2026-06-04",
+  "fleet_room": {
+    "trips": 11085,
+    "provided": true
+  },
+  "api_raw": {
+    "total_rows": 7002,
+    "unique_orders": 7000,
+    "duplicate_rows": 2,
+    "unique_drivers": 1202,
+    "unique_cars": 1204,
+    "first_order": "2026-06-04T11:05:46",
+    "last_order": "2026-06-04T23:52:45"
+  },
+  "mv": {
+    "orders_completed": 2977,
+    "source": "raw_yango.mv_orders_day"
+  },
+  "ingestion": {
+    "total_runs": 20,
+    "completed_runs": 1,
+    "stalled_runs": 2,
+    "failed_runs": 3,
+    "total_fetched_reported": 300,
+    "total_inserted_reported": 300,
+    "counter_note": "Counters may show 0 even when data was ingested (known bug)."
+  },
+  "errors": {
+    "total_error_types": 0,
+    "details": []
+  },
+  "pagination": {
+    "batches": 6,
+    "expected_pages": 23,
+    "actual_pages_ingested": 6,
+    "page_size_default": 500,
+    "gaps": [
+      {
+        "from_row": 501,
+        "to_row": 1108,
+        "missing": 608,
+        "between_batches": true
+      },
+      {
+        "from_row": 2109,
+        "to_row": 4237,
+        "missing": 2129,
+        "between_batches": true
+      },
+      {
+        "from_row": 7238,
+        "to_row": 16532,
+        "missing": 9295,
+        "between_batches": true
+      },
+      {
+        "from_row": 16534,
+        "to_row": 29532,
+        "missing": 12999,
+        "between_batches": true
+      },
+      {
+        "from_row": 32033,
+        "to_row": 34843,
+        "missing": 2811,
+        "between_batches": true
+      }
+    ],
+    "total_missing_between_gaps": 27842,
+    "batch_details": [
+      {
+        "run_id": "ingest_20260605_062404",
+        "count": 500,
+        "row_range": "1-500",
+        "time_range": "2026-06-04T21:06:44..2026-06-04T23:52:45"
+      },
+      {
+        "run_id": "ingest_20260605_062612",
+        "count": 1000,
+        "row_range": "1109-2108",
+        "time_range": "2026-06-04T19:27:22..2026-06-04T22:45:20"
+      },
+      {
+        "run_id": "ingest_20260605_071327",
+        "count": 3000,
+        "row_range": "4238-7237",
+        "time_range": "2026-06-04T13:39:17..2026-06-04T21:05:50"
+      },
+      {
+        "run_id": "ingest_20260605_182906",
+        "count": 1,
+        "row_range": "16533-16533",
+        "time_range": "2026-06-04T21:15:20..2026-06-04T21:15:20"
+      },
+      {
+        "run_id": "ingest_20260605_190803_orders",
+        "count": 2500,
+        "row_range": "29533-32032",
+        "time_range": "2026-06-04T11:05:46..2026-06-04T16:22:37"
+      },
+      {
+        "run_id": "ingest_20260605_193352_orders",
+        "count": 1,
+        "row_range": "34844-34844",
+        "time_range": "2026-06-04T18:23:17..2026-06-04T18:23:17"
+      }
+    ]
+  },
+  "runs_detail": [
+    {
+      "run_id": "ingest_20260605_064507_driver_profiles",
+      "endpoint": "driver_profiles",
+      "status": "completed",
+      "fetched": 300,
+      "inserted": 300,
+      "skipped": 0,
+      "errors": 0,
+      "concurrency": 2,
+      "started": "2026-06-05T06:45:08",
+      "finished": "2026-06-05T06:46:13"
+    },
+    {
+      "run_id": "ingest_20260605_071048_orders",
+      "endpoint": "orders",
+      "status": "stalled",
+      "fetched": 0,
+      "inserted": 0,
+      "skipped": 0,
+      "errors": 0,
+      "concurrency": 3,
+      "started": "2026-06-05T07:10:49",
+      "finished": "2026-06-05T18:22:58"
+    },
+    {
+      "run_id": "ingest_20260605_071327_orders",
+      "endpoint": "orders",
+      "status": "stalled",
+      "fetched": 0,
+      "inserted": 0,
+      "skipped": 0,
+      "errors": 0,
+      "concurrency": 3,
+      "started": "2026-06-05T07:13:28",
+      "finished": "2026-06-05T18:22:58"
+    },
+    {
+      "run_id": "ingest_20260605_072852_orders",
+      "endpoint": "orders",
+      "status": "stalled",
+      "fetched": 0,
+      "inserted": 0,
+      "skipped": 0,
+      "errors": 0,
+      "concurrency": 3,
+      "started": "2026-06-05T07:28:53",
+      "finished": "2026-06-05T18:22:58"
+    },
+    {
+      "run_id": "ingest_20260605_074420_orders",
+      "endpoint": "orders",
+      "status": "stalled",
+      "fetched": 0,
+      "inserted": 0,
+      "skipped": 0,
+      "errors": 0,
+      "concurrency": 3,
+      "started": "2026-06-05T07:44:21",
+      "finished": "2026-06-05T18:22:58"
+    },
+    {
+      "run_id": "ingest_20260605_075501_transactions",
+      "endpoint": "transactions",
+      "status": "stalled",
+      "fetched": 0,
+      "inserted": 0,
+      "skipped": 0,
+      "errors": 0,
+      "concurrency": 3,
+      "started": "2026-06-05T07:55:02",
+      "finished": "2026-06-05T18:22:58"
+    },
+    {
+      "run_id": "ingest_20260605_081013_transactions",
+      "endpoint": "transactions",
+      "status": "stalled",
+      "fetched": 0,
+      "inserted": 0,
+      "skipped": 0,
+      "errors": 0,
+      "concurrency": 3,
+      "started": "2026-06-05T08:10:14",
+      "finished": "2026-06-05T18:22:58"
+    },
+    {
+      "run_id": "ingest_20260605_082035_driver_profiles",
+      "endpoint": "driver_profiles",
+      "status": "stalled",
+      "fetched": 0,
+      "inserted": 0,
+      "skipped": 0,
+      "errors": 0,
+      "concurrency": 2,
+      "started": "2026-06-05T08:20:36",
+      "finished": "2026-06-05T18:22:58"
+    },
+    {
+      "run_id": "ingest_20260605_083230_transactions",
+      "endpoint": "transactions",
+      "status": "stalled",
+      "fetched": 0,
+      "inserted": 0,
+      "skipped": 0,
+      "errors": 0,
+      "concurrency": 3,
+      "started": "2026-06-05T08:32:31",
+      "finished": "2026-06-05T18:22:58"
+    },
+    {
+      "run_id": "ingest_20260605_083257_transactions",
+      "endpoint": "transactions",
+      "status": "stalled",
+      "fetched": 0,
+      "inserted": 0,
+      "skipped": 0,
+      "errors": 0,
+      "concurrency": 3,
+      "started": "2026-06-05T08:32:58",
+      "finished": "2026-06-05T18:22:58"
+    },
+    {
+      "run_id": "ingest_20260605_083325_transactions",
+      "endpoint": "transactions",
+      "status": "stalled",
+      "fetched": 0,
+      "inserted": 0,
+      "skipped": 0,
+      "errors": 0,
+      "concurrency": 3,
+      "started": "2026-06-05T08:33:26",
+      "finished": "2026-06-05T18:22:58"
+    },
+    {
+      "run_id": "ingest_20260605_084844_transactions",
+      "endpoint": "transactions",
+      "status": "stalled",
+      "fetched": 0,
+      "inserted": 0,
+      "skipped": 0,
+      "errors": 0,
+      "concurrency": 3,
+      "started": "2026-06-05T08:48:45",
+      "finished": "2026-06-05T18:22:58"
+    },
+    {
+      "run_id": "ingest_20260605_090446_transactions",
+      "endpoint": "transactions",
+      "status": "stalled",
+      "fetched": 0,
+      "inserted": 0,
+      "skipped": 0,
+      "errors": 0,
+      "concurrency": 3,
+      "started": "2026-06-05T09:04:47",
+      "finished": "2026-06-05T18:22:58"
+    },
+    {
+      "run_id": "ingest_20260605_182906_orders",
+      "endpoint": "orders",
+      "status": "stalled",
+      "fetched": 0,
+      "inserted": 0,
+      "skipped": 0,
+      "errors": 0,
+      "concurrency": 3,
+      "started": "2026-06-05T18:29:08",
+      "finished": "2026-06-05T18:35:11"
+    },
+    {
+      "run_id": "ingest_20260605_183512_orders",
+      "endpoint": "orders",
+      "status": "stalled",
+      "fetched": 0,
+      "inserted": 0,
+      "skipped": 0,
+      "errors": 0,
+      "concurrency": 3,
+      "started": "2026-06-05T18:35:14",
+      "finished": "2026-06-05T18:48:11"
+    },
+    {
+      "run_id": "ingest_20260605_184811_orders",
+      "endpoint": "orders",
+      "status": "started",
+      "fetched": 0,
+      "inserted": 0,
+      "skipped": 0,
+      "errors": 0,
+      "concurrency": 3,
+      "started": "2026-06-05T18:48:13",
+      "finished": "N/A"
+    },
+    {
+      "run_id": "ingest_20260605_185508_orders",
+      "endpoint": "orders",
+      "status": "started",
+      "fetched": 3500,
+      "inserted": 0,
+      "skipped": 0,
+      "errors": 0,
+      "concurrency": 5,
+      "started": "2026-06-05T18:55:10",
+      "finished": "N/A"
+    },
+    {
+      "run_id": "ingest_20260605_190803_orders",
+      "endpoint": "orders",
+      "status": "failed",
+      "fetched": 2500,
+      "inserted": 2500,
+      "skipped": 0,
+      "errors": 2,
+      "concurrency": 5,
+      "started": "2026-06-05T19:08:05",
+      "finished": "2026-06-05T19:32:00"
+    },
+    {
+      "run_id": "ingest_20260605_193352_orders",
+      "endpoint": "orders",
+      "status": "failed",
+      "fetched": 1,
+      "inserted": 1,
+      "skipped": 0,
+      "errors": 0,
+      "concurrency": 5,
+      "started": "2026-06-05T19:33:54",
+      "finished": "2026-06-05T19:44:11"
+    },
+    {
+      "run_id": "ingest_20260605_194543_orders",
+      "endpoint": "orders",
+      "status": "failed",
+      "fetched": 0,
+      "inserted": 0,
+      "skipped": 0,
+      "errors": 0,
+      "concurrency": 5,
+      "started": "2026-06-05T19:45:45",
+      "finished": "2026-06-05T19:45:46"
+    }
+  ],
+  "coverage": {
+    "api_unique": 7000,
+    "fleet_room": 11085,
+    "coverage_pct": 63.15,
+    "missing_orders": 4085
+  },
+  "verdict": "FAIL",
+  "verdict_reason": "API coverage 63.15% < 95% threshold. API incomplete. Missing 4085 orders."
+}

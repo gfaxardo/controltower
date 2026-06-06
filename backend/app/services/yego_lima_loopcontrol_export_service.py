@@ -337,6 +337,143 @@ def get_export_status(export_id: str) -> Dict[str, Any]:
         return _export_to_dict(r)
 
 
+def export_from_contacts(
+    contacts: List[Dict[str, Any]],
+    opportunity_date: str,
+    program_code: str,
+    campaign_name: Optional[str] = None,
+    created_by: Optional[str] = None,
+) -> Dict[str, Any]:
+    config = validate_loopcontrol_config()
+    is_dry_run = not config["enabled"]
+
+    n_contacts = len(contacts)
+    if n_contacts == 0:
+        return {"error": "No contacts provided", "count": 0}
+
+    campaign_name = campaign_name or f"{program_code.replace('PROGRAM_','')}_{opportunity_date}"
+    description = f"Lima Growth {program_code} — {opportunity_date} — {n_contacts} drivers"
+
+    schedule_days = str(getattr(settings, "LOOPCONTROL_DEFAULT_SCHEDULE_DAYS", None) or "12345").strip()
+    campaign_payload = {
+        "name": campaign_name,
+        "description": description,
+        "dialer_mode": "predictive",
+        "max_concurrent": 10,
+        "max_attempts": 3,
+        "ring_timeout": 30,
+        "schedule_start": "09:00",
+        "schedule_end": "18:00",
+        "schedule_days": schedule_days,
+        "script": f"Lima Growth {program_code} \u2014 contacto diario de productividad",
+        "contacts": [
+            _sanitize_contact_fields({
+                "external_id": _short_external_id(c.get("driver_id", c.get("external_id", ""))),
+                "contractor_id": _short_external_id(c.get("driver_id", c.get("external_id", ""))),
+                "phone": (c.get("phone") or "").strip(),
+                "name": (c.get("driver_name") or c.get("name") or "").strip() or f"Driver {c.get('driver_id', '')[:8]}",
+                "metadata": {
+                    "driver_profile_id": _short_external_id(c.get("driver_id", c.get("external_id", ""))),
+                    "program": program_code,
+                    "channel": c.get("assigned_channel", c.get("channel", "")),
+                    "priority_rank": _safe_int(c.get("priority_rank")),
+                },
+            })
+            for c in contacts
+        ],
+    }
+
+    export_id = str(uuid4())
+    campaign_id_external = None
+    ci_real = 0
+    csk_real = 0
+    export_status = "draft"
+    error_msg = None
+
+    if is_dry_run:
+        export_status = "draft_dry_run"
+        logger.info("LC DRY_RUN (from contacts): campaign=%s, contacts=%d, program=%s",
+                    campaign_name, n_contacts, program_code)
+    else:
+        try:
+            import httpx
+            base_url = (settings.LOOPCONTROL_BASE_URL or "").strip().rstrip("/")
+            key = (settings.LOOPCONTROL_INTEGRATION_KEY or "").strip()
+
+            if not base_url or not key:
+                export_status = "failed"
+                error_msg = "Missing base_url or integration_key"
+            else:
+                safe_payload = make_json_safe(campaign_payload)
+                resp = httpx.post(
+                    f"{base_url}/callcenter/campaigns/external",
+                    json=safe_payload,
+                    headers={"X-Integration-Key": key},
+                    timeout=30,
+                )
+                if resp.status_code in (200, 201):
+                    data = resp.json()
+                    campaign_id_external = (
+                        data.get("id")
+                        or data.get("campaign_id")
+                        or data.get("data", {}).get("campaign", {}).get("id")
+                    )
+                    ci_real = (
+                        data.get("contacts_inserted")
+                        or data.get("data", {}).get("contacts_inserted")
+                        or n_contacts
+                    )
+                    csk_real = (
+                        data.get("contacts_skipped")
+                        or data.get("data", {}).get("contacts_skipped")
+                        or 0
+                    )
+                    export_status = "exported"
+                    logger.info("LC exported (from contacts): campaign=%s, id=%s, contacts_inserted=%s",
+                                campaign_name, campaign_id_external, ci_real)
+                else:
+                    export_status = "failed"
+                    error_msg = f"LC responded {resp.status_code}: {resp.text[:500]}"
+                    logger.error("LC export failed: %s", error_msg)
+        except Exception as e:
+            export_status = "failed"
+            error_msg = str(e)[:500]
+            logger.error("LC export error: %s", error_msg)
+
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute(f"""
+            INSERT INTO {TABLE_EXPORT} (
+                export_id, opportunity_date, campaign_id_external, campaign_name,
+                program_code, contacts_sent, contacts_inserted, contacts_skipped,
+                export_status, error_message, exported_at, created_by
+            ) VALUES (
+                %(eid)s, %(od)s, %(cid)s, %(cn)s,
+                %(pc)s, %(cs)s, %(ci)s, %(csk)s,
+                %(st)s, %(err)s, now(), %(by)s
+            )
+        """, {
+            "eid": export_id, "od": opportunity_date, "cid": campaign_id_external,
+            "cn": campaign_name, "pc": program_code,
+            "cs": n_contacts, "ci": ci_real,
+            "csk": csk_real, "st": export_status, "err": error_msg, "by": created_by,
+        })
+
+    return {
+        "export_id": export_id,
+        "campaign_name": campaign_name,
+        "campaign_id_external": campaign_id_external,
+        "program_code": program_code,
+        "opportunity_date": opportunity_date,
+        "contacts_count": n_contacts,
+        "contacts_inserted": ci_real,
+        "contacts_skipped": csk_real,
+        "export_status": export_status,
+        "mode": "DRY_RUN" if is_dry_run else "LIVE",
+        "error_message": error_msg,
+    }
+
+
 def _export_to_dict(r) -> Dict[str, Any]:
     return {
         "export_id": str(r["export_id"]),

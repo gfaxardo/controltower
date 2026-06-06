@@ -1,0 +1,2 @@
+generated_at,date_from,date_to,mv_orders,mv_revenue_partner_fee,ct_trips,ct_revenue_yego_final,trips_delta_pct,revenue_delta_pct,status,basis,ct_match_level,ct_data_date,ct_filter_used,ct_warnings,mv_rev_per_order,ct_rev_per_trip
+2026-06-05T16:22:40.115500-05:00,2026-06-04,2026-06-04,2977,1256.37,14213,5832.27,-79.05,-78.46,MAJOR_DELTA,CITY_DATE,EXACT_CITY_DATE,2026-06-04,country='peru' city='lima' date=2026-06-04,,0.422,0.4103

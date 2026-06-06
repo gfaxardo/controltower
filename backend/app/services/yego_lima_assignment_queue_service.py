@@ -176,8 +176,8 @@ def get_assignment_queue(
 
     return {
         "date": date_str,
-        "total_records": summary["cnt"] if summary else 0,
-        "ready_count": summary["ready_cnt"] if summary else 0,
-        "held_count": summary["held_cnt"] if summary else 0,
+        "total_records": int(summary["cnt"] or 0) if summary else 0,
+        "ready_count": int(summary["ready_cnt"] or 0) if summary else 0,
+        "held_count": int(summary["held_cnt"] or 0) if summary else 0,
         "records": records,
     }

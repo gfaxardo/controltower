@@ -1384,4 +1384,21 @@ export const getLimaGrowthAssignmentQueue = async (params = {}) => {
   return response.data
 }
 
+// ── Lima Growth — Operational Summary (LG-C1.4-P0) ──
+
+export const getLimaGrowthOperationalSummary = async (date) => {
+  const response = await api.get('/yego-lima-growth/operational-summary', { params: { date }, timeout: 30000 })
+  return response.data
+}
+
+export const getLimaGrowthDriverStateSummary = async (date) => {
+  const response = await api.get('/yego-lima-growth/driver-state/summary', { params: { date }, timeout: 30000 })
+  return response.data
+}
+
+export const getLimaGrowthProgramsSummary = async (date) => {
+  const response = await api.get('/yego-lima-growth/programs/summary', { params: { date }, timeout: 60000 })
+  return response.data
+}
+
 export default api

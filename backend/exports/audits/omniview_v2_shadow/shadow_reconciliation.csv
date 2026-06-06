@@ -1,3 +1,3 @@
-metric,mv_value,ct_value,delta_pct
-trips,2977,0,
-revenue,1256.37,0.0,
+metric,mv_value,ct_value,delta_pct,status,basis,ct_match_level,ct_data_date
+trips,2977,14213,-79.05,MAJOR_DELTA,CITY_DATE,EXACT_CITY_DATE,2026-06-04
+revenue,1256.37,5832.27,-78.46,MAJOR_DELTA,CITY_DATE,EXACT_CITY_DATE,2026-06-04
