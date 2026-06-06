@@ -1,2 +1,2 @@
 audit_date,park_id,target_date,fleet_room_trips,api_unique_orders,api_total_rows,coverage_pct,missing_orders,verdict,completed_runs,stalled_runs,failed_runs,batches_ingested,expected_pages,error_types,mv_orders,unique_drivers,unique_cars
-2026-06-05T19:48:10.131312-05:00,08e20910d81d42658d4334d3f6d10ac0,2026-06-04,11085,7000,7002,63.15,4085,FAIL,1,2,3,6,23,0,2977,1202,1204
+2026-06-05T21:38:53.383350-05:00,08e20910d81d42658d4334d3f6d10ac0,2026-06-04,11085,10961,10963,98.88,124,WARNING,1,4,4,7,23,0,5477,1476,1480

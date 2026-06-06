@@ -1,5 +1,5 @@
 {
-  "audit_date": "2026-06-05T19:48:10.131312-05:00",
+  "audit_date": "2026-06-05T21:38:53.383350-05:00",
   "park": {
     "id": "08e20910d81d42658d4334d3f6d10ac0",
     "name": "Yego (Lima)"
@@ -10,23 +10,23 @@
     "provided": true
   },
   "api_raw": {
-    "total_rows": 7002,
-    "unique_orders": 7000,
+    "total_rows": 10963,
+    "unique_orders": 10961,
     "duplicate_rows": 2,
-    "unique_drivers": 1202,
-    "unique_cars": 1204,
-    "first_order": "2026-06-04T11:05:46",
+    "unique_drivers": 1476,
+    "unique_cars": 1480,
+    "first_order": "2026-06-04T00:00:00",
     "last_order": "2026-06-04T23:52:45"
   },
   "mv": {
-    "orders_completed": 2977,
+    "orders_completed": 5477,
     "source": "raw_yango.mv_orders_day"
   },
   "ingestion": {
-    "total_runs": 20,
+    "total_runs": 23,
     "completed_runs": 1,
-    "stalled_runs": 2,
-    "failed_runs": 3,
+    "stalled_runs": 4,
+    "failed_runs": 4,
     "total_fetched_reported": 300,
     "total_inserted_reported": 300,
     "counter_note": "Counters may show 0 even when data was ingested (known bug)."
@@ -36,9 +36,9 @@
     "details": []
   },
   "pagination": {
-    "batches": 6,
+    "batches": 7,
     "expected_pages": 23,
-    "actual_pages_ingested": 6,
+    "actual_pages_ingested": 7,
     "page_size_default": 500,
     "gaps": [
       {
@@ -70,9 +70,15 @@
         "to_row": 34843,
         "missing": 2811,
         "between_batches": true
+      },
+      {
+        "from_row": 34845,
+        "to_row": 42032,
+        "missing": 7188,
+        "between_batches": true
       }
     ],
-    "total_missing_between_gaps": 27842,
+    "total_missing_between_gaps": 35030,
     "batch_details": [
       {
         "run_id": "ingest_20260605_062404",
@@ -109,6 +115,12 @@
         "count": 1,
         "row_range": "34844-34844",
         "time_range": "2026-06-04T18:23:17..2026-06-04T18:23:17"
+      },
+      {
+        "run_id": "ingest_20260605_195717_orders",
+        "count": 3961,
+        "row_range": "42033-46052",
+        "time_range": "2026-06-04T00:00:00..2026-06-04T12:19:46"
       }
     ]
   },
@@ -352,14 +364,50 @@
       "concurrency": 5,
       "started": "2026-06-05T19:45:45",
       "finished": "2026-06-05T19:45:46"
+    },
+    {
+      "run_id": "ingest_20260605_195717_orders",
+      "endpoint": "orders",
+      "status": "failed",
+      "fetched": 4085,
+      "inserted": 4085,
+      "skipped": 0,
+      "errors": 2,
+      "concurrency": 5,
+      "started": "2026-06-05T19:57:19",
+      "finished": "2026-06-05T20:34:39"
+    },
+    {
+      "run_id": "ingest_20260605_205939_orders",
+      "endpoint": "orders",
+      "status": "started",
+      "fetched": 500,
+      "inserted": 0,
+      "skipped": 0,
+      "errors": 0,
+      "concurrency": 5,
+      "started": "2026-06-05T20:59:41",
+      "finished": "N/A"
+    },
+    {
+      "run_id": "ingest_20260605_211009_orders",
+      "endpoint": "orders",
+      "status": "started",
+      "fetched": 8195,
+      "inserted": 0,
+      "skipped": 0,
+      "errors": 0,
+      "concurrency": 3,
+      "started": "2026-06-05T21:10:11",
+      "finished": "N/A"
     }
   ],
   "coverage": {
-    "api_unique": 7000,
+    "api_unique": 10961,
     "fleet_room": 11085,
-    "coverage_pct": 63.15,
-    "missing_orders": 4085
+    "coverage_pct": 98.88,
+    "missing_orders": 124
   },
-  "verdict": "FAIL",
-  "verdict_reason": "API coverage 63.15% < 95% threshold. API incomplete. Missing 4085 orders."
+  "verdict": "WARNING",
+  "verdict_reason": "API coverage 98.88% between 95-99%. Minor data loss."
 }

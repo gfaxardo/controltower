@@ -1,3 +1,13 @@
 endpoint,day,page,status_code,error,elapsed_ms
-orders,2026-06-04,9,429,rate_limited,255.2
-orders,2026-06-04,9,429,rate_limited,242.2
+orders_08e20910d81d42658d4334d3f6d10ac0_orders_2026-06-04_01_02,N/A,1,429,rate_limited,1018.2
+orders_08e20910d81d42658d4334d3f6d10ac0_orders_2026-06-04_03_04,N/A,1,429,rate_limited,1021.1
+orders_08e20910d81d42658d4334d3f6d10ac0_orders_2026-06-04_07_08,N/A,1,0,timeout,21229.6
+orders_08e20910d81d42658d4334d3f6d10ac0_orders_2026-06-04_10_11,N/A,1,429,rate_limited,908.2
+orders_08e20910d81d42658d4334d3f6d10ac0_orders_2026-06-04_08_09,N/A,3,429,rate_limited,14675.3
+orders_08e20910d81d42658d4334d3f6d10ac0_orders_2026-06-04_11_12,N/A,1,429,rate_limited,228.5
+orders_08e20910d81d42658d4334d3f6d10ac0_orders_2026-06-04_10_11,N/A,3,0,timeout,25744.6
+orders_08e20910d81d42658d4334d3f6d10ac0_orders_2026-06-04_11_12,N/A,3,429,rate_limited,1030.7
+orders_08e20910d81d42658d4334d3f6d10ac0_orders_2026-06-04_17_18,N/A,1,0,timeout,27835.4
+orders_08e20910d81d42658d4334d3f6d10ac0_orders_2026-06-04_11_12,N/A,3,0,timeout,39622.6
+orders_08e20910d81d42658d4334d3f6d10ac0_orders_2026-06-04_20_21,N/A,1,0,timeout,97901.9
+orders_08e20910d81d42658d4334d3f6d10ac0_orders_2026-06-04_22_23,N/A,1,0,timeout,23240.1
