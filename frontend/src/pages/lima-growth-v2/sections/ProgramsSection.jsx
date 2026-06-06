@@ -93,6 +93,9 @@ export default function ProgramsSection({ data, loading, errors, onRetry }) {
 
       {/* Driver State */}
       <SectionCard title="Estado del Conductor" color="#1a56db" freshness={driverState?.freshness?.driver_snapshot}>
+        <div className="text-xs text-gray-400 mb-3 bg-blue-50 border border-blue-100 rounded-lg p-2">
+          Driver State es un snapshot de segmentacion. No es una lista accionable. Los estados de lifecycle, performance y retention describen al conductor pero no permiten gestion directa todavia.
+        </div>
         {loading.driverState && !driverState ? (
           <LoadingState />
         ) : errors.driverState && !driverState ? (

@@ -6,6 +6,7 @@ import {
   getLimaGrowthOpportunityWorklist,
   getLimaGrowthAssignmentQueue,
   buildLimaGrowthAssignmentQueue,
+  getLimaGrowthQueueSummary,
   getLoopControlConfig,
   getLoopControlExports,
   getLimaGrowthCapacitySummary,
@@ -44,6 +45,7 @@ export default function useLimaGrowthData(date) {
     fetchSection('capacity', () => getLimaGrowthCapacitySummary(date))
     fetchSection('priorityAlloc', () => getLimaGrowthPriorityAllocation(date))
     fetchSection('channelAlloc', () => getLimaGrowthChannelAllocation(date))
+    fetchSection('queueSummary', () => getLimaGrowthQueueSummary(date))
   }, [date, fetchSection])
 
   const refreshQueue = useCallback((filters = {}) => {

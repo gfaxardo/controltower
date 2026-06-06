@@ -311,6 +311,41 @@ def get_program_summary(eligibility_date_str: Optional[str] = None) -> Dict[str,
                 "source": "STATIC_REGISTRY",
             })
 
+        # Ensure all STATIC_REGISTRY programs appear, even with 0 eligible
+        all_codes = {"PROGRAM_HIGH_VALUE_RECOVERY", "PROGRAM_CHURN_PREVENTION", "PROGRAM_14_90", "PROGRAM_ACTIVE_GROWTH"}
+        existing_codes = {p["program_code"] for p in enriched}
+        missing_codes = all_codes - existing_codes
+
+        program_name_map = {
+            "PROGRAM_HIGH_VALUE_RECOVERY": "High Value Recovery",
+            "PROGRAM_CHURN_PREVENTION": "Churn Prevention",
+            "PROGRAM_14_90": "14/90",
+            "PROGRAM_ACTIVE_GROWTH": "Active Growth",
+        }
+
+        for code in missing_codes:
+            enriched.append({
+                "program_code": code,
+                "program_name": program_name_map.get(code, code),
+                "total": 0,
+                "early_life": 0,
+                "recoverable": 0,
+                "churn_risk": 0,
+                "eligible_total": 0,
+                "prioritized_total": 0,
+                "actionable_today": 0,
+                "queued_total": 0,
+                "exported_total": 0,
+                "exported_campaigns_count": 0,
+                "status": "EMPTY",
+                "last_run_at": eligibility_date_str,
+                "freshness": freshness,
+                "explainability": explain_kpi("eligible_total", 0, freshness, {"universe_total": 0}),
+                "blockers": [{"type": "NO_ELIGIBLE", "message": "No eligible drivers for this program"}],
+                "remediation": ["Review eligibility criteria or wait for next eligibility refresh"],
+                "source": "STATIC_REGISTRY",
+            })
+
         return {
             "eligibility_date": eligibility_date_str,
             "programs": enriched,

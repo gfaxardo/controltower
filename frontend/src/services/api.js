@@ -1401,4 +1401,9 @@ export const getLimaGrowthProgramsSummary = async (date) => {
   return response.data
 }
 
+export const getLimaGrowthQueueSummary = async (date) => {
+  const response = await api.get('/yego-lima-growth/assignment-queue/summary', { params: { date }, timeout: 30000 })
+  return response.data
+}
+
 export default api

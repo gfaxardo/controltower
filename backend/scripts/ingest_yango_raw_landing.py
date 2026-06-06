@@ -182,6 +182,28 @@ def _transactions_body_hour(park_id: str, day: str, hour_from: int, hour_to: int
     return b
 
 
+def _orders_body_hour(park_id: str, day: str, hour_from: int, hour_to: int, cursor: Optional[str] = None) -> dict:
+    """Order body for an hour-window partition."""
+    base = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=PET)
+    f = base.replace(hour=hour_from, minute=0, second=0, microsecond=0)
+    t = base.replace(hour=hour_to - 1, minute=59, second=59, microsecond=0) if hour_to > hour_from else base.replace(hour=23, minute=59, second=59)
+    b = {
+        "limit": 500,
+        "query": {
+            "park": {
+                "id": park_id,
+                "order": {
+                    "ended_at": {"from": _fmt_iso(f), "to": _fmt_iso(t)},
+                    "statuses": ["complete"],
+                },
+            }
+        },
+    }
+    if cursor:
+        b["cursor"] = cursor
+    return b
+
+
 def _build_hour_partitions(date_from: str, date_to: str, hour_window: int) -> List[Tuple[str, int, int]]:
     """Generate (day, hour_from, hour_to) partitions for a date range."""
     fd = datetime.strptime(date_from, "%Y-%m-%d").date()
@@ -809,7 +831,7 @@ async def run_ingestion(
     }
 
     if dry_run:
-        if partition_mode == "hour" and "transactions" in endpoint_groups:
+        if partition_mode == "hour" and any(ep in endpoint_groups for ep in ("transactions", "orders")):
             partitions = _build_hour_partitions(date_from, date_to, hour_window_size)
             est_calls = len(partitions) * max_pages_per_partition
             print(f"\n[ingest] DRY RUN (partitioned) — no API calls, no DB writes.")
@@ -893,15 +915,18 @@ async def run_ingestion(
     }
 
     for ep in endpoint_groups:
-        # ── Partitioned mode for transactions ─────────────────
-        if partition_mode == "hour" and ep == "transactions":
+        # ── Partitioned mode (hour windows) ──────────────────
+        if partition_mode == "hour" and ep in ("transactions", "orders"):
             partitions = _build_hour_partitions(date_from, date_to, hour_window_size)
             part_checkpoint = _load_partitioned_checkpoint(output_dir) if resume else {}
             part_sem = asyncio.Semaphore(max(1, int(max_partitions_parallel)))
 
+            part_body_hour = _transactions_body_hour if ep == "transactions" else _orders_body_hour
+            part_page_size = 100 if ep == "transactions" else 500
+
             print(f"[ingest] {ep} — {len(partitions)} hour partitions "
                   f"(window={hour_window_size}h, parallel={max_partitions_parallel}, "
-                  f"pages_per={max_pages_per_partition})")
+                  f"pages_per={max_pages_per_partition}, page_size={part_page_size})")
 
             async def _run_partition(day_str: str, h_from: int, h_to: int) -> dict:
                 part_key = f"{park_id}_{ep}_{day_str}_{h_from:02d}_{h_to:02d}"
@@ -910,7 +935,7 @@ async def run_ingestion(
                         return {"partition": part_key, "records": 0, "pages": 0, "status": "skipped"}
                     part_checkpoint[part_key] = "running"
                     _save_partitioned_checkpoint(output_dir, part_checkpoint)
-                    part_body_fn = lambda pid, d, cur=None: _transactions_body_hour(
+                    part_body_fn = lambda pid, d, cur=None: part_body_hour(
                         pid, day_str, h_from, h_to, cur
                     )
                     r = await _ingest_endpoint(
@@ -927,7 +952,7 @@ async def run_ingestion(
                         park_lock=asyncio.Lock(),
                         max_pages=int(max_pages_per_partition),
                         max_retries=max_retries,
-                        page_size=100,
+                        page_size=part_page_size,
                         metrics=metrics,
                         errors=errors,
                         checkpoint={},
@@ -1166,6 +1191,24 @@ def main() -> int:
         type=int,
         default=50,
         help="Max pages per partition (default: 50)",
+    )
+    ap.add_argument(
+        "--resume-partitions",
+        action="store_true",
+        default=False,
+        help="Resume from partitioned checkpoint (skip completed partitions)",
+    )
+    ap.add_argument(
+        "--max-runtime-minutes",
+        type=int,
+        default=None,
+        help="Max runtime in minutes before aborting",
+    )
+    ap.add_argument(
+        "--request-timeout-seconds",
+        type=int,
+        default=None,
+        help="HTTP request timeout in seconds (default: from settings)",
     )
     args = ap.parse_args()
 

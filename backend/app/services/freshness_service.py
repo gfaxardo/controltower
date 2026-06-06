@@ -7,7 +7,7 @@ Returns FRESH / WARNING / STALE / UNKNOWN.
 """
 from __future__ import annotations
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date as date_type
 from typing import Any, Dict, Optional, List
 
 logger = logging.getLogger(__name__)
@@ -69,6 +69,9 @@ def compute_freshness(
                 "reason": "Unparseable timestamp",
                 "remediation": "Check source timestamp format.",
             }
+
+    if isinstance(last_refreshed_at, date_type) and not isinstance(last_refreshed_at, datetime):
+        last_refreshed_at = datetime.combine(last_refreshed_at, datetime.min.time(), tzinfo=timezone.utc)
 
     if last_refreshed_at.tzinfo is None:
         last_refreshed_at = last_refreshed_at.replace(tzinfo=timezone.utc)
