@@ -1,0 +1,6 @@
+driver_id,driver_name,phone,program_code,assigned_channel,queue_status,export_batch_id,campaign_id_external,ledger_found,ledger_status,external_found
+87e0ab45e4e7495b901ca71a2553961b,Bruno Soto Linder,+51955197975,CHURN_PREVENTION,BOT,EXPORTED,a89f3c50,,False,,False
+85d9edf6588e4f7fa92d86a42add89c7,Carlos Armando Meza Giron,+51900918428,CHURN_PREVENTION,BOT,EXPORTED,a89f3c50,,False,,False
+aca8b5aa2ed54bd4a894b29c70045966,Zelada rojas alexander,+51919555428,CHURN_PREVENTION,SAC,EXPORTED,a89f3c50,,False,,False
+9f93d88338f846468655183bf3740d87,Bruno Alonso Ruiz Landers,+51960787222,CHURN_PREVENTION,BOT,EXPORTED,a89f3c50,,False,,False
+0a1fcc7cc21941e1b1404ef942903204,Chavarry Tataje Juan,+51996929596,CHURN_PREVENTION,BOT,EXPORTED,a89f3c50,,False,,False

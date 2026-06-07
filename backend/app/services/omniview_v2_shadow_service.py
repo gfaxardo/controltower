@@ -80,8 +80,23 @@ def build_shadow_response(
     driver_profiles = get_driver_profiles_count(park_id, date_from, date_to)
     warnings = _build_warnings(health, reconciliation)
 
-    total_orders = sum(r.get("orders_completed", 0) or 0 for r in kpi_rows)
-    total_revenue = sum(r.get("revenue_partner_fee", 0) or 0 for r in revenue_rows)
+    total_orders = sum(
+        int(r.get("orders_completed", 0) or 0) for r in kpi_rows
+    )
+    total_revenue = sum(
+        float(r.get("revenue_partner_fee_amount", 0) or 0) for r in revenue_rows
+    )
+
+    revenue_per_order = None
+    if total_orders > 0 and total_revenue is not None and total_revenue > 0:
+        revenue_per_order = round(total_revenue / total_orders, 4)
+
+    if total_revenue is None or total_revenue == 0:
+        warnings.append({
+            "code": "REVENUE_UNAVAILABLE",
+            "message": "Revenue partner fee data unavailable for the requested period.",
+            "severity": "warning",
+        })
 
     return {
         "source": "YANGO_API_SHADOW",
@@ -95,10 +110,10 @@ def build_shadow_response(
         },
         "kpis": {
             "orders": total_orders,
-            "revenue_partner_fee": round(total_revenue, 2),
-            "revenue_per_order": round(total_revenue / total_orders, 4) if total_orders > 0 else 0,
+            "revenue_partner_fee": round(total_revenue, 2) if total_revenue is not None else None,
+            "revenue_per_order": revenue_per_order,
             "driver_profiles": driver_profiles,
-            "coverage_pct": health.get("coverage_pct", 0),
+            "coverage_pct": float(health.get("coverage_pct", 0)),
         },
         "coverage": {
             "health": health,

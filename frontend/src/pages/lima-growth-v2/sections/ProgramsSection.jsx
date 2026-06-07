@@ -1,17 +1,8 @@
-import { SectionCard, LoadingState, ErrorState, formatNum } from '../components/SharedComponents.jsx'
+import { SectionCard, LoadingState, ErrorState, StatusBadge, formatNum } from '../components/SharedComponents.jsx'
 import FreshnessBadge from '../components/FreshnessBadge.jsx'
 import ExplainabilityTooltip from '../components/ExplainabilityTooltip.jsx'
 
-const STATUS_CONFIG = {
-  READY:    { bg: 'bg-green-100', text: 'text-green-700', label: 'READY' },
-  ACTIVE:   { bg: 'bg-blue-100', text: 'text-blue-700', label: 'ACTIVE' },
-  EMPTY:    { bg: 'bg-gray-100', text: 'text-gray-500', label: 'EMPTY' },
-  STALE:    { bg: 'bg-red-100', text: 'text-red-700', label: 'STALE' },
-  UNKNOWN:  { bg: 'bg-gray-100', text: 'text-gray-400', label: 'UNKNOWN' },
-  BLOCKED:  { bg: 'bg-red-100', text: 'text-red-700', label: 'BLOCKED' },
-}
-
-export default function ProgramsSection({ data, loading, errors, onRetry }) {
+export default function ProgramsSection({ data, loading, errors, onRetry, sectionFilter }) {
   const programs = data.programs
   const driverState = data.driverState
 
@@ -29,7 +20,6 @@ export default function ProgramsSection({ data, loading, errors, onRetry }) {
         {programs?.programs ? (
           <div className="space-y-3">
             {(programs.programs || []).map((prog) => {
-              const statusCfg = STATUS_CONFIG[prog.status] || STATUS_CONFIG.UNKNOWN
               const hasBlockers = (prog.blockers || []).length > 0
 
               return (
@@ -38,9 +28,7 @@ export default function ProgramsSection({ data, loading, errors, onRetry }) {
                   <div className="px-4 py-3 flex items-center justify-between" style={{ borderLeftWidth: 4, borderLeftColor: prog.color || '#059669' }}>
                     <div className="flex items-center gap-3">
                       <span className="text-sm font-semibold text-gray-700">{prog.program_name || prog.program_code?.replace('PROGRAM_', '')}</span>
-                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusCfg.bg} ${statusCfg.text}`}>
-                        {statusCfg.label}
-                      </span>
+                      <StatusBadge status={prog.status} />
                       <FreshnessBadge freshness={prog.freshness} compact />
                       <ExplainabilityTooltip explainability={prog.explainability} />
                     </div>

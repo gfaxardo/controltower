@@ -1,0 +1,220 @@
+[
+  {
+    "name": "A: Current (strict priority)",
+    "programs": [
+      {
+        "program_code": "PROGRAM_HIGH_VALUE_RECOVERY",
+        "program_name": "High Value Recovery",
+        "actionable": 80,
+        "assigned": 80,
+        "unmet": 0,
+        "priority_rank": 1
+      },
+      {
+        "program_code": "PROGRAM_CHURN_PREVENTION",
+        "program_name": "Churn Prevention",
+        "actionable": 420,
+        "assigned": 230,
+        "unmet": 190,
+        "priority_rank": 2
+      },
+      {
+        "program_code": "PROGRAM_14_90",
+        "program_name": "14/90",
+        "actionable": 0,
+        "assigned": 0,
+        "unmet": 0,
+        "priority_rank": 3
+      },
+      {
+        "program_code": "PROGRAM_ACTIVE_GROWTH",
+        "program_name": "Active Growth",
+        "actionable": 0,
+        "assigned": 0,
+        "unmet": 0,
+        "priority_rank": 4
+      }
+    ],
+    "unassigned": 190
+  },
+  {
+    "name": "B: Max cap per program",
+    "programs": [
+      {
+        "program_code": "PROGRAM_HIGH_VALUE_RECOVERY",
+        "program_name": "High Value Recovery",
+        "actionable": 80,
+        "assigned": 80,
+        "unmet": 0,
+        "max_cap": 124,
+        "priority_rank": 1
+      },
+      {
+        "program_code": "PROGRAM_CHURN_PREVENTION",
+        "program_name": "Churn Prevention",
+        "actionable": 420,
+        "assigned": 186,
+        "unmet": 234,
+        "max_cap": 186,
+        "priority_rank": 2
+      },
+      {
+        "program_code": "PROGRAM_14_90",
+        "program_name": "14/90",
+        "actionable": 0,
+        "assigned": 0,
+        "unmet": 0,
+        "max_cap": 93,
+        "priority_rank": 3
+      },
+      {
+        "program_code": "PROGRAM_ACTIVE_GROWTH",
+        "program_name": "Active Growth",
+        "actionable": 0,
+        "assigned": 0,
+        "unmet": 0,
+        "max_cap": 93,
+        "priority_rank": 4
+      }
+    ],
+    "unassigned": 234
+  },
+  {
+    "name": "C: Min floor per program",
+    "programs": [
+      {
+        "program_code": "PROGRAM_HIGH_VALUE_RECOVERY",
+        "program_name": "High Value Recovery",
+        "actionable": 80,
+        "min_floor": 80,
+        "phase1_assigned": 80,
+        "phase2_assigned": 0,
+        "priority_rank": 1,
+        "assigned": 80,
+        "unmet": 0
+      },
+      {
+        "program_code": "PROGRAM_CHURN_PREVENTION",
+        "program_name": "Churn Prevention",
+        "actionable": 420,
+        "min_floor": 50,
+        "phase1_assigned": 50,
+        "phase2_assigned": 180,
+        "priority_rank": 2,
+        "assigned": 230,
+        "unmet": 190
+      },
+      {
+        "program_code": "PROGRAM_14_90",
+        "program_name": "14/90",
+        "actionable": 0,
+        "min_floor": 10,
+        "phase1_assigned": 0,
+        "phase2_assigned": 0,
+        "priority_rank": 3,
+        "assigned": 0,
+        "unmet": 0
+      },
+      {
+        "program_code": "PROGRAM_ACTIVE_GROWTH",
+        "program_name": "Active Growth",
+        "actionable": 0,
+        "min_floor": 10,
+        "phase1_assigned": 0,
+        "phase2_assigned": 0,
+        "priority_rank": 4,
+        "assigned": 0,
+        "unmet": 0
+      }
+    ],
+    "unassigned": 190
+  },
+  {
+    "name": "D: Proportional share",
+    "programs": [
+      {
+        "program_code": "PROGRAM_HIGH_VALUE_RECOVERY",
+        "program_name": "High Value Recovery",
+        "actionable": 80,
+        "assigned": 50,
+        "unmet": 30,
+        "target_share_pct": 16.0,
+        "priority_rank": 1
+      },
+      {
+        "program_code": "PROGRAM_CHURN_PREVENTION",
+        "program_name": "Churn Prevention",
+        "actionable": 420,
+        "assigned": 260,
+        "unmet": 160,
+        "target_share_pct": 84.0,
+        "priority_rank": 2
+      },
+      {
+        "program_code": "PROGRAM_14_90",
+        "program_name": "14/90",
+        "actionable": 0,
+        "assigned": 0,
+        "unmet": 0,
+        "target_share_pct": 0.0,
+        "priority_rank": 3
+      },
+      {
+        "program_code": "PROGRAM_ACTIVE_GROWTH",
+        "program_name": "Active Growth",
+        "actionable": 0,
+        "assigned": 0,
+        "unmet": 0,
+        "target_share_pct": 0.0,
+        "priority_rank": 4
+      }
+    ],
+    "unassigned": 190
+  },
+  {
+    "name": "E: Hybrid (priority + caps + floors)",
+    "programs": [
+      {
+        "program_code": "PROGRAM_HIGH_VALUE_RECOVERY",
+        "program_name": "High Value Recovery",
+        "actionable": 80,
+        "assigned": 80,
+        "unmet": 0,
+        "max_cap": 124,
+        "min_floor": 80,
+        "priority_rank": 1
+      },
+      {
+        "program_code": "PROGRAM_CHURN_PREVENTION",
+        "program_name": "Churn Prevention",
+        "actionable": 420,
+        "assigned": 170,
+        "unmet": 250,
+        "max_cap": 170,
+        "min_floor": 100,
+        "priority_rank": 2
+      },
+      {
+        "program_code": "PROGRAM_14_90",
+        "program_name": "14/90",
+        "actionable": 0,
+        "assigned": 0,
+        "unmet": 0,
+        "max_cap": 62,
+        "min_floor": 5,
+        "priority_rank": 3
+      },
+      {
+        "program_code": "PROGRAM_ACTIVE_GROWTH",
+        "program_name": "Active Growth",
+        "actionable": 0,
+        "assigned": 0,
+        "unmet": 0,
+        "max_cap": 62,
+        "min_floor": 5,
+        "priority_rank": 4
+      }
+    ],
+    "unassigned": 250
+  }
+]

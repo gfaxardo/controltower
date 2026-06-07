@@ -1,0 +1,6 @@
+metric,growth_api,control_tower,delta,delta_pct
+trips_completed,0,39176,-39176,-100.0
+active_drivers,0,5002,-5002,-100.0
+revenue,0,16151.06,-16151.06,-100.0
+
+days_with_data,0,3,,

@@ -1,0 +1,21 @@
+﻿category_name,transaction_group,currency,count,sum_amount,avg_amount,min_amount,max_amount,positive_count,negative_count,positive_sum,negative_sum,pct_of_total,classification
+Bonus,,PEN,193,305.89,1.5849,0.08,12.0,193,0,305.89,0.0,0.68,BONUS
+Bonus adjustment,,PEN,189,-29.3702,-0.1554,-1.2271,-0.0006,0,189,0.0,-29.37,0.67,ADJUSTMENT
+Card payment,,PEN,524,6443.2,12.2962,-26.8,50.6,515,9,6533.6,-90.4,1.85,GMV
+Cash,,PEN,3246,43968.7,13.5455,-284.3,284.3,3243,3,44287.2,-318.5,11.44,GMV
+Corporate payment,,PEN,113,2083.7,18.4398,0.2,85.5,113,0,2083.7,0.0,0.4,GMV
+Manual charges,,PEN,17,133.0,7.8235,2.0,15.0,17,0,133.0,0.0,0.06,GMV
+Paid with promo code,,PEN,5,38.7,7.74,4.0,12.4,5,0,38.7,0.0,0.02,GMV
+Partner fee for top-up,,PEN,107,-66.04,-0.6172,-1.62,-0.4,0,107,0.0,-66.04,0.38,PLATFORM_FEE
+Partner fee for trip,,PEN,3829,-1593.21,-0.4161,-8.529,8.529,3,3826,9.56,-1602.76,13.49,REVENUE_YEGO (ABS=1256.37 PEN avg=0.4184/txn)
+Partner transfer fee,,PEN,106,-34.74,-0.3277,-2.45,0.29,3,103,0.81,-35.55,0.37,PLATFORM_FEE
+Promo code discount compensation,,PEN,609,1025.3,1.6836,0.1,10.3,609,0,1025.3,0.0,2.15,BONUS
+Reimbursement for user cancellations,,PEN,32,132.528,4.1415,3.96,6.424,32,0,132.53,0.0,0.11,REFUND
+Service fee for My Destinations and My Neighborhood modes,,PEN,941,-521.667,-0.5544,-2.376,0.655,1,940,0.66,-522.32,3.32,PLATFORM_FEE
+Service fee for trip,,PEN,3829,-4571.7259,-1.194,-9.6093,9.6093,3,3826,13.08,-4584.81,13.49,PLATFORM_FEE
+Service fee; VAT,,PEN,3827,-822.871,-0.215,-1.7297,1.7297,3,3824,2.36,-825.23,13.49,PLATFORM_FEE_VAT
+Tip,,PEN,9,11.03,1.2256,-3.3,3.3,8,1,14.33,-3.3,0.03,GMV
+Top-up via payment system,,PEN,107,1197.04,11.1873,2.4,51.62,107,0,1197.04,0.0,0.38,GMV
+Transfer,,PEN,106,-2949.26,-27.8232,-207.55,24.71,3,103,69.19,-3018.45,0.37,TRANSFER
+Trip payment compensation,,PEN,15,-52.0,-3.4667,-23.6,12.9,6,9,35.4,-87.4,0.05,ADJUSTMENT
+TOTAL,,,,28353,-8080.796,,,,,,,,

@@ -1,0 +1,10 @@
+metric_id,source_a_value,source_b_value,unit
+orders,14213,9562,count
+revenue,5832.272,1256.37,PEN
+active_drivers,1770,1424,count
+avg_ticket,18.933,,PEN
+trips_per_driver,8.0299,6.7149,ratio
+commission_pct,,,percent
+cancel_rate_pct,0.4699,,percent
+revenue_per_order,0.4103,0.1314,PEN
+supply_hours,,,hours

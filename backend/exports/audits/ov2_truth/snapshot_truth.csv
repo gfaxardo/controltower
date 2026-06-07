@@ -1,0 +1,5 @@
+source_system,grain,operating_date,payload_type,status,coverage_pct,freshness_status,build_ms,generated
+CT_TRIPS_2026,day,2026-06-05,shell,READY,0.0,FRESH,6268,2026-06-06 17:04:31.507172-05
+CT_TRIPS_2026,day,2026-06-05,matrix,READY,100.0,FRESH,1855,2026-06-06 17:04:02.174131-05
+CT_TRIPS_2026,day,2026-05-31,matrix,READY,100.0,FRESH,741,2026-06-06 17:03:28.928786-05
+CT_TRIPS_2026,day,2026-05-31,shell,READY,0.0,FRESH,5183,2026-06-06 17:03:27.252774-05

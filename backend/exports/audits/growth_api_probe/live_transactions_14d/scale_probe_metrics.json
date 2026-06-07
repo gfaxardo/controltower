@@ -1,0 +1,61 @@
+{
+  "probe_id": "scale_probe_2026-06-01_2026-06-14",
+  "generated_at": "2026-06-05T00:27:42.877684-05:00",
+  "config": {
+    "park_id_masked": "08e20910***",
+    "date_from": "2026-06-01",
+    "date_to": "2026-06-14",
+    "days_count": 14,
+    "endpoint_groups": [
+      "transactions"
+    ],
+    "max_concurrency": 3,
+    "max_concurrency_per_park": 1,
+    "max_pages_per_endpoint": 3,
+    "sample_only": true,
+    "dry_run": false,
+    "timezone": "America/Lima (UTC-5)"
+  },
+  "latency": {
+    "p50_ms": 398.5,
+    "p95_ms": 761.0,
+    "avg_ms": 445.7,
+    "min_ms": 282.9,
+    "max_ms": 1333.6
+  },
+  "per_endpoint": {
+    "orders": {
+      "p50_ms": 0.0,
+      "p95_ms": 0.0,
+      "avg_ms": 0,
+      "min_ms": 0,
+      "max_ms": 0,
+      "count": 0
+    },
+    "drivers": {
+      "p50_ms": 0.0,
+      "p95_ms": 0.0,
+      "avg_ms": 0,
+      "min_ms": 0,
+      "max_ms": 0,
+      "count": 0
+    },
+    "transactions": {
+      "p50_ms": 398.5,
+      "p95_ms": 761.0,
+      "avg_ms": 445.7,
+      "min_ms": 282.9,
+      "max_ms": 1333.6,
+      "count": 24
+    }
+  },
+  "counts": {
+    "requests": 24,
+    "success": 24,
+    "errors": 0,
+    "rate_limits_429": 0,
+    "total_pages": 24,
+    "total_records": 1500
+  },
+  "elapsed_total_seconds": 13.7
+}

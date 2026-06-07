@@ -1,0 +1,135 @@
+[
+  {
+    "endpoint_source": "POST /v2/parks/transactions/list",
+    "json_path": "transactions[category_name=Card payment].amount",
+    "data_type": "string (fixed-point)",
+    "currency": {
+      "PEN": 50
+    },
+    "semantic_hypothesis": "UNKNOWN",
+    "percentage_of_records_with_value": 2.0,
+    "min_value": 30.6,
+    "max_value": 30.6,
+    "avg_value": 30.6,
+    "can_be_negative": false,
+    "grain": "transaction",
+    "confidence_level": "MEDIUM",
+    "has_event_at_count": 1,
+    "has_order_id_count": 1,
+    "affects_driver_balance": false
+  },
+  {
+    "endpoint_source": "POST /v2/parks/transactions/list",
+    "json_path": "transactions[category_name=Cash].amount",
+    "data_type": "string (fixed-point)",
+    "currency": {
+      "PEN": 50
+    },
+    "semantic_hypothesis": "UNKNOWN",
+    "percentage_of_records_with_value": 22.0,
+    "min_value": 7.5,
+    "max_value": 23.9,
+    "avg_value": 11.3727,
+    "can_be_negative": false,
+    "grain": "transaction",
+    "confidence_level": "MEDIUM",
+    "has_event_at_count": 11,
+    "has_order_id_count": 11,
+    "affects_driver_balance": false
+  },
+  {
+    "endpoint_source": "POST /v2/parks/transactions/list",
+    "json_path": "transactions[category_name=Partner fee for trip].amount",
+    "data_type": "string (fixed-point)",
+    "currency": {
+      "PEN": 50
+    },
+    "semantic_hypothesis": "UNKNOWN",
+    "percentage_of_records_with_value": 22.0,
+    "min_value": -0.918,
+    "max_value": -0.225,
+    "avg_value": -0.3944,
+    "can_be_negative": true,
+    "grain": "transaction",
+    "confidence_level": "MEDIUM",
+    "has_event_at_count": 11,
+    "has_order_id_count": 11,
+    "affects_driver_balance": false
+  },
+  {
+    "endpoint_source": "POST /v2/parks/transactions/list",
+    "json_path": "transactions[category_name=Promo code discount compensation].amount",
+    "data_type": "string (fixed-point)",
+    "currency": {
+      "PEN": 50
+    },
+    "semantic_hypothesis": "UNKNOWN",
+    "percentage_of_records_with_value": 2.0,
+    "min_value": 0.2,
+    "max_value": 0.2,
+    "avg_value": 0.2,
+    "can_be_negative": false,
+    "grain": "transaction",
+    "confidence_level": "MEDIUM",
+    "has_event_at_count": 1,
+    "has_order_id_count": 1,
+    "affects_driver_balance": false
+  },
+  {
+    "endpoint_source": "POST /v2/parks/transactions/list",
+    "json_path": "transactions[category_name=Service fee for My Destinations and My Neighborhood modes].amount",
+    "data_type": "string (fixed-point)",
+    "currency": {
+      "PEN": 50
+    },
+    "semantic_hypothesis": "UNKNOWN",
+    "percentage_of_records_with_value": 6.0,
+    "min_value": -0.981,
+    "max_value": -0.357,
+    "avg_value": -0.571,
+    "can_be_negative": true,
+    "grain": "transaction",
+    "confidence_level": "MEDIUM",
+    "has_event_at_count": 3,
+    "has_order_id_count": 3,
+    "affects_driver_balance": false
+  },
+  {
+    "endpoint_source": "POST /v2/parks/transactions/list",
+    "json_path": "transactions[category_name=Service fee for trip].amount",
+    "data_type": "string (fixed-point)",
+    "currency": {
+      "PEN": 50
+    },
+    "semantic_hypothesis": "UNKNOWN",
+    "percentage_of_records_with_value": 24.0,
+    "min_value": -3.109,
+    "max_value": -0.5708,
+    "avg_value": -1.2787,
+    "can_be_negative": true,
+    "grain": "transaction",
+    "confidence_level": "MEDIUM",
+    "has_event_at_count": 12,
+    "has_order_id_count": 12,
+    "affects_driver_balance": false
+  },
+  {
+    "endpoint_source": "POST /v2/parks/transactions/list",
+    "json_path": "transactions[category_name=Service fee, VAT].amount",
+    "data_type": "string (fixed-point)",
+    "currency": {
+      "PEN": 50
+    },
+    "semantic_hypothesis": "UNKNOWN",
+    "percentage_of_records_with_value": 22.0,
+    "min_value": -0.5596,
+    "max_value": -0.1027,
+    "avg_value": -0.2326,
+    "can_be_negative": true,
+    "grain": "transaction",
+    "confidence_level": "MEDIUM",
+    "has_event_at_count": 11,
+    "has_order_id_count": 11,
+    "affects_driver_balance": false
+  }
+]

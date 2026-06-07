@@ -237,8 +237,8 @@ def get_daily_kpis(
             o.orders_cancelled,
             o.unique_drivers,
             o.unique_cars,
-            r.partner_fee_trip_amount AS revenue_partner_fee,
-            r.partner_fee_trip_count,
+            r.revenue_partner_fee_amount,
+            r.revenue_partner_fee_count,
             r.revenue_per_order,
             r.revenue_per_partner_fee_txn
         FROM raw_yango.mv_orders_day o
@@ -269,18 +269,21 @@ def get_revenue_by_day(
         SELECT
             revenue_date,
             currency,
-            partner_fee_trip_amount,
-            partner_fee_trip_count,
-            service_fee_trip_amount,
-            service_fee_vat_amount,
-            gmv_cash_card_amount,
+            revenue_partner_fee_amount,
+            revenue_partner_fee_count,
+            platform_fee_amount,
+            platform_fee_vat_amount,
+            gmv_cash_amount,
+            gmv_card_amount,
             promo_compensation_amount,
             adjustments_amount,
-            revenue_candidate_amount,
-            revenue_candidate_count,
+            refunds_amount,
+            total_transactions_count,
             linked_orders,
             revenue_per_order,
-            revenue_per_partner_fee_txn
+            revenue_per_partner_fee_txn,
+            revenue_source,
+            revenue_confidence
         FROM raw_yango.mv_revenue_day
         WHERE park_id = %s
           AND (%s::date IS NULL OR revenue_date >= %s::date)
@@ -400,7 +403,7 @@ def get_reconciliation_vs_ct(
         """
         SELECT
             COALESCE(SUM(o.orders_completed), 0) AS trips,
-            COALESCE(SUM(r.partner_fee_trip_amount), 0) AS revenue,
+            COALESCE(SUM(r.revenue_partner_fee_amount), 0) AS revenue,
             MIN(o.order_date) AS mv_min_date,
             MAX(o.order_date) AS mv_max_date
         FROM raw_yango.mv_orders_day o

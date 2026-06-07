@@ -1,0 +1,76 @@
+{
+  "source": "Yango Fleet API",
+  "base_url": "https://fleet-api.yango.tech",
+  "authentication": "X-Client-ID + X-API-Key (custom headers)",
+  "timezone": "America/Lima (UTC-5)",
+  "pagination": {
+    "orders": "cursor-based (next_cursor field in response)",
+    "driver_profiles": "offset-based (limit/offset params, total field in response)",
+    "supply_hours": "per-driver (no pagination, one call per contractor_profile_id)"
+  },
+  "rate_limits": {
+    "observed": true,
+    "status_code": 429,
+    "backoff": "3000ms",
+    "max_retries": 1
+  },
+  "endpoints": {
+    "POST /v1/parks/orders/list": {
+      "description": "List completed orders for a park and date range",
+      "grain": "order",
+      "status_filter": [
+        "complete"
+      ],
+      "schema": null,
+      "fields_available": [],
+      "has_driver_id": false,
+      "has_trip_id": true,
+      "has_price": false,
+      "has_status": true,
+      "has_timestamps": true,
+      "has_car_info": false,
+      "total_fetched": 0
+    },
+    "POST /v1/parks/driver-profiles/list": {
+      "description": "List driver profiles with status, car, and account info",
+      "grain": "driver_profile",
+      "schema": null,
+      "fields_available": [],
+      "has_work_status": true,
+      "has_current_status": false,
+      "has_car": false,
+      "has_account_balance": false,
+      "total": 0
+    },
+    "GET /v2/parks/contractors/supply-hours": {
+      "description": "Get supply hours for a specific driver and date range",
+      "grain": "driver × day",
+      "returns": "supply_duration_seconds (convert to hours: / 3600)",
+      "samples_attempted": 0,
+      "samples_succeeded": 0
+    }
+  },
+  "metrics_available": {
+    "trips_completed": {
+      "source": "orders/list filtered by status=complete",
+      "grain": "per order (can be aggregated daily/park)"
+    },
+    "active_drivers": {
+      "source": "orders/list DISTINCT driver_profile.id",
+      "grain": "per order (distinct aggregation needed)"
+    },
+    "supply_hours": {
+      "source": "supply-hours (per-driver call required)",
+      "grain": "driver × day (expensive: one call per driver per day)"
+    },
+    "revenue": {
+      "source": "orders/list price.final_cost",
+      "grain": "per order",
+      "currency": "from API response (inferred)"
+    },
+    "driver_state": {
+      "source": "driver-profiles/list work_status + current_status",
+      "grain": "per driver (snapshot, no history)"
+    }
+  }
+}

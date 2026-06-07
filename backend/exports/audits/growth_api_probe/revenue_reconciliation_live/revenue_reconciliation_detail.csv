@@ -1,0 +1,4 @@
+date,api_trips,ct_trips,trips_delta,trips_delta_pct,api_gmv,ct_rev_final,gmv_vs_final_delta,gmv_vs_final_delta_pct,ct_rev_net,gmv_vs_net_delta,gmv_vs_net_delta_pct,api_drivers,ct_drivers,drivers_delta
+2026-06-01,0,12101,-12101,-100.0,0,5342.87,-5342.87,-100.0,0,0,None,0,1605,-1605
+2026-06-02,0,13145,-13145,-100.0,0,5294.76,-5294.76,-100.0,0,0,None,0,1671,-1671
+2026-06-03,0,13930,-13930,-100.0,0,5513.43,-5513.43,-100.0,0,0,None,0,1726,-1726

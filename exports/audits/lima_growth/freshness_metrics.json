@@ -1,0 +1,165 @@
+{
+  "generated_at": "2026-06-05T07:28:53.144567",
+  "tables": {
+    "driver_state_snapshot": {
+      "table": "growth.yango_lima_driver_state_snapshot",
+      "total_rows": "18475",
+      "latest_business_date": "2026-06-02",
+      "latest_insert": "2026-06-03 09:50:36",
+      "lag_hours": "45.6",
+      "certification": "WARNING",
+      "reason": "Stale 1-3 days (lag 45.6h)",
+      "source": "driver_state_service",
+      "grain": "date + driver_profile_id"
+    },
+    "prioritized_opportunity": {
+      "table": "growth.yango_lima_prioritized_opportunity_daily",
+      "total_rows": "5777",
+      "latest_business_date": "2026-06-02",
+      "latest_insert": "2026-06-03 19:47:52",
+      "lag_hours": "35.7",
+      "certification": "WARNING",
+      "reason": "Stale 1-3 days (lag 35.7h)",
+      "source": "opportunity_policy_service",
+      "grain": "date + driver_profile_id"
+    },
+    "driver_360_daily": {
+      "table": "growth.yango_lima_driver_360_daily",
+      "total_rows": "179",
+      "latest_business_date": "2026-06-02",
+      "latest_insert": "2026-06-02 16:35:05",
+      "lag_hours": "62.9",
+      "certification": "WARNING",
+      "reason": "Stale 1-3 days (lag 62.9h)",
+      "source": "driver_360_repository",
+      "grain": "date + driver_profile_id"
+    },
+    "capacity_config": {
+      "table": "growth.yego_lima_capacity_config",
+      "total_rows": "0",
+      "latest_business_date": null,
+      "latest_insert": null,
+      "lag_hours": null,
+      "certification": "WARNING",
+      "reason": "Table is empty",
+      "source": "capacity_service",
+      "grain": "config_date + channel (nullable date for default)"
+    },
+    "loopcontrol_config": {
+      "table": "growth.yango_lima_loopcontrol_config",
+      "total_rows": "1",
+      "latest_business_date": null,
+      "latest_insert": "2026-06-04 20:11:25",
+      "lag_hours": "11.3",
+      "certification": "PASS",
+      "reason": "Fresh within 24h (lag 11.3h)",
+      "source": "loopcontrol_export_service",
+      "grain": "single row config"
+    },
+    "loopcontrol_export": {
+      "table": "growth.yango_lima_loopcontrol_campaign_export",
+      "total_rows": "30",
+      "latest_business_date": "2026-06-02",
+      "latest_insert": "2026-06-04 19:22:50",
+      "lag_hours": "12.1",
+      "certification": "PASS",
+      "reason": "Fresh within 24h (lag 12.1h)",
+      "source": "loopcontrol_export_service",
+      "grain": "export_id"
+    },
+    "assignment_queue": {
+      "table": "growth.yego_lima_assignment_queue",
+      "total_rows": "0",
+      "latest_business_date": null,
+      "latest_insert": null,
+      "lag_hours": null,
+      "certification": "WARNING",
+      "reason": "Table is empty",
+      "source": "assignment_queue_service",
+      "grain": "assignment_date + driver_id + program_code"
+    },
+    "loopcontrol_result_sync": {
+      "table": "growth.yego_lima_loopcontrol_result_sync",
+      "total_rows": "0",
+      "latest_business_date": null,
+      "latest_insert": null,
+      "lag_hours": null,
+      "certification": "WARNING",
+      "reason": "Table is empty",
+      "source": "result_sync_service",
+      "grain": "result_id"
+    },
+    "impact_tracking": {
+      "table": "growth.yego_lima_impact_tracking",
+      "total_rows": "0",
+      "latest_business_date": null,
+      "latest_insert": null,
+      "lag_hours": null,
+      "certification": "WARNING",
+      "reason": "Table is empty",
+      "source": "impact_service",
+      "grain": "driver_id + campaign_id_external + contact_date"
+    },
+    "movement_tracking": {
+      "table": "growth.yego_lima_movement_tracking",
+      "total_rows": "0",
+      "latest_business_date": null,
+      "latest_insert": null,
+      "lag_hours": null,
+      "certification": "WARNING",
+      "reason": "Table is empty",
+      "source": "movement_service",
+      "grain": "driver_id + impact_tracking_id"
+    },
+    "attribution_candidates": {
+      "table": "growth.yego_lima_attribution_candidates",
+      "total_rows": "0",
+      "latest_business_date": null,
+      "latest_insert": null,
+      "lag_hours": null,
+      "certification": "WARNING",
+      "reason": "Table is empty",
+      "source": "attribution_service",
+      "grain": "movement_tracking_id"
+    }
+  },
+  "components": {
+    "prioritized_opportunity": {
+      "certification": "WARNING",
+      "reason": "Stale but has data (has_7d=True, lag=35.7h)"
+    },
+    "driver_state_snapshot": {
+      "certification": "WARNING",
+      "reason": "Stale but has data (has_7d=True, lag=45.6h)"
+    },
+    "driver_360_daily": {
+      "certification": "WARNING",
+      "reason": "Stale but has data (has_7d=True, lag=62.9h)"
+    },
+    "assignment_queue": {
+      "certification": "WARNING",
+      "reason": "Empty table"
+    },
+    "loopcontrol_result_sync": {
+      "certification": "WARNING",
+      "reason": "Empty table"
+    },
+    "impact_tracking": {
+      "certification": "WARNING",
+      "reason": "Empty table"
+    },
+    "movement_tracking": {
+      "certification": "WARNING",
+      "reason": "Empty table"
+    },
+    "attribution_candidates": {
+      "certification": "WARNING",
+      "reason": "Empty table"
+    }
+  },
+  "summary": {
+    "pass": 2,
+    "warning": 9,
+    "fail": 0
+  }
+}

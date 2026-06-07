@@ -1,0 +1,233 @@
+{
+  "orders": {
+    "count": 0,
+    "examples": [],
+    "schema": null,
+    "price_analysis": null
+  },
+  "transactions": {
+    "count": 50,
+    "examples": [
+      {
+        "id": "28264140920139",
+        "event_at": "2026-06-04T04:59:57.547719+00:00",
+        "category_id": "cash_collected",
+        "category_name": "Cash",
+        "group_id": "cash_collected",
+        "amount": "10.9000",
+        "currency_code": "PEN",
+        "description": "",
+        "created_by": {
+          "identity": "platform"
+        },
+        "driver_profile_id": "a9e3f8f38ee441e9b1920893e0c1f028",
+        "order_id": "91f0eefeaabd80fe886189824309ab2b",
+        "order": {
+          "id": "91f0eefeaabd80fe886189824309ab2b",
+          "short_id": 17987808
+        },
+        "external_event_id": "taxi/taximeter_order/91f0eefeaabd80fe886189824309ab2b"
+      },
+      {
+        "id": "28264140930139",
+        "event_at": "2026-06-04T04:59:57.547719+00:00",
+        "category_id": "platform_reposition_fee",
+        "category_name": "Service fee for My Destinations and My Neighborhood modes",
+        "group_id": "platform_fees",
+        "amount": "-0.9810",
+        "currency_code": "PEN",
+        "description": "Service fee for My Destinations and My Neighborhood modes",
+        "created_by": {
+          "identity": "platform"
+        },
+        "driver_profile_id": "a9e3f8f38ee441e9b1920893e0c1f028",
+        "order_id": "91f0eefeaabd80fe886189824309ab2b",
+        "order": {
+          "id": "91f0eefeaabd80fe886189824309ab2b",
+          "short_id": 17987808
+        },
+        "external_event_id": "taxi/taximeter_order/91f0eefeaabd80fe886189824309ab2b"
+      },
+      {
+        "id": "28264140940139",
+        "event_at": "2026-06-04T04:59:57.547719+00:00",
+        "category_id": "platform_ride_fee",
+        "category_name": "Service fee for trip",
+        "group_id": "platform_fees",
+        "amount": "-1.1074",
+        "currency_code": "PEN",
+        "description": "Service fee for trip from Avenida 24 de Octubre, 505, AAHH Tupac Amaru de Villa",
+        "created_by": {
+          "identity": "platform"
+        },
+        "driver_profile_id": "a9e3f8f38ee441e9b1920893e0c1f028",
+        "order_id": "91f0eefeaabd80fe886189824309ab2b",
+        "order": {
+          "id": "91f0eefeaabd80fe886189824309ab2b",
+          "short_id": 17987808
+        },
+        "external_event_id": "taxi/taximeter_order/91f0eefeaabd80fe886189824309ab2b"
+      },
+      {
+        "id": "28264140950139",
+        "event_at": "2026-06-04T04:59:57.547719+00:00",
+        "category_id": "platform_ride_vat",
+        "category_name": "Service fee, VAT",
+        "group_id": "platform_fees",
+        "amount": "-0.1993",
+        "currency_code": "PEN",
+        "description": "VAT",
+        "created_by": {
+          "identity": "platform"
+        },
+        "driver_profile_id": "a9e3f8f38ee441e9b1920893e0c1f028",
+        "order_id": "91f0eefeaabd80fe886189824309ab2b",
+        "order": {
+          "id": "91f0eefeaabd80fe886189824309ab2b",
+          "short_id": 17987808
+        },
+        "external_event_id": "taxi/taximeter_order/91f0eefeaabd80fe886189824309ab2b"
+      },
+      {
+        "id": "28264140970139",
+        "event_at": "2026-06-04T04:59:57.547719+00:00",
+        "category_id": "partner_ride_fee",
+        "category_name": "Partner fee for trip",
+        "group_id": "partner_fees",
+        "amount": "-0.3270",
+        "currency_code": "PEN",
+        "description": "Partner fee for trip from Avenida 24 de Octubre, 505, AAHH Tupac Amaru de Villa",
+        "created_by": {
+          "identity": "platform"
+        },
+        "driver_profile_id": "a9e3f8f38ee441e9b1920893e0c1f028",
+        "order_id": "91f0eefeaabd80fe886189824309ab2b",
+        "order": {
+          "id": "91f0eefeaabd80fe886189824309ab2b",
+          "short_id": 17987808
+        },
+        "external_event_id": "taxi/taximeter_order/91f0eefeaabd80fe886189824309ab2b"
+      },
+      {
+        "id": "28264138850139",
+        "event_at": "2026-06-04T04:59:48.993003+00:00",
+        "category_id": "cash_collected",
+        "category_name": "Cash",
+        "group_id": "cash_collected",
+        "amount": "10.8000",
+        "currency_code": "PEN",
+        "description": "",
+        "created_by": {
+          "identity": "platform"
+        },
+        "driver_profile_id": "ece47e3f3c5646cb813147cb5b9caaf4",
+        "order_id": "782b9c4216a81443824504202a1b009f",
+        "order": {
+          "id": "782b9c4216a81443824504202a1b009f",
+          "short_id": 17987673
+        },
+        "external_event_id": "taxi/taximeter_order/782b9c4216a81443824504202a1b009f"
+      },
+      {
+        "id": "28264138860139",
+        "event_at": "2026-06-04T04:59:48.993003+00:00",
+        "category_id": "platform_ride_fee",
+        "category_name": "Service fee for trip",
+        "group_id": "platform_fees",
+        "amount": "-1.0973",
+        "currency_code": "PEN",
+        "description": "Service fee for trip from Jirón el Marmol, 302, Totoritas",
+        "created_by": {
+          "identity": "platform"
+        },
+        "driver_profile_id": "ece47e3f3c5646cb813147cb5b9caaf4",
+        "order_id": "782b9c4216a81443824504202a1b009f",
+        "order": {
+          "id": "782b9c4216a81443824504202a1b009f",
+          "short_id": 17987673
+        },
+        "external_event_id": "taxi/taximeter_order/782b9c4216a81443824504202a1b009f"
+      },
+      {
+        "id": "28264138870139",
+        "event_at": "2026-06-04T04:59:48.993003+00:00",
+        "category_id": "platform_ride_vat",
+        "category_name": "Service fee, VAT",
+        "group_id": "platform_fees",
+        "amount": "-0.1975",
+        "currency_code": "PEN",
+        "description": "VAT",
+        "created_by": {
+          "identity": "platform"
+        },
+        "driver_profile_id": "ece47e3f3c5646cb813147cb5b9caaf4",
+        "order_id": "782b9c4216a81443824504202a1b009f",
+        "order": {
+          "id": "782b9c4216a81443824504202a1b009f",
+          "short_id": 17987673
+        },
+        "external_event_id": "taxi/taximeter_order/782b9c4216a81443824504202a1b009f"
+      },
+      {
+        "id": "28264138890139",
+        "event_at": "2026-06-04T04:59:48.993003+00:00",
+        "category_id": "partner_ride_fee",
+        "category_name": "Partner fee for trip",
+        "group_id": "partner_fees",
+        "amount": "-0.3240",
+        "currency_code": "PEN",
+        "description": "Partner fee for trip from Jirón el Marmol, 302, Totoritas",
+        "created_by": {
+          "identity": "platform"
+        },
+        "driver_profile_id": "ece47e3f3c5646cb813147cb5b9caaf4",
+        "order_id": "782b9c4216a81443824504202a1b009f",
+        "order": {
+          "id": "782b9c4216a81443824504202a1b009f",
+          "short_id": 17987673
+        },
+        "external_event_id": "taxi/taximeter_order/782b9c4216a81443824504202a1b009f"
+      },
+      {
+        "id": "28264132580139",
+        "event_at": "2026-06-04T04:59:32.683276+00:00",
+        "category_id": "cash_collected",
+        "category_name": "Cash",
+        "group_id": "cash_collected",
+        "amount": "11.2000",
+        "currency_code": "PEN",
+        "description": "",
+        "created_by": {
+          "identity": "platform"
+        },
+        "driver_profile_id": "b5bca3fb31bd4915b88a57fc4fe6e3fc",
+        "order_id": "9025ac84dffc2eeea1652a91f2d68f01",
+        "order": {
+          "id": "9025ac84dffc2eeea1652a91f2d68f01",
+          "short_id": 17987739
+        },
+        "external_event_id": "taxi/taximeter_order/9025ac84dffc2eeea1652a91f2d68f01"
+      }
+    ],
+    "schema": {
+      "id": "string",
+      "event_at": "string",
+      "category_id": "string",
+      "category_name": "string",
+      "group_id": "string",
+      "amount": "string",
+      "currency_code": "string",
+      "description": "string",
+      "created_by": {
+        "identity": "string"
+      },
+      "driver_profile_id": "string",
+      "order_id": "string",
+      "order": {
+        "id": "string",
+        "short_id": "integer"
+      },
+      "external_event_id": "string"
+    }
+  }
+}

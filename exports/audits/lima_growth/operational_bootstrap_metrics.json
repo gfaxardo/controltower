@@ -1,0 +1,109 @@
+{
+  "bootstrap_date": "2026-06-02",
+  "generated_at": "2026-06-05T08:13:10.275996",
+  "yango_api": {
+    "enabled": true,
+    "base_url": "https://fleet-api.yango.tech",
+    "client_id_set": true,
+    "api_key_set": true,
+    "park_id_set": true,
+    "timeout": 20,
+    "max_retries": 2
+  },
+  "freshness": {
+    "driver_state_snapshot": {
+      "rows": 18475,
+      "latest_business_date": "2026-06-02"
+    },
+    "prioritized_opportunity": {
+      "rows": 5777,
+      "latest_business_date": "2026-06-02"
+    },
+    "driver_360_daily": {
+      "rows": 179,
+      "latest_business_date": "2026-06-02"
+    },
+    "assignment_queue": {
+      "rows": 0,
+      "latest_business_date": null
+    },
+    "loopcontrol_export": {
+      "rows": 30,
+      "latest_business_date": "2026-06-02"
+    },
+    "loopcontrol_result_sync": {
+      "rows": 0,
+      "latest_business_date": null
+    },
+    "impact_tracking": {
+      "rows": 0,
+      "latest_business_date": null
+    },
+    "movement_tracking": {
+      "rows": 0,
+      "latest_business_date": null
+    },
+    "attribution_candidates": {
+      "rows": 0,
+      "latest_business_date": null
+    }
+  },
+  "queue": {
+    "date_total": 0,
+    "total_all_time": 0,
+    "status": "EMPTY",
+    "build_attempt": {
+      "result": "ALL_SKIPPED",
+      "reason": "Transaction abort on first INSERT. Likely cause: worklist returns rows with NULL values in NOT NULL columns or data type mismatch (e.g., NULL last_trip_date passed as string). This is a pre-existing pipeline data issue, not introduced by LC-1.5/LC-2/IF-1/ME-1/AE-1.",
+      "fix": "Run upstream pipeline refresh first (POST /pipeline/run-daily). Then re-run POST /assignment-queue/build."
+    }
+  },
+  "export": {
+    "total_exports": 30,
+    "latest_export": "2026-06-04 19:22:50",
+    "note": "30 prior exports exist from LC-1 (direct from prioritized_opportunity). LC-1.5 queue export cannot proceed until queue populated."
+  },
+  "certifications": [
+    {
+      "component": "PASS",
+      "verdict": "yango_api",
+      "reason": "Configured and enabled"
+    },
+    {
+      "component": "WARNING",
+      "verdict": "freshness",
+      "reason": "5 tables empty (expected for new pipeline tables)"
+    },
+    {
+      "component": "PASS",
+      "verdict": "pipeline",
+      "reason": "Already executed for 2026-06-02"
+    },
+    {
+      "component": "WARNING",
+      "verdict": "queue",
+      "reason": "Empty \u2014 upstream pipeline needs phone data fix"
+    },
+    {
+      "component": "WARNING",
+      "verdict": "export_lc15",
+      "reason": "Cannot export (no READY records)"
+    },
+    {
+      "component": "PASS",
+      "verdict": "mirror",
+      "reason": "All 11 tables exist, migrations applied"
+    },
+    {
+      "component": "WARNING",
+      "verdict": "e2e_trace",
+      "reason": "No exported records to trace"
+    },
+    {
+      "component": "WARNING",
+      "verdict": "loopcontrol_delivery",
+      "reason": "LOOPCONTROL_ENABLED=False (DRY_RUN)"
+    }
+  ],
+  "summary": "0P / 0W / 0F"
+}

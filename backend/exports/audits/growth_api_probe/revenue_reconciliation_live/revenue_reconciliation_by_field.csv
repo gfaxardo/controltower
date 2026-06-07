@@ -1,0 +1,4 @@
+field,endpoint,api_val,ct_ref,ct_label,delta,delta_pct,class,conf,reason
+orders.price,/v1/parks/orders/list,0,16151.06,revenue_yego_final,-16151.06,-100.0,GMV_ONLY,HIGH,STRING fixed-point = GMV (what customer paid). Always > revenue_yego_final. Delta = platform take.
+orders.trip_count,/v1/parks/orders/list,0,39176,trips_completed,-39176,-100.0,NEEDS_MORE_EVIDENCE,MEDIUM,Trip counts should match. Delta may signal timezone or filter mismatch.
+orders.driver_count,/v1/parks/orders/list,0,5002,active_drivers,-5002,-100.0,NEEDS_MORE_EVIDENCE,LOW,CT sums across slices vs API unique drivers. Delta expected.

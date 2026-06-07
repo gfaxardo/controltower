@@ -1,0 +1,554 @@
+{
+  "source_system": "CT_TRIPS_2026",
+  "source_status": "CURRENT_BASELINE",
+  "canonical_ready": true,
+  "grain": "day",
+  "filters": {
+    "country": "peru",
+    "city": "lima"
+  },
+  "period": {
+    "from": "2026-06-06",
+    "to": "2026-06-06"
+  },
+  "sections": [
+    {
+      "section_id": "executive_state",
+      "title": "Executive State",
+      "description": "Overall operational pulse — is the data trustworthy right now?",
+      "status": {
+        "code": "WARNING",
+        "reason": "5 sections blocked",
+        "severity": "info"
+      },
+      "source_system": "CT_TRIPS_2026",
+      "canonical_ready": true,
+      "summary": "Omniview V2 using CT_TRIPS_2026. 7 active warnings.",
+      "kpis": [],
+      "warnings": [],
+      "lineage_refs": [],
+      "next_action_label": "",
+      "allowed_actions": [
+        {
+          "action_id": "VIEW_DETAIL",
+          "label": "View Full Status",
+          "route": "",
+          "enabled": true
+        }
+      ],
+      "source_list": [
+        "CT_TRIPS_2026",
+        "YANGO_API_RAW"
+      ],
+      "active_warnings_count": 7,
+      "last_refreshed_at": "2026-06-06T14:54:00.295905-05:00"
+    },
+    {
+      "section_id": "kpi_strip",
+      "title": "KPI Strip",
+      "description": "Top-level numeric KPIs: orders, revenue, drivers, revenue per order.",
+      "status": {
+        "code": "BLOCKED",
+        "reason": "No KPI values available",
+        "severity": "info"
+      },
+      "source_system": "CT_TRIPS_2026",
+      "canonical_ready": true,
+      "summary": "9 KPIs, 9 missing",
+      "kpis": [
+        {
+          "metric_id": "orders",
+          "label": "Orders Completed",
+          "unit": "count",
+          "source_system": "CT_TRIPS_2026",
+          "source_table": "ops.real_business_slice_day_fact",
+          "grain": "day",
+          "period": "",
+          "confidence": "HIGH",
+          "is_estimated": false,
+          "warning_codes": [],
+          "lineage": {
+            "origin_table": "ops.real_business_slice_day_fact",
+            "origin_field": "trips_completed",
+            "aggregation": "SUM",
+            "filters_applied": {}
+          }
+        },
+        {
+          "metric_id": "revenue",
+          "label": "Revenue YEGO Final",
+          "unit": "PEN",
+          "source_system": "CT_TRIPS_2026",
+          "source_table": "ops.real_business_slice_day_fact",
+          "grain": "day",
+          "period": "",
+          "confidence": "HIGH",
+          "is_estimated": false,
+          "warning_codes": [],
+          "lineage": {
+            "origin_table": "ops.real_business_slice_day_fact",
+            "origin_field": "revenue_yego_final",
+            "aggregation": "SUM",
+            "filters_applied": {}
+          }
+        },
+        {
+          "metric_id": "active_drivers",
+          "label": "Active Drivers",
+          "unit": "count",
+          "source_system": "CT_TRIPS_2026",
+          "source_table": "ops.real_business_slice_day_fact",
+          "grain": "day",
+          "period": "",
+          "confidence": "HIGH",
+          "is_estimated": false,
+          "warning_codes": [],
+          "lineage": {
+            "origin_table": "ops.real_business_slice_day_fact",
+            "origin_field": "active_drivers",
+            "aggregation": "SUM",
+            "filters_applied": {}
+          }
+        },
+        {
+          "metric_id": "avg_ticket",
+          "label": "Average Ticket",
+          "unit": "PEN",
+          "source_system": "CT_TRIPS_2026",
+          "source_table": "ops.real_business_slice_day_fact",
+          "grain": "day",
+          "period": "",
+          "confidence": "HIGH",
+          "is_estimated": false,
+          "warning_codes": [],
+          "lineage": {
+            "origin_table": "ops.real_business_slice_day_fact",
+            "origin_field": "avg_ticket",
+            "aggregation": "AVG",
+            "filters_applied": {}
+          }
+        },
+        {
+          "metric_id": "trips_per_driver",
+          "label": "Trips per Driver",
+          "unit": "ratio",
+          "source_system": "CT_TRIPS_2026",
+          "source_table": "ops.real_business_slice_day_fact",
+          "grain": "day",
+          "period": "",
+          "confidence": "HIGH",
+          "is_estimated": false,
+          "warning_codes": [],
+          "lineage": {
+            "origin_table": "ops.real_business_slice_day_fact",
+            "origin_field": "trips_per_driver",
+            "aggregation": "AVG",
+            "filters_applied": {}
+          }
+        },
+        {
+          "metric_id": "commission_pct",
+          "label": "Commission %",
+          "unit": "percent",
+          "source_system": "CT_TRIPS_2026",
+          "source_table": "ops.real_business_slice_day_fact",
+          "grain": "day",
+          "period": "",
+          "confidence": "HIGH",
+          "is_estimated": false,
+          "warning_codes": [],
+          "lineage": {
+            "origin_table": "ops.real_business_slice_day_fact",
+            "origin_field": "commission_pct",
+            "aggregation": "AVG",
+            "filters_applied": {}
+          }
+        },
+        {
+          "metric_id": "cancel_rate_pct",
+          "label": "Cancellation Rate %",
+          "unit": "percent",
+          "source_system": "CT_TRIPS_2026",
+          "source_table": "ops.real_business_slice_day_fact",
+          "grain": "day",
+          "period": "",
+          "confidence": "HIGH",
+          "is_estimated": false,
+          "warning_codes": [],
+          "lineage": {
+            "origin_table": "ops.real_business_slice_day_fact",
+            "origin_field": "cancel_rate_pct",
+            "aggregation": "AVG",
+            "filters_applied": {}
+          }
+        },
+        {
+          "metric_id": "revenue_per_order",
+          "label": "Revenue per Order",
+          "unit": "PEN",
+          "source_system": "CT_TRIPS_2026",
+          "source_table": "ops.real_business_slice_day_fact",
+          "grain": "day",
+          "period": "",
+          "confidence": "HIGH",
+          "is_estimated": true,
+          "warning_codes": [],
+          "lineage": {
+            "origin_table": "ops.real_business_slice_day_fact",
+            "origin_field": "revenue_yego_net",
+            "aggregation": "COMPUTED",
+            "filters_applied": {}
+          }
+        },
+        {
+          "metric_id": "supply_hours",
+          "label": "Supply Hours",
+          "unit": "hours",
+          "source_system": "CT_TRIPS_2026",
+          "source_table": "ops.real_business_slice_day_fact",
+          "grain": "day",
+          "period": "",
+          "confidence": "LOW",
+          "is_estimated": false,
+          "warning_codes": [],
+          "lineage": {
+            "origin_table": "ops.real_business_slice_day_fact",
+            "origin_field": "supply_hours",
+            "aggregation": "SUM",
+            "filters_applied": {}
+          }
+        }
+      ],
+      "warnings": [
+        {
+          "code": "KPI_MISSING",
+          "message": "9 KPI(s) have no value",
+          "severity": "warning",
+          "section_id": "kpi_strip"
+        }
+      ],
+      "lineage_refs": [],
+      "next_action_label": "",
+      "allowed_actions": [
+        {
+          "action_id": "VIEW_DETAIL",
+          "label": "View KPI Details",
+          "route": "",
+          "enabled": true
+        },
+        {
+          "action_id": "VIEW_LINEAGE",
+          "label": "View Lineage",
+          "route": "",
+          "enabled": true
+        }
+      ],
+      "period": {
+        "from_date": "2026-06-06",
+        "to_date": "2026-06-06"
+      }
+    },
+    {
+      "section_id": "source_health",
+      "title": "Source Health",
+      "description": "Per-source coverage, freshness, and ingestion pipeline status.",
+      "status": {
+        "code": "OK",
+        "reason": "",
+        "severity": "info"
+      },
+      "source_system": "CT_TRIPS_2026",
+      "canonical_ready": true,
+      "summary": "2/2 sources healthy",
+      "kpis": [],
+      "warnings": [],
+      "lineage_refs": [],
+      "next_action_label": "",
+      "allowed_actions": [
+        {
+          "action_id": "VIEW_DETAIL",
+          "label": "View Source Details",
+          "route": "",
+          "enabled": true
+        }
+      ],
+      "sources": [
+        {
+          "source_system": "CT_TRIPS_2026",
+          "status": "OK",
+          "canonical_ready": true,
+          "coverage_pct": 100.0,
+          "freshness_ok": true,
+          "last_refreshed_at": "2026-06-06T14:54:00.295905-05:00",
+          "warnings_count": 0
+        },
+        {
+          "source_system": "YANGO_API_RAW",
+          "status": "OK",
+          "canonical_ready": false,
+          "coverage_pct": 100.0,
+          "freshness_ok": true,
+          "last_refreshed_at": "2026-06-06T06:59:21.741475-05:00",
+          "warnings_count": 3
+        }
+      ]
+    },
+    {
+      "section_id": "revenue_integrity",
+      "title": "Revenue Integrity",
+      "description": "Is revenue data complete and reconcilable?",
+      "status": {
+        "code": "BLOCKED",
+        "reason": "Revenue unavailable",
+        "severity": "info"
+      },
+      "source_system": "CT_TRIPS_2026",
+      "canonical_ready": true,
+      "summary": "BLOCKED — revenue data unavailable",
+      "kpis": [],
+      "warnings": [
+        {
+          "code": "REVENUE_UNAVAILABLE",
+          "message": "No revenue data for the requested period.",
+          "severity": "critical",
+          "section_id": "revenue_integrity"
+        }
+      ],
+      "lineage_refs": [],
+      "next_action_label": "",
+      "allowed_actions": [],
+      "revenue_value": null,
+      "revenue_per_order": null,
+      "delta_vs_ct_pct": null,
+      "reconciliation_status": "UNKNOWN"
+    },
+    {
+      "section_id": "operational_coverage",
+      "title": "Operational Coverage",
+      "description": "How complete is the data? Days, parks, slices covered.",
+      "status": {
+        "code": "BLOCKED",
+        "reason": "No data available",
+        "severity": "info"
+      },
+      "source_system": "CT_TRIPS_2026",
+      "canonical_ready": true,
+      "summary": "BLOCKED — no data for the requested period",
+      "kpis": [],
+      "warnings": [],
+      "lineage_refs": [],
+      "next_action_label": "",
+      "allowed_actions": [],
+      "coverage_pct": 0.0,
+      "days_with_data": 0,
+      "expected_days": 0,
+      "gap_dates": []
+    },
+    {
+      "section_id": "growth_movement",
+      "title": "Growth Movement",
+      "description": "Directional indicators: is the metric growing or shrinking?",
+      "status": {
+        "code": "BLOCKED",
+        "reason": "No data for selected period",
+        "severity": "info"
+      },
+      "source_system": "CT_TRIPS_2026",
+      "canonical_ready": true,
+      "summary": "No data available for growth calculation",
+      "kpis": [],
+      "warnings": [],
+      "lineage_refs": [],
+      "next_action_label": "",
+      "allowed_actions": [],
+      "direction": "stable",
+      "magnitude_pct": null,
+      "prior_period": ""
+    },
+    {
+      "section_id": "plan_vs_real",
+      "title": "Plan vs Real Readiness",
+      "description": "Is plan data available for comparison?",
+      "status": {
+        "code": "WARNING",
+        "reason": "Plan infrastructure exists but no real data for this period",
+        "severity": "info"
+      },
+      "source_system": "CT_TRIPS_2026",
+      "canonical_ready": true,
+      "summary": "WARNING — plan available, real data not yet loaded",
+      "kpis": [],
+      "warnings": [],
+      "lineage_refs": [],
+      "next_action_label": "",
+      "allowed_actions": [],
+      "plan_available": true,
+      "plan_periods": [
+        "monthly",
+        "weekly"
+      ],
+      "source_note": "Plan infrastructure ready. Real data pending for selected period."
+    },
+    {
+      "section_id": "slice_readiness",
+      "title": "Slice Readiness",
+      "description": "Are business slices properly segmented?",
+      "status": {
+        "code": "WARNING",
+        "reason": "Slice infrastructure exists but no data for this period",
+        "severity": "info"
+      },
+      "source_system": "CT_TRIPS_2026",
+      "canonical_ready": true,
+      "summary": "WARNING — slices defined, data pending for selected period",
+      "kpis": [],
+      "warnings": [],
+      "lineage_refs": [],
+      "next_action_label": "",
+      "allowed_actions": [],
+      "slice_count": 6,
+      "slice_list": [
+        "Auto regular",
+        "YMA",
+        "Tuk Tuk",
+        "PRO",
+        "Delivery",
+        "Carga"
+      ],
+      "slice_gaps": []
+    },
+    {
+      "section_id": "lineage_audit",
+      "title": "Lineage / Audit",
+      "description": "Traceability from value back to source table/field.",
+      "status": {
+        "code": "OK",
+        "reason": "",
+        "severity": "info"
+      },
+      "source_system": "CT_TRIPS_2026",
+      "canonical_ready": true,
+      "summary": "9 metrics with full lineage",
+      "kpis": [],
+      "warnings": [],
+      "lineage_refs": [],
+      "next_action_label": "",
+      "allowed_actions": [
+        {
+          "action_id": "VIEW_LINEAGE",
+          "label": "View Full Lineage",
+          "route": "",
+          "enabled": true
+        }
+      ],
+      "entries": [
+        {
+          "metric_id": "orders",
+          "label": "Orders Completed",
+          "origin_table": "ops.real_business_slice_day_fact",
+          "origin_field": "trips_completed",
+          "aggregation": "SUM"
+        },
+        {
+          "metric_id": "revenue",
+          "label": "Revenue YEGO Final",
+          "origin_table": "ops.real_business_slice_day_fact",
+          "origin_field": "revenue_yego_final",
+          "aggregation": "SUM"
+        },
+        {
+          "metric_id": "active_drivers",
+          "label": "Active Drivers",
+          "origin_table": "ops.real_business_slice_day_fact",
+          "origin_field": "active_drivers",
+          "aggregation": "SUM"
+        },
+        {
+          "metric_id": "avg_ticket",
+          "label": "Average Ticket",
+          "origin_table": "ops.real_business_slice_day_fact",
+          "origin_field": "avg_ticket",
+          "aggregation": "AVG"
+        },
+        {
+          "metric_id": "trips_per_driver",
+          "label": "Trips per Driver",
+          "origin_table": "ops.real_business_slice_day_fact",
+          "origin_field": "trips_per_driver",
+          "aggregation": "AVG"
+        },
+        {
+          "metric_id": "commission_pct",
+          "label": "Commission %",
+          "origin_table": "ops.real_business_slice_day_fact",
+          "origin_field": "commission_pct",
+          "aggregation": "AVG"
+        },
+        {
+          "metric_id": "cancel_rate_pct",
+          "label": "Cancellation Rate %",
+          "origin_table": "ops.real_business_slice_day_fact",
+          "origin_field": "cancel_rate_pct",
+          "aggregation": "AVG"
+        },
+        {
+          "metric_id": "revenue_per_order",
+          "label": "Revenue per Order",
+          "origin_table": "ops.real_business_slice_day_fact",
+          "origin_field": "revenue_yego_net",
+          "aggregation": "COMPUTED"
+        },
+        {
+          "metric_id": "supply_hours",
+          "label": "Supply Hours",
+          "origin_table": "ops.real_business_slice_day_fact",
+          "origin_field": "supply_hours",
+          "aggregation": "SUM"
+        }
+      ]
+    },
+    {
+      "section_id": "alerts_warnings",
+      "title": "Alerts / Warnings",
+      "description": "Aggregated view of all operational warnings.",
+      "status": {
+        "code": "BLOCKED",
+        "reason": "1 critical, 1 warnings, 0 info",
+        "severity": "info"
+      },
+      "source_system": "CT_TRIPS_2026",
+      "canonical_ready": true,
+      "summary": "2 total warnings (1 critical)",
+      "kpis": [],
+      "warnings": [],
+      "lineage_refs": [],
+      "next_action_label": "",
+      "allowed_actions": [
+        {
+          "action_id": "VIEW_DETAIL",
+          "label": "View All Warnings",
+          "route": "",
+          "enabled": true
+        }
+      ],
+      "all_warnings": [
+        {
+          "code": "KPI_MISSING",
+          "message": "9 KPI(s) have no value",
+          "severity": "warning",
+          "section_id": "kpi_strip"
+        },
+        {
+          "code": "REVENUE_UNAVAILABLE",
+          "message": "No revenue data for the requested period.",
+          "severity": "critical",
+          "section_id": "revenue_integrity"
+        }
+      ],
+      "critical_count": 1,
+      "warning_count": 1,
+      "info_count": 0
+    }
+  ],
+  "generated_at": "2026-06-06T19:59:36.566465+00:00"
+}

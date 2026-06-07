@@ -1,0 +1,467 @@
+/* ═══════════════════════════════════════════════════════════════
+   OV2 Matrix Visual System — single CSS source for all matrices.
+   All matrix components MUST use these variables.
+   No hardcoded hex colors. No per-KPI overrides.
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Typography */
+  --ov2-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --ov2-font-mono: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', monospace;
+  --ov2-font-size-cell: 13px;
+  --ov2-font-size-header: 12px;
+  --ov2-font-size-kpi: 24px;
+  --ov2-font-size-kpi-label: 11px;
+  --ov2-font-size-badge: 10px;
+
+  /* Layout */
+  --ov2-row-height: 40px;
+  --ov2-header-height: 44px;
+  --ov2-col-width-hour: 70px;
+  --ov2-col-width-day: 90px;
+  --ov2-col-width-week: 100px;
+  --ov2-col-width-month: 100px;
+  --ov2-sticky-col-width: 160px;
+  --ov2-cell-padding: 8px;
+  --ov2-badge-height: 18px;
+  --ov2-badge-padding-x: 6px;
+  --ov2-border-radius: 3px;
+  --ov2-section-gap: 16px;
+
+  /* Semantic colors */
+  --ov2-status-ok: #22c55e;
+  --ov2-status-warning: #f59e0b;
+  --ov2-status-blocked: #ef4444;
+  --ov2-status-shadow: #6366f1;
+  --ov2-status-estimated: #a855f7;
+  --ov2-status-not-comparable: #9ca3af;
+  --ov2-status-selected: #3b82f6;
+
+  /* Backgrounds */
+  --ov2-bg-ok: #f0fdf4;
+  --ov2-bg-warning: #fffbeb;
+  --ov2-bg-blocked: #fef2f2;
+  --ov2-bg-hover: #eff6ff;
+  --ov2-bg-muted: #f3f4f6;
+  --ov2-bg-disabled: #e5e7eb;
+  --ov2-bg-selected: #eff6ff;
+
+  /* Text */
+  --ov2-text-primary: #111827;
+  --ov2-text-secondary: #6b7280;
+  --ov2-text-muted: #9ca3af;
+
+  /* Borders */
+  --ov2-border-color: #e5e7eb;
+  --ov2-border-selected: #3b82f6;
+
+  /* Shadows */
+  --ov2-shadow-header: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --ov2-shadow-inspector: 0 4px 24px rgba(0, 0, 0, 0.12);
+
+  /* Z-index */
+  --ov2-z-header: 100;
+  --ov2-z-sticky-col: 50;
+  --ov2-z-inspector: 200;
+  --ov2-z-backdrop: 190;
+  --ov2-z-badge: 10;
+
+  /* Transitions */
+  --ov2-transition-fast: 100ms ease;
+  --ov2-transition-normal: 150ms ease;
+  --ov2-transition-slow: 300ms ease;
+}
+
+/* ── Base matrix reset ─────────────────────────────────── */
+.ov2-matrix-shell {
+  font-family: var(--ov2-font-family);
+  font-size: var(--ov2-font-size-cell);
+  color: var(--ov2-text-primary);
+  line-height: 1;
+}
+
+.ov2-matrix-shell *,
+.ov2-matrix-shell *::before,
+.ov2-matrix-shell *::after {
+  box-sizing: border-box;
+}
+
+/* ── Cell base ─────────────────────────────────────────── */
+.ov2-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: var(--ov2-row-height);
+  padding: 0 var(--ov2-cell-padding);
+  font-family: var(--ov2-font-mono);
+  font-size: var(--ov2-font-size-cell);
+  border-right: 1px solid var(--ov2-border-color);
+  border-bottom: 1px solid var(--ov2-border-color);
+  background: #fff;
+  cursor: pointer;
+  transition: background var(--ov2-transition-fast);
+  position: relative;
+  min-width: var(--ov2-col-width-day);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ov2-cell:hover {
+  background: var(--ov2-bg-hover);
+}
+
+.ov2-cell--ok {
+  background: #fff;
+}
+
+.ov2-cell--warning {
+  background: var(--ov2-bg-warning);
+  border-left: 2px solid var(--ov2-status-warning);
+}
+
+.ov2-cell--blocked {
+  background: var(--ov2-bg-blocked);
+  border-left: 2px solid var(--ov2-status-blocked);
+  color: var(--ov2-text-muted);
+}
+
+.ov2-cell--not-comparable {
+  background: var(--ov2-bg-muted);
+  color: var(--ov2-text-muted);
+}
+
+.ov2-cell--future {
+  background: var(--ov2-bg-disabled);
+  color: var(--ov2-text-muted);
+}
+
+.ov2-cell--selected {
+  box-shadow: 0 0 0 2px var(--ov2-status-selected) inset;
+  background: var(--ov2-bg-selected);
+}
+
+.ov2-cell--muted {
+  background: var(--ov2-bg-muted);
+  color: var(--ov2-text-muted);
+}
+
+/* ── Header ────────────────────────────────────────────── */
+.ov2-header {
+  position: sticky;
+  top: 0;
+  z-index: var(--ov2-z-header);
+  display: flex;
+  background: #fafafa;
+  border-bottom: 2px solid var(--ov2-border-color);
+}
+
+.ov2-header-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--ov2-header-height);
+  padding: 0 var(--ov2-cell-padding);
+  font-size: var(--ov2-font-size-header);
+  font-weight: 600;
+  color: var(--ov2-text-secondary);
+  border-right: 1px solid var(--ov2-border-color);
+  background: #fafafa;
+  min-width: var(--ov2-col-width-day);
+  white-space: nowrap;
+}
+
+.ov2-header-cell--sticky {
+  position: sticky;
+  left: 0;
+  z-index: var(--ov2-z-sticky-col);
+  justify-content: flex-start;
+  min-width: var(--ov2-sticky-col-width);
+  background: #fafafa;
+}
+
+.ov2-header-cell--current {
+  color: var(--ov2-text-primary);
+}
+
+.ov2-header-cell--future {
+  color: var(--ov2-text-muted);
+}
+
+/* ── Row label (sticky first column) ───────────────────── */
+.ov2-row-label {
+  position: sticky;
+  left: 0;
+  z-index: var(--ov2-z-sticky-col);
+  display: flex;
+  align-items: center;
+  height: var(--ov2-row-height);
+  padding: 0 var(--ov2-cell-padding);
+  font-family: var(--ov2-font-family);
+  font-size: var(--ov2-font-size-cell);
+  font-weight: 500;
+  border-right: 2px solid var(--ov2-border-color);
+  border-bottom: 1px solid var(--ov2-border-color);
+  background: #fff;
+  min-width: var(--ov2-sticky-col-width);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ov2-row-label--ok {
+  border-left: 3px solid var(--ov2-status-ok);
+}
+
+.ov2-row-label--warning {
+  border-left: 3px solid var(--ov2-status-warning);
+}
+
+.ov2-row-label--blocked {
+  border-left: 3px solid var(--ov2-status-blocked);
+}
+
+.ov2-row-label--selected {
+  border-left: 4px solid var(--ov2-status-selected);
+}
+
+/* ── Badges ────────────────────────────────────────────── */
+.ov2-badge {
+  display: inline-flex;
+  align-items: center;
+  height: var(--ov2-badge-height);
+  padding: 0 var(--ov2-badge-padding-x);
+  font-size: var(--ov2-font-size-badge);
+  font-weight: 500;
+  border-radius: var(--ov2-border-radius);
+  white-space: nowrap;
+  letter-spacing: 0.025em;
+}
+
+.ov2-badge--ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.ov2-badge--warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.ov2-badge--blocked {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.ov2-badge--shadow {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.ov2-badge--estimated {
+  background: #f3e8ff;
+  color: #6b21a8;
+}
+
+.ov2-badge--partial {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 8px 8px 0;
+  border-color: transparent var(--ov2-status-warning) transparent transparent;
+}
+
+/* ── Delta ─────────────────────────────────────────────── */
+.ov2-delta {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.ov2-delta--match {
+  color: var(--ov2-status-ok);
+}
+
+.ov2-delta--minor {
+  color: var(--ov2-status-warning);
+}
+
+.ov2-delta--major {
+  color: var(--ov2-status-blocked);
+}
+
+/* ── Inspector drawer ──────────────────────────────────── */
+.ov2-inspector-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: var(--ov2-z-backdrop);
+}
+
+.ov2-inspector-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 360px;
+  background: #fff;
+  z-index: var(--ov2-z-inspector);
+  box-shadow: var(--ov2-shadow-inspector);
+  overflow-y: auto;
+  padding: 24px;
+  font-family: var(--ov2-font-family);
+  font-size: 13px;
+  color: var(--ov2-text-primary);
+}
+
+/* ── Skeleton ──────────────────────────────────────────── */
+.ov2-skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: ov2-shimmer 1.5s infinite;
+  border-radius: 2px;
+}
+
+@keyframes ov2-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Empty state ───────────────────────────────────────── */
+.ov2-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  color: var(--ov2-text-muted);
+  font-family: var(--ov2-font-family);
+  font-size: 14px;
+  gap: 8px;
+}
+
+/* ── KPI card ──────────────────────────────────────────── */
+.ov2-kpi-card {
+  background: #fff;
+  border: 1px solid var(--ov2-border-color);
+  border-radius: 6px;
+  padding: 12px 16px;
+  min-width: 140px;
+}
+
+.ov2-kpi-card__label {
+  font-size: var(--ov2-font-size-kpi-label);
+  color: var(--ov2-text-secondary);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+
+.ov2-kpi-card__value {
+  font-size: var(--ov2-font-size-kpi);
+  font-weight: 700;
+  font-family: var(--ov2-font-mono);
+  color: var(--ov2-text-primary);
+  line-height: 1.2;
+}
+
+.ov2-kpi-card__unit {
+  font-size: 12px;
+  color: var(--ov2-text-secondary);
+  font-weight: 400;
+  margin-left: 2px;
+}
+
+/* ── Section card ──────────────────────────────────────── */
+.ov2-section-card {
+  background: #fff;
+  border: 1px solid var(--ov2-border-color);
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.ov2-section-card--ok {
+  border-left: 3px solid var(--ov2-status-ok);
+}
+
+.ov2-section-card--warning {
+  border-left: 3px solid var(--ov2-status-warning);
+}
+
+.ov2-section-card--blocked {
+  border-left: 3px solid var(--ov2-status-blocked);
+}
+
+/* ── Alert strip ───────────────────────────────────────── */
+.ov2-alert-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 16px;
+}
+
+.ov2-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: var(--ov2-border-radius);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ov2-alert--critical {
+  background: var(--ov2-bg-blocked);
+  color: #991b1b;
+}
+
+.ov2-alert--warning {
+  background: var(--ov2-bg-warning);
+  color: #92400e;
+}
+
+.ov2-alert--info {
+  background: var(--ov2-bg-hover);
+  color: #1e40af;
+}
+
+/* ── Command header ────────────────────────────────────── */
+.ov2-command-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: #fff;
+  border-bottom: 1px solid var(--ov2-border-color);
+  font-family: var(--ov2-font-family);
+  font-size: 13px;
+  height: 48px;
+  position: sticky;
+  top: 0;
+  z-index: var(--ov2-z-header);
+}
+
+/* ── Source badge ──────────────────────────────────────── */
+.ov2-source-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--ov2-border-radius);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ov2-source-badge--canonical {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.ov2-source-badge--shadow {
+  background: #e0e7ff;
+  color: #3730a3;
+}

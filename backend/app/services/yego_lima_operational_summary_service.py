@@ -81,9 +81,11 @@ def get_operational_summary(date: str) -> Dict[str, Any]:
 
         # 6. Queue stats
         cur.execute(
-            "SELECT COUNT(*) as total, "
+            "SELECT "
+            "SUM(CASE WHEN queue_status != 'EXPORTED' THEN 1 ELSE 0 END) as total, "
             "SUM(CASE WHEN queue_status = 'READY' THEN 1 ELSE 0 END) as ready, "
-            "SUM(CASE WHEN queue_status = 'HELD' THEN 1 ELSE 0 END) as held "
+            "SUM(CASE WHEN queue_status = 'HELD' THEN 1 ELSE 0 END) as held, "
+            "SUM(CASE WHEN queue_status = 'EXPORTED' THEN 1 ELSE 0 END) as exported_from_queue "
             "FROM growth.yego_lima_assignment_queue "
             "WHERE assignment_date = %(d)s", {"d": date}
         )
@@ -91,6 +93,7 @@ def get_operational_summary(date: str) -> Dict[str, Any]:
         queue_total = _safe_int(row["total"])
         queue_ready = _safe_int(row["ready"])
         queue_held = _safe_int(row["held"])
+        queue_exported_from = _safe_int(row["exported_from_queue"])
 
         # 7. LoopControl export stats
         cur.execute(
@@ -114,7 +117,8 @@ def get_operational_summary(date: str) -> Dict[str, Any]:
             for r in cur.fetchall()
         ]
 
-    queue_exported = lc_campaigns
+    queue_exported = queue_exported_from
+    queue_exported_campaigns = lc_campaigns
 
     # Freshness metadata
     with get_db() as conn:
@@ -157,6 +161,7 @@ def get_operational_summary(date: str) -> Dict[str, Any]:
         "queue_ready": queue_ready,
         "queue_held": queue_held,
         "queue_exported": queue_exported,
+        "queue_exported_campaigns": queue_exported_campaigns,
         "loopcontrol_campaigns_exported": lc_campaigns,
         "loopcontrol_contacts_inserted": lc_contacts,
         "by_program": by_program,

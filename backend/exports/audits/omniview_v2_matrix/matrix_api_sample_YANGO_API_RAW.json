@@ -1,0 +1,132 @@
+{
+  "matrix_id": "ov2_matrix",
+  "source_system": "YANGO_API_RAW",
+  "canonical_ready": false,
+  "grain": "day",
+  "period_range": {
+    "from": "2026-06-04",
+    "to": "2026-06-04"
+  },
+  "filters": {},
+  "metadata": {
+    "source_status": "FUTURE_CANDIDATE",
+    "source_table": "raw_yango.mv_orders_day",
+    "coverage_pct": 100.0,
+    "freshness": "",
+    "data_date": "2026-06-04",
+    "refreshed_at": "",
+    "row_count": 1,
+    "column_count": 1,
+    "cell_count": 1,
+    "comparable": false,
+    "comparison_basis": null
+  },
+  "columns": [
+    {
+      "id": "col_2026-06-04",
+      "label": "Jun 04",
+      "grain": "day",
+      "period": "2026-06-04",
+      "period_status": "PARTIAL",
+      "sort_key": "2026-06-04",
+      "width": 90,
+      "is_current": false,
+      "is_future": false
+    }
+  ],
+  "rows": [
+    {
+      "id": "row_lima_fleet",
+      "label": "Lima Fleet",
+      "row_type": "slice",
+      "row_status": "WARNING",
+      "parent_id": null,
+      "depth": 0,
+      "sort_key": "00_lima_fleet",
+      "is_expandable": false,
+      "is_expanded": true
+    }
+  ],
+  "cells": [
+    {
+      "row_id": "row_lima_fleet",
+      "column_id": "col_2026-06-04",
+      "metric_id": "orders",
+      "label": "Orders Completed",
+      "slice_id": null,
+      "slice_label": null,
+      "value": 9562,
+      "formatted_value": "9,562",
+      "unit": "count",
+      "source_system": "YANGO_API_RAW",
+      "source_table": "raw_yango.mv_orders_day",
+      "grain": "day",
+      "period": "2026-06-04",
+      "period_status": "PARTIAL",
+      "canonical_ready": false,
+      "coverage_pct": 100.0,
+      "freshness": "",
+      "confidence": "MEDIUM",
+      "is_estimated": false,
+      "warning_codes": [],
+      "lineage_refs": {
+        "origin_table": "raw_yango.mv_orders_day",
+        "origin_field": "orders_completed",
+        "aggregation": "SUM",
+        "filters_applied": {}
+      },
+      "comparison_status": null,
+      "delta_value": null,
+      "delta_pct": null,
+      "cell_status": "WARNING"
+    }
+  ],
+  "warnings": [
+    {
+      "code": "CANONICAL_NOT_READY",
+      "message": "Source YANGO_API_RAW is NOT certified for operational decisions.",
+      "severity": "critical",
+      "target_row_id": null,
+      "target_column_id": null,
+      "affected_cell_count": 0
+    }
+  ],
+  "lineage": [
+    {
+      "metric_id": "orders",
+      "origin_table": "raw_yango.mv_orders_day",
+      "origin_field": "orders_completed",
+      "aggregation": "SUM",
+      "filters_applied": {}
+    },
+    {
+      "metric_id": "revenue",
+      "origin_table": "raw_yango.mv_orders_day",
+      "origin_field": "revenue_partner_fee_amount",
+      "aggregation": "SUM",
+      "filters_applied": {}
+    },
+    {
+      "metric_id": "active_drivers",
+      "origin_table": "raw_yango.mv_orders_day",
+      "origin_field": "unique_drivers",
+      "aggregation": "SUM",
+      "filters_applied": {}
+    },
+    {
+      "metric_id": "revenue_per_order",
+      "origin_table": "raw_yango.mv_orders_day",
+      "origin_field": "revenue_per_order",
+      "aggregation": "COMPUTED",
+      "filters_applied": {}
+    },
+    {
+      "metric_id": "trips_per_driver",
+      "origin_table": "raw_yango.mv_orders_day",
+      "origin_field": "orders_completed",
+      "aggregation": "COMPUTED",
+      "filters_applied": {}
+    }
+  ],
+  "generated_at": "2026-06-06T16:14:14.602765+00:00"
+}

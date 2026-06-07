@@ -1,0 +1,127 @@
+[
+  {
+    "endpoint": "transactions",
+    "day": "2026-06-01",
+    "page": 1,
+    "masked": {
+      "id": "28222454***",
+      "event_at": "2026-06-***",
+      "category_id": "platform***",
+      "category_name": "Service fee for trip",
+      "group_id": "platform***",
+      "amount": "-0.8636",
+      "currency_code": "PEN",
+      "description": "Service ***",
+      "created_by": {
+        "identity": "platform"
+      },
+      "driver_profile_id": "b99738c4***",
+      "order_id": "70cc3e73***",
+      "order": {
+        "id": "70cc3e73***",
+        "short_id": 17936235
+      },
+      "external_event_id": "taxi/tax***"
+    }
+  },
+  {
+    "endpoint": "transactions",
+    "day": "2026-06-01",
+    "page": 2,
+    "masked": {
+      "id": "28222375***",
+      "event_at": "2026-06-***",
+      "category_id": "platform***",
+      "category_name": "Service fee, VAT",
+      "group_id": "platform***",
+      "amount": "-0.1794",
+      "currency_code": "PEN",
+      "description": "VAT",
+      "created_by": {
+        "identity": "platform"
+      },
+      "driver_profile_id": "edd42cbf***",
+      "order_id": "cde3039f***",
+      "order": {
+        "id": "cde3039f***",
+        "short_id": 17936095
+      },
+      "external_event_id": "taxi/tax***"
+    }
+  },
+  {
+    "endpoint": "transactions",
+    "day": "2026-06-01",
+    "page": 3,
+    "masked": {
+      "id": "28222314***",
+      "event_at": "2026-06-***",
+      "category_id": "partner_***",
+      "category_name": "Partner fee for trip",
+      "group_id": "partner_***",
+      "amount": "-0.2100",
+      "currency_code": "PEN",
+      "description": "Partner ***",
+      "created_by": {
+        "identity": "platform"
+      },
+      "driver_profile_id": "b28fd76b***",
+      "order_id": "d70a7f73***",
+      "order": {
+        "id": "d70a7f73***",
+        "short_id": 17936192
+      },
+      "external_event_id": "taxi/tax***"
+    }
+  },
+  {
+    "endpoint": "transactions",
+    "day": "2026-06-02",
+    "page": 1,
+    "masked": {
+      "id": "28243007***",
+      "event_at": "2026-06-***",
+      "category_id": "cash_col***",
+      "category_name": "Cash",
+      "group_id": "cash_col***",
+      "amount": "14.3000",
+      "currency_code": "PEN",
+      "description": "",
+      "created_by": {
+        "identity": "platform"
+      },
+      "driver_profile_id": "60767d0a***",
+      "order_id": "6ec8afaa***",
+      "order": {
+        "id": "6ec8afaa***",
+        "short_id": 17961307
+      },
+      "external_event_id": "taxi/tax***"
+    }
+  },
+  {
+    "endpoint": "transactions",
+    "day": "2026-06-02",
+    "page": 2,
+    "masked": {
+      "id": "28242914***",
+      "event_at": "2026-06-***",
+      "category_id": "platform***",
+      "category_name": "Bonus adjustment",
+      "group_id": "platform***",
+      "amount": "-0.6498",
+      "currency_code": "PEN",
+      "description": "Bonus adjustment",
+      "created_by": {
+        "identity": "platform"
+      },
+      "driver_profile_id": "d1d36b71***",
+      "order_id": "92a851f0***",
+      "order": {
+        "id": "92a851f0***",
+        "short_id": 17961382
+      },
+      "external_event_id": "taxi/tax***"
+    }
+  }
+]

@@ -1,0 +1,65 @@
+{
+  "executive_state": {
+    "status": "WARNING",
+    "actions": [
+      "VIEW_DETAIL"
+    ]
+  },
+  "source_health": {
+    "status": "OK",
+    "actions": [
+      "VIEW_DETAIL"
+    ]
+  },
+  "kpi_strip": {
+    "status": "WARNING",
+    "actions": [
+      "VIEW_DETAIL",
+      "VIEW_LINEAGE"
+    ]
+  },
+  "plan_vs_real": {
+    "status": "OK",
+    "actions": [
+      "VIEW_DETAIL"
+    ]
+  },
+  "growth_movement": {
+    "status": "OK",
+    "actions": [
+      "VIEW_DETAIL"
+    ]
+  },
+  "operational_coverage": {
+    "status": "OK",
+    "actions": [
+      "VIEW_DETAIL",
+      "VIEW_COVERAGE"
+    ]
+  },
+  "revenue_integrity": {
+    "status": "OK",
+    "actions": [
+      "VIEW_DETAIL",
+      "VIEW_RECONCILIATION"
+    ]
+  },
+  "slice_readiness": {
+    "status": "OK",
+    "actions": [
+      "VIEW_DETAIL"
+    ]
+  },
+  "alerts_warnings": {
+    "status": "WARNING",
+    "actions": [
+      "VIEW_DETAIL"
+    ]
+  },
+  "lineage_audit": {
+    "status": "OK",
+    "actions": [
+      "VIEW_LINEAGE"
+    ]
+  }
+}

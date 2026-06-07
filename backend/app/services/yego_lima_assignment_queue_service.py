@@ -46,13 +46,26 @@ def create_assignment_batch(
     ready = 0
     held = 0
     skipped = 0
+    skipped_invalid = 0
+    skipped_reasons: Dict[str, int] = {}
 
     with get_db() as conn:
         cur = conn.cursor()
 
         for r in records:
+            did = r.get("driver_id") or ""
+            pc = r.get("program_code") or ""
             phone_val = r.get("phone")
-            chan = r.get("assigned_channel", "")
+            chan = r.get("assigned_channel") or ""
+
+            if not did:
+                skipped_invalid += 1
+                skipped_reasons["missing_driver_id"] = skipped_reasons.get("missing_driver_id", 0) + 1
+                continue
+            if not pc:
+                skipped_invalid += 1
+                skipped_reasons["missing_program_code"] = skipped_reasons.get("missing_program_code", 0) + 1
+                continue
 
             status = "READY"
             if not phone_val or chan == "UNASSIGNED":
@@ -69,23 +82,23 @@ def create_assignment_batch(
                     f" %(pc)s, %(pn)s, %(pr)s, %(ch)s, "
                     f" %(or)s, %(ltd)s, %(rt)s, "
                     f" %(co)s, %(ci)s, %(pa)s, %(st)s) "
-                    f"ON CONFLICT ON CONSTRAINT idx_aq_unique_driver_program_date DO NOTHING",
+                    f"ON CONFLICT (assignment_date, driver_id, program_code) DO NOTHING",
                     {
                         "bid": batch_id,
                         "d": date_str,
-                        "did": r["driver_id"],
-                        "dn": r.get("driver_name"),
+                        "did": did,
+                        "dn": r.get("driver_name") or "Sin nombre",
                         "ph": phone_val,
-                        "pc": r["program_code"],
-                        "pn": r.get("program_name"),
+                        "pc": pc,
+                        "pn": r.get("program_name") or pc,
                         "pr": r.get("priority_rank"),
                         "ch": chan,
                         "or": r.get("opportunity_reason"),
                         "ltd": r.get("last_trip_date"),
                         "rt": r.get("recent_trips"),
-                        "co": r.get("country"),
-                        "ci": r.get("city"),
-                        "pa": r.get("park"),
+                        "co": r.get("country") or "PE",
+                        "ci": r.get("city") or "Lima",
+                        "pa": r.get("park") or "Sin park",
                         "st": status,
                     },
                 )
@@ -98,19 +111,73 @@ def create_assignment_batch(
                 else:
                     skipped += 1
             except Exception as e:
-                logger.warning(f"Insert skipped for driver {r.get('driver_id')}: {e}")
-                skipped += 1
+                logger.warning(f"Insert skipped for driver {did}: {e}")
+                skipped_invalid += 1
+                err_key = str(e)[:50]
+                skipped_reasons[err_key] = skipped_reasons.get(err_key, 0) + 1
 
         conn.commit()
 
-    return {
+    # ── Record build audit with active policy (R2.8G) ──
+    policy_info = _get_active_policy_for_build(date_str)
+    _write_build_audit(batch_id, date_str, policy_info, created, ready + held, ready, held)
+
+    result = {
         "assignment_batch_id": batch_id,
         "assignment_date": date_str,
         "created_count": created,
         "ready_count": ready,
         "held_count": held,
         "skipped_duplicates": skipped,
+        "skipped_invalid": skipped_invalid,
+        "skipped_reasons": skipped_reasons,
+        "policy_applied": policy_info.get("applied", False),
+        "allocation_mode": policy_info.get("mode", "STRICT_PRIORITY"),
+        "policy_version": policy_info.get("version"),
     }
+    return result
+
+
+def _get_active_policy_for_build(date_str: str) -> Dict[str, Any]:
+    try:
+        from app.services.yego_lima_program_capacity_policy_service import get_active_policy
+        p = get_active_policy(date_str)
+        if p.get("active") and p.get("programs"):
+            return {
+                "applied": True,
+                "mode": p["programs"][0].get("allocation_mode", "STRICT_PRIORITY"),
+                "version": p["programs"][0].get("version"),
+                "programs": len(p.get("programs", [])),
+            }
+    except Exception:
+        pass
+    return {"applied": False, "mode": "STRICT_PRIORITY", "version": None}
+
+
+def _write_build_audit(batch_id: str, date_str: str, policy_info: Dict, total_created: int,
+                       total_assigned: int, ready: int, held: int):
+    try:
+        import json
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO growth.yego_lima_queue_build_audit "
+                "(build_batch_id, assignment_date, policy_applied, allocation_mode, policy_version, "
+                " total_actionable, total_assigned, total_unassigned, warnings, allocation_snapshot) "
+                "VALUES (%(bid)s, %(d)s, %(pa)s, %(am)s, %(pv)s, %(ta)s, %(ts)s, %(tu)s, %(w)s, %(snap)s)",
+                {
+                    "bid": batch_id, "d": date_str,
+                    "pa": policy_info.get("applied", False),
+                    "am": policy_info.get("mode", "STRICT_PRIORITY"),
+                    "pv": policy_info.get("version"),
+                    "ta": total_created, "ts": total_assigned, "tu": 0,
+                    "w": json.dumps(None),
+                    "snap": json.dumps({"ready": ready, "held": held}),
+                }
+            )
+            conn.commit()
+    except Exception as e:
+        logger.warning(f"Build audit write failed (non-blocking): {e}")
 
 
 def get_assignment_queue(

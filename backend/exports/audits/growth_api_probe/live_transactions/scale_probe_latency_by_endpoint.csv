@@ -1,0 +1,10 @@
+endpoint,day,page,elapsed_ms,status_code,error
+transactions,2026-06-01,1,2228.1,200,
+transactions,2026-06-01,2,409.8,200,
+transactions,2026-06-01,3,398.9,200,
+transactions,2026-06-02,1,528.9,200,
+transactions,2026-06-02,2,506.1,200,
+transactions,2026-06-02,3,402.0,200,
+transactions,2026-06-03,1,818.3,200,
+transactions,2026-06-03,2,941.3,200,
+transactions,2026-06-03,3,498.2,200,

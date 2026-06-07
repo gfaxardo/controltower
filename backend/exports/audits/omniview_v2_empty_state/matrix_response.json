@@ -1,0 +1,97 @@
+{
+  "matrix_id": "ov2_matrix",
+  "source_system": "CT_TRIPS_2026",
+  "canonical_ready": true,
+  "grain": "day",
+  "period_range": {
+    "from": "2026-06-06",
+    "to": "2026-06-06"
+  },
+  "filters": {
+    "country": "peru",
+    "city": "lima"
+  },
+  "metadata": {
+    "source_status": "CURRENT_BASELINE",
+    "source_table": "ops.real_business_slice_day_fact",
+    "coverage_pct": 0.0,
+    "freshness": "",
+    "data_date": "",
+    "refreshed_at": "",
+    "row_count": 0,
+    "column_count": 1,
+    "cell_count": 0,
+    "comparable": true,
+    "comparison_basis": null
+  },
+  "columns": [
+    {
+      "id": "col_2026-06-06",
+      "label": "Jun 06",
+      "grain": "day",
+      "period": "2026-06-06",
+      "period_status": "CURRENT",
+      "sort_key": "2026-06-06",
+      "width": 90,
+      "is_current": true,
+      "is_future": false
+    }
+  ],
+  "rows": [],
+  "cells": [],
+  "warnings": [
+    {
+      "code": "NO_DATA",
+      "message": "No data available for the selected period.",
+      "severity": "warning",
+      "target_row_id": null,
+      "target_column_id": null,
+      "affected_cell_count": 0
+    }
+  ],
+  "lineage": [
+    {
+      "metric_id": "orders",
+      "origin_table": "ops.real_business_slice_day_fact",
+      "origin_field": "trips_completed",
+      "aggregation": "SUM",
+      "filters_applied": {}
+    },
+    {
+      "metric_id": "revenue",
+      "origin_table": "ops.real_business_slice_day_fact",
+      "origin_field": "revenue_yego_final",
+      "aggregation": "SUM",
+      "filters_applied": {}
+    },
+    {
+      "metric_id": "active_drivers",
+      "origin_table": "ops.real_business_slice_day_fact",
+      "origin_field": "active_drivers",
+      "aggregation": "SUM",
+      "filters_applied": {}
+    },
+    {
+      "metric_id": "avg_ticket",
+      "origin_table": "ops.real_business_slice_day_fact",
+      "origin_field": "avg_ticket",
+      "aggregation": "AVG",
+      "filters_applied": {}
+    },
+    {
+      "metric_id": "trips_per_driver",
+      "origin_table": "ops.real_business_slice_day_fact",
+      "origin_field": "trips_per_driver",
+      "aggregation": "AVG",
+      "filters_applied": {}
+    },
+    {
+      "metric_id": "commission_pct",
+      "origin_table": "ops.real_business_slice_day_fact",
+      "origin_field": "commission_pct",
+      "aggregation": "AVG",
+      "filters_applied": {}
+    }
+  ],
+  "generated_at": "2026-06-06T19:59:37.303899+00:00"
+}

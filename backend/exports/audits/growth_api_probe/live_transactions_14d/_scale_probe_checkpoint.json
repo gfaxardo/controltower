@@ -1,0 +1,43 @@
+{
+  "config": {
+    "park_id_masked": "08e20910***",
+    "date_from": "2026-06-01",
+    "date_to": "2026-06-14",
+    "days_count": 14,
+    "endpoint_groups": [
+      "transactions"
+    ],
+    "max_concurrency": 3,
+    "max_concurrency_per_park": 1,
+    "max_pages_per_endpoint": 3,
+    "sample_only": true,
+    "dry_run": false,
+    "timezone": "America/Lima (UTC-5)"
+  },
+  "completed_pages": {
+    "transactions_2026-06-01_0": true,
+    "transactions_2026-06-01_1": true,
+    "transactions_2026-06-01_2": true,
+    "transactions_2026-06-02_0": true,
+    "transactions_2026-06-02_1": true,
+    "transactions_2026-06-02_2": true,
+    "transactions_2026-06-03_0": true,
+    "transactions_2026-06-03_1": true,
+    "transactions_2026-06-03_2": true,
+    "transactions_2026-06-04_0": true,
+    "transactions_2026-06-04_1": true,
+    "transactions_2026-06-04_2": true,
+    "transactions_2026-06-05_0": true,
+    "transactions_2026-06-05_1": true,
+    "transactions_2026-06-05_2": true,
+    "transactions_2026-06-06_0": true,
+    "transactions_2026-06-07_0": true,
+    "transactions_2026-06-08_0": true,
+    "transactions_2026-06-09_0": true,
+    "transactions_2026-06-10_0": true,
+    "transactions_2026-06-11_0": true,
+    "transactions_2026-06-12_0": true,
+    "transactions_2026-06-13_0": true,
+    "transactions_2026-06-14_0": true
+  }
+}

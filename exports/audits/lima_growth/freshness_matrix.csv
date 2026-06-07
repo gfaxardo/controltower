@@ -1,0 +1,12 @@
+table,total_rows,latest_business_date,latest_insert,lag_hours,certification,reason
+driver_state_snapshot,18475,2026-06-02,2026-06-03 09:50:36,45.6,WARNING,Stale 1-3 days (lag 45.6h)
+prioritized_opportunity,5777,2026-06-02,2026-06-03 19:47:52,35.7,WARNING,Stale 1-3 days (lag 35.7h)
+driver_360_daily,179,2026-06-02,2026-06-02 16:35:05,62.9,WARNING,Stale 1-3 days (lag 62.9h)
+capacity_config,0,,,,WARNING,Table is empty
+loopcontrol_config,1,,2026-06-04 20:11:25,11.3,PASS,Fresh within 24h (lag 11.3h)
+loopcontrol_export,30,2026-06-02,2026-06-04 19:22:50,12.1,PASS,Fresh within 24h (lag 12.1h)
+assignment_queue,0,,,,WARNING,Table is empty
+loopcontrol_result_sync,0,,,,WARNING,Table is empty
+impact_tracking,0,,,,WARNING,Table is empty
+movement_tracking,0,,,,WARNING,Table is empty
+attribution_candidates,0,,,,WARNING,Table is empty

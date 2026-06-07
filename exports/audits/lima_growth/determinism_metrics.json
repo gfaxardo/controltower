@@ -1,0 +1,112 @@
+{
+  "date": "2026-06-02",
+  "generated": "2026-06-05T08:45:18.433901",
+  "baseline": {
+    "date": "2026-06-02",
+    "worklist": {
+      "total": 500,
+      "hash_id": "13ff315de6a5a16f",
+      "hash_dist": "ec496bb32bbd7fef"
+    },
+    "queue": {
+      "total": 500,
+      "ready": 260,
+      "held": 190,
+      "exported": 50
+    },
+    "export": {
+      "total_exported": 50
+    }
+  },
+  "worklist_hashes": [
+    "13ff315de6a5a16f",
+    "13ff315de6a5a16f",
+    "13ff315de6a5a16f"
+  ],
+  "worklist_counts": [
+    500,
+    500,
+    500
+  ],
+  "filter_hashes": [
+    "4e850e1ba97c4f52",
+    "4e850e1ba97c4f52",
+    "4e850e1ba97c4f52"
+  ],
+  "export_runs": [
+    {
+      "run": 1,
+      "selected": 10,
+      "exported": 10,
+      "exported_total": 60,
+      "campaign_id": null,
+      "batch_id": "ca9d5e7c-5b30-44da-9535-c41d2d77ea72"
+    },
+    {
+      "run": 2,
+      "selected": 10,
+      "exported": 10,
+      "exported_total": 70,
+      "campaign_id": null,
+      "batch_id": "ffaa53c9-aea5-4001-a43b-62cb4d411cb5"
+    }
+  ],
+  "limit_results": [
+    {
+      "limit": 5,
+      "selected": 5
+    },
+    {
+      "limit": 10,
+      "selected": 10
+    },
+    {
+      "limit": 20,
+      "selected": 20
+    }
+  ],
+  "duplicate_audit": {
+    "queue_duplicates": 0,
+    "export_id_duplicates": 0,
+    "exported_no_timestamp": 0,
+    "exported_no_batch": 0,
+    "ready_with_exported_at": 0
+  },
+  "cert_results": [
+    {
+      "test": "worklist_determinism",
+      "verdict": "PASS",
+      "detail": "3 runs identical (hash=13ff315de6a5a16f, counts=[500, 500, 500])"
+    },
+    {
+      "test": "queue_idempotency",
+      "verdict": "PASS",
+      "detail": "0 DB duplicates, total stable at 500"
+    },
+    {
+      "test": "export_idempotency",
+      "verdict": "WARNING",
+      "detail": "Export totals: 60 -> 70"
+    },
+    {
+      "test": "export_readonly",
+      "verdict": "PASS",
+      "detail": "Only valid READY exported (0 HELD, 0 no-phone, 0 UNASSIGNED)"
+    },
+    {
+      "test": "filter_determinism",
+      "verdict": "PASS",
+      "detail": "3 filtered runs identical (hash=4e850e1ba97c4f52)"
+    },
+    {
+      "test": "limit_certification",
+      "verdict": "PASS",
+      "detail": "All limits respected ([(5, 5), (10, 10), (20, 20)])"
+    },
+    {
+      "test": "duplicate_audit",
+      "verdict": "PASS",
+      "detail": "All 5 checks clean (0 anomalies)"
+    }
+  ]
+}

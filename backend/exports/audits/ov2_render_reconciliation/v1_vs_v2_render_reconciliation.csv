@@ -1,0 +1,277 @@
+grain,period,slice,metric,v1,v2,delta_pct,status
+day,2026-06-01,Auto regular,trips,9736.0,9736.0,0.0,MATCH
+day,2026-06-01,Auto regular,revenue,4731.718,4731.718,0.0,MATCH
+day,2026-06-01,Auto regular,drivers,1438.0,1438.0,0.0,MATCH
+day,2026-06-01,Carga,trips,24.0,24.0,0.0,MATCH
+day,2026-06-01,Carga,revenue,59.984,59.984,0.0,MATCH
+day,2026-06-01,Carga,drivers,14.0,14.0,0.0,MATCH
+day,2026-06-01,Delivery,trips,312.0,312.0,0.0,MATCH
+day,2026-06-01,Delivery,revenue,101.376,101.376,0.0,MATCH
+day,2026-06-01,Delivery,drivers,46.0,46.0,0.0,MATCH
+day,2026-06-01,PRO,trips,340.0,340.0,0.0,MATCH
+day,2026-06-01,PRO,revenue,107.004,107.004,0.0,MATCH
+day,2026-06-01,PRO,drivers,20.0,20.0,0.0,MATCH
+day,2026-06-01,Tuk Tuk,trips,1209.0,1209.0,0.0,MATCH
+day,2026-06-01,Tuk Tuk,revenue,139.998,139.998,0.0,MATCH
+day,2026-06-01,Tuk Tuk,drivers,50.0,50.0,0.0,MATCH
+day,2026-06-01,YMA,trips,480.0,480.0,0.0,MATCH
+day,2026-06-01,YMA,revenue,202.794,202.794,0.0,MATCH
+day,2026-06-01,YMA,drivers,37.0,37.0,0.0,MATCH
+day,2026-06-02,Auto regular,trips,10537.0,10537.0,0.0,MATCH
+day,2026-06-02,Auto regular,revenue,4657.907,4657.907,0.0,MATCH
+day,2026-06-02,Auto regular,drivers,1495.0,1495.0,0.0,MATCH
+day,2026-06-02,Carga,trips,17.0,17.0,0.0,MATCH
+day,2026-06-02,Carga,revenue,51.472,51.472,0.0,MATCH
+day,2026-06-02,Carga,drivers,11.0,11.0,0.0,MATCH
+day,2026-06-02,Delivery,trips,265.0,265.0,0.0,MATCH
+day,2026-06-02,Delivery,revenue,88.446,88.446,0.0,MATCH
+day,2026-06-02,Delivery,drivers,49.0,49.0,0.0,MATCH
+day,2026-06-02,PRO,trips,444.0,444.0,0.0,MATCH
+day,2026-06-02,PRO,revenue,127.245,127.245,0.0,MATCH
+day,2026-06-02,PRO,drivers,23.0,23.0,0.0,MATCH
+day,2026-06-02,Tuk Tuk,trips,1309.0,1309.0,0.0,MATCH
+day,2026-06-02,Tuk Tuk,revenue,145.443,145.443,0.0,MATCH
+day,2026-06-02,Tuk Tuk,drivers,54.0,54.0,0.0,MATCH
+day,2026-06-02,YMA,trips,573.0,573.0,0.0,MATCH
+day,2026-06-02,YMA,revenue,224.247,224.247,0.0,MATCH
+day,2026-06-02,YMA,drivers,39.0,39.0,0.0,MATCH
+day,2026-06-03,Auto regular,trips,11196.0,11196.0,0.0,MATCH
+day,2026-06-03,Auto regular,revenue,4843.645,4843.645,0.0,MATCH
+day,2026-06-03,Auto regular,drivers,1543.0,1543.0,0.0,MATCH
+day,2026-06-03,Carga,trips,15.0,15.0,0.0,MATCH
+day,2026-06-03,Carga,revenue,31.293,31.293,0.0,MATCH
+day,2026-06-03,Carga,drivers,9.0,9.0,0.0,MATCH
+day,2026-06-03,Delivery,trips,346.0,346.0,0.0,MATCH
+day,2026-06-03,Delivery,revenue,97.86,97.86,0.0,MATCH
+day,2026-06-03,Delivery,drivers,51.0,51.0,0.0,MATCH
+day,2026-06-03,PRO,trips,473.0,473.0,0.0,MATCH
+day,2026-06-03,PRO,revenue,133.278,133.278,0.0,MATCH
+day,2026-06-03,PRO,drivers,23.0,23.0,0.0,MATCH
+day,2026-06-03,Tuk Tuk,trips,1174.0,1174.0,0.0,MATCH
+day,2026-06-03,Tuk Tuk,revenue,132.216,132.216,0.0,MATCH
+day,2026-06-03,Tuk Tuk,drivers,53.0,53.0,0.0,MATCH
+day,2026-06-03,YMA,trips,726.0,726.0,0.0,MATCH
+day,2026-06-03,YMA,revenue,275.136,275.136,0.0,MATCH
+day,2026-06-03,YMA,drivers,47.0,47.0,0.0,MATCH
+day,2026-06-04,Auto regular,trips,11703.0,11703.0,0.0,MATCH
+day,2026-06-04,Auto regular,revenue,5143.558,5143.558,0.0,MATCH
+day,2026-06-04,Auto regular,drivers,1587.0,1587.0,0.0,MATCH
+day,2026-06-04,Carga,trips,27.0,27.0,0.0,MATCH
+day,2026-06-04,Carga,revenue,67.321,67.321,0.0,MATCH
+day,2026-06-04,Carga,drivers,16.0,16.0,0.0,MATCH
+day,2026-06-04,Delivery,trips,323.0,323.0,0.0,MATCH
+day,2026-06-04,Delivery,revenue,95.916,95.916,0.0,MATCH
+day,2026-06-04,Delivery,drivers,50.0,50.0,0.0,MATCH
+day,2026-06-04,PRO,trips,416.0,416.0,0.0,MATCH
+day,2026-06-04,PRO,revenue,121.017,121.017,0.0,MATCH
+day,2026-06-04,PRO,drivers,24.0,24.0,0.0,MATCH
+day,2026-06-04,Tuk Tuk,trips,974.0,974.0,0.0,MATCH
+day,2026-06-04,Tuk Tuk,revenue,107.13,107.13,0.0,MATCH
+day,2026-06-04,Tuk Tuk,drivers,46.0,46.0,0.0,MATCH
+day,2026-06-04,YMA,trips,770.0,770.0,0.0,MATCH
+day,2026-06-04,YMA,revenue,297.33,297.33,0.0,MATCH
+day,2026-06-04,YMA,drivers,47.0,47.0,0.0,MATCH
+day,2026-06-05,Auto regular,trips,11934.0,11934.0,0.0,MATCH
+day,2026-06-05,Auto regular,revenue,5503.839,5503.839,0.0,MATCH
+day,2026-06-05,Auto regular,drivers,1615.0,1615.0,0.0,MATCH
+day,2026-06-05,Carga,trips,34.0,34.0,0.0,MATCH
+day,2026-06-05,Carga,revenue,87.969,87.969,0.0,MATCH
+day,2026-06-05,Carga,drivers,20.0,20.0,0.0,MATCH
+day,2026-06-05,Delivery,trips,411.0,411.0,0.0,MATCH
+day,2026-06-05,Delivery,revenue,125.508,125.508,0.0,MATCH
+day,2026-06-05,Delivery,drivers,54.0,54.0,0.0,MATCH
+day,2026-06-05,PRO,trips,469.0,469.0,0.0,MATCH
+day,2026-06-05,PRO,revenue,148.155,148.155,0.0,MATCH
+day,2026-06-05,PRO,drivers,23.0,23.0,0.0,MATCH
+day,2026-06-05,Tuk Tuk,trips,1293.0,1293.0,0.0,MATCH
+day,2026-06-05,Tuk Tuk,revenue,144.318,144.318,0.0,MATCH
+day,2026-06-05,Tuk Tuk,drivers,52.0,52.0,0.0,MATCH
+day,2026-06-05,YMA,trips,932.0,932.0,0.0,MATCH
+day,2026-06-05,YMA,revenue,363.663,363.663,0.0,MATCH
+day,2026-06-05,YMA,drivers,46.0,46.0,0.0,MATCH
+week,2026-03-23,Auto regular,trips,94415.0,94415.0,0.0,MATCH
+week,2026-03-23,Auto regular,revenue,46236.881,46236.881,0.0,MATCH
+week,2026-03-23,Auto regular,drivers,12879.0,12879.0,0.0,MATCH
+week,2026-03-23,Carga,trips,207.0,207.0,0.0,MATCH
+week,2026-03-23,Carga,revenue,638.246,638.246,0.0,MATCH
+week,2026-03-23,Carga,drivers,115.0,115.0,0.0,MATCH
+week,2026-03-23,Delivery,trips,2376.0,2376.0,0.0,MATCH
+week,2026-03-23,Delivery,revenue,772.7775,772.7775,0.0,MATCH
+week,2026-03-23,Delivery,drivers,365.0,365.0,0.0,MATCH
+week,2026-03-23,PRO,trips,4066.0,4066.0,0.0,MATCH
+week,2026-03-23,PRO,revenue,1267.458,1267.458,0.0,MATCH
+week,2026-03-23,PRO,drivers,198.0,198.0,0.0,MATCH
+week,2026-03-23,Tuk Tuk,trips,6082.0,6082.0,0.0,MATCH
+week,2026-03-23,Tuk Tuk,revenue,nan,nan,nan,MAJOR_DELTA
+week,2026-03-23,Tuk Tuk,drivers,321.0,321.0,0.0,MATCH
+week,2026-03-23,YMA,trips,4163.0,4163.0,0.0,MATCH
+week,2026-03-23,YMA,revenue,1623.015,1623.015,0.0,MATCH
+week,2026-03-23,YMA,drivers,249.0,249.0,0.0,MATCH
+week,2026-03-30,Auto regular,trips,575055.0,575055.0,0.0,MATCH
+week,2026-03-30,Auto regular,revenue,274292.568,274292.568,0.0,MATCH
+week,2026-03-30,Auto regular,drivers,24885.0,24885.0,0.0,MATCH
+week,2026-03-30,Carga,trips,150.0,150.0,0.0,MATCH
+week,2026-03-30,Carga,revenue,431.048,431.048,0.0,MATCH
+week,2026-03-30,Carga,drivers,34.0,34.0,0.0,MATCH
+week,2026-03-30,Delivery,trips,1105.0,1105.0,0.0,MATCH
+week,2026-03-30,Delivery,revenue,292.431,292.431,0.0,MATCH
+week,2026-03-30,Delivery,drivers,100.0,100.0,0.0,MATCH
+week,2026-03-30,PRO,trips,2602.0,2602.0,0.0,MATCH
+week,2026-03-30,PRO,revenue,798.126,798.126,0.0,MATCH
+week,2026-03-30,PRO,drivers,28.0,28.0,0.0,MATCH
+week,2026-03-30,Tuk Tuk,trips,4555.0,4555.0,0.0,MATCH
+week,2026-03-30,Tuk Tuk,revenue,564.063,564.063,0.0,MATCH
+week,2026-03-30,Tuk Tuk,drivers,80.0,80.0,0.0,MATCH
+week,2026-03-30,YMA,trips,3230.0,3230.0,0.0,MATCH
+week,2026-03-30,YMA,revenue,1223.709,1223.709,0.0,MATCH
+week,2026-03-30,YMA,drivers,40.0,40.0,0.0,MATCH
+week,2026-04-06,Auto regular,trips,810972.0,810972.0,0.0,MATCH
+week,2026-04-06,Auto regular,revenue,375165.639,375165.639,0.0,MATCH
+week,2026-04-06,Auto regular,drivers,28476.0,28476.0,0.0,MATCH
+week,2026-04-06,Carga,trips,147.0,147.0,0.0,MATCH
+week,2026-04-06,Carga,revenue,394.464,394.464,0.0,MATCH
+week,2026-04-06,Carga,drivers,37.0,37.0,0.0,MATCH
+week,2026-04-06,Delivery,trips,2406.0,2406.0,0.0,MATCH
+week,2026-04-06,Delivery,revenue,1097.0337,1097.0337,0.0,MATCH
+week,2026-04-06,Delivery,drivers,150.0,150.0,0.0,MATCH
+week,2026-04-06,PRO,trips,3811.0,3811.0,0.0,MATCH
+week,2026-04-06,PRO,revenue,1129.641,1129.641,0.0,MATCH
+week,2026-04-06,PRO,drivers,29.0,29.0,0.0,MATCH
+week,2026-04-06,Tuk Tuk,trips,7103.0,7103.0,0.0,MATCH
+week,2026-04-06,Tuk Tuk,revenue,865.404,865.404,0.0,MATCH
+week,2026-04-06,Tuk Tuk,drivers,94.0,94.0,0.0,MATCH
+week,2026-04-06,YMA,trips,4882.0,4882.0,0.0,MATCH
+week,2026-04-06,YMA,revenue,1850.405,1850.405,0.0,MATCH
+week,2026-04-06,YMA,drivers,45.0,45.0,0.0,MATCH
+week,2026-04-13,Auto regular,trips,794466.0,794466.0,0.0,MATCH
+week,2026-04-13,Auto regular,revenue,377606.484,377606.484,0.0,MATCH
+week,2026-04-13,Auto regular,drivers,27747.0,27747.0,0.0,MATCH
+week,2026-04-13,Carga,trips,167.0,167.0,0.0,MATCH
+week,2026-04-13,Carga,revenue,429.512,429.512,0.0,MATCH
+week,2026-04-13,Carga,drivers,41.0,41.0,0.0,MATCH
+week,2026-04-13,Delivery,trips,2644.0,2644.0,0.0,MATCH
+week,2026-04-13,Delivery,revenue,737.943,737.943,0.0,MATCH
+week,2026-04-13,Delivery,drivers,128.0,128.0,0.0,MATCH
+week,2026-04-13,PRO,trips,3197.0,3197.0,0.0,MATCH
+week,2026-04-13,PRO,revenue,985.35,985.35,0.0,MATCH
+week,2026-04-13,PRO,drivers,26.0,26.0,0.0,MATCH
+week,2026-04-13,Tuk Tuk,trips,6592.0,6592.0,0.0,MATCH
+week,2026-04-13,Tuk Tuk,revenue,782.244,782.244,0.0,MATCH
+week,2026-04-13,Tuk Tuk,drivers,93.0,93.0,0.0,MATCH
+week,2026-04-13,YMA,trips,5234.0,5234.0,0.0,MATCH
+week,2026-04-13,YMA,revenue,2108.541,2108.541,0.0,MATCH
+week,2026-04-13,YMA,drivers,44.0,44.0,0.0,MATCH
+week,2026-04-20,Auto regular,trips,809919.0,809919.0,0.0,MATCH
+week,2026-04-20,Auto regular,revenue,380114.865,380114.865,0.0,MATCH
+week,2026-04-20,Auto regular,drivers,31095.0,31095.0,0.0,MATCH
+week,2026-04-20,Carga,trips,165.0,165.0,0.0,MATCH
+week,2026-04-20,Carga,revenue,434.776,434.776,0.0,MATCH
+week,2026-04-20,Carga,drivers,38.0,38.0,0.0,MATCH
+week,2026-04-20,Delivery,trips,2470.0,2470.0,0.0,MATCH
+week,2026-04-20,Delivery,revenue,997.7052,997.7052,0.0,MATCH
+week,2026-04-20,Delivery,drivers,130.0,130.0,0.0,MATCH
+week,2026-04-20,PRO,trips,3442.0,3442.0,0.0,MATCH
+week,2026-04-20,PRO,revenue,1015.89,1015.89,0.0,MATCH
+week,2026-04-20,PRO,drivers,26.0,26.0,0.0,MATCH
+week,2026-04-20,Tuk Tuk,trips,7384.0,7384.0,0.0,MATCH
+week,2026-04-20,Tuk Tuk,revenue,862.32,862.32,0.0,MATCH
+week,2026-04-20,Tuk Tuk,drivers,84.0,84.0,0.0,MATCH
+week,2026-04-20,YMA,trips,4940.0,4940.0,0.0,MATCH
+week,2026-04-20,YMA,revenue,1983.873,1983.873,0.0,MATCH
+week,2026-04-20,YMA,drivers,49.0,49.0,0.0,MATCH
+month,2026-01-01,Auto regular,trips,434081.0,434081.0,0.0,MATCH
+month,2026-01-01,Auto regular,drivers,4913.0,4913.0,0.0,MATCH
+month,2026-01-01,Carga,trips,1179.0,1179.0,0.0,MATCH
+month,2026-01-01,Carga,drivers,104.0,104.0,0.0,MATCH
+month,2026-01-01,Delivery,trips,8512.0,8512.0,0.0,MATCH
+month,2026-01-01,Delivery,drivers,136.0,136.0,0.0,MATCH
+month,2026-01-01,PRO,trips,19500.0,19500.0,0.0,MATCH
+month,2026-01-01,PRO,drivers,56.0,56.0,0.0,MATCH
+month,2026-01-01,Tuk Tuk,trips,24915.0,24915.0,0.0,MATCH
+month,2026-01-01,Tuk Tuk,drivers,106.0,106.0,0.0,MATCH
+month,2026-01-01,YMA,trips,12132.0,12132.0,0.0,MATCH
+month,2026-01-01,YMA,drivers,41.0,41.0,0.0,MATCH
+month,2026-02-01,Auto regular,trips,399355.0,399355.0,0.0,MATCH
+month,2026-02-01,Auto regular,drivers,4967.0,4967.0,0.0,MATCH
+month,2026-02-01,Carga,trips,1387.0,1387.0,0.0,MATCH
+month,2026-02-01,Carga,drivers,94.0,94.0,0.0,MATCH
+month,2026-02-01,Delivery,trips,7528.0,7528.0,0.0,MATCH
+month,2026-02-01,Delivery,drivers,153.0,153.0,0.0,MATCH
+month,2026-02-01,PRO,trips,17012.0,17012.0,0.0,MATCH
+month,2026-02-01,PRO,drivers,42.0,42.0,0.0,MATCH
+month,2026-02-01,Tuk Tuk,trips,26377.0,26377.0,0.0,MATCH
+month,2026-02-01,Tuk Tuk,drivers,129.0,129.0,0.0,MATCH
+month,2026-02-01,YMA,trips,14497.0,14497.0,0.0,MATCH
+month,2026-02-01,YMA,drivers,46.0,46.0,0.0,MATCH
+month,2026-03-01,Auto regular,trips,395820.0,395820.0,0.0,MATCH
+month,2026-03-01,Auto regular,revenue,199560.3445,199560.3445,0.0,MATCH
+month,2026-03-01,Auto regular,drivers,5749.0,5749.0,0.0,MATCH
+month,2026-03-01,Carga,trips,1324.0,1324.0,0.0,MATCH
+month,2026-03-01,Carga,revenue,3594.342,3594.342,0.0,MATCH
+month,2026-03-01,Carga,drivers,93.0,93.0,0.0,MATCH
+month,2026-03-01,Delivery,trips,10255.0,10255.0,0.0,MATCH
+month,2026-03-01,Delivery,revenue,3265.5061,3265.5061,0.0,MATCH
+month,2026-03-01,Delivery,drivers,273.0,273.0,0.0,MATCH
+month,2026-03-01,PRO,trips,17238.0,17238.0,0.0,MATCH
+month,2026-03-01,PRO,revenue,5574.852,5574.852,0.0,MATCH
+month,2026-03-01,PRO,drivers,42.0,42.0,0.0,MATCH
+month,2026-03-01,Tuk Tuk,trips,28027.0,28027.0,0.0,MATCH
+month,2026-03-01,Tuk Tuk,revenue,nan,nan,nan,MAJOR_DELTA
+month,2026-03-01,Tuk Tuk,drivers,147.0,147.0,0.0,MATCH
+month,2026-03-01,YMA,trips,15372.0,15372.0,0.0,MATCH
+month,2026-03-01,YMA,revenue,6306.844,6306.844,0.0,MATCH
+month,2026-03-01,YMA,drivers,52.0,52.0,0.0,MATCH
+month,2026-04-01,Auto regular,trips,380698.0,380698.0,0.0,MATCH
+month,2026-04-01,Auto regular,revenue,179654.802,179654.802,0.0,MATCH
+month,2026-04-01,Auto regular,drivers,5496.0,5496.0,0.0,MATCH
+month,2026-04-01,Carga,trips,740.0,740.0,0.0,MATCH
+month,2026-04-01,Carga,revenue,2004.376,2004.376,0.0,MATCH
+month,2026-04-01,Carga,drivers,72.0,72.0,0.0,MATCH
+month,2026-04-01,Delivery,trips,9932.0,9932.0,0.0,MATCH
+month,2026-04-01,Delivery,revenue,3546.5649,3546.5649,0.0,MATCH
+month,2026-04-01,Delivery,drivers,282.0,282.0,0.0,MATCH
+month,2026-04-01,PRO,trips,14798.0,14798.0,0.0,MATCH
+month,2026-04-01,PRO,revenue,4455.969,4455.969,0.0,MATCH
+month,2026-04-01,PRO,drivers,36.0,36.0,0.0,MATCH
+month,2026-04-01,Tuk Tuk,trips,29870.0,29870.0,0.0,MATCH
+month,2026-04-01,Tuk Tuk,revenue,3566.208,3566.208,0.0,MATCH
+month,2026-04-01,Tuk Tuk,drivers,162.0,162.0,0.0,MATCH
+month,2026-04-01,YMA,trips,20714.0,20714.0,0.0,MATCH
+month,2026-04-01,YMA,revenue,8185.858,8185.858,0.0,MATCH
+month,2026-04-01,YMA,drivers,56.0,56.0,0.0,MATCH
+month,2026-05-01,Auto regular,trips,373681.0,373681.0,0.0,MATCH
+month,2026-05-01,Auto regular,revenue,181630.006,181630.006,0.0,MATCH
+month,2026-05-01,Auto regular,drivers,5087.0,5087.0,0.0,MATCH
+month,2026-05-01,Carga,trips,799.0,799.0,0.0,MATCH
+month,2026-05-01,Carga,revenue,2196.758,2196.758,0.0,MATCH
+month,2026-05-01,Carga,drivers,71.0,71.0,0.0,MATCH
+month,2026-05-01,Delivery,trips,10114.0,10114.0,0.0,MATCH
+month,2026-05-01,Delivery,revenue,3143.1081,3143.1081,0.0,MATCH
+month,2026-05-01,Delivery,drivers,293.0,293.0,0.0,MATCH
+month,2026-05-01,PRO,trips,14484.0,14484.0,0.0,MATCH
+month,2026-05-01,PRO,revenue,4467.96,4467.96,0.0,MATCH
+month,2026-05-01,PRO,drivers,33.0,33.0,0.0,MATCH
+month,2026-05-01,Tuk Tuk,trips,31836.0,31836.0,0.0,MATCH
+month,2026-05-01,Tuk Tuk,revenue,3663.093,3663.093,0.0,MATCH
+month,2026-05-01,Tuk Tuk,drivers,135.0,135.0,0.0,MATCH
+month,2026-05-01,YMA,trips,24755.0,24755.0,0.0,MATCH
+month,2026-05-01,YMA,revenue,10122.344,10122.344,0.0,MATCH
+month,2026-05-01,YMA,drivers,60.0,60.0,0.0,MATCH
+month,2026-06-01,Auto regular,trips,31469.0,31469.0,0.0,MATCH
+month,2026-06-01,Auto regular,revenue,14233.27,14233.27,0.0,MATCH
+month,2026-06-01,Auto regular,drivers,2189.0,2189.0,0.0,MATCH
+month,2026-06-01,Carga,trips,56.0,56.0,0.0,MATCH
+month,2026-06-01,Carga,revenue,142.749,142.749,0.0,MATCH
+month,2026-06-01,Carga,drivers,23.0,23.0,0.0,MATCH
+month,2026-06-01,Delivery,trips,923.0,923.0,0.0,MATCH
+month,2026-06-01,Delivery,revenue,287.682,287.682,0.0,MATCH
+month,2026-06-01,Delivery,drivers,78.0,78.0,0.0,MATCH
+month,2026-06-01,PRO,trips,1257.0,1257.0,0.0,MATCH
+month,2026-06-01,PRO,revenue,367.527,367.527,0.0,MATCH
+month,2026-06-01,PRO,drivers,24.0,24.0,0.0,MATCH
+month,2026-06-01,Tuk Tuk,trips,3692.0,3692.0,0.0,MATCH
+month,2026-06-01,Tuk Tuk,revenue,417.657,417.657,0.0,MATCH
+month,2026-06-01,Tuk Tuk,drivers,62.0,62.0,0.0,MATCH
+month,2026-06-01,YMA,trips,1779.0,1779.0,0.0,MATCH
+month,2026-06-01,YMA,revenue,702.177,702.177,0.0,MATCH
+month,2026-06-01,YMA,drivers,47.0,47.0,0.0,MATCH

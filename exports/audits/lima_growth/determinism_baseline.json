@@ -1,0 +1,17 @@
+{
+  "date": "2026-06-02",
+  "worklist": {
+    "total": 500,
+    "hash_id": "13ff315de6a5a16f",
+    "hash_dist": "ec496bb32bbd7fef"
+  },
+  "queue": {
+    "total": 500,
+    "ready": 260,
+    "held": 190,
+    "exported": 50
+  },
+  "export": {
+    "total_exported": 50
+  }
+}

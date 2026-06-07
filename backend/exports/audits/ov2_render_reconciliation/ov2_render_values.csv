@@ -1,0 +1,289 @@
+grain,metric_id,period,business_slice_name,value,source
+day,orders,2026-06-01,Auto Regular,9736,V2
+day,orders,2026-06-02,Auto Regular,10537,V2
+day,orders,2026-06-03,Auto Regular,11196,V2
+day,orders,2026-06-04,Auto Regular,11703,V2
+day,orders,2026-06-05,Auto Regular,11934,V2
+day,orders,2026-06-01,Carga,24,V2
+day,orders,2026-06-02,Carga,17,V2
+day,orders,2026-06-03,Carga,15,V2
+day,orders,2026-06-04,Carga,27,V2
+day,orders,2026-06-05,Carga,34,V2
+day,orders,2026-06-01,Delivery,312,V2
+day,orders,2026-06-02,Delivery,265,V2
+day,orders,2026-06-03,Delivery,346,V2
+day,orders,2026-06-04,Delivery,323,V2
+day,orders,2026-06-05,Delivery,411,V2
+day,orders,2026-06-01,Pro,340,V2
+day,orders,2026-06-02,Pro,444,V2
+day,orders,2026-06-03,Pro,473,V2
+day,orders,2026-06-04,Pro,416,V2
+day,orders,2026-06-05,Pro,469,V2
+day,orders,2026-06-01,Tuk Tuk,1209,V2
+day,orders,2026-06-02,Tuk Tuk,1309,V2
+day,orders,2026-06-03,Tuk Tuk,1174,V2
+day,orders,2026-06-04,Tuk Tuk,974,V2
+day,orders,2026-06-05,Tuk Tuk,1293,V2
+day,orders,2026-06-01,Yma,480,V2
+day,orders,2026-06-02,Yma,573,V2
+day,orders,2026-06-03,Yma,726,V2
+day,orders,2026-06-04,Yma,770,V2
+day,orders,2026-06-05,Yma,932,V2
+day,revenue,2026-06-01,Auto Regular,4731.718,V2
+day,revenue,2026-06-02,Auto Regular,4657.907,V2
+day,revenue,2026-06-03,Auto Regular,4843.645,V2
+day,revenue,2026-06-04,Auto Regular,5143.558,V2
+day,revenue,2026-06-05,Auto Regular,5503.839,V2
+day,revenue,2026-06-01,Carga,59.984,V2
+day,revenue,2026-06-02,Carga,51.472,V2
+day,revenue,2026-06-03,Carga,31.293,V2
+day,revenue,2026-06-04,Carga,67.321,V2
+day,revenue,2026-06-05,Carga,87.969,V2
+day,revenue,2026-06-01,Delivery,101.376,V2
+day,revenue,2026-06-02,Delivery,88.446,V2
+day,revenue,2026-06-03,Delivery,97.86,V2
+day,revenue,2026-06-04,Delivery,95.916,V2
+day,revenue,2026-06-05,Delivery,125.508,V2
+day,revenue,2026-06-01,Pro,107.004,V2
+day,revenue,2026-06-02,Pro,127.245,V2
+day,revenue,2026-06-03,Pro,133.278,V2
+day,revenue,2026-06-04,Pro,121.017,V2
+day,revenue,2026-06-05,Pro,148.155,V2
+day,revenue,2026-06-01,Tuk Tuk,139.998,V2
+day,revenue,2026-06-02,Tuk Tuk,145.443,V2
+day,revenue,2026-06-03,Tuk Tuk,132.216,V2
+day,revenue,2026-06-04,Tuk Tuk,107.13,V2
+day,revenue,2026-06-05,Tuk Tuk,144.318,V2
+day,revenue,2026-06-01,Yma,202.794,V2
+day,revenue,2026-06-02,Yma,224.247,V2
+day,revenue,2026-06-03,Yma,275.136,V2
+day,revenue,2026-06-04,Yma,297.33,V2
+day,revenue,2026-06-05,Yma,363.663,V2
+day,active_drivers,2026-06-01,Auto Regular,1438,V2
+day,active_drivers,2026-06-02,Auto Regular,1495,V2
+day,active_drivers,2026-06-03,Auto Regular,1543,V2
+day,active_drivers,2026-06-04,Auto Regular,1587,V2
+day,active_drivers,2026-06-05,Auto Regular,1615,V2
+day,active_drivers,2026-06-01,Carga,14,V2
+day,active_drivers,2026-06-02,Carga,11,V2
+day,active_drivers,2026-06-03,Carga,9,V2
+day,active_drivers,2026-06-04,Carga,16,V2
+day,active_drivers,2026-06-05,Carga,20,V2
+day,active_drivers,2026-06-01,Delivery,46,V2
+day,active_drivers,2026-06-02,Delivery,49,V2
+day,active_drivers,2026-06-03,Delivery,51,V2
+day,active_drivers,2026-06-04,Delivery,50,V2
+day,active_drivers,2026-06-05,Delivery,54,V2
+day,active_drivers,2026-06-01,Pro,20,V2
+day,active_drivers,2026-06-02,Pro,23,V2
+day,active_drivers,2026-06-03,Pro,23,V2
+day,active_drivers,2026-06-04,Pro,24,V2
+day,active_drivers,2026-06-05,Pro,23,V2
+day,active_drivers,2026-06-01,Tuk Tuk,50,V2
+day,active_drivers,2026-06-02,Tuk Tuk,54,V2
+day,active_drivers,2026-06-03,Tuk Tuk,53,V2
+day,active_drivers,2026-06-04,Tuk Tuk,46,V2
+day,active_drivers,2026-06-05,Tuk Tuk,52,V2
+day,active_drivers,2026-06-01,Yma,37,V2
+day,active_drivers,2026-06-02,Yma,39,V2
+day,active_drivers,2026-06-03,Yma,47,V2
+day,active_drivers,2026-06-04,Yma,47,V2
+day,active_drivers,2026-06-05,Yma,46,V2
+week,orders,2026-03-23,Auto Regular,94415,V2
+week,orders,2026-03-30,Auto Regular,575055,V2
+week,orders,2026-04-06,Auto Regular,810972,V2
+week,orders,2026-04-13,Auto Regular,794466,V2
+week,orders,2026-04-20,Auto Regular,809919,V2
+week,orders,2026-03-23,Carga,207,V2
+week,orders,2026-03-30,Carga,150,V2
+week,orders,2026-04-06,Carga,147,V2
+week,orders,2026-04-13,Carga,167,V2
+week,orders,2026-04-20,Carga,165,V2
+week,orders,2026-03-23,Delivery,2376,V2
+week,orders,2026-03-30,Delivery,1105,V2
+week,orders,2026-04-06,Delivery,2406,V2
+week,orders,2026-04-13,Delivery,2644,V2
+week,orders,2026-04-20,Delivery,2470,V2
+week,orders,2026-03-23,Pro,4066,V2
+week,orders,2026-03-30,Pro,2602,V2
+week,orders,2026-04-06,Pro,3811,V2
+week,orders,2026-04-13,Pro,3197,V2
+week,orders,2026-04-20,Pro,3442,V2
+week,orders,2026-03-23,Tuk Tuk,6082,V2
+week,orders,2026-03-30,Tuk Tuk,4555,V2
+week,orders,2026-04-06,Tuk Tuk,7103,V2
+week,orders,2026-04-13,Tuk Tuk,6592,V2
+week,orders,2026-04-20,Tuk Tuk,7384,V2
+week,orders,2026-03-23,Yma,4163,V2
+week,orders,2026-03-30,Yma,3230,V2
+week,orders,2026-04-06,Yma,4882,V2
+week,orders,2026-04-13,Yma,5234,V2
+week,orders,2026-04-20,Yma,4940,V2
+week,revenue,2026-03-23,Auto Regular,46236.881,V2
+week,revenue,2026-03-30,Auto Regular,274292.568,V2
+week,revenue,2026-04-06,Auto Regular,375165.639,V2
+week,revenue,2026-04-13,Auto Regular,377606.484,V2
+week,revenue,2026-04-20,Auto Regular,380114.865,V2
+week,revenue,2026-03-23,Carga,638.246,V2
+week,revenue,2026-03-30,Carga,431.048,V2
+week,revenue,2026-04-06,Carga,394.464,V2
+week,revenue,2026-04-13,Carga,429.512,V2
+week,revenue,2026-04-20,Carga,434.776,V2
+week,revenue,2026-03-23,Delivery,772.7775,V2
+week,revenue,2026-03-30,Delivery,292.431,V2
+week,revenue,2026-04-06,Delivery,1097.0337,V2
+week,revenue,2026-04-13,Delivery,737.943,V2
+week,revenue,2026-04-20,Delivery,997.7052,V2
+week,revenue,2026-03-23,Pro,1267.458,V2
+week,revenue,2026-03-30,Pro,798.126,V2
+week,revenue,2026-04-06,Pro,1129.641,V2
+week,revenue,2026-04-13,Pro,985.35,V2
+week,revenue,2026-04-20,Pro,1015.89,V2
+week,revenue,2026-03-23,Tuk Tuk,nan,V2
+week,revenue,2026-03-30,Tuk Tuk,564.063,V2
+week,revenue,2026-04-06,Tuk Tuk,865.404,V2
+week,revenue,2026-04-13,Tuk Tuk,782.244,V2
+week,revenue,2026-04-20,Tuk Tuk,862.32,V2
+week,revenue,2026-03-23,Yma,1623.015,V2
+week,revenue,2026-03-30,Yma,1223.709,V2
+week,revenue,2026-04-06,Yma,1850.405,V2
+week,revenue,2026-04-13,Yma,2108.541,V2
+week,revenue,2026-04-20,Yma,1983.873,V2
+week,active_drivers,2026-03-23,Auto Regular,12879,V2
+week,active_drivers,2026-03-30,Auto Regular,24885,V2
+week,active_drivers,2026-04-06,Auto Regular,28476,V2
+week,active_drivers,2026-04-13,Auto Regular,27747,V2
+week,active_drivers,2026-04-20,Auto Regular,31095,V2
+week,active_drivers,2026-03-23,Carga,115,V2
+week,active_drivers,2026-03-30,Carga,34,V2
+week,active_drivers,2026-04-06,Carga,37,V2
+week,active_drivers,2026-04-13,Carga,41,V2
+week,active_drivers,2026-04-20,Carga,38,V2
+week,active_drivers,2026-03-23,Delivery,365,V2
+week,active_drivers,2026-03-30,Delivery,100,V2
+week,active_drivers,2026-04-06,Delivery,150,V2
+week,active_drivers,2026-04-13,Delivery,128,V2
+week,active_drivers,2026-04-20,Delivery,130,V2
+week,active_drivers,2026-03-23,Pro,198,V2
+week,active_drivers,2026-03-30,Pro,28,V2
+week,active_drivers,2026-04-06,Pro,29,V2
+week,active_drivers,2026-04-13,Pro,26,V2
+week,active_drivers,2026-04-20,Pro,26,V2
+week,active_drivers,2026-03-23,Tuk Tuk,321,V2
+week,active_drivers,2026-03-30,Tuk Tuk,80,V2
+week,active_drivers,2026-04-06,Tuk Tuk,94,V2
+week,active_drivers,2026-04-13,Tuk Tuk,93,V2
+week,active_drivers,2026-04-20,Tuk Tuk,84,V2
+week,active_drivers,2026-03-23,Yma,249,V2
+week,active_drivers,2026-03-30,Yma,40,V2
+week,active_drivers,2026-04-06,Yma,45,V2
+week,active_drivers,2026-04-13,Yma,44,V2
+week,active_drivers,2026-04-20,Yma,49,V2
+month,orders,2026-01-01,Auto Regular,434081,V2
+month,orders,2026-02-01,Auto Regular,399355,V2
+month,orders,2026-03-01,Auto Regular,395820,V2
+month,orders,2026-04-01,Auto Regular,380698,V2
+month,orders,2026-05-01,Auto Regular,373681,V2
+month,orders,2026-06-01,Auto Regular,31469,V2
+month,orders,2026-01-01,Carga,1179,V2
+month,orders,2026-02-01,Carga,1387,V2
+month,orders,2026-03-01,Carga,1324,V2
+month,orders,2026-04-01,Carga,740,V2
+month,orders,2026-05-01,Carga,799,V2
+month,orders,2026-06-01,Carga,56,V2
+month,orders,2026-01-01,Delivery,8512,V2
+month,orders,2026-02-01,Delivery,7528,V2
+month,orders,2026-03-01,Delivery,10255,V2
+month,orders,2026-04-01,Delivery,9932,V2
+month,orders,2026-05-01,Delivery,10114,V2
+month,orders,2026-06-01,Delivery,923,V2
+month,orders,2026-01-01,Pro,19500,V2
+month,orders,2026-02-01,Pro,17012,V2
+month,orders,2026-03-01,Pro,17238,V2
+month,orders,2026-04-01,Pro,14798,V2
+month,orders,2026-05-01,Pro,14484,V2
+month,orders,2026-06-01,Pro,1257,V2
+month,orders,2026-01-01,Tuk Tuk,24915,V2
+month,orders,2026-02-01,Tuk Tuk,26377,V2
+month,orders,2026-03-01,Tuk Tuk,28027,V2
+month,orders,2026-04-01,Tuk Tuk,29870,V2
+month,orders,2026-05-01,Tuk Tuk,31836,V2
+month,orders,2026-06-01,Tuk Tuk,3692,V2
+month,orders,2026-01-01,Yma,12132,V2
+month,orders,2026-02-01,Yma,14497,V2
+month,orders,2026-03-01,Yma,15372,V2
+month,orders,2026-04-01,Yma,20714,V2
+month,orders,2026-05-01,Yma,24755,V2
+month,orders,2026-06-01,Yma,1779,V2
+month,revenue,2026-01-01,Auto Regular,0.0,V2
+month,revenue,2026-02-01,Auto Regular,0.0,V2
+month,revenue,2026-03-01,Auto Regular,199560.3445,V2
+month,revenue,2026-04-01,Auto Regular,179654.802,V2
+month,revenue,2026-05-01,Auto Regular,181630.006,V2
+month,revenue,2026-06-01,Auto Regular,14233.27,V2
+month,revenue,2026-01-01,Carga,0.0,V2
+month,revenue,2026-02-01,Carga,0.0,V2
+month,revenue,2026-03-01,Carga,3594.342,V2
+month,revenue,2026-04-01,Carga,2004.376,V2
+month,revenue,2026-05-01,Carga,2196.758,V2
+month,revenue,2026-06-01,Carga,142.749,V2
+month,revenue,2026-01-01,Delivery,0.0,V2
+month,revenue,2026-02-01,Delivery,0.0,V2
+month,revenue,2026-03-01,Delivery,3265.5061,V2
+month,revenue,2026-04-01,Delivery,3546.5649,V2
+month,revenue,2026-05-01,Delivery,3143.1081,V2
+month,revenue,2026-06-01,Delivery,287.682,V2
+month,revenue,2026-01-01,Pro,0.0,V2
+month,revenue,2026-02-01,Pro,0.0,V2
+month,revenue,2026-03-01,Pro,5574.852,V2
+month,revenue,2026-04-01,Pro,4455.969,V2
+month,revenue,2026-05-01,Pro,4467.96,V2
+month,revenue,2026-06-01,Pro,367.527,V2
+month,revenue,2026-01-01,Tuk Tuk,0.0,V2
+month,revenue,2026-02-01,Tuk Tuk,0.0,V2
+month,revenue,2026-03-01,Tuk Tuk,nan,V2
+month,revenue,2026-04-01,Tuk Tuk,3566.208,V2
+month,revenue,2026-05-01,Tuk Tuk,3663.093,V2
+month,revenue,2026-06-01,Tuk Tuk,417.657,V2
+month,revenue,2026-01-01,Yma,0.0,V2
+month,revenue,2026-02-01,Yma,0.0,V2
+month,revenue,2026-03-01,Yma,6306.844,V2
+month,revenue,2026-04-01,Yma,8185.858,V2
+month,revenue,2026-05-01,Yma,10122.344,V2
+month,revenue,2026-06-01,Yma,702.177,V2
+month,active_drivers,2026-01-01,Auto Regular,4913,V2
+month,active_drivers,2026-02-01,Auto Regular,4967,V2
+month,active_drivers,2026-03-01,Auto Regular,5749,V2
+month,active_drivers,2026-04-01,Auto Regular,5496,V2
+month,active_drivers,2026-05-01,Auto Regular,5087,V2
+month,active_drivers,2026-06-01,Auto Regular,2189,V2
+month,active_drivers,2026-01-01,Carga,104,V2
+month,active_drivers,2026-02-01,Carga,94,V2
+month,active_drivers,2026-03-01,Carga,93,V2
+month,active_drivers,2026-04-01,Carga,72,V2
+month,active_drivers,2026-05-01,Carga,71,V2
+month,active_drivers,2026-06-01,Carga,23,V2
+month,active_drivers,2026-01-01,Delivery,136,V2
+month,active_drivers,2026-02-01,Delivery,153,V2
+month,active_drivers,2026-03-01,Delivery,273,V2
+month,active_drivers,2026-04-01,Delivery,282,V2
+month,active_drivers,2026-05-01,Delivery,293,V2
+month,active_drivers,2026-06-01,Delivery,78,V2
+month,active_drivers,2026-01-01,Pro,56,V2
+month,active_drivers,2026-02-01,Pro,42,V2
+month,active_drivers,2026-03-01,Pro,42,V2
+month,active_drivers,2026-04-01,Pro,36,V2
+month,active_drivers,2026-05-01,Pro,33,V2
+month,active_drivers,2026-06-01,Pro,24,V2
+month,active_drivers,2026-01-01,Tuk Tuk,106,V2
+month,active_drivers,2026-02-01,Tuk Tuk,129,V2
+month,active_drivers,2026-03-01,Tuk Tuk,147,V2
+month,active_drivers,2026-04-01,Tuk Tuk,162,V2
+month,active_drivers,2026-05-01,Tuk Tuk,135,V2
+month,active_drivers,2026-06-01,Tuk Tuk,62,V2
+month,active_drivers,2026-01-01,Yma,41,V2
+month,active_drivers,2026-02-01,Yma,46,V2
+month,active_drivers,2026-03-01,Yma,52,V2
+month,active_drivers,2026-04-01,Yma,56,V2
+month,active_drivers,2026-05-01,Yma,60,V2
+month,active_drivers,2026-06-01,Yma,47,V2

@@ -1,0 +1,14 @@
+LG-C1.1 Freshness Certification — 2026-06-05T07:28:53.145136
+============================================================
+
+WARNING | driver_state_snapshot               | rows= 18475 | biz=2026-06-02 | lag=45.6h
+WARNING | prioritized_opportunity             | rows=  5777 | biz=2026-06-02 | lag=35.7h
+WARNING | driver_360_daily                    | rows=   179 | biz=2026-06-02 | lag=62.9h
+WARNING | capacity_config                     | rows=     0 | biz=None       | lag=Noneh
+PASS    | loopcontrol_config                  | rows=     1 | biz=None       | lag=11.3h
+PASS    | loopcontrol_export                  | rows=    30 | biz=2026-06-02 | lag=12.1h
+WARNING | assignment_queue                    | rows=     0 | biz=None       | lag=Noneh
+WARNING | loopcontrol_result_sync             | rows=     0 | biz=None       | lag=Noneh
+WARNING | impact_tracking                     | rows=     0 | biz=None       | lag=Noneh
+WARNING | movement_tracking                   | rows=     0 | biz=None       | lag=Noneh
+WARNING | attribution_candidates              | rows=     0 | biz=None       | lag=Noneh

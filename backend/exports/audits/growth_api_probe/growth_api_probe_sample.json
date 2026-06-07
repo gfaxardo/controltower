@@ -1,0 +1,32 @@
+{
+  "probe_id": "growth_api_probe_2026-06-01_2026-06-03",
+  "generated_at": "2026-06-04T23:22:50.275029-05:00",
+  "config": {
+    "enabled": true,
+    "base_url": "https://fleet-api.yango.tech",
+    "park_id_masked": "08e20910***",
+    "date_range": {
+      "from": "2026-06-01",
+      "to": "2026-06-03"
+    },
+    "max_pages": 5,
+    "dry_run": true,
+    "timezone": "America/Lima (UTC-5)"
+  },
+  "endpoints": {
+    "orders": {
+      "endpoint": "https://fleet-api.yango.tech/v1/parks/orders/list",
+      "method": "POST",
+      "dry_run": true,
+      "body_summary": {
+        "park_id": "08e20910***",
+        "date_from": "2026-06-01",
+        "date_to": "2026-06-03",
+        "limit": 500,
+        "statuses": [
+          "complete"
+        ]
+      }
+    }
+  }
+}

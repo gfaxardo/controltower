@@ -1,0 +1,66 @@
+{
+  "date": "2026-06-02",
+  "generated": "2026-06-05T09:24:30.316902",
+  "delivery_mode": "DRY_RUN",
+  "config": {
+    "LOOPCONTROL_ENABLED": false,
+    "LOOPCONTROL_BASE_URL": "",
+    "LOOPCONTROL_INTEGRATION_KEY_SET": false,
+    "LOOPCONTROL_AUTO_EXPORT_ENABLED": false,
+    "LOOPCONTROL_EXPORT_DRY_RUN": false,
+    "LOOPCONTROL_PREVENT_DUPLICATE_EXPORT": true,
+    "LOOPCONTROL_CAMPAIGN_PREFIX": "YEGO_LIMA",
+    "limits": {
+      "churn": 200,
+      "hvr": 100,
+      "ag": 200,
+      "14_90": 100
+    }
+  },
+  "certifications": {
+    "config_audit": {
+      "verdict": "PASS",
+      "detail": "Audit complete. All 6 params documented. Credentials never printed."
+    },
+    "delivery_mode": {
+      "verdict": "WARNING",
+      "detail": "Mode: DRY_RUN. Enable LOOPCONTROL_ENABLED + URL + KEY for real delivery."
+    },
+    "ready_pool": {
+      "verdict": "PASS",
+      "detail": "155 READY records with valid phones and channels"
+    },
+    "export_execution": {
+      "verdict": "PASS",
+      "detail": "Limit=5, selected=5, mode=DRY_RUN"
+    },
+    "ledger": {
+      "verdict": "PASS",
+      "detail": "49 records, 1290 sent"
+    },
+    "mirror": {
+      "verdict": "PASS",
+      "detail": "155 EXPORTED in CT mirror"
+    },
+    "external": {
+      "verdict": "WARNING",
+      "detail": "DRY_RUN mode \u2014 no external API calls made"
+    },
+    "trace": {
+      "verdict": "PASS",
+      "detail": "5 contacts traced with queue+ledger data"
+    }
+  },
+  "export": {
+    "selected": 5,
+    "exported": 5,
+    "campaign_id": null,
+    "batch_id": "a89f3c50-122b-474d-a552-5199137b90e0",
+    "mode": "DRY_RUN"
+  },
+  "ledger": {
+    "status": "OK",
+    "total_exports": 49,
+    "latest": {
+      "export_id": "df03eedf-51a1-4dcd-9f57-5e352c94f5fe",
+      "opportunity_date": 

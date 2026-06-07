@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
+  getLimaGrowthTodayActionPlan,
+  getLimaGrowthAllocationTrace,
+  getLimaGrowthProgramCapacityPolicy,
   getLimaGrowthOperationalSummary,
   getLimaGrowthDriverStateSummary,
   getLimaGrowthProgramsSummary,
@@ -20,12 +23,18 @@ export default function useLimaGrowthData(date) {
   const [data, setData] = useState({})
   const [loading, setLoading] = useState({})
   const [errors, setErrors] = useState({})
+  const [effectiveDate, setEffectiveDate] = useState(date)
 
   const fetchSection = useCallback(async (key, fn) => {
     setLoading((p) => ({ ...p, [key]: true }))
     setErrors((p) => ({ ...p, [key]: null }))
     try {
       const result = await fn()
+      if (result?.status === 'MISSING_SERVING_FACT') {
+        setErrors((p) => ({ ...p, [key]: result.remediation || 'Serving fact no disponible' }))
+        setData((p) => ({ ...p, [key]: null, [`${key}_missing`]: result }))
+        return null
+      }
       setData((p) => ({ ...p, [key]: result }))
       return result
     } catch (e) {
@@ -37,6 +46,9 @@ export default function useLimaGrowthData(date) {
   }, [])
 
   useEffect(() => {
+    fetchSection('todayActionPlan', () => getLimaGrowthTodayActionPlan(date))
+    fetchSection('allocationTrace', () => getLimaGrowthAllocationTrace(date))
+    fetchSection('programPolicy', () => getLimaGrowthProgramCapacityPolicy(date))
     fetchSection('summary', () => getLimaGrowthOperationalSummary(date))
     fetchSection('driverState', () => getLimaGrowthDriverStateSummary(date))
     fetchSection('programs', () => getLimaGrowthProgramsSummary(date))

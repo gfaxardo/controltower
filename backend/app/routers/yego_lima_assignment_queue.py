@@ -33,6 +33,8 @@ class BuildBatchResponse(BaseModel):
     ready_count: int
     held_count: int
     skipped_duplicates: int
+    skipped_invalid: int = 0
+    skipped_reasons: dict = Field(default_factory=dict)
 
 
 class QueueRecord(BaseModel):
@@ -102,6 +104,7 @@ async def assignment_queue_get(
 
 @router.post("/export")
 async def assignment_queue_export(payload: ExportRequest):
+    from uuid import uuid4
     TABLE_QUEUE = "growth.yego_lima_assignment_queue"
 
     with get_db() as conn:
@@ -124,7 +127,9 @@ async def assignment_queue_export(payload: ExportRequest):
         return {"exported": False, "error": "No READY records in queue for this date", "count": 0}
 
     contacts = []
+    row_ids = []
     for r in rows:
+        row_ids.append(str(r["id"]))
         contacts.append({
             "driver_id": r["driver_id"],
             "phone": r["phone"],
@@ -133,12 +138,58 @@ async def assignment_queue_export(payload: ExportRequest):
             "priority_rank": r["priority_rank"],
         })
 
+    export_batch_id = str(uuid4())
     program_code = payload.program_code or (rows[0]["program_code"] if rows else "UNKNOWN")
 
-    return export_from_contacts(
+    result = export_from_contacts(
         contacts=contacts,
         opportunity_date=payload.date,
         program_code=program_code,
         campaign_name=payload.campaign_name,
         created_by=payload.created_by,
     )
+
+    exported = result.get("export_status") == "exported" or result.get("export_status") == "draft_dry_run"
+
+    if exported:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                f"UPDATE {TABLE_QUEUE} SET queue_status = 'EXPORTED', exported_at = now(), "
+                f"campaign_id_external = %(cid)s, export_batch_id = %(bid)s, updated_at = now() "
+                f"WHERE id::text = ANY(%(ids)s)",
+                {"cid": result.get("campaign_id_external"), "bid": export_batch_id, "ids": row_ids},
+            )
+            conn.commit()
+        result["queue_exported_count"] = len(row_ids)
+        result["export_batch_id"] = export_batch_id
+
+    return result
+
+
+# ── Build Audit (R2.8G) ──
+
+from psycopg2.extras import RealDictCursor as BuildAuditCursor
+
+
+@router.get("/build-audit")
+async def assignment_queue_build_audit(
+    date: Optional[str] = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+):
+    with get_db() as conn:
+        cur = conn.cursor(cursor_factory=BuildAuditCursor)
+        if date:
+            cur.execute(
+                "SELECT * FROM growth.yego_lima_queue_build_audit "
+                "WHERE assignment_date = %(d)s ORDER BY created_at DESC LIMIT %(lim)s",
+                {"d": date, "lim": limit}
+            )
+        else:
+            cur.execute(
+                "SELECT * FROM growth.yego_lima_queue_build_audit "
+                "ORDER BY created_at DESC LIMIT %(lim)s",
+                {"lim": limit}
+            )
+        rows = cur.fetchall()
+        return {"entries": [dict(r) for r in rows], "count": len(rows)}

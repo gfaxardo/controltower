@@ -14,6 +14,27 @@ import {
   getLimaGrowthOperationalSummary,
   getLimaGrowthDriverStateSummary,
   getLimaGrowthProgramsSummary,
+  exportLimaGrowthAssignmentQueue,
+  syncLimaGrowthLoopControlResults,
+  getLimaGrowthLoopControlResultsSummary,
+  getLimaGrowthLoopControlResults,
+  getLimaGrowthRiskPanel,
+  getLimaGrowthImpactSummary,
+  getLimaGrowthImpactRecords,
+  rebuildLimaGrowthImpact,
+  getLimaGrowthImpactDashboardSummary,
+  getLimaGrowthImpactDashboardPrograms,
+  getLimaGrowthImpactDashboardCampaigns,
+  getLimaGrowthImpactDashboardChannels,
+  rebuildLimaGrowthMovement,
+  getLimaGrowthMovementSummary,
+  getLimaGrowthMovementRecords,
+  getLimaGrowthMovementTransitions,
+  rebuildLimaGrowthAttribution,
+  getLimaGrowthAttributionSummary,
+  getLimaGrowthAttributionPrograms,
+  getLimaGrowthAttributionCampaigns,
+  getLimaGrowthAttributionChannels,
 } from '../services/api.js'
 
 const TABS = [
@@ -27,6 +48,12 @@ const TABS = [
   { id: 'atribucion', label: 'Atribucion', color: '#0891b2' },
   { id: 'worklist', label: 'Worklist', color: '#059669' },
   { id: 'assignment_queue', label: 'Queue', color: '#d97706' },
+  { id: 'loopcontrol_results', label: 'LC Results', color: '#7c3aed' },
+  { id: 'executive_risk', label: 'Risk', color: '#dc2626' },
+  { id: 'impact', label: 'Impact', color: '#059669' },
+  { id: 'impact_dashboard', label: 'Impact Dashboard', color: '#0891b2' },
+  { id: 'movement', label: 'Movement', color: '#7c3aed' },
+  { id: 'attribution', label: 'Attribution', color: '#0891b2' },
   { id: 'config', label: 'Configuracion', color: '#4b5563' },
 ]
 
@@ -108,6 +135,30 @@ export default function LimaGrowthDashboard() {
   const [opSummary, setOpSummary] = useState(null)
   const [driverState, setDriverState] = useState(null)
   const [programsSummary, setProgramsSummary] = useState(null)
+  const [exportingQueue, setExportingQueue] = useState(false)
+  const [exportResult, setExportResult] = useState(null)
+  const [lcResults, setLcResults] = useState(null)
+  const [lcResultsSummary, setLcResultsSummary] = useState(null)
+  const [lcResultsFilters, setLcResultsFilters] = useState({ campaign_id_external: '', status: '' })
+  const [syncingResults, setSyncingResults] = useState(false)
+  const [stubJson, setStubJson] = useState('')
+  const [syncResult, setSyncResult] = useState(null)
+  const [riskPanel, setRiskPanel] = useState(null)
+  const [impactSummary, setImpactSummary] = useState(null)
+  const [impactRecords, setImpactRecords] = useState(null)
+  const [impactFilters, setImpactFilters] = useState({ impact_status: '', campaign_id_external: '' })
+  const [impactDashboardSummary, setImpactDashboardSummary] = useState(null)
+  const [impactPrograms, setImpactPrograms] = useState(null)
+  const [impactCampaigns, setImpactCampaigns] = useState(null)
+  const [impactChannels, setImpactChannels] = useState(null)
+  const [movementSummary, setMovementSummary] = useState(null)
+  const [movementRecords, setMovementRecords] = useState(null)
+  const [movementTransitions, setMovementTransitions] = useState(null)
+  const [movementFilters, setMovementFilters] = useState({ movement_direction: '', campaign_id_external: '' })
+  const [attribSummary, setAttribSummary] = useState(null)
+  const [attribPrograms, setAttribPrograms] = useState(null)
+  const [attribCampaigns, setAttribCampaigns] = useState(null)
+  const [attribChannels, setAttribChannels] = useState(null)
 
   const today = '2026-06-02'
 
@@ -843,27 +894,79 @@ export default function LimaGrowthDashboard() {
                       </div>
                     )}
                   </div>
-                  <button
-                    onClick={async () => {
-                      setBuildingQueue(true)
-                      try {
-                        const result = await buildLimaGrowthAssignmentQueue(today)
-                        setBuildResult(result)
-                        const q = await fetchSafely('queue', () => getLimaGrowthAssignmentQueue({ date: today }))
-                        if (q) setQueue(q)
-                      } catch (e) {
-                        setErrors((p) => ({ ...p, queue: e.message || 'Error al construir cola' }))
-                      } finally {
-                        setBuildingQueue(false)
-                      }
-                    }}
-                    disabled={buildingQueue}
-                    className="text-xs bg-[#d97706] text-white px-4 py-2 rounded-lg hover:bg-[#b65c00] disabled:opacity-50 font-medium"
-                  >
-                    {buildingQueue ? 'Construyendo...' : 'Construir cola del dia'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={async () => {
+                        setBuildingQueue(true)
+                        try {
+                          const result = await buildLimaGrowthAssignmentQueue(today)
+                          setBuildResult(result)
+                          const q = await fetchSafely('queue', () => getLimaGrowthAssignmentQueue({ date: today }))
+                          if (q) setQueue(q)
+                        } catch (e) {
+                          setErrors((p) => ({ ...p, queue: e.message || 'Error al construir cola' }))
+                        } finally {
+                          setBuildingQueue(false)
+                        }
+                      }}
+                      disabled={buildingQueue}
+                      className="text-xs bg-[#d97706] text-white px-4 py-2 rounded-lg hover:bg-[#b65c00] disabled:opacity-50 font-medium"
+                    >
+                      {buildingQueue ? 'Construyendo...' : 'Construir cola del dia'}
+                    </button>
+                    {queue && queue.ready_count > 0 && (
+                      <button
+                        onClick={async () => {
+                          if (!window.confirm(`Exportar ${queue.ready_count} registros READY a LoopControl?`)) return
+                          setExportingQueue(true)
+                          setExportResult(null)
+                          try {
+                            const result = await exportLimaGrowthAssignmentQueue(today)
+                            setExportResult(result)
+                            const q = await fetchSafely('queue', () => getLimaGrowthAssignmentQueue({ date: today }))
+                            if (q) setQueue(q)
+                          } finally {
+                            setExportingQueue(false)
+                          }
+                        }}
+                        disabled={exportingQueue}
+                        className="text-xs bg-[#7c3aed] text-white px-4 py-2 rounded-lg hover:bg-[#6d28d9] disabled:opacity-50 font-medium"
+                      >
+                        {exportingQueue ? 'Exportando...' : 'Exportar READY a LoopControl'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
+
+              {/* Export Result */}
+              {exportResult && (
+                <div className="bg-purple-50 rounded-2xl border border-purple-200 p-4">
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div className="flex items-center gap-4 text-sm">
+                      <div>
+                        <span className="text-purple-500 font-medium">Exportado:</span>{' '}
+                        <span className="font-bold text-purple-700">{exportResult.exported_count}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Skipped:</span>{' '}
+                        <span className="font-bold text-gray-700">{exportResult.skipped_count}</span>
+                      </div>
+                      {exportResult.campaign_id_external && (
+                        <div>
+                          <span className="text-gray-500">Campaign:</span>{' '}
+                          <span className="font-mono text-xs text-gray-700">{exportResult.campaign_id_external}</span>
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-gray-500">Batch:</span>{' '}
+                        <span className="font-mono text-xs text-gray-500">{exportResult.export_batch_id?.slice(0, 8)}</span>
+                      </div>
+                    </div>
+                    <button onClick={() => setExportResult(null)} className="text-xs text-gray-400 hover:text-gray-600">x</button>
+                  </div>
+                </div>
+              )}
 
               {/* Filters */}
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3">
@@ -881,6 +984,7 @@ export default function LimaGrowthDashboard() {
                     <option value="">Todos</option>
                     <option value="READY">READY</option>
                     <option value="HELD">HELD</option>
+                    <option value="EXPORTED">EXPORTED</option>
                   </select>
                   <select
                     value={queueFilters.program}
@@ -961,7 +1065,9 @@ export default function LimaGrowthDashboard() {
                             </td>
                             <td className="py-2 px-3">
                               <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
-                                r.queue_status === 'READY' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                                r.queue_status === 'READY' ? 'bg-green-100 text-green-700' :
+                                r.queue_status === 'EXPORTED' ? 'bg-purple-100 text-purple-700' :
+                                'bg-yellow-100 text-yellow-700'
                               }`}>
                                 {r.queue_status}
                               </span>
@@ -975,6 +1081,893 @@ export default function LimaGrowthDashboard() {
                     </table>
                   </div>
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* ======== LOOPCONTROL RESULTS (LC-2A) ======== */}
+          {activeTab === 'loopcontrol_results' && (
+            <div className="space-y-4">
+              {/* Stub JSON Input */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-xs font-semibold text-purple-500 uppercase tracking-wide bg-purple-50 px-2 py-0.5 rounded">Stub / prueba manual</span>
+                  <span className="text-xs text-gray-400">Pega JSON de resultados y sincroniza</span>
+                </div>
+                <textarea
+                  value={stubJson}
+                  onChange={(e) => setStubJson(e.target.value)}
+                  placeholder='{"campaign_id_external":"114","results":[{"contact_id":"abc","phone":"999999999","attempts":2,"status":"CONTACTED","disposition":"INTERESTED","last_call_at":"2026-06-05T10:30:00","notes":"Acepta","agent":"Maria"}]}'
+                  className="w-full h-28 text-xs font-mono border border-gray-200 rounded-lg p-3 text-gray-600 resize-y"
+                />
+                <div className="flex items-center justify-between mt-2">
+                  <button
+                    onClick={async () => {
+                      if (!stubJson.trim()) return
+                      setSyncingResults(true)
+                      setSyncResult(null)
+                      try {
+                        const payload = JSON.parse(stubJson)
+                        const result = await syncLimaGrowthLoopControlResults(payload)
+                        setSyncResult(result)
+                        const summary = await getLimaGrowthLoopControlResultsSummary({ campaign_id_external: result.campaign_id_external })
+                        if (summary) setLcResultsSummary(summary)
+                        const records = await getLimaGrowthLoopControlResults({ campaign_id_external: result.campaign_id_external })
+                        if (records) setLcResults(records)
+                      } catch (e) {
+                        setSyncResult({ error: e.message })
+                      } finally {
+                        setSyncingResults(false)
+                      }
+                    }}
+                    disabled={syncingResults || !stubJson.trim()}
+                    className="text-xs bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 font-medium"
+                  >
+                    {syncingResults ? 'Sincronizando...' : 'Sync Results'}
+                  </button>
+                  {syncResult && (
+                    <div className="flex items-center gap-3 text-xs">
+                      {syncResult.error ? (
+                        <span className="text-red-500">{syncResult.error}</span>
+                      ) : (
+                        <>
+                          <span className="text-gray-500">Recibidos: <b>{syncResult.received_count}</b></span>
+                          <span className="text-green-600">Insertados: <b>{syncResult.inserted_count}</b></span>
+                          <span className="text-blue-600">Actualizados: <b>{syncResult.updated_count}</b></span>
+                          <span className="text-purple-600">Matched Queue: <b>{syncResult.matched_queue_count}</b></span>
+                          <span className="text-yellow-600">Unmatched: <b>{syncResult.unmatched_count}</b></span>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* KPIs */}
+              {lcResultsSummary && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div className="flex items-center gap-4">
+                      <div className="text-center px-3">
+                        <span className="text-xl font-bold text-gray-800">{formatNum(lcResultsSummary.total_results)}</span>
+                        <p className="text-xs text-gray-400">Resultados</p>
+                      </div>
+                      <div className="text-center px-3">
+                        <span className="text-xl font-bold text-purple-600">{formatNum(lcResultsSummary.matched_queue_count)}</span>
+                        <p className="text-xs text-gray-400">Matched Queue</p>
+                      </div>
+                      <div className="text-center px-3">
+                        <span className="text-xl font-bold text-yellow-600">{formatNum(lcResultsSummary.unmatched_count)}</span>
+                        <p className="text-xs text-gray-400">Unmatched</p>
+                      </div>
+                      {lcResultsSummary.by_status.map(s => (
+                        <div key={s.status || 'null'} className="text-center px-3">
+                          <span className="text-lg font-bold text-gray-600">{s.cnt}</span>
+                          <p className="text-xs text-gray-400">{s.status || 'n/a'}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={async () => {
+                        const summary = await getLimaGrowthLoopControlResultsSummary(lcResultsFilters.campaign_id_external ? { campaign_id_external: lcResultsFilters.campaign_id_external } : {})
+                        if (summary) setLcResultsSummary(summary)
+                        const records = await getLimaGrowthLoopControlResults(lcResultsFilters)
+                        if (records) setLcResults(records)
+                      }}
+                      className="text-xs text-gray-400 hover:text-gray-600"
+                    >Refresh</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Filters + Table */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Filtros</span>
+                  <input
+                    type="text"
+                    placeholder="Campaign ID"
+                    value={lcResultsFilters.campaign_id_external}
+                    onChange={(e) => setLcResultsFilters({ ...lcResultsFilters, campaign_id_external: e.target.value })}
+                    className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 w-32"
+                  />
+                  <select
+                    value={lcResultsFilters.status}
+                    onChange={(e) => setLcResultsFilters({ ...lcResultsFilters, status: e.target.value })}
+                    className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600"
+                  >
+                    <option value="">Todos los estados</option>
+                    <option value="CONTACTED">Contacted</option>
+                    <option value="NOT_CONTACTED">Not Contacted</option>
+                    <option value="FAILED">Failed</option>
+                  </select>
+                  <button
+                    onClick={async () => {
+                      if (lcResultsFilters.campaign_id_external) {
+                        const summary = await getLimaGrowthLoopControlResultsSummary({ campaign_id_external: lcResultsFilters.campaign_id_external })
+                        if (summary) setLcResultsSummary(summary)
+                      }
+                      const records = await getLimaGrowthLoopControlResults(lcResultsFilters)
+                      if (records) setLcResults(records)
+                    }}
+                    className="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-200 font-medium"
+                  >Buscar</button>
+                </div>
+              </div>
+
+              {/* Results Table */}
+              {!lcResults ? (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+                  <p className="text-sm text-gray-400">Sync resultados usando el Stub arriba o busca por Campaign ID.</p>
+                </div>
+              ) : lcResults.records.length === 0 ? (
+                <EmptyState title="Sin resultados" message="No hay resultados con los filtros actuales." />
+              ) : (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-gray-100 text-gray-400 bg-gray-50">
+                          <th className="text-left py-2.5 px-3 font-medium">Campaign</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Phone</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Driver</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Status</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Disposition</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Att</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Agent</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Last Call</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Queue</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {lcResults.records.map((r, i) => (
+                          <tr key={r.id || i} className="border-b border-gray-50 hover:bg-gray-50">
+                            <td className="py-2 px-3 font-mono text-gray-400 text-xs">{r.campaign_id_external?.slice(0, 12)}</td>
+                            <td className="py-2 px-3 font-mono text-gray-500">{r.phone || '—'}</td>
+                            <td className="py-2 px-3 font-medium text-gray-700">{r.driver_name || r.driver_id?.slice(0, 12) || '—'}</td>
+                            <td className="py-2 px-3">
+                              <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                                r.status === 'CONTACTED' ? 'bg-green-100 text-green-700' :
+                                r.status === 'NOT_CONTACTED' ? 'bg-yellow-100 text-yellow-700' :
+                                r.status === 'FAILED' ? 'bg-red-100 text-red-700' :
+                                'bg-gray-100 text-gray-600'
+                              }`}>
+                                {r.status || '—'}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-gray-500">{r.disposition || '—'}</td>
+                            <td className="py-2 px-3 text-gray-700 font-medium">{r.attempts ?? '—'}</td>
+                            <td className="py-2 px-3 text-gray-500">{r.agent || '—'}</td>
+                            <td className="py-2 px-3 text-gray-500">{r.last_call_at ? new Date(r.last_call_at).toLocaleDateString('es-PE') : '—'}</td>
+                            <td className="py-2 px-3">
+                              {r.assignment_queue_id ? (
+                                <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">Matched</span>
+                              ) : (
+                                <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-700">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ======== EXECUTIVE RISK PANEL (LG-2.6) ======== */}
+          {activeTab === 'executive_risk' && (
+            <div className="space-y-4">
+              {/* Header + Load */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold text-gray-700">Executive Risk Panel</span>
+                    {riskPanel && (
+                      <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${
+                        riskPanel.overall_risk === 'RED' ? 'bg-red-100 text-red-700' :
+                        riskPanel.overall_risk === 'YELLOW' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-green-100 text-green-700'
+                      }`}>
+                        {riskPanel.overall_risk}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const r = await fetchSafely('risk', () => getLimaGrowthRiskPanel(today))
+                      if (r) setRiskPanel(r)
+                    }}
+                    className="text-xs bg-[#dc2626] text-white px-4 py-2 rounded-lg hover:bg-[#b91c1c] font-medium"
+                  >Cargar Risk Panel</button>
+                </div>
+                {riskPanel && (
+                  <div className="mt-2 flex items-center gap-4 text-xs text-gray-500">
+                    <span>Score: <b className="text-gray-700">{riskPanel.overall_score}</b></span>
+                    <span>{riskPanel.summary}</span>
+                  </div>
+                )}
+              </div>
+
+              {!riskPanel ? (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+                  <p className="text-sm text-gray-400">Carga el Risk Panel para evaluar riesgos operativos.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {riskPanel.risks.map((risk) => {
+                    const bgColor = risk.risk_level === 'RED' ? 'border-red-300 bg-red-50' :
+                                    risk.risk_level === 'YELLOW' ? 'border-yellow-300 bg-yellow-50' :
+                                    'border-green-300 bg-green-50'
+                    const headerColor = risk.risk_level === 'RED' ? '#dc2626' :
+                                        risk.risk_level === 'YELLOW' ? '#d97706' : '#059669'
+                    const levelBg = risk.risk_level === 'RED' ? 'bg-red-100 text-red-700' :
+                                    risk.risk_level === 'YELLOW' ? 'bg-yellow-100 text-yellow-700' :
+                                    'bg-green-100 text-green-700'
+                    return (
+                      <div key={risk.risk_code} className={`rounded-2xl border p-4 ${bgColor}`}>
+                        <div className="flex items-center justify-between mb-2" style={{ borderLeftWidth: 3, borderLeftColor: headerColor }}>
+                          <span className="text-xs font-bold text-gray-600 pl-2">{risk.risk_code.replace(/_/g, ' ')}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-xs font-bold uppercase ${levelBg}`}>{risk.risk_level}</span>
+                        </div>
+                        <div className="text-2xl font-bold text-gray-800 mb-1">{risk.risk_score}</div>
+                        <p className="text-xs text-gray-500 mb-2">{risk.explanation}</p>
+                        <div className="text-xs text-gray-400 space-y-0.5">
+                          {Object.entries(risk.metrics || {}).map(([k, v]) => (
+                            <div key={k} className="flex justify-between">
+                              <span>{k.replace(/_/g, ' ')}</span>
+                              <span className="font-mono text-gray-600">{typeof v === 'number' ? Math.round(v * 100) / 100 : v}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ======== IMPACT TRACKING (IF-1) ======== */}
+          {activeTab === 'impact' && (
+            <div className="space-y-4">
+              {/* Header + Rebuild */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold text-gray-700">Impact Tracking</span>
+                    {impactSummary && (
+                      <span className="text-xs text-gray-400">{impactSummary.total_tracked} drivers tracked</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const r = await fetchSafely('impact_rebuild', () => rebuildLimaGrowthImpact({ date: today }))
+                      if (r) {
+                        const summary = await getLimaGrowthImpactSummary({ date: today })
+                        if (summary) setImpactSummary(summary)
+                        const records = await getLimaGrowthImpactRecords({ date: today })
+                        if (records) setImpactRecords(records)
+                      }
+                    }}
+                    className="text-xs bg-[#059669] text-white px-4 py-2 rounded-lg hover:bg-[#047857] font-medium"
+                  >Rebuild Impact</button>
+                </div>
+              </div>
+
+              {/* KPI Cards */}
+              {impactSummary && (
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  <div className="bg-white rounded-xl border border-gray-100 p-3 text-center">
+                    <span className="text-2xl font-bold text-gray-800">{impactSummary.total_tracked}</span>
+                    <p className="text-xs text-gray-400">Tracked</p>
+                  </div>
+                  {(impactSummary.by_impact_status || []).map(s => {
+                    const colors = {
+                      RETURNED: 'text-green-600 border-green-200',
+                      NOT_RETURNED: 'text-red-600 border-red-200',
+                      PENDING_WINDOW: 'text-yellow-600 border-yellow-200',
+                      NOT_CONTACTED: 'text-gray-500 border-gray-200',
+                    }
+                    return (
+                      <div key={s.impact_status} className={`bg-white rounded-xl border p-3 text-center ${colors[s.impact_status] || ''}`}>
+                        <span className="text-2xl font-bold">{s.cnt}</span>
+                        <p className="text-xs text-gray-400">{s.impact_status?.replace(/_/g, ' ')}</p>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Filters */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Filtros</span>
+                  <select
+                    value={impactFilters.impact_status}
+                    onChange={(e) => setImpactFilters({ ...impactFilters, impact_status: e.target.value })}
+                    className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600"
+                  >
+                    <option value="">Todos</option>
+                    <option value="RETURNED">Returned</option>
+                    <option value="NOT_RETURNED">Not Returned</option>
+                    <option value="PENDING_WINDOW">Pending Window</option>
+                    <option value="NOT_CONTACTED">Not Contacted</option>
+                  </select>
+                  <input
+                    type="text"
+                    placeholder="Campaign ID"
+                    value={impactFilters.campaign_id_external}
+                    onChange={(e) => setImpactFilters({ ...impactFilters, campaign_id_external: e.target.value })}
+                    className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 w-32"
+                  />
+                  <button
+                    onClick={async () => {
+                      const records = await getLimaGrowthImpactRecords({ date: today, ...impactFilters })
+                      if (records) setImpactRecords(records)
+                    }}
+                    className="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-200 font-medium"
+                  >Buscar</button>
+                </div>
+              </div>
+
+              {/* Table */}
+              {!impactRecords ? (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+                  <p className="text-sm text-gray-400">Usa "Rebuild Impact" para calcular el impacto de contactos.</p>
+                </div>
+              ) : impactRecords.records.length === 0 ? (
+                <EmptyState title="Sin registros" message="No hay datos de impacto con los filtros actuales." />
+              ) : (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-gray-100 text-gray-400 bg-gray-50">
+                          <th className="text-left py-2.5 px-3 font-medium">Driver</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Campaign</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Status</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Disposition</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Baseline</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Post</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Impact</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {impactRecords.records.map((r, i) => (
+                          <tr key={r.id || i} className="border-b border-gray-50 hover:bg-gray-50">
+                            <td className="py-2 px-3 font-medium text-gray-700">{r.driver_name || r.driver_id?.slice(0, 12) || '—'}</td>
+                            <td className="py-2 px-3 font-mono text-gray-400 text-xs">{r.campaign_id_external?.slice(0, 12) || '—'}</td>
+                            <td className="py-2 px-3">
+                              <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                                r.contact_status === 'CONTACTED' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                              }`}>{r.contact_status || '—'}</span>
+                            </td>
+                            <td className="py-2 px-3 text-gray-500">{r.disposition || '—'}</td>
+                            <td className="py-2 px-3 text-gray-700 font-medium">{r.baseline_trips ?? '—'}</td>
+                            <td className="py-2 px-3 text-gray-700 font-medium">{r.post_contact_trips ?? '—'}</td>
+                            <td className="py-2 px-3">
+                              <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                                r.impact_status === 'RETURNED' ? 'bg-green-100 text-green-700' :
+                                r.impact_status === 'NOT_RETURNED' ? 'bg-red-100 text-red-700' :
+                                r.impact_status === 'PENDING_WINDOW' ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-gray-100 text-gray-600'
+                              }`}>{r.impact_status?.replace(/_/g, ' ')}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ======== IMPACT DASHBOARD (IF-2) ======== */}
+          {activeTab === 'impact_dashboard' && (
+            <div className="space-y-4">
+              {/* Load button */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <span className="text-sm font-semibold text-gray-700">Impact Dashboard</span>
+                  <button
+                    onClick={async () => {
+                      const [summary, programs, campaigns, channels] = await Promise.all([
+                        getLimaGrowthImpactDashboardSummary(today),
+                        getLimaGrowthImpactDashboardPrograms(today),
+                        getLimaGrowthImpactDashboardCampaigns(today),
+                        getLimaGrowthImpactDashboardChannels(today),
+                      ])
+                      if (summary) setImpactDashboardSummary(summary)
+                      if (programs) setImpactPrograms(programs)
+                      if (campaigns) setImpactCampaigns(campaigns)
+                      if (channels) setImpactChannels(channels)
+                    }}
+                    className="text-xs bg-[#0891b2] text-white px-4 py-2 rounded-lg hover:bg-[#0e7490] font-medium"
+                  >Cargar Impact Dashboard</button>
+                </div>
+              </div>
+
+              {!impactDashboardSummary ? (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+                  <p className="text-sm text-gray-400">Carga el Impact Dashboard para ver agregaciones.</p>
+                </div>
+              ) : (
+                <>
+                  {/* KPI Cards */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
+                    {[
+                      { label: 'Exportados', value: impactDashboardSummary.exported_count, color: '#1a56db' },
+                      { label: 'Contactados', value: impactDashboardSummary.contacted_count, color: '#7c3aed' },
+                      { label: 'Retornados', value: impactDashboardSummary.returned_count, color: '#059669' },
+                      { label: 'Return Rate', value: (impactDashboardSummary.return_rate * 100).toFixed(1) + '%', color: '#059669' },
+                      { label: 'Contact Rate', value: (impactDashboardSummary.contact_rate * 100).toFixed(1) + '%', color: '#7c3aed' },
+                      { label: 'Top Program', value: impactDashboardSummary.top_program?.replace('PROGRAM_', '') || '—', color: '#0891b2' },
+                      { label: 'Bottom Program', value: impactDashboardSummary.bottom_program?.replace('PROGRAM_', '') || '—', color: '#d97706' },
+                    ].map((card, i) => (
+                      <div key={i} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-col" style={{ borderLeftWidth: 3, borderLeftColor: card.color }}>
+                        <span className="text-xs text-gray-400 uppercase tracking-wide">{card.label}</span>
+                        <span className="text-2xl font-bold text-gray-800 mt-1">{card.value}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Programs Table */}
+                  {impactPrograms && impactPrograms.programs.length > 0 && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                      <div className="px-5 py-3 border-b border-gray-50 flex items-center gap-2" style={{ borderLeftWidth: 4, borderLeftColor: '#059669' }}>
+                        <span className="text-sm font-semibold text-gray-700">Programas ({impactPrograms.total_programs})</span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b border-gray-100 text-gray-400 bg-gray-50">
+                              <th className="text-left py-2.5 px-3 font-medium">Programa</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Exportados</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Contactados</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Retornados</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Return Rate</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Contact Rate</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {impactPrograms.programs.map((p, i) => (
+                              <tr key={p.program_code || i} className="border-b border-gray-50 hover:bg-gray-50">
+                                <td className="py-2 px-3 font-medium text-gray-700">{p.program_name || p.program_code?.replace('PROGRAM_', '') || '—'}</td>
+                                <td className="py-2 px-3 text-gray-700 font-medium">{p.exported_count}</td>
+                                <td className="py-2 px-3 text-gray-700">{p.contacted_count}</td>
+                                <td className="py-2 px-3 text-green-600 font-bold">{p.returned_count}</td>
+                                <td className="py-2 px-3">
+                                  <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${p.return_rate >= 0.5 ? 'bg-green-100 text-green-700' : p.return_rate >= 0.3 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                                    {(p.return_rate * 100).toFixed(1)}%
+                                  </span>
+                                </td>
+                                <td className="py-2 px-3 text-gray-500">{(p.contact_rate * 100).toFixed(1)}%</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Campaigns Table */}
+                  {impactCampaigns && impactCampaigns.campaigns.length > 0 && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                      <div className="px-5 py-3 border-b border-gray-50 flex items-center gap-2" style={{ borderLeftWidth: 4, borderLeftColor: '#7c3aed' }}>
+                        <span className="text-sm font-semibold text-gray-700">Campanas ({impactCampaigns.total_campaigns})</span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b border-gray-100 text-gray-400 bg-gray-50">
+                              <th className="text-left py-2.5 px-3 font-medium">Campaign</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Exportados</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Contactados</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Retornados</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Return Rate</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Contact Rate</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {impactCampaigns.campaigns.map((c, i) => (
+                              <tr key={c.campaign_id_external || i} className="border-b border-gray-50 hover:bg-gray-50">
+                                <td className="py-2 px-3 font-mono text-gray-500 text-xs">{c.campaign_id_external?.slice(0, 16) || '—'}</td>
+                                <td className="py-2 px-3 text-gray-700 font-medium">{c.exported_count}</td>
+                                <td className="py-2 px-3 text-gray-700">{c.contacted_count}</td>
+                                <td className="py-2 px-3 text-green-600 font-bold">{c.returned_count}</td>
+                                <td className="py-2 px-3">
+                                  <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${c.return_rate >= 0.5 ? 'bg-green-100 text-green-700' : c.return_rate >= 0.3 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                                    {(c.return_rate * 100).toFixed(1)}%
+                                  </span>
+                                </td>
+                                <td className="py-2 px-3 text-gray-500">{(c.contact_rate * 100).toFixed(1)}%</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Channels Table */}
+                  {impactChannels && impactChannels.channels.length > 0 && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                      <div className="px-5 py-3 border-b border-gray-50 flex items-center gap-2" style={{ borderLeftWidth: 4, borderLeftColor: '#d97706' }}>
+                        <span className="text-sm font-semibold text-gray-700">Canales ({impactChannels.total_channels})</span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b border-gray-100 text-gray-400 bg-gray-50">
+                              <th className="text-left py-2.5 px-3 font-medium">Canal</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Exportados</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Contactados</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Retornados</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Return Rate</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Contact Rate</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {impactChannels.channels.map((ch, i) => (
+                              <tr key={ch.channel || i} className="border-b border-gray-50 hover:bg-gray-50">
+                                <td className="py-2 px-3 font-medium text-gray-700">{ch.channel || '—'}</td>
+                                <td className="py-2 px-3 text-gray-700 font-medium">{ch.exported_count}</td>
+                                <td className="py-2 px-3 text-gray-700">{ch.contacted_count}</td>
+                                <td className="py-2 px-3 text-green-600 font-bold">{ch.returned_count}</td>
+                                <td className="py-2 px-3">
+                                  <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${ch.return_rate >= 0.5 ? 'bg-green-100 text-green-700' : ch.return_rate >= 0.3 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                                    {(ch.return_rate * 100).toFixed(1)}%
+                                  </span>
+                                </td>
+                                <td className="py-2 px-3 text-gray-500">{(ch.contact_rate * 100).toFixed(1)}%</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ======== MOVEMENT ENGINE (ME-1) ======== */}
+          {activeTab === 'movement' && (
+            <div className="space-y-4">
+              {/* Header */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <span className="text-sm font-semibold text-gray-700">Movement Engine</span>
+                  <button
+                    onClick={async () => {
+                      const r = await fetchSafely('movement_rebuild', () => rebuildLimaGrowthMovement({}))
+                      if (r) {
+                        const [summary, records, transitions] = await Promise.all([
+                          getLimaGrowthMovementSummary({}),
+                          getLimaGrowthMovementRecords({}),
+                          getLimaGrowthMovementTransitions(),
+                        ])
+                        if (summary) setMovementSummary(summary)
+                        if (records) setMovementRecords(records)
+                        if (transitions) setMovementTransitions(transitions)
+                      }
+                    }}
+                    className="text-xs bg-[#7c3aed] text-white px-4 py-2 rounded-lg hover:bg-[#6d28d9] font-medium"
+                  >Rebuild Movement</button>
+                </div>
+              </div>
+
+              {/* KPI Cards */}
+              {movementSummary && (
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  {[
+                    { label: 'Total', value: movementSummary.total_movements, color: '#1a56db' },
+                    { label: 'Positive', value: movementSummary.positive_movements, color: '#059669' },
+                    { label: 'Negative', value: movementSummary.negative_movements, color: '#dc2626' },
+                    { label: 'Neutral', value: movementSummary.neutral_movements, color: '#d97706' },
+                    { label: 'Movement Rate', value: (movementSummary.movement_rate * 100).toFixed(1) + '%', color: '#7c3aed' },
+                  ].map((card, i) => (
+                    <div key={i} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-col" style={{ borderLeftWidth: 3, borderLeftColor: card.color }}>
+                      <span className="text-xs text-gray-400 uppercase tracking-wide">{card.label}</span>
+                      <span className="text-2xl font-bold text-gray-800 mt-1">{card.value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Transitions Table */}
+              {movementTransitions && movementTransitions.transitions.length > 0 && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                  <div className="px-5 py-3 border-b border-gray-50 flex items-center gap-2" style={{ borderLeftWidth: 4, borderLeftColor: '#7c3aed' }}>
+                    <span className="text-sm font-semibold text-gray-700">Transitions ({movementTransitions.total_transitions})</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-gray-100 text-gray-400 bg-gray-50">
+                          <th className="text-left py-2.5 px-3 font-medium">From State</th>
+                          <th className="text-left py-2.5 px-3 font-medium">To State</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Count</th>
+                          <th className="text-left py-2.5 px-3 font-medium">%</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {movementTransitions.transitions.map((t, i) => {
+                          const pct = movementSummary ? (t.count / movementSummary.total_movements * 100).toFixed(1) : '—'
+                          return (
+                            <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
+                              <td className="py-2 px-3">
+                                <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">{t.from_state}</span>
+                              </td>
+                              <td className="py-2 px-3">
+                                <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">{t.to_state}</span>
+                              </td>
+                              <td className="py-2 px-3 text-gray-700 font-medium">{t.count}</td>
+                              <td className="py-2 px-3 text-gray-500">{pct}%</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Filters */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Filtros</span>
+                  <select
+                    value={movementFilters.movement_direction}
+                    onChange={(e) => setMovementFilters({ ...movementFilters, movement_direction: e.target.value })}
+                    className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600"
+                  >
+                    <option value="">Todos</option>
+                    <option value="POSITIVE_MOVEMENT">Positive</option>
+                    <option value="NEGATIVE_MOVEMENT">Negative</option>
+                    <option value="NEUTRAL_MOVEMENT">Neutral</option>
+                  </select>
+                  <input
+                    type="text"
+                    placeholder="Campaign ID"
+                    value={movementFilters.campaign_id_external}
+                    onChange={(e) => setMovementFilters({ ...movementFilters, campaign_id_external: e.target.value })}
+                    className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 w-32"
+                  />
+                  <button
+                    onClick={async () => {
+                      const records = await getLimaGrowthMovementRecords(movementFilters)
+                      if (records) setMovementRecords(records)
+                    }}
+                    className="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-200 font-medium"
+                  >Buscar</button>
+                </div>
+              </div>
+
+              {/* Records Table */}
+              {!movementRecords ? (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+                  <p className="text-sm text-gray-400">Usa "Rebuild Movement" para generar el tracking de movimientos.</p>
+                </div>
+              ) : movementRecords.records.length === 0 ? (
+                <EmptyState title="Sin registros" message="No hay movimientos con los filtros actuales." />
+              ) : (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-gray-100 text-gray-400 bg-gray-50">
+                          <th className="text-left py-2.5 px-3 font-medium">Driver</th>
+                          <th className="text-left py-2.5 px-3 font-medium">From</th>
+                          <th className="text-left py-2.5 px-3 font-medium">To</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Type</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Campaign</th>
+                          <th className="text-left py-2.5 px-3 font-medium">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {movementRecords.records.map((r, i) => (
+                          <tr key={r.id || i} className="border-b border-gray-50 hover:bg-gray-50">
+                            <td className="py-2 px-3 font-medium text-gray-700">{r.driver_name || r.driver_id?.slice(0, 12) || '—'}</td>
+                            <td className="py-2 px-3">
+                              <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">{r.from_state || '—'}</span>
+                            </td>
+                            <td className="py-2 px-3">
+                              <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">{r.to_state || '—'}</span>
+                            </td>
+                            <td className="py-2 px-3">
+                              <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                                r.movement_direction === 'POSITIVE_MOVEMENT' ? 'bg-green-100 text-green-700' :
+                                r.movement_direction === 'NEGATIVE_MOVEMENT' ? 'bg-red-100 text-red-700' :
+                                'bg-yellow-100 text-yellow-700'
+                              }`}>{r.movement_type || r.movement_direction?.replace('_MOVEMENT', '') || '—'}</span>
+                            </td>
+                            <td className="py-2 px-3 font-mono text-gray-400 text-xs">{r.campaign_id_external?.slice(0, 12) || '—'}</td>
+                            <td className="py-2 px-3 text-gray-500">{r.movement_date || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ======== ATTRIBUTION CANDIDATES (AE-1) ======== */}
+          {activeTab === 'attribution' && (
+            <div className="space-y-4">
+              {/* Header */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <span className="text-sm font-semibold text-gray-700">Attribution Candidates</span>
+                  <button
+                    onClick={async () => {
+                      const r = await fetchSafely('attrib_rebuild', () => rebuildLimaGrowthAttribution({}))
+                      if (r) {
+                        const [summary, programs, campaigns, channels] = await Promise.all([
+                          getLimaGrowthAttributionSummary(),
+                          getLimaGrowthAttributionPrograms(),
+                          getLimaGrowthAttributionCampaigns(),
+                          getLimaGrowthAttributionChannels(),
+                        ])
+                        if (summary) setAttribSummary(summary)
+                        if (programs) setAttribPrograms(programs)
+                        if (campaigns) setAttribCampaigns(campaigns)
+                        if (channels) setAttribChannels(channels)
+                      }
+                    }}
+                    className="text-xs bg-[#0891b2] text-white px-4 py-2 rounded-lg hover:bg-[#0e7490] font-medium"
+                  >Rebuild Attribution</button>
+                </div>
+              </div>
+
+              {/* KPI Cards */}
+              {attribSummary && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {[
+                    { label: 'Eligible', value: attribSummary.total_candidates, color: '#1a56db' },
+                    { label: 'High Confidence', value: attribSummary.high_confidence, color: '#059669' },
+                    { label: 'Medium Confidence', value: attribSummary.medium_confidence, color: '#d97706' },
+                    { label: 'Low Confidence', value: attribSummary.low_confidence, color: '#dc2626' },
+                  ].map((card, i) => (
+                    <div key={i} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-col" style={{ borderLeftWidth: 3, borderLeftColor: card.color }}>
+                      <span className="text-xs text-gray-400 uppercase tracking-wide">{card.label}</span>
+                      <span className="text-2xl font-bold text-gray-800 mt-1">{card.value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {!attribPrograms && !attribCampaigns && !attribChannels ? (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+                  <p className="text-sm text-gray-400">Usa "Rebuild Attribution" para generar candidatos.</p>
+                </div>
+              ) : (
+                <>
+                  {/* Programs */}
+                  {attribPrograms && attribPrograms.items && attribPrograms.items.length > 0 && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                      <div className="px-5 py-3 border-b border-gray-50" style={{ borderLeftWidth: 4, borderLeftColor: '#059669' }}>
+                        <span className="text-sm font-semibold text-gray-700">Programas</span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b border-gray-100 text-gray-400 bg-gray-50">
+                              <th className="text-left py-2.5 px-3 font-medium">Programa</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Candidates</th>
+                              <th className="text-left py-2.5 px-3 font-medium">High</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Medium</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Low</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {attribPrograms.items.map((p, i) => (
+                              <tr key={p.program_code || i} className="border-b border-gray-50 hover:bg-gray-50">
+                                <td className="py-2 px-3 font-medium text-gray-700">{p.program_code?.replace('PROGRAM_', '') || '—'}</td>
+                                <td className="py-2 px-3 text-gray-700 font-bold">{p.candidate_count}</td>
+                                <td className="py-2 px-3 text-green-600">{p.high_count}</td>
+                                <td className="py-2 px-3 text-yellow-600">{p.medium_count}</td>
+                                <td className="py-2 px-3 text-red-500">{p.low_count}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Campaigns */}
+                  {attribCampaigns && attribCampaigns.items && attribCampaigns.items.length > 0 && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                      <div className="px-5 py-3 border-b border-gray-50" style={{ borderLeftWidth: 4, borderLeftColor: '#7c3aed' }}>
+                        <span className="text-sm font-semibold text-gray-700">Campanas</span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b border-gray-100 text-gray-400 bg-gray-50">
+                              <th className="text-left py-2.5 px-3 font-medium">Campaign</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Candidates</th>
+                              <th className="text-left py-2.5 px-3 font-medium">High</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Medium</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Low</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {attribCampaigns.items.map((c, i) => (
+                              <tr key={c.campaign_id_external || i} className="border-b border-gray-50 hover:bg-gray-50">
+                                <td className="py-2 px-3 font-mono text-gray-500 text-xs">{c.campaign_id_external?.slice(0, 16) || '—'}</td>
+                                <td className="py-2 px-3 text-gray-700 font-bold">{c.candidate_count}</td>
+                                <td className="py-2 px-3 text-green-600">{c.high_count}</td>
+                                <td className="py-2 px-3 text-yellow-600">{c.medium_count}</td>
+                                <td className="py-2 px-3 text-red-500">{c.low_count}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Channels */}
+                  {attribChannels && attribChannels.items && attribChannels.items.length > 0 && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                      <div className="px-5 py-3 border-b border-gray-50" style={{ borderLeftWidth: 4, borderLeftColor: '#d97706' }}>
+                        <span className="text-sm font-semibold text-gray-700">Canales</span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b border-gray-100 text-gray-400 bg-gray-50">
+                              <th className="text-left py-2.5 px-3 font-medium">Channel</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Candidates</th>
+                              <th className="text-left py-2.5 px-3 font-medium">High</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Medium</th>
+                              <th className="text-left py-2.5 px-3 font-medium">Low</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {attribChannels.items.map((ch, i) => (
+                              <tr key={ch.assigned_channel || i} className="border-b border-gray-50 hover:bg-gray-50">
+                                <td className="py-2 px-3 font-medium text-gray-700">{ch.assigned_channel || '—'}</td>
+                                <td className="py-2 px-3 text-gray-700 font-bold">{ch.candidate_count}</td>
+                                <td className="py-2 px-3 text-green-600">{ch.high_count}</td>
+                                <td className="py-2 px-3 text-yellow-600">{ch.medium_count}</td>
+                                <td className="py-2 px-3 text-red-500">{ch.low_count}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

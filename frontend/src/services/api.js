@@ -1384,6 +1384,28 @@ export const getLimaGrowthAssignmentQueue = async (params = {}) => {
   return response.data
 }
 
+// ── Lima Growth — Today's Action Plan (LG-UX-R2.6) ──
+
+export const getLimaGrowthTodayActionPlan = async (date) => {
+  const response = await api.get('/yego-lima-growth/today-action-plan', { params: { date }, timeout: 30000 })
+  return response.data
+}
+
+export const getLimaGrowthAllocationTrace = async (date) => {
+  const response = await api.get('/yego-lima-growth/capacity/allocation-trace', { params: { date }, timeout: 30000 })
+  return response.data
+}
+
+export const getLimaGrowthProgramCapacityPolicy = async (date) => {
+  const response = await api.get('/yego-lima-growth/program-capacity-policy', { params: { date }, timeout: 30000 })
+  return response.data
+}
+
+export const simulateLimaGrowthProgramCapacityPolicy = async (date, programs) => {
+  const response = await api.post('/yego-lima-growth/program-capacity-policy/simulate', { date, programs }, { timeout: 30000 })
+  return response.data
+}
+
 // ── Lima Growth — Operational Summary (LG-C1.4-P0) ──
 
 export const getLimaGrowthOperationalSummary = async (date) => {
@@ -1403,6 +1425,204 @@ export const getLimaGrowthProgramsSummary = async (date) => {
 
 export const getLimaGrowthQueueSummary = async (date) => {
   const response = await api.get('/yego-lima-growth/assignment-queue/summary', { params: { date }, timeout: 30000 })
+  return response.data
+}
+
+export const exportLimaGrowthAssignmentQueue = async (date, filters = {}) => {
+  const params = { date }
+  if (filters.program) params.program = filters.program
+  if (filters.channel) params.channel = filters.channel
+  if (filters.limit) params.limit = filters.limit
+  const response = await api.post('/yego-lima-growth/assignment-queue/export', null, { params, timeout: 60000 })
+  return response.data
+}
+
+// ── Lima Growth — LoopControl Result Sync (LC-2A) ──
+
+export const syncLimaGrowthLoopControlResults = async (payload) => {
+  const response = await api.post('/yego-lima-growth/loopcontrol/results/sync', payload, { timeout: 30000 })
+  return response.data
+}
+
+export const getLimaGrowthLoopControlResultsSummary = async (filters = {}) => {
+  const params = {}
+  if (filters.date) params.date = filters.date
+  if (filters.campaign_id_external) params.campaign_id_external = filters.campaign_id_external
+  const response = await api.get('/yego-lima-growth/loopcontrol/results/summary', { params, timeout: 15000 })
+  return response.data
+}
+
+export const getLimaGrowthLoopControlResults = async (filters = {}) => {
+  const params = {}
+  if (filters.date) params.date = filters.date
+  if (filters.campaign_id_external) params.campaign_id_external = filters.campaign_id_external
+  if (filters.status) params.status = filters.status
+  if (filters.disposition) params.disposition = filters.disposition
+  if (filters.limit) params.limit = filters.limit
+  const response = await api.get('/yego-lima-growth/loopcontrol/results', { params, timeout: 15000 })
+  return response.data
+}
+
+// ── Lima Growth — Executive Risk Panel (LG-2.6) ──
+
+export const getLimaGrowthRiskPanel = async (date) => {
+  const response = await api.get('/yego-lima-growth/risk-panel', { params: { date }, timeout: 15000 })
+  return response.data
+}
+
+// ── Lima Growth — Impact Tracking (IF-1) ──
+
+export const getLimaGrowthImpactSummary = async (filters = {}) => {
+  const params = {}
+  if (filters.date) params.date = filters.date
+  if (filters.campaign_id_external) params.campaign_id_external = filters.campaign_id_external
+  const response = await api.get('/yego-lima-growth/impact/summary', { params, timeout: 15000 })
+  return response.data
+}
+
+export const getLimaGrowthImpactRecords = async (filters = {}) => {
+  const params = {}
+  if (filters.date) params.date = filters.date
+  if (filters.campaign_id_external) params.campaign_id_external = filters.campaign_id_external
+  if (filters.impact_status) params.impact_status = filters.impact_status
+  if (filters.limit) params.limit = filters.limit
+  const response = await api.get('/yego-lima-growth/impact/records', { params, timeout: 15000 })
+  return response.data
+}
+
+export const rebuildLimaGrowthImpact = async (payload) => {
+  const response = await api.post('/yego-lima-growth/impact/rebuild', payload, { timeout: 60000 })
+  return response.data
+}
+
+// ── Lima Growth — Impact Dashboard (IF-2) ──
+
+export const getLimaGrowthImpactDashboardSummary = async (date) => {
+  const params = {}
+  if (date) params.date = date
+  const response = await api.get('/yego-lima-growth/impact-dashboard/summary', { params, timeout: 15000 })
+  return response.data
+}
+
+export const getLimaGrowthImpactDashboardPrograms = async (date) => {
+  const params = {}
+  if (date) params.date = date
+  const response = await api.get('/yego-lima-growth/impact-dashboard/programs', { params, timeout: 15000 })
+  return response.data
+}
+
+export const getLimaGrowthImpactDashboardCampaigns = async (date) => {
+  const params = {}
+  if (date) params.date = date
+  const response = await api.get('/yego-lima-growth/impact-dashboard/campaigns', { params, timeout: 15000 })
+  return response.data
+}
+
+export const getLimaGrowthImpactDashboardChannels = async (date) => {
+  const params = {}
+  if (date) params.date = date
+  const response = await api.get('/yego-lima-growth/impact-dashboard/channels', { params, timeout: 15000 })
+  return response.data
+}
+
+// ── Lima Growth — Movement Engine (ME-1) ──
+
+export const rebuildLimaGrowthMovement = async (payload) => {
+  const response = await api.post('/yego-lima-growth/movement/rebuild', payload, { timeout: 60000 })
+  return response.data
+}
+
+export const getLimaGrowthMovementSummary = async (filters = {}) => {
+  const params = {}
+  if (filters.date) params.date = filters.date
+  if (filters.campaign_id_external) params.campaign_id_external = filters.campaign_id_external
+  const response = await api.get('/yego-lima-growth/movement/summary', { params, timeout: 15000 })
+  return response.data
+}
+
+export const getLimaGrowthMovementRecords = async (filters = {}) => {
+  const params = {}
+  if (filters.date) params.date = filters.date
+  if (filters.campaign_id_external) params.campaign_id_external = filters.campaign_id_external
+  if (filters.movement_direction) params.movement_direction = filters.movement_direction
+  if (filters.limit) params.limit = filters.limit
+  const response = await api.get('/yego-lima-growth/movement/records', { params, timeout: 15000 })
+  return response.data
+}
+
+export const getLimaGrowthMovementTransitions = async (date) => {
+  const params = {}
+  if (date) params.date = date
+  const response = await api.get('/yego-lima-growth/movement/transitions', { params, timeout: 15000 })
+  return response.data
+}
+
+// ── Lima Growth — Attribution Candidates (AE-1) ──
+
+export const rebuildLimaGrowthAttribution = async (payload) => {
+  const response = await api.post('/yego-lima-growth/attribution/rebuild', payload, { timeout: 60000 })
+  return response.data
+}
+
+export const getLimaGrowthAttributionSummary = async (date) => {
+  const params = {}
+  if (date) params.date = date
+  const response = await api.get('/yego-lima-growth/attribution/summary', { params, timeout: 15000 })
+  return response.data
+}
+
+export const getLimaGrowthAttributionPrograms = async (date) => {
+  const params = {}
+  if (date) params.date = date
+  const response = await api.get('/yego-lima-growth/attribution/programs', { params, timeout: 15000 })
+  return response.data
+}
+
+export const getLimaGrowthAttributionCampaigns = async (date) => {
+  const params = {}
+  if (date) params.date = date
+  const response = await api.get('/yego-lima-growth/attribution/campaigns', { params, timeout: 15000 })
+  return response.data
+}
+
+export const getLimaGrowthAttributionChannels = async (date) => {
+  const params = {}
+  if (date) params.date = date
+  const response = await api.get('/yego-lima-growth/attribution/channels', { params, timeout: 15000 })
+  return response.data
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Omniview V2 Shadow
+// ═══════════════════════════════════════════════════════════════
+
+export const getOmniviewV2Shell = async (params = {}, { signal } = {}) => {
+  const response = await api.get('/ops/omniview-v2/shell', { params, signal, timeout: 10000 })
+  return response.data
+}
+
+export const getOmniviewV2Sources = async ({ signal } = {}) => {
+  const response = await api.get('/ops/omniview-v2/sources', { signal, timeout: 10000 })
+  return response.data
+}
+
+export const getOmniviewV2Compare = async (params = {}, { signal } = {}) => {
+  const response = await api.get('/ops/omniview-v2/compare', { params, signal, timeout: 20000 })
+  return response.data
+}
+
+export const getOmniviewV2Matrix = async (params = {}, { signal } = {}) => {
+  const response = await api.get('/ops/omniview-v2/matrix', { params, signal, timeout: 10000 })
+  return response.data
+}
+
+export const getOmniviewV2OperatingDate = async (params = {}, { signal } = {}) => {
+  const response = await api.get('/ops/omniview-v2/operating-date', { params, signal, timeout: 5000 })
+  return response.data
+}
+
+export const getOmniviewV2PlanRealMonthly = async (params = {}, { signal } = {}) => {
+  const response = await api.get('/ops/omniview-v2/plan-real/monthly', { params, signal, timeout: 10000 })
   return response.data
 }
 
