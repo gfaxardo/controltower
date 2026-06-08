@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import useOmniviewV2Shell from './hooks/useOmniviewV2Shell';
 import useOmniviewV2Matrix from './hooks/useOmniviewV2Matrix';
 import { useOmniviewV2PlanReal } from './hooks/useOmniviewV2PlanReal';
+import { useOmniviewV2DrillCell } from './hooks/useOmniviewV2DrillCell';
 import { getOmniviewV2OperatingDate } from '../../services/api';
 import OmniviewV2CommandHeader from './components/layout/OmniviewV2CommandHeader';
 import OmniviewV2ContextBar from './components/layout/OmniviewV2ContextBar';
@@ -71,6 +72,11 @@ function OmniviewV2ShadowPage() {
 
   const { planData, loading: planLoading } = useOmniviewV2PlanReal(
     metricId, dateFrom || null, dateTo || null
+  );
+
+  // Drill data: fetched when a cell is selected
+  const { drillData, loading: drillLoading } = useOmniviewV2DrillCell(
+    inspectorOpen ? selectedCell : null, grain
   );
 
   // Select active matrix data based on view mode
@@ -354,7 +360,7 @@ function OmniviewV2ShadowPage() {
 
       {/* Cell Inspector */}
       <CellInspector
-        cell={selectedCell}
+        cell={selectedCell ? { ...selectedCell, _drill: drillData, _drillLoading: drillLoading } : null}
         isOpen={inspectorOpen}
         onClose={handleCloseInspector}
       />

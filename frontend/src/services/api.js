@@ -1592,6 +1592,45 @@ export const getLimaGrowthAttributionChannels = async (date) => {
   return response.data
 }
 
+// ── Lima Growth — Operational Truth (LG-UX-R2.1) ──
+
+export const getLimaGrowthOperationalTruth = async (date) => {
+  const params = {}
+  if (date) params.date = date
+  const response = await api.get('/yego-lima-growth/operational-truth', { params, timeout: 15000 })
+  return response.data
+}
+
+// ── Lima Growth — Intraday Signals (LG-INFRA-R1.3) ──
+
+export const getLimaGrowthIntradaySignalsSummary = async (date) => {
+  const params = {}
+  if (date) params.date = date
+  const response = await api.get('/yego-lima-growth/intraday-signals/summary', { params, timeout: 15000 })
+  return response.data
+}
+
+export const getLimaGrowthIntradaySignalsByCampaign = async (date) => {
+  const params = {}
+  if (date) params.date = date
+  const response = await api.get('/yego-lima-growth/intraday-signals/by-campaign', { params, timeout: 15000 })
+  return response.data
+}
+
+export const getLimaGrowthIntradaySignalsByProgram = async (date) => {
+  const params = {}
+  if (date) params.date = date
+  const response = await api.get('/yego-lima-growth/intraday-signals/by-program', { params, timeout: 15000 })
+  return response.data
+}
+
+export const buildLimaGrowthIntradaySignals = async (date) => {
+  const params = {}
+  if (date) params.date = date
+  const response = await api.post('/yego-lima-growth/intraday-signals/build', null, { params, timeout: 60000 })
+  return response.data
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Omniview V2 Shadow
 // ═══════════════════════════════════════════════════════════════
@@ -1623,6 +1662,11 @@ export const getOmniviewV2OperatingDate = async (params = {}, { signal } = {}) =
 
 export const getOmniviewV2PlanRealMonthly = async (params = {}, { signal } = {}) => {
   const response = await api.get('/ops/omniview-v2/plan-real/monthly', { params, signal, timeout: 10000 })
+  return response.data
+}
+
+export const getOmniviewV2DrillCell = async (params = {}, { signal } = {}) => {
+  const response = await api.get('/ops/omniview-v2/drill/cell', { params, signal, timeout: 8000 })
   return response.data
 }
 

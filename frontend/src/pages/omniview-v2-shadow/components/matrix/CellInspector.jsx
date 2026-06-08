@@ -79,6 +79,55 @@ function CellInspector({ cell, isOpen, onClose }) {
             <InfoRow label="Delta %" value={cell.delta_pct != null ? `${cell.delta_pct}%` : '—'} />
           </InspectorSection>
         )}
+
+        {cell._drill && (
+          <InspectorSection title="Drill">
+            {cell._drillLoading ? (
+              <span style={{ fontSize: 12, color: 'var(--ov2-text-secondary)' }}>Loading...</span>
+            ) : (
+              <div style={{ fontSize: 12 }}>
+                <InfoRow label="Total Drivers" value={cell._drill.drill?.driver?.total_count || 0} />
+                {cell._drill.drill?.park?.data?.length > 0 && (
+                  <div style={{ marginTop: 6 }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--ov2-text-secondary)', marginBottom: 4 }}>Parks</div>
+                    {cell._drill.drill.park.data.slice(0, 5).map((p, i) => (
+                      <div key={i} style={{ fontSize: 11, marginBottom: 2, padding: '2px 0' }}>
+                        <span style={{ fontFamily: 'monospace' }}>{p.park_id.slice(0, 12)}...</span>
+                        <span style={{ marginLeft: 8, fontWeight: 500 }}>{p.trips} trips</span>
+                        <span style={{ marginLeft: 8, color: 'var(--ov2-text-secondary)' }}>{p.drivers} drivers</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {cell._drill.drill?.driver?.data?.length > 0 && (
+                  <div style={{ marginTop: 6 }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--ov2-text-secondary)', marginBottom: 4 }}>Top Drivers</div>
+                    {cell._drill.drill.driver.data.slice(0, 5).map((d, i) => (
+                      <div key={i} style={{ fontSize: 11, marginBottom: 2, fontFamily: 'monospace' }}>
+                        {d.driver_id.slice(0, 16)}... <span style={{ fontWeight: 500 }}>{d.trips}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </InspectorSection>
+        )}
+
+        {cell._drill?.lineage_status && (
+          <InspectorSection title="Lineage Status">
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {Object.entries(cell._drill.lineage_status).map(([k, v]) => (
+                <span key={k} style={{
+                  padding: '2px 6px', borderRadius: 3, fontSize: 10, fontWeight: 600,
+                  background: v === 'READY' ? '#dcfce7' : '#fef3c7',
+                  color: v === 'READY' ? '#166534' : '#92400e',
+                  border: `1px solid ${v === 'READY' ? '#86efac' : '#fcd34d'}`,
+                }}>{k}: {v}</span>
+              ))}
+            </div>
+          </InspectorSection>
+        )}
       </div>
     </>
   );
