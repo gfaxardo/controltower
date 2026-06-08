@@ -383,6 +383,7 @@ def cell_audit(
     try:
         d = dt_date.fromisoformat(period[:10])
         if grain == "day": date_to = (d + timedelta(days=1)).isoformat()
+        elif grain == "week": date_to = (d + timedelta(days=7)).isoformat()
         elif grain == "month" and len(period) == 10:
             if d.month == 12: date_to = dt_date(d.year+1, 1, 1).isoformat()
             else: date_to = dt_date(d.year, d.month+1, 1).isoformat()
