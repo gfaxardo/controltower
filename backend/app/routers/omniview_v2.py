@@ -392,14 +392,39 @@ def cell_audit(
         with get_db() as conn:
             cur = conn.cursor()
 
-            # Total aggregate
+            # Total aggregate from bridge
             cur.execute("""
-                SELECT SUM(completed_trips), COUNT(DISTINCT driver_id) FILTER (WHERE completed_trips > 0)
+                SELECT SUM(completed_trips), SUM(cancelled_trips),
+                       COUNT(DISTINCT driver_id) FILTER (WHERE completed_trips > 0),
+                       COUNT(DISTINCT driver_id) FILTER (WHERE completed_trips = 0 AND total_trips > 0)
                 FROM ops.driver_day_slice_fact
                 WHERE country=%s AND city=%s AND activity_date>=%s AND activity_date<%s AND business_slice_name=%s
             """, (country, city, date_from, date_to, business_slice_name))
-            total_trips, total_drivers = cur.fetchone()
-            result["value"] = {"trips": int(total_trips or 0), "drivers": int(total_drivers or 0)}
+            total_trips, total_canc, total_drivers, empty_drivers = cur.fetchone()
+            total_trips = int(total_trips or 0)
+            total_drivers = int(total_drivers or 0)
+
+            # Revenue from day_fact
+            rev_val = 0
+            if metric_id in ("revenue", "avg_ticket", "trips_per_driver"):
+                cur.execute("""
+                    SELECT SUM(COALESCE(revenue_yego_final,0)) FROM ops.real_business_slice_day_fact
+                    WHERE LOWER(TRIM(country))=%s AND LOWER(TRIM(city))=%s
+                    AND trip_date>=%s AND trip_date<%s AND business_slice_name=%s
+                """, (country, city, date_from[:10], date_to[:10], business_slice_name))
+                rev_val = float(cur.fetchone()[0] or 0)
+
+            avg_ticket = round(rev_val / total_trips, 2) if total_trips else None
+            tpd = round(total_trips / total_drivers, 2) if total_drivers else None
+
+            result["value"] = {
+                "trips": total_trips,
+                "revenue": round(rev_val, 2),
+                "active_drivers": total_drivers,
+                "empty_supply_drivers": int(empty_drivers or 0),
+                "avg_ticket": avg_ticket,
+                "trips_per_driver": tpd,
+            }
 
             # Park contributions with %
             cur.execute("""
@@ -467,7 +492,7 @@ def cell_audit(
     elif grain == "week":
         try:
             d = dt_date.fromisoformat(period)
-            date_to = (d + timedelta(days=6)).isoformat()
+            date_to = (d + timedelta(days=7)).isoformat()
         except:
             pass
     elif grain == "month":
