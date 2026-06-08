@@ -376,7 +376,93 @@ def cell_audit(
 
     if not period or not business_slice_name:
         result["error"] = "period and business_slice_name required"
-        return result
+    return result
+
+
+@router.get("/reconciliation/park")
+def reconcile_park(
+    park_id: str = Query(default="08e20910d81d42658d4334d3f6d10ac0"),
+    date: str = Query(default=None),
+    grain: str = Query(default="day"),
+):
+    """CT vs Yango reconciliation by park + date. Compares trips, revenue, drivers."""
+    from app.db.connection import get_db
+    from datetime import date as dt_date, timedelta
+
+    if not date:
+        date = (dt_date.today() - timedelta(days=1)).isoformat()
+
+    date_to = date
+    try:
+        d = dt_date.fromisoformat(date)
+        if grain == "day": date_to = (d + timedelta(days=1)).isoformat()
+    except: pass
+
+    result = {"park_id": park_id, "date": date, "grain": grain, "comparisons": {}}
+
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+
+            # CT: trips + drivers from bridge
+            cur.execute("""SELECT SUM(completed_trips), COUNT(DISTINCT driver_id) FILTER (WHERE completed_trips>0)
+                FROM ops.driver_day_slice_fact WHERE park_id=%s AND activity_date>=%s AND activity_date<%s
+            """, (park_id, date, date_to))
+            ct_trips, ct_drivers = cur.fetchone()
+            ct_trips = int(ct_trips or 0)
+            ct_drivers = int(ct_drivers or 0)
+
+            # CT: revenue from day_fact (closest approximation by park)
+            cur.execute("""SELECT SUM(COALESCE(revenue_yego_final,0)) FROM ops.real_business_slice_day_fact
+                WHERE LOWER(TRIM(country))='peru' AND LOWER(TRIM(city))='lima' AND trip_date>=%s AND trip_date<%s
+            """, (date, date_to))
+            ct_rev = float(cur.fetchone()[0] or 0)
+
+            # Yango: orders
+            cur.execute("""SELECT SUM(COALESCE(orders_completed,0)), SUM(COALESCE(orders_total,0)),
+                SUM(COALESCE(unique_drivers,0)) FROM raw_yango.mv_orders_day
+                WHERE park_id=%s AND order_date>=%s AND order_date<%s
+            """, (park_id, date, date_to))
+            y_row = cur.fetchone()
+            y_trips = int(y_row[0] or 0)
+            y_total = int(y_row[1] or 0)
+            y_drivers = int(y_row[2] or 0)
+
+            def compare_status(ct_val, y_val):
+                if ct_val == 0 and y_val == 0: return "NOT_COMPARABLE"
+                if ct_val == 0: return "YANGO_ONLY"
+                if y_val == 0: return "CT_ONLY"
+                delta = abs(ct_val - y_val) / max(y_val, 1) * 100
+                if delta <= 1: return "MATCH"
+                if delta <= 5: return "MINOR_DELTA"
+                return "MAJOR_DELTA"
+
+            def compare_delta(ct_val, y_val):
+                if ct_val == 0 or y_val == 0: return None
+                return round((ct_val - y_val) / y_val * 100, 1)
+
+            result["comparisons"]["trips"] = {
+                "ct_value": ct_trips, "yango_value": y_trips,
+                "delta_pct": compare_delta(ct_trips, y_trips),
+                "status": compare_status(ct_trips, y_trips)
+            }
+            result["comparisons"]["drivers"] = {
+                "ct_value": ct_drivers, "yango_value": y_drivers,
+                "delta_pct": compare_delta(ct_drivers, y_drivers),
+                "status": compare_status(ct_drivers, y_drivers)
+            }
+            result["comparisons"]["revenue"] = {
+                "ct_value": round(ct_rev, 2), "yango_value": None,
+                "delta_pct": None,
+                "status": "NOT_COMPARABLE",
+                "note": "Yango revenue not available in raw_yango.mv_revenue_day for this date"
+            }
+
+            cur.close()
+    except Exception as e:
+        result["error"] = str(e)[:200]
+
+    return result
 
     date_from = period
     date_to = period
