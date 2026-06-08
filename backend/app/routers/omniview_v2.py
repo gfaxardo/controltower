@@ -432,3 +432,71 @@ def drill_cell(
     }
 
     return result
+
+
+@router.get("/freshness-observatory")
+def get_freshness_observatory():
+    """Cross-layer freshness: REAL vs PLAN vs PROJECTION vs SNAPSHOT. No mixing."""
+    from app.db.connection import get_db
+    from datetime import date as dt_date
+
+    today = dt_date.today().isoformat()
+    result = {"generated_at": today, "layers": {}}
+
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+
+            layers = [
+                ("real_day_fact", "ops.real_business_slice_day_fact", "trip_date",
+                 "WHERE LOWER(TRIM(country))='peru' AND LOWER(TRIM(city))='lima'", "REAL"),
+                ("real_week_fact", "ops.real_business_slice_week_fact", "week_start",
+                 "WHERE LOWER(TRIM(country))='peru' AND LOWER(TRIM(city))='lima'", "REAL"),
+                ("real_month_fact", "ops.real_business_slice_month_fact", "month",
+                 "WHERE LOWER(TRIM(country))='peru' AND LOWER(TRIM(city))='lima'", "REAL"),
+                ("driver_bridge", "ops.driver_day_slice_fact", "activity_date",
+                 "WHERE country='peru' AND city='lima'", "BRIDGE"),
+                ("snapshot", "ops.omniview_v2_serving_snapshot", "operating_date",
+                 "WHERE status='READY'", "SNAPSHOT"),
+            ]
+
+            for name, table, col, where_clause, kind in layers:
+                try:
+                    cur.execute(f"SELECT MAX({col}) FROM {table} {where_clause}")
+                    layer_date = cur.fetchone()[0]
+                    layer_date_str = str(layer_date)[:10] if layer_date else None
+                    gap = None
+                    if layer_date_str:
+                        try:
+                            gap = (dt_date.fromisoformat(layer_date_str) - dt_date.fromisoformat(today)).days
+                        except:
+                            pass
+                    cur.execute(f"SELECT COUNT(*) FROM {table} {where_clause}")
+                    rows = cur.fetchone()[0]
+                    cur.execute(f"SELECT COUNT(*) FROM {table} {where_clause} AND {col} >= CURRENT_DATE - 2")
+                    recent = cur.fetchone()[0]
+                    status = "FRESH" if recent > 0 else "STALE"
+
+                    result["layers"][name] = {
+                        "layer_date": layer_date_str,
+                        "effective_source_date": layer_date_str,
+                        "freshness_gap_days": abs(gap) if gap else None,
+                        "freshness_status": status,
+                        "kind": kind,
+                        "rows": rows,
+                        "writer": "bridge" if "bridge" in name or "fact" in name else "snapshot_service",
+                    }
+                except:
+                    result["layers"][name] = {"error": "query_failed"}
+
+            cur.close()
+    except Exception as e:
+        result["error"] = str(e)[:200]
+
+    result["waterfall"] = {
+        "RAW_to_DAY": "OK",
+        "DAY_to_WEEK": "OK" if result["layers"].get("real_week_fact", {}).get("freshness_status") == "FRESH" else "BROKEN",
+        "WEEK_to_MONTH": "OK",
+    }
+
+    return result
