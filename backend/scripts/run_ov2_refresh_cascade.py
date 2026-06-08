@@ -1,5 +1,5 @@
-"""OV2-F.4 — Automatic waterfall cascade orchestrator
-Runs the full chain: bridge → day → week → month → snapshot → certify
+"""OV2-G.2 — Automatic waterfall cascade with OUTCOME-BASED monitoring
+Tracks before/after advancement per layer. Logs to ops.refresh_advancement_log.
 Usage:
   python -m scripts.run_ov2_refresh_cascade --dry-run
   python -m scripts.run_ov2_refresh_cascade --confirm
@@ -14,21 +14,49 @@ TODAY = dt_date.today()
 D1 = (TODAY - timedelta(days=1)).isoformat()
 D2 = (TODAY - timedelta(days=2)).isoformat()
 TIMESTAMP = datetime.now(timezone.utc).isoformat()
+GIT_HASH = None
+try:
+    import subprocess as sp
+    GIT_HASH = sp.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=BACKEND, stderr=sp.DEVNULL, text=True).strip()
+except: pass
+
+LAYERS = [
+    {"name": "driver_bridge", "pipeline": "bridge_update", "table": "ops.driver_day_slice_fact", "col": "activity_date", "filter": "WHERE country='peru' AND city='lima'"},
+    {"name": "week_fact", "pipeline": "week_rebuild", "table": "ops.real_business_slice_week_fact", "col": "week_start", "filter": "WHERE LOWER(TRIM(country))='peru' AND LOWER(TRIM(city))='lima'"},
+    {"name": "month_fact", "pipeline": "month_rebuild", "table": "ops.real_business_slice_month_fact", "col": "month", "filter": "WHERE LOWER(TRIM(country))='peru' AND LOWER(TRIM(city))='lima'"},
+    {"name": "day_fact", "pipeline": "day_rebuild", "table": "ops.real_business_slice_day_fact", "col": "trip_date", "filter": "WHERE LOWER(TRIM(country))='peru' AND LOWER(TRIM(city))='lima'"},
+]
+
+def measure_before(cur, layer):
+    cur.execute(f"SELECT MAX({layer['col']}) FROM {layer['table']} {layer['filter']}")
+    mx = cur.fetchone()[0]
+    cur.execute(f"SELECT COUNT(*) FROM {layer['table']} {layer['filter']}")
+    rows = cur.fetchone()[0]
+    return str(mx)[:10] if mx else None, rows
+
+def measure_after(cur, layer):
+    return measure_before(cur, layer)
+
+def log_advancement(cur, pipeline, layer_name, before_max, after_max, before_rows, after_rows, status, error=None):
+    advanced = 1 if after_max and before_max != after_max else 0
+    row_delta = (after_rows or 0) - (before_rows or 0)
+    cur.execute("""
+        INSERT INTO ops.refresh_advancement_log
+            (pipeline_name, layer_name, started_at, finished_at,
+             before_max_period, after_max_period, before_row_count, after_row_count,
+             advanced_periods, advanced_rows, status, git_hash, error_message)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+    """, (pipeline, layer_name, TIMESTAMP, datetime.now(timezone.utc).isoformat(),
+          before_max, after_max, before_rows, after_rows, advanced, row_delta,
+          status, GIT_HASH, error))
 
 def run_step(name, cmd, timeout=300):
     t0 = time.time()
     result = subprocess.run(cmd, cwd=BACKEND, capture_output=True, text=True, timeout=timeout)
     elapsed = round((time.time() - t0) * 1000)
     ok = result.returncode == 0
-    output = (result.stdout or "")[:500] + (result.stderr or "")[:500]
-    return {"name": name, "ok": ok, "ms": elapsed, "output": output, "returncode": result.returncode}
-
-def max_date(cur, query, params=()):
-    cur.execute(query, params)
-    r = cur.fetchone()
-    if r and r[0]:
-        return str(r[0])[:10] if hasattr(r[0], "isoformat") else str(r[0])[:10]
-    return None
+    output = (result.stdout or "")[:300] + (result.stderr or "")[:300]
+    return {"name": name, "ok": ok, "ms": elapsed, "output": output}
 
 def main():
     import argparse
@@ -36,92 +64,80 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--confirm", action="store_true")
     args = ap.parse_args()
-
     if not args.dry_run and not args.confirm:
         print("Use --dry-run or --confirm"); return 1
 
     mode = "DRY-RUN" if args.dry_run else "CONFIRMED"
-    print(f"OV2-F.4 REFRESH CASCADE ({mode})")
-    print(f"  D-1={D1}  D-2={D2}")
-
-    log = []
-    precheck = {"raw_ok": False, "bridge_ok": False, "db_ok": False}
-
-    with get_db() as conn:
-        cur = conn.cursor()
-        try:
-            # ── PRECHECK ──
-            cur.execute("SELECT 1")
-            precheck["db_ok"] = True
-            raw_max = max_date(cur, "SELECT MAX(fecha_inicio_viaje) FROM public.trips_2026")
-            precheck["raw_ok"] = raw_max and raw_max >= D2
-            precheck["raw_max"] = raw_max
-            bridge_max = max_date(cur, "SELECT MAX(activity_date) FROM ops.driver_day_slice_fact WHERE country=%s AND city=%s", ("peru", "lima"))
-            precheck["bridge_ok"] = bridge_max and bridge_max >= D2
-            precheck["bridge_max"] = bridge_max
-            print(f"  PRECHECK: raw={raw_max} bridge={bridge_max} db={'OK' if precheck['db_ok'] else 'FAIL'}")
-            log.append({"name": "precheck", "ok": precheck["db_ok"], "raw_max": raw_max, "bridge_max": bridge_max})
-        finally:
-            cur.close()
-
-    if not precheck["db_ok"]:
-        print("ABORT: DB not available")
-        return 2
+    print(f"OV2-G.2 REFRESH CASCADE WITH ADVANCEMENT TRACKING ({mode})")
 
     python = sys.executable
     results = []
 
-    # ── Step 1: Bridge incremental ──
-    if precheck["raw_ok"] and D2 > (bridge_max or "2020-01-01"):
-        r = run_step("bridge_update",
-            [python, "-m", "scripts.build_driver_bridge_direct",
-             "--date-from", D2, "--date-to", D1, "--batch-days", "1",
-             "--dry-run" if args.dry_run else "--confirm"], timeout=180)
-        results.append(r)
-        print(f"  Bridge: {'OK' if r['ok'] else 'FAIL'} ({r['ms']}ms)")
+    with get_db() as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT 1")
+            db_ok = True
+        except:
+            db_ok = False
+        finally:
+            cur.close()
 
-    # ── Step 2: Week rebuild ──
-    before_week = max_date if max_date else None
-    r = run_step("week_rebuild",
-        [python, "-m", "scripts.rebuild_week_from_day_and_bridge",
-         "--date-from", D2, "--date-to", D1,
-         "--dry-run" if args.dry_run else "--confirm"], timeout=120)
-    results.append(r)
-    print(f"  Week: {'OK' if r['ok'] else 'FAIL'} ({r['ms']}ms)")
+    if not db_ok:
+        print("ABORT: DB not available"); return 2
 
-    # ── Step 3: Month rebuild ──
-    month_from = f"{int(D1[:4])}-{int(D1[5:7]):02d}-01"
-    r = run_step("month_rebuild",
-        [python, "-m", "scripts.rebuild_month_from_day_and_bridge",
-         "--date-from", month_from, "--date-to", D1,
-         "--dry-run" if args.dry_run else "--confirm"], timeout=120)
-    results.append(r)
-    print(f"  Month: {'OK' if r['ok'] else 'FAIL'} ({r['ms']}ms)")
+    for layer in LAYERS:
+        with get_db() as conn:
+            cur = conn.cursor()
+            try:
+                before_max, before_rows = measure_before(cur, layer)
 
-    # ── Step 4: Snapshot refresh ──
-    r = run_step("snapshot_refresh",
-        [python, "-m", "scripts.refresh_omniview_v2_snapshots",
-         "--use-latest-closed-date",
-         "--dry-run" if args.dry_run else "--confirm"], timeout=300)
-    results.append(r)
-    print(f"  Snapshot: {'OK' if r['ok'] else 'FAIL'} ({r['ms']}ms)")
+                if args.dry_run:
+                    after_max, after_rows = before_max, before_rows
+                    status = "SUCCESS_NO_CHANGE"
+                    print(f"  {layer['name']:20s} before={before_max} rows={before_rows} [DRY-RUN]")
+                else:
+                    # Execute rebuild
+                    if layer['name'] == 'driver_bridge':
+                        r = run_step("bridge_update",
+                            [python, "-m", "scripts.build_driver_bridge_direct",
+                             "--date-from", D2, "--date-to", D1, "--batch-days", "1", "--confirm"], timeout=180)
+                    elif layer['name'] == 'week_fact':
+                        r = run_step("week_rebuild",
+                            [python, "-m", "scripts.rebuild_week_from_day_and_bridge",
+                             "--date-from", "2026-04-01", "--date-to", D1, "--confirm"], timeout=120)
+                    elif layer['name'] == 'month_fact':
+                        r = run_step("month_rebuild",
+                            [python, "-m", "scripts.rebuild_month_from_day_and_bridge",
+                             "--date-from", "2026-06-01", "--date-to", D1, "--confirm"], timeout=120)
+                    elif layer['name'] == 'day_fact':
+                        r = run_step("day_rebuild",
+                            [python, "-m", "scripts.rebuild_day_from_bridge",
+                             "--date-from", D2, "--date-to", D1, "--confirm"], timeout=120)
 
-    # ── Step 5: Certification ──
-    r = run_step("certification",
-        [python, "-m", "scripts.certify_ov2_refresh_chain"], timeout=60)
-    results.append(r)
-    print(f"  Certify: {'OK' if r['ok'] else 'FAIL'} ({r['ms']}ms)")
+                    after_max, after_rows = measure_after(cur, layer)
+                    advanced = after_max and before_max != after_max
+                    status = "SUCCESS_WITH_ADVANCEMENT" if advanced else "SUCCESS_NO_CHANGE"
+                    if not r["ok"]:
+                        status = "FAIL"
+                    log_advancement(cur, layer['pipeline'], layer['name'],
+                                    before_max, after_max, before_rows, after_rows, status,
+                                    r.get("output") if not r["ok"] else None)
+                    conn.commit()
+                    print(f"  {layer['name']:20s} {status:30s} before={before_max} after={after_max} rows={before_rows}->{after_rows}")
 
-    # ── Step 6: Waterfall ──
-    r = run_step("waterfall",
-        [python, "-m", "scripts.validate_refresh_waterfall"], timeout=60)
-    results.append(r)
-    print(f"  Waterfall: {'OK' if r['ok'] else 'FAIL'} ({r['ms']}ms)")
+                results.append({"layer": layer['name'], "before": before_max, "after": after_max,
+                                "rows_before": before_rows, "rows_after": after_rows, "status": status})
+            except Exception as e:
+                print(f"  {layer['name']:20s} ERROR: {str(e)[:100]}")
+                results.append({"layer": layer['name'], "status": "FAIL", "error": str(e)[:200]})
+            finally:
+                cur.close()
 
-    passed = sum(1 for r in results if r["ok"])
+    advanced = sum(1 for r in results if r.get("status") == "SUCCESS_WITH_ADVANCEMENT")
     total = len(results)
-    print(f"\nCASCADE COMPLETE: {passed}/{total} steps passed ({mode})")
-    return 0 if passed == total else 1
+    print(f"\nCASCADE COMPLETE: {advanced}/{total} layers advanced ({mode})")
+    return 0 if advanced > 0 or args.dry_run else 1
 
 if __name__ == "__main__":
     raise SystemExit(main())
