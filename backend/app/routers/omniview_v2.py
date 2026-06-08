@@ -317,3 +317,118 @@ def get_backend_identity():
             pass
 
     return result
+
+
+@router.get("/drill/cell")
+def drill_cell(
+    source_system: str = Query(default="CT_TRIPS_2026"),
+    grain: str = Query(default="day"),
+    period: str = Query(default=None),
+    metric_id: str = Query(default="trips"),
+    business_slice_name: str = Query(default=None),
+    country: str = Query(default="peru"),
+    city: str = Query(default="lima"),
+    limit: int = Query(default=20, ge=1, le=100),
+):
+    """Lineage-aware cell drill. Returns park breakdown + top drivers. No raw scans."""
+    from app.db.connection import get_db
+    from datetime import date as dt_date, timedelta
+
+    result = {
+        "cell": {"source_system": source_system, "grain": grain, "period": period,
+                 "metric_id": metric_id, "business_slice_name": business_slice_name,
+                 "country": country, "city": city},
+        "total": {},
+        "lineage_status": {},
+        "drill": {"park": {"status": "READY", "data": []},
+                   "driver": {"status": "READY", "data": [], "total_count": 0},
+                   "fleet": {"status": "PARTIAL", "message": "Fleet data from business_slice_mapping_rules, not bridge"},
+                   "raw_trip": {"status": "PARTIAL", "message": "Raw trip lookup requires trips_2026 scan per driver"},
+                   "yango": {"status": "PARTIAL", "message": "Reconciliation not yet implemented"}},
+        "warnings": [],
+    }
+
+    if not period or not business_slice_name:
+        result["warnings"].append({"code": "MISSING_PARAMS", "message": "period and business_slice_name required"})
+        return result
+
+    # Compute date range from grain + period
+    date_from = period
+    date_to = period
+    if grain == "day":
+        try:
+            d = dt_date.fromisoformat(period)
+            date_to = (d + timedelta(days=1)).isoformat()
+        except:
+            pass
+    elif grain == "week":
+        try:
+            d = dt_date.fromisoformat(period)
+            date_to = (d + timedelta(days=6)).isoformat()
+        except:
+            pass
+    elif grain == "month":
+        try:
+            d = dt_date.fromisoformat(period[:7] + "-01")
+            if d.month == 12:
+                date_to = dt_date(d.year + 1, 1, 1).isoformat()
+            else:
+                date_to = dt_date(d.year, d.month + 1, 1).isoformat()
+        except:
+            pass
+
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+
+            # Park breakdown
+            cur.execute("""
+                SELECT park_id, COUNT(DISTINCT driver_id) FILTER (WHERE completed_trips > 0) AS drivers,
+                       SUM(completed_trips) AS trips
+                FROM ops.driver_day_slice_fact
+                WHERE country = %s AND city = %s
+                  AND activity_date >= %s AND activity_date < %s
+                  AND business_slice_name = %s
+                GROUP BY park_id ORDER BY trips DESC
+            """, (country, city, date_from, date_to, business_slice_name))
+            parks = [{"park_id": r[0], "drivers": r[1], "trips": r[2]} for r in cur.fetchall()]
+            result["drill"]["park"]["data"] = parks
+
+            # Top drivers
+            cur.execute("""
+                SELECT driver_id, SUM(completed_trips) AS trips
+                FROM ops.driver_day_slice_fact
+                WHERE country = %s AND city = %s
+                  AND activity_date >= %s AND activity_date < %s
+                  AND business_slice_name = %s
+                GROUP BY driver_id ORDER BY trips DESC LIMIT %s
+            """, (country, city, date_from, date_to, business_slice_name, limit))
+            drivers = [{"driver_id": r[0], "trips": r[1]} for r in cur.fetchall()]
+
+            cur.execute("""
+                SELECT COUNT(DISTINCT driver_id) FILTER (WHERE completed_trips > 0)
+                FROM ops.driver_day_slice_fact
+                WHERE country = %s AND city = %s
+                  AND activity_date >= %s AND activity_date < %s
+                  AND business_slice_name = %s
+            """, (country, city, date_from, date_to, business_slice_name))
+            total_drivers = cur.fetchone()[0] or 0
+
+            result["drill"]["driver"]["data"] = drivers
+            result["drill"]["driver"]["total_count"] = total_drivers
+
+            cur.close()
+    except Exception as e:
+        result["warnings"].append({"code": "DRILL_ERROR", "message": str(e)[:200]})
+
+    # Lineage statuses from F.5
+    result["lineage_status"] = {
+        "city": "READY",
+        "park": "READY" if parks else "READY (empty)",
+        "driver": "READY" if total_drivers > 0 else "READY (empty)",
+        "fleet": "PARTIAL",
+        "raw_trip": "PARTIAL",
+        "yango": "PARTIAL",
+    }
+
+    return result
