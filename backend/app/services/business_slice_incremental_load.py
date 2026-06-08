@@ -1550,6 +1550,10 @@ def refresh_omniview_incremental(
 
 
 def load_business_slice_month(
+    # DEPRECATED — OV2-F.4A: month_fact now built from driver_day_slice_fact via
+    # scripts/rebuild_month_from_day_and_bridge.py. This raw-based loader is kept
+    # for backfill compatibility only. DO NOT use in scheduler or automatic refresh.
+    # Replacement: run_ov2_refresh_cascade.py (step: month_rebuild)
     cur: Any,
     target_month: date,
     conn: Optional[Any] = None,
@@ -1792,6 +1796,10 @@ def load_business_slice_day_for_month(
 
 
 def load_business_slice_week_for_month(
+    # DEPRECATED — OV2-F.4A: week_fact now built from driver_day_slice_fact via
+    # scripts/rebuild_week_from_day_and_bridge.py. This raw-based loader is kept
+    # for backfill compatibility only. DO NOT use in scheduler or automatic refresh.
+    # Replacement: run_ov2_refresh_cascade.py (step: week_rebuild)
     cur: Any,
     target_month: date,
     conn: Optional[Any] = None,

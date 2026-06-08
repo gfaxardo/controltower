@@ -93,67 +93,68 @@ with open(os.path.join(OUTPUT_DIR, "matrix_response.json"), "w", encoding="utf-8
 print("\n[3] CT Source (ops.real_business_slice_day_fact)")
 with get_db() as c:
     cur = c.cursor(cursor_factory=RealDictCursor)
+    try:
+        # Check for exactly 2026-06-06
+        cur.execute("""
+            SELECT trip_date, COUNT(*) as slices,
+                   SUM(trips_completed) as trips,
+                   SUM(revenue_yego_final) as revenue
+            FROM ops.real_business_slice_day_fact
+            WHERE LOWER(TRIM(country))='peru' AND LOWER(TRIM(city))='lima'
+              AND trip_date = '2026-06-06'
+            GROUP BY trip_date
+        """)
+        rows_0606 = [dict(r) for r in cur.fetchall()]
+        print(f"  2026-06-06 rows: {len(rows_0606)}")
+        for r in rows_0606:
+            print(f"    date={r['trip_date']} slices={r['slices']} trips={r['trips']} revenue={r['revenue']}")
 
-    # Check for exactly 2026-06-06
-    cur.execute("""
-        SELECT trip_date, COUNT(*) as slices,
-               SUM(trips_completed) as trips,
-               SUM(revenue_yego_final) as revenue
-        FROM ops.real_business_slice_day_fact
-        WHERE LOWER(TRIM(country))='peru' AND LOWER(TRIM(city))='lima'
-          AND trip_date = '2026-06-06'
-        GROUP BY trip_date
-    """)
-    rows_0606 = [dict(r) for r in cur.fetchall()]
-    print(f"  2026-06-06 rows: {len(rows_0606)}")
-    for r in rows_0606:
-        print(f"    date={r['trip_date']} slices={r['slices']} trips={r['trips']} revenue={r['revenue']}")
+        # Check max available date
+        cur.execute("""
+            SELECT MAX(trip_date) as max_date, MIN(trip_date) as min_date,
+                   COUNT(DISTINCT trip_date) as date_count
+            FROM ops.real_business_slice_day_fact
+            WHERE LOWER(TRIM(country))='peru' AND LOWER(TRIM(city))='lima'
+        """)
+        range_r = dict(cur.fetchone())
+        print(f"  Date range: {range_r['min_date']} -> {range_r['max_date']} ({range_r['date_count']} days)")
 
-    # Check max available date
-    cur.execute("""
-        SELECT MAX(trip_date) as max_date, MIN(trip_date) as min_date,
-               COUNT(DISTINCT trip_date) as date_count
-        FROM ops.real_business_slice_day_fact
-        WHERE LOWER(TRIM(country))='peru' AND LOWER(TRIM(city))='lima'
-    """)
-    range_r = dict(cur.fetchone())
-    print(f"  Date range: {range_r['min_date']} -> {range_r['max_date']} ({range_r['date_count']} days)")
+        # Check last 3 days
+        cur.execute("""
+            SELECT trip_date, COUNT(*) as slices,
+                   SUM(trips_completed) as trips
+            FROM ops.real_business_slice_day_fact
+            WHERE LOWER(TRIM(country))='peru' AND LOWER(TRIM(city))='lima'
+              AND trip_date >= '2026-06-04'
+            GROUP BY trip_date
+            ORDER BY trip_date DESC
+        """)
+        print(f"  Last days:")
+        for r in cur.fetchall():
+            d = dict(r)
+            print(f"    {d['trip_date']}: {d['slices']} slices, {d['trips']} trips")
 
-    # Check last 3 days
-    cur.execute("""
-        SELECT trip_date, COUNT(*) as slices,
-               SUM(trips_completed) as trips
-        FROM ops.real_business_slice_day_fact
-        WHERE LOWER(TRIM(country))='peru' AND LOWER(TRIM(city))='lima'
-          AND trip_date >= '2026-06-04'
-        GROUP BY trip_date
-        ORDER BY trip_date DESC
-    """)
-    print(f"  Last days:")
-    for r in cur.fetchall():
-        d = dict(r)
-        print(f"    {d['trip_date']}: {d['slices']} slices, {d['trips']} trips")
+        # Check for 2026-05-07 (health showed it earlier)
+        cur.execute("""
+            SELECT trip_date, COUNT(*) as slices,
+                   SUM(trips_completed) as trips
+            FROM ops.real_business_slice_day_fact
+            WHERE LOWER(TRIM(country))='peru' AND LOWER(TRIM(city))='lima'
+              AND trip_date = '2026-05-07'
+            GROUP BY trip_date
+        """)
+        may_rows = [dict(r) for r in cur.fetchall()]
+        print(f"  2026-05-07 rows: {len(may_rows)}")
+        for r in may_rows:
+            print(f"    date={r['trip_date']} slices={r['slices']} trips={r['trips']}")
 
-    # Check for 2026-05-07 (health showed it earlier)
-    cur.execute("""
-        SELECT trip_date, COUNT(*) as slices,
-               SUM(trips_completed) as trips
-        FROM ops.real_business_slice_day_fact
-        WHERE LOWER(TRIM(country))='peru' AND LOWER(TRIM(city))='lima'
-          AND trip_date = '2026-05-07'
-        GROUP BY trip_date
-    """)
-    may_rows = [dict(r) for r in cur.fetchall()]
-    print(f"  2026-05-07 rows: {len(may_rows)}")
-    for r in may_rows:
-        print(f"    date={r['trip_date']} slices={r['slices']} trips={r['trips']}")
+        # Check what today's date actually is (DB perspective)
+        cur.execute("SELECT CURRENT_DATE as db_today")
+        db_today = dict(cur.fetchone())
+        print(f"  DB today: {db_today['db_today']}")
 
-    # Check what today's date actually is (DB perspective)
-    cur.execute("SELECT CURRENT_DATE as db_today")
-    db_today = dict(cur.fetchone())
-    print(f"  DB today: {db_today['db_today']}")
-
-    cur.close()
+    finally:
+        cur.close()
 
 print(f"\n[output] {OUTPUT_DIR}")
 print("Done.")

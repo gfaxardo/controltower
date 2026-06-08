@@ -16,6 +16,38 @@ REAL_TABLE = "ops.real_business_slice_month_fact"
 CT_COUNTRY = "peru"
 CT_CITY = "lima"
 
+_COUNTRY_CODE = {"peru": "PE", "colombia": "CO", "pe": "PE", "co": "CO"}
+_CITY_CAPS = {"lima": "Lima", "arequipa": "Arequipa", "trujillo": "Trujillo",
+              "bogota": "Bogota", "medellin": "Medellin", "cali": "Cali",
+              "barranquilla": "Barranquilla", "bucaramanga": "Bucaramanga", "cucuta": "Cucuta"}
+
+
+def _plan_country(country: str) -> str:
+    return _COUNTRY_CODE.get(country.lower(), country)
+
+
+def _plan_city(city: str) -> str:
+    return _CITY_CAPS.get(city.lower(), city)
+
+# TODO(OV2-D.2B): Replace with ops.plan_lob_to_business_slice mapping table
+# The plan_lob_mapping.canonical_lob_base doesn't directly match business_slice_name in
+# ops.real_business_slice_*_fact. This is a known gap per OV2_D2A_PLAN_SOURCE_CERTIFICATION.md.
+_LOB_TO_SLICE = {
+    "auto_taxi": "Auto regular",
+    "carga": "Carga",
+    "delivery": "Delivery",
+    "pro": "PRO",
+    "tuk_tuk": "Tuk Tuk",
+    "yma": "YMA",
+    "ymm": "YMA",
+    "taxi_moto": "Tuk Tuk",
+}
+
+
+def _normalize_to_business_slice(lob_canonical: str) -> str:
+    """Map plan_lob_mapping canonical_lob_base to real table business_slice_name."""
+    return _LOB_TO_SLICE.get(lob_canonical.lower(), lob_canonical)
+
 
 def _query(sql: str, params: tuple = ()) -> List[Dict[str, Any]]:
     try:
@@ -42,6 +74,18 @@ def get_latest_plan_version() -> Optional[str]:
     return rows[0]["plan_version"] if rows else None
 
 
+def get_best_plan_version(metric_col: str = "projected_trips") -> Optional[str]:
+    """Pick latest version that has non-zero data for the requested metric column."""
+    rows = _query(
+        f"SELECT plan_version, SUM(COALESCE({metric_col}, 0)) AS total "
+        f"FROM {PLAN_TABLE} WHERE {metric_col} > 0 "
+        f"GROUP BY plan_version ORDER BY MAX(created_at) DESC LIMIT 1"
+    )
+    if rows and rows[0]["total"] and rows[0]["total"] > 0:
+        return rows[0]["plan_version"]
+    return get_latest_plan_version()
+
+
 def get_monthly_plan_real(
     country: str = CT_COUNTRY,
     city: str = CT_CITY,
@@ -50,12 +94,6 @@ def get_monthly_plan_real(
     metric_id: str = "trips",
     plan_version: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    if not plan_version:
-        plan_version = get_latest_plan_version()
-
-    if not plan_version:
-        return []
-
     # Metric mapping: metric_id → (plan_column, real_column)
     metric_map = {
         "orders": ("projected_trips", "trips_completed"),
@@ -70,7 +108,15 @@ def get_monthly_plan_real(
         metric_id = "trips"
     plan_col, real_col = metric_map[metric_id]
 
+    if not plan_version:
+        plan_version = get_best_plan_version(plan_col) if metric_id == "revenue" else get_latest_plan_version()
+
+    if not plan_version:
+        return []
+
     # Plan: aggregate by month + LOB (normalized to business_slice)
+    plan_country = _plan_country(country)
+    plan_city = _plan_city(city)
     plan_rows = _query(
         f"""
         WITH plan AS (
@@ -79,8 +125,8 @@ def get_monthly_plan_real(
                 LOWER(TRIM(lob_base)) AS lob_raw,
                 SUM(COALESCE({plan_col}, 0)) AS plan_value
             FROM {PLAN_TABLE}
-            WHERE LOWER(TRIM(country)) = %s
-              AND LOWER(TRIM(city)) = %s
+            WHERE TRIM(country) = %s
+              AND TRIM(city) = %s
               AND plan_version = %s
               AND (%s::date IS NULL OR month >= %s::date)
               AND (%s::date IS NULL OR month <= %s::date)
@@ -96,7 +142,7 @@ def get_monthly_plan_real(
         LEFT JOIN lob_map m ON p.lob_raw = m.raw_lob
         ORDER BY p.month, business_slice_name
         """,
-        (country, city, plan_version, date_from, date_from, date_to, date_to),
+        (plan_country, plan_city, plan_version, date_from, date_from, date_to, date_to),
     )
 
     # Real: aggregate by month + business_slice
@@ -121,7 +167,7 @@ def get_monthly_plan_real(
     combined = []
     for p in plan_rows:
         month_str = p["month"].isoformat()[:10] if hasattr(p["month"], "isoformat") else str(p["month"])[:10]
-        slice_name = p["business_slice_name"]
+        slice_name = _normalize_to_business_slice(p["business_slice_name"])
         key = (month_str, slice_name)
         real_val = float(real_index[key]["real_value"] or 0) if key in real_index else None
         plan_val = float(p["plan_value"] or 0)
@@ -152,7 +198,7 @@ def get_monthly_plan_real(
 
     # Add real-only rows (no plan)
     plan_index = {(p["month"].isoformat()[:10] if hasattr(p["month"], "isoformat") else str(p["month"])[:10],
-                   p["business_slice_name"]) for p in plan_rows}
+                   _normalize_to_business_slice(p["business_slice_name"])) for p in plan_rows}
     for r in real_rows:
         month_str = r["month"].isoformat()[:10] if hasattr(r["month"], "isoformat") else str(r["month"])[:10]
         key = (month_str, r["business_slice_name"])

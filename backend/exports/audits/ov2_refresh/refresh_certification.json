@@ -1,0 +1,99 @@
+{
+  "generated_at": "2026-06-08T04:17:24.759815+00:00",
+  "checks": [
+    {
+      "name": "RAW trips freshness",
+      "grain": "day",
+      "status": "PASS",
+      "data": {
+        "max_date": "2026-06-06 23:59:57",
+        "rows": 18001553
+      }
+    },
+    {
+      "name": "day_fact freshness",
+      "grain": "day",
+      "status": "PASS",
+      "data": {
+        "max_date": "2026-06-06"
+      }
+    },
+    {
+      "name": "week_fact freshness",
+      "grain": "week",
+      "status": "PASS",
+      "data": {
+        "max_date": "2026-04-20"
+      }
+    },
+    {
+      "name": "month_fact freshness",
+      "grain": "month",
+      "status": "PASS",
+      "data": {
+        "max_date": "2026-06-01",
+        "rows": 86
+      }
+    },
+    {
+      "name": "snapshot freshness",
+      "grain": "day",
+      "status": "PASS",
+      "data": {
+        "max_date": "2026-06-05",
+        "ready": 4,
+        "failed": 0
+      }
+    },
+    {
+      "name": "operating-date consistency",
+      "grain": "day",
+      "status": "PASS",
+      "data": {
+        "max_date": "2026-06-06"
+      }
+    },
+    {
+      "name": "revenue availability",
+      "grain": "month",
+      "status": "PASS",
+      "data": {
+        "total": 86,
+        "has_rev": 71,
+        "pct": "82.6"
+      },
+      "threshold": "80"
+    },
+    {
+      "name": "slice coverage (Lima)",
+      "grain": "month",
+      "status": "PASS",
+      "data": {
+        "slices": 6
+      },
+      "threshold": "5"
+    },
+    {
+      "name": "plan version availability",
+      "grain": "month",
+      "status": "PASS",
+      "data": {
+        "versions": 12
+      },
+      "threshold": "1"
+    },
+    {
+      "name": "Yango raw availability",
+      "grain": "day",
+      "status": "PASS",
+      "data": {
+        "max_date": "2026-06-05",
+        "rows": 2
+      }
+    }
+  ],
+  "verdict": "GO",
+  "failures": [],
+  "total_checks": 10,
+  "passed": 10
+}

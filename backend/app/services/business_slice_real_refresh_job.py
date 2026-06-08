@@ -15,10 +15,12 @@ from typing import Any, Dict, List, Optional
 from app.db.connection import get_db
 from app.services.business_slice_incremental_load import (
     load_business_slice_day_for_month,
-    load_business_slice_month,
-    load_business_slice_week_for_month,
     _drop_enriched_temp,
 )
+# OV2-F.4A: week_fact and month_fact are now built from driver_day_slice_fact via
+# rebuild_week_from_day_and_bridge.py and rebuild_month_from_day_and_bridge.py.
+# Legacy raw-based loaders (load_business_slice_week_for_month, load_business_slice_month)
+# are DEPRECATED and must not be called from the scheduler.
 from app.services.business_slice_service import FACT_DAILY
 from app.services.upstream_real_status_service import get_upstream_real_status
 from app.settings import settings
@@ -138,14 +140,12 @@ def run_business_slice_real_refresh_job(force: bool = False) -> Dict[str, Any]:
                 cur = conn.cursor()
                 nd = load_business_slice_day_for_month(cur, mo, conn, keep_enriched=True)
                 conn.commit()
-                logger.info("omniview_real_refresh_job week_fact month=%s", mo_label)
-                nw = load_business_slice_week_for_month(cur, mo, conn)
-                conn.commit()
-                nm: int | None = None
-                if include_month_fact:
-                    logger.info("omniview_real_refresh_job month_fact month=%s", mo_label)
-                    nm = load_business_slice_month(cur, mo, conn)
-                    conn.commit()
+                # OV2-F.4A: week_fact and month_fact are now served by the bridge cascade
+                # (rebuild_week_from_day_and_bridge.py + rebuild_month_from_day_and_bridge.py).
+                # Legacy raw-based loaders are DEPRECATED. These layers are refreshed
+                # by run_ov2_refresh_cascade.py which must run AFTER this job.
+                nw = 0
+                nm = 0
                 _drop_enriched_temp(cur)
                 conn.commit()
                 cur.close()

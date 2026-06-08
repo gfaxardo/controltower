@@ -15,7 +15,6 @@ from app.contracts.omniview_v2_matrix_contract import (
     OmniviewV2MatrixRow,
 )
 from app.repositories.omniview_v2_plan_real_repository import (
-    get_latest_plan_version,
     get_monthly_plan_real,
     get_plan_versions,
 )
@@ -29,8 +28,7 @@ def build_monthly_plan_real_matrix(
     metric_id: str = "trips",
     plan_version: Optional[str] = None,
 ) -> OmniviewV2MatrixResponse:
-    if not plan_version:
-        plan_version = get_latest_plan_version()
+    # Repository handles version selection (smart pick per metric when no version specified)
 
     if not date_from:
         date_from = (dt_date.today().replace(day=1) - timedelta(days=180)).isoformat()

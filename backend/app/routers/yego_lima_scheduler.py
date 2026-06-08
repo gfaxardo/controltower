@@ -1,11 +1,11 @@
 """
-YEGO Lima Growth — Scheduler Router (LG-R2.9I.2)
+YEGO Lima Growth — Scheduler Router (LG-R2.9I.2 / LG-INFRA-R1.5)
 """
 import logging
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from app.services.yego_lima_scheduler_service import (
     get_scheduler_status, start_scheduler, stop_scheduler, scheduler_tick,
-    run_daily_closed_pipeline, run_live_monitoring,
+    run_daily_closed_pipeline, run_live_monitoring, catch_up_on_startup,
 )
 
 logger = logging.getLogger(__name__)
@@ -44,3 +44,8 @@ async def scheduler_daily_closed(date: str = Query(None)):
 @router.post("/run-live-monitoring")
 async def scheduler_live_monitoring():
     return run_live_monitoring()
+
+
+@router.post("/catch-up")
+async def scheduler_catch_up():
+    return catch_up_on_startup()

@@ -1,0 +1,8 @@
+{
+  "audit_type": "db_connection_health",
+  "generated_at": "2026-06-08T01:45:14.945111+00:00",
+  "sections": {
+    "connection_successful": false
+  },
+  "error": "connection to server at \"168.119.226.236\", port 5432 failed: FATAL:  sorry, too many clients already\nconnection to server at \"168.119.226.236\", port 5432 failed: FATAL:  sorry, too many clients already\n"
+}

@@ -102,6 +102,7 @@ def init_db_pool():
     global connection_pool
     try:
         params = _get_connection_params()
+        params.setdefault("application_name", "control_tower_pool")
         connection_pool = psycopg2.pool.ThreadedConnectionPool(
             minconn=1, maxconn=10, **params
         )
@@ -162,6 +163,7 @@ def _get_connection_with_timeout(timeout_ms: int):
     """Conexión nueva (fuera del pool) con statement_timeout fijado al conectar."""
     params = _get_connection_params()
     params["options"] = f"-c statement_timeout={timeout_ms}"
+    params.setdefault("application_name", "control_tower_audit")
     return psycopg2.connect(**params)
 
 
@@ -208,6 +210,7 @@ def get_db_drill():
     conn = None
     body_exc: Optional[BaseException] = None
     try:
+        params.setdefault("application_name", "control_tower_drill")
         conn = psycopg2.connect(**params)
         register_active_pg_connection(conn)
         logger.info("Drill connection opened (options=statement_timeout=0)")

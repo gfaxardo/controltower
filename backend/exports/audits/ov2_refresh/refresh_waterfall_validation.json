@@ -1,0 +1,45 @@
+{
+  "validations": [
+    {
+      "name": "RAW_to_DAY",
+      "upstream": "RAW_TRIPS",
+      "downstream": "DAY_FACT",
+      "upstream_val": "2026-06-06",
+      "downstream_val": "2026-06-06",
+      "status": "OK"
+    },
+    {
+      "name": "DAY_to_WEEK",
+      "upstream": "DAY_FACT",
+      "downstream": "WEEK_FACT",
+      "upstream_val": "2026-06-06",
+      "downstream_val": "2026-06-01",
+      "status": "OK"
+    },
+    {
+      "name": "WEEK_to_MONTH",
+      "upstream": "WEEK_FACT",
+      "downstream": "MONTH_FACT",
+      "upstream_val": "2026-06-01",
+      "downstream_val": "2026-06-01",
+      "status": "OK"
+    },
+    {
+      "name": "DAY_to_SNAPSHOT",
+      "upstream": "DAY_FACT",
+      "downstream": "SNAPSHOT",
+      "upstream_val": "2026-06-06",
+      "downstream_val": "2026-06-05",
+      "status": "OK"
+    },
+    {
+      "name": "SNAPSHOT_to_UI",
+      "status": "OK",
+      "upstream_val": "2026-06-05",
+      "downstream_val": "UI endpoints"
+    }
+  ],
+  "waterfall_broken": [],
+  "generated_at": "2026-06-08T04:17:58.476348+00:00",
+  "verdict": "GO"
+}

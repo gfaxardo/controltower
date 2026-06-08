@@ -1,0 +1,12 @@
+grain,layer,source,max_date,expected,gap_days,status
+day,RAW_TRIPS,public.trips_2026,2026-06-06,2026-06-07,-1,OK
+day,RAW_YANGO,raw_yango.mv_orders_day,2026-06-05,2026-06-07,-2,OK
+day,SOURCE_COVERAGE,raw_yango.mv_source_coverage_day,2026-06-05,2026-06-07,-2,OK
+day,DAY_FACT,ops.real_business_slice_day_fact,2026-06-06,2026-06-07,-1,FRESH
+week,WEEK_FACT,ops.real_business_slice_week_fact,2026-04-20,2026-06-07,-48,OK
+month,MONTH_FACT,ops.real_business_slice_month_fact,2026-06-01,2026-06-07,-6,OK
+day,SNAPSHOT,ops.omniview_v2_serving_snapshot,2026-06-05,2026-06-07,-2,STALE
+day,OPERATING_DATE,from day_fact MAX(trip_date),2026-06-06,2026-06-07,-1,OK
+month,REVENUE,month_fact.revenue_yego_final,,,,77/92 (83.7%)
+month,SLICE_COVERAGE,month_fact slices (Lima),,6,,6 slices
+month,PLAN_VERSION,ops.plan_trips_monthly,,,,e2e_20260526_165110

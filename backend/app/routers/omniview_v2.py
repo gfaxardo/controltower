@@ -232,3 +232,88 @@ def get_plan_real_monthly(
 def get_plan_real_versions():
     """List available plan versions."""
     return {"versions": get_plan_versions()}
+
+
+@router.get("/infra-health")
+def get_infra_health():
+    """Lightweight infrastructure health for OV2: DB availability, pool status, connection estimate."""
+    from app.db.connection import connection_pool, get_db
+
+    result = {
+        "service": "omniview_v2_infra_health",
+        "db_available": False,
+        "pool_status": "unknown",
+        "active_connections_estimate": None,
+        "pool_max": None,
+        "pool_min": None,
+        "warning": None,
+    }
+
+    if connection_pool:
+        result["pool_min"] = getattr(connection_pool, "minconn", None)
+        result["pool_max"] = getattr(connection_pool, "maxconn", None)
+        result["pool_status"] = "initialized"
+
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            cur.close()
+        result["db_available"] = True
+    except Exception as e:
+        result["db_available"] = False
+        result["warning"] = f"DB connection failed: {str(e)[:200]}"
+    return result
+
+
+@router.get("/backend-identity")
+def get_backend_identity():
+    """Confirm this is the correct Control Tower backend. Used by UI/debug to validate binding."""
+    import os
+    import subprocess
+    import sys
+    from datetime import datetime, timezone
+
+    working_dir = os.getcwd()
+    git_branch = None
+    git_hash = None
+    try:
+        git_branch = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=working_dir, stderr=subprocess.DEVNULL, text=True,
+        ).strip()
+    except Exception:
+        pass
+    try:
+        git_hash = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=working_dir, stderr=subprocess.DEVNULL, text=True,
+        ).strip()
+    except Exception:
+        pass
+
+    from app.settings import settings
+
+    return {
+        "app_name": "YEGO_CONTROL_TOWER",
+        "port": settings.BACKEND_PORT,
+        "host": settings.BACKEND_HOST,
+        "environment": settings.ENVIRONMENT,
+        "working_directory": working_dir,
+        "python_version": sys.version,
+        "git_branch": git_branch or "unknown",
+        "git_hash": git_hash or "unknown",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+    if connection_pool:
+        try:
+            used = len(getattr(connection_pool, "_used", [])) if hasattr(connection_pool, "_used") else None
+            result["active_connections_estimate"] = used
+            maxconn = result.get("pool_max", 10)
+            if used is not None and maxconn and used >= maxconn * 0.8:
+                result["warning"] = f"Pool usage high: {used}/{maxconn} connections in use"
+        except Exception:
+            pass
+
+    return result

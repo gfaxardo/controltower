@@ -1,0 +1,206 @@
+{
+  "versions": [
+    {
+      "plan_version": "e2e_20260526_165110",
+      "first_month": "2026-01-01",
+      "last_month": "2026-12-01",
+      "rows": 684
+    },
+    {
+      "plan_version": "ruta27_2026_04_15",
+      "first_month": "2026-01-01",
+      "last_month": "2026-12-01",
+      "rows": 360
+    },
+    {
+      "plan_version": "ruta27_2026_04_15_2",
+      "first_month": "2026-01-01",
+      "last_month": "2026-12-01",
+      "rows": 360
+    },
+    {
+      "plan_version": "ruta27_2026_04_15_3",
+      "first_month": "2026-01-01",
+      "last_month": "2026-12-01",
+      "rows": 360
+    },
+    {
+      "plan_version": "ruta27_2026_04_15_4",
+      "first_month": "2026-01-01",
+      "last_month": "2026-12-01",
+      "rows": 360
+    },
+    {
+      "plan_version": "ruta27_2026_04_15_5",
+      "first_month": "2026-01-01",
+      "last_month": "2026-12-01",
+      "rows": 360
+    },
+    {
+      "plan_version": "ruta27_2026_04_15_6",
+      "first_month": "2026-01-01",
+      "last_month": "2026-12-01",
+      "rows": 360
+    },
+    {
+      "plan_version": "ruta27_2026_04_17",
+      "first_month": "2026-01-01",
+      "last_month": "2026-12-01",
+      "rows": 360
+    },
+    {
+      "plan_version": "ruta27_2026_04_21",
+      "first_month": "2026-01-01",
+      "last_month": "2026-12-01",
+      "rows": 360
+    },
+    {
+      "plan_version": "ruta27_v2026_01_17",
+      "first_month": "2026-01-01",
+      "last_month": "2026-12-01",
+      "rows": 312
+    },
+    {
+      "plan_version": "ruta27_v2026_01_23",
+      "first_month": "2026-01-01",
+      "last_month": "2026-12-01",
+      "rows": 312
+    },
+    {
+      "plan_version": "unified_fresh_1779825863",
+      "first_month": "2026-01-01",
+      "last_month": "2026-12-01",
+      "rows": 684
+    }
+  ],
+  "by_country": [
+    {
+      "country": "CO",
+      "rows": 3224,
+      "cities": 9,
+      "months": 12
+    },
+    {
+      "country": "PE",
+      "rows": 1648,
+      "cities": 3,
+      "months": 12
+    }
+  ],
+  "peru_cities": [],
+  "lima_lobs": [],
+  "lob_mappings": [
+    {
+      "raw_lob_name": "auto regular",
+      "canonical_lob_base": "auto_taxi"
+    },
+    {
+      "raw_lob_name": "auto taxi",
+      "canonical_lob_base": "auto_taxi"
+    },
+    {
+      "raw_lob_name": "auto",
+      "canonical_lob_base": "auto_taxi"
+    },
+    {
+      "raw_lob_name": "autos regular",
+      "canonical_lob_base": "auto_taxi"
+    },
+    {
+      "raw_lob_name": "tuk tuk",
+      "canonical_lob_base": "tuk_tuk"
+    },
+    {
+      "raw_lob_name": "tuktuk",
+      "canonical_lob_base": "tuk_tuk"
+    },
+    {
+      "raw_lob_name": "delivery",
+      "canonical_lob_base": "delivery"
+    },
+    {
+      "raw_lob_name": "dellivery",
+      "canonical_lob_base": "delivery"
+    },
+    {
+      "raw_lob_name": "delivery bicicleta",
+      "canonical_lob_base": "delivery"
+    },
+    {
+      "raw_lob_name": "delivery bici",
+      "canonical_lob_base": "delivery"
+    },
+    {
+      "raw_lob_name": "delivery moto",
+      "canonical_lob_base": "delivery"
+    },
+    {
+      "raw_lob_name": "delivery auto",
+      "canonical_lob_base": "delivery"
+    },
+    {
+      "raw_lob_name": "dellivery bicicleta",
+      "canonical_lob_base": "delivery"
+    },
+    {
+      "raw_lob_name": "dellivery bici",
+      "canonical_lob_base": "delivery"
+    },
+    {
+      "raw_lob_name": "mensajeria",
+      "canonical_lob_base": "delivery"
+    },
+    {
+      "raw_lob_name": "paqueteria",
+      "canonical_lob_base": "delivery"
+    },
+    {
+      "raw_lob_name": "envios",
+      "canonical_lob_base": "delivery"
+    },
+    {
+      "raw_lob_name": "carga",
+      "canonical_lob_base": "carga"
+    },
+    {
+      "raw_lob_name": "cargo",
+      "canonical_lob_base": "carga"
+    },
+    {
+      "raw_lob_name": "carga pesada",
+      "canonical_lob_base": "carga"
+    },
+    {
+      "raw_lob_name": "carga ligera",
+      "canonical_lob_base": "carga"
+    },
+    {
+      "raw_lob_name": "moto",
+      "canonical_lob_base": "taxi_moto"
+    },
+    {
+      "raw_lob_name": "taxi moto",
+      "canonical_lob_base": "taxi_moto"
+    },
+    {
+      "raw_lob_name": "mototaxi",
+      "canonical_lob_base": "taxi_moto"
+    },
+    {
+      "raw_lob_name": "pro",
+      "canonical_lob_base": "pro"
+    },
+    {
+      "raw_lob_name": "yego pro",
+      "canonical_lob_base": "pro"
+    },
+    {
+      "raw_lob_name": "yma",
+      "canonical_lob_base": "yma"
+    },
+    {
+      "raw_lob_name": "ymm",
+      "canonical_lob_base": "ymm"
+    }
+  ]
+}
