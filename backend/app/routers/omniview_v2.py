@@ -350,7 +350,110 @@ def drill_cell(
 
     if not period or not business_slice_name:
         result["warnings"].append({"code": "MISSING_PARAMS", "message": "period and business_slice_name required"})
+    return result
+
+
+@router.get("/cell-audit")
+def cell_audit(
+    source_system: str = Query(default="CT_TRIPS_2026"),
+    grain: str = Query(default="day"),
+    period: str = Query(default=None),
+    metric_id: str = Query(default="trips"),
+    business_slice_name: str = Query(default=None),
+    country: str = Query(default="peru"),
+    city: str = Query(default="lima"),
+):
+    """Complete cell auditability: value, writer, freshness, park/driver contributions."""
+    from app.db.connection import get_db
+    from datetime import date as dt_date, timedelta
+
+    result = {
+        "cell": {"source_system": source_system, "grain": grain, "period": period,
+                 "metric_id": metric_id, "business_slice_name": business_slice_name},
+        "value": None, "writer": None, "snapshot": None, "freshness": None,
+        "contributions": {"parks": [], "drivers": []}, "lineage": {},
+    }
+
+    if not period or not business_slice_name:
+        result["error"] = "period and business_slice_name required"
         return result
+
+    date_from = period
+    date_to = period
+    try:
+        d = dt_date.fromisoformat(period[:10])
+        if grain == "day": date_to = (d + timedelta(days=1)).isoformat()
+        elif grain == "month" and len(period) == 10:
+            if d.month == 12: date_to = dt_date(d.year+1, 1, 1).isoformat()
+            else: date_to = dt_date(d.year, d.month+1, 1).isoformat()
+    except: pass
+
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+
+            # Total aggregate
+            cur.execute("""
+                SELECT SUM(completed_trips), COUNT(DISTINCT driver_id) FILTER (WHERE completed_trips > 0)
+                FROM ops.driver_day_slice_fact
+                WHERE country=%s AND city=%s AND activity_date>=%s AND activity_date<%s AND business_slice_name=%s
+            """, (country, city, date_from, date_to, business_slice_name))
+            total_trips, total_drivers = cur.fetchone()
+            result["value"] = {"trips": int(total_trips or 0), "drivers": int(total_drivers or 0)}
+
+            # Park contributions with %
+            cur.execute("""
+                SELECT park_id, SUM(completed_trips) AS trips,
+                       COUNT(DISTINCT driver_id) FILTER (WHERE completed_trips > 0) AS drivers
+                FROM ops.driver_day_slice_fact
+                WHERE country=%s AND city=%s AND activity_date>=%s AND activity_date<%s AND business_slice_name=%s
+                GROUP BY park_id ORDER BY trips DESC
+            """, (country, city, date_from, date_to, business_slice_name))
+            for r in cur.fetchall():
+                pct = round(r[1] / total_trips * 100, 1) if total_trips else 0
+                result["contributions"]["parks"].append({
+                    "park_id": r[0], "trips": r[1], "drivers": r[2],
+                    "contribution_pct": pct
+                })
+
+            # Top driver contributions
+            cur.execute("""
+                SELECT driver_id, SUM(completed_trips) AS trips
+                FROM ops.driver_day_slice_fact
+                WHERE country=%s AND city=%s AND activity_date>=%s AND activity_date<%s AND business_slice_name=%s
+                GROUP BY driver_id ORDER BY trips DESC LIMIT 10
+            """, (country, city, date_from, date_to, business_slice_name))
+            for r in cur.fetchall():
+                pct = round(r[1] / total_trips * 100, 1) if total_trips else 0
+                result["contributions"]["drivers"].append({
+                    "driver_id": r[0], "trips": r[1], "contribution_pct": pct
+                })
+
+            # Writer traceability
+            result["writer"] = {
+                "canonical": "rebuild_day_from_bridge.py" if grain == "day" else f"rebuild_{grain}_from_day_and_bridge.py",
+                "source": "ops.driver_day_slice_fact",
+            }
+
+            # Freshness traceability
+            cur.execute("SELECT MAX(activity_date) FROM ops.driver_day_slice_fact WHERE country=%s AND city=%s", (country, city))
+            bridge_max = cur.fetchone()[0]
+            result["freshness"] = {
+                "bridge_max": str(bridge_max)[:10] if bridge_max else None,
+                "cell_period": period[:10] if period else None,
+            }
+
+            # Lineage
+            result["lineage"] = {
+                "city": "READY", "park": "READY", "driver": "READY",
+                "fleet": "PARTIAL", "raw_trip": "PARTIAL"
+            }
+
+            cur.close()
+    except Exception as e:
+        result["error"] = str(e)[:200]
+
+    return result
 
     # Compute date range from grain + period
     date_from = period
