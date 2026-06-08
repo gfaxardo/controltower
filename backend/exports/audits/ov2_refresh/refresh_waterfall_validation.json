@@ -4,15 +4,15 @@
       "name": "RAW_to_DAY",
       "upstream": "RAW_TRIPS",
       "downstream": "DAY_FACT",
-      "upstream_val": "2026-06-06",
-      "downstream_val": "2026-06-06",
+      "upstream_val": "2026-06-07",
+      "downstream_val": "2026-06-07",
       "status": "OK"
     },
     {
       "name": "DAY_to_WEEK",
       "upstream": "DAY_FACT",
       "downstream": "WEEK_FACT",
-      "upstream_val": "2026-06-06",
+      "upstream_val": "2026-06-07",
       "downstream_val": "2026-06-01",
       "status": "OK"
     },
@@ -28,7 +28,7 @@
       "name": "DAY_to_SNAPSHOT",
       "upstream": "DAY_FACT",
       "downstream": "SNAPSHOT",
-      "upstream_val": "2026-06-06",
+      "upstream_val": "2026-06-07",
       "downstream_val": "2026-06-05",
       "status": "OK"
     },
@@ -40,6 +40,6 @@
     }
   ],
   "waterfall_broken": [],
-  "generated_at": "2026-06-08T04:17:58.476348+00:00",
+  "generated_at": "2026-06-08T12:31:37.484491+00:00",
   "verdict": "GO"
 }
