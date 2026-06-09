@@ -101,11 +101,14 @@ def main():
                 print("DRY-RUN PASS")
                 return 0
 
+            staging_rows = s["rows"]
+            if staging_rows == 0:
+                print(f"  ABORT — staging is empty, no delete/insert performed")
+                cur.execute(f"DROP TABLE IF EXISTS {STAGING}")
+                return 0
+
             cur.execute(f"DELETE FROM {TARGET} WHERE month >= %s", (args.date_from,))
             deleted = cur.rowcount
-            conn.commit()
-            print(f"  Deleted {deleted} old rows")
-
             cur.execute(f"""
                 INSERT INTO {TARGET} (month, country, city, business_slice_name,
                     fleet_display_name, is_subfleet, subfleet_name, parent_fleet_name,
@@ -121,8 +124,9 @@ def main():
             inserted = cur.rowcount
             conn.commit()
             cur.execute(f"DROP TABLE IF EXISTS {STAGING}")
+            conn.commit()
 
-            print(f"  Inserted {inserted} rows — COMPLETE (drivers from bridge)")
+            print(f"  Deleted {deleted}, Inserted {inserted} rows — COMPLETE (drivers from bridge)")
             return 0
         except Exception as e:
             conn.rollback()

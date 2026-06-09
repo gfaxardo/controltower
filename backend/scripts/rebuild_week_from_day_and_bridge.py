@@ -113,11 +113,14 @@ def main():
                 print("DRY-RUN PASS")
                 return 0
 
-            cur.execute(f"DELETE FROM {TARGET}")
-            deleted = cur.rowcount
-            conn.commit()
-            print(f"  Deleted {deleted} rows")
+            staging_rows = s["rows"]
+            if staging_rows == 0:
+                print(f"  ABORT — staging is empty, no delete/insert performed")
+                cur.execute(f"DROP TABLE IF EXISTS {STAGING}")
+                return 0
 
+            cur.execute(f"DELETE FROM {TARGET} WHERE week_start IN (SELECT DISTINCT week_start FROM {STAGING})")
+            deleted = cur.rowcount
             cur.execute(f"""
                 INSERT INTO {TARGET} (week_start, country, city, business_slice_name,
                     fleet_display_name, is_subfleet, subfleet_name, parent_fleet_name,

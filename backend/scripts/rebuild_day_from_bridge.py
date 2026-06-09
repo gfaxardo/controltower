@@ -90,13 +90,19 @@ def main():
                 cur.execute(f"DROP TABLE IF EXISTS {STAGING}")
                 return 0
 
+            staging_rows = s["rows"]
+            if staging_rows == 0:
+                print(f"  ABORT — staging is empty, no delete/insert performed")
+                cur.execute(f"DROP TABLE IF EXISTS {STAGING}")
+                return 0
+
             cur.execute(f"DELETE FROM {TARGET} WHERE trip_date >= %s AND trip_date <= %s", (args.date_from, args.date_to))
             deleted = cur.rowcount
-            conn.commit()
             cur.execute(f"INSERT INTO {TARGET} (trip_date, country, city, business_slice_name, fleet_display_name, is_subfleet, subfleet_name, parent_fleet_name, trips_completed, trips_cancelled, active_drivers, revenue_yego_final, revenue_yego_net, avg_ticket, trips_per_driver, refreshed_at, loaded_at) SELECT trip_date, country, city, business_slice_name, fleet_display_name, is_subfleet, subfleet_name, parent_fleet_name, trips_completed, trips_cancelled, active_drivers, revenue_yego_final, revenue_yego_net, avg_ticket, trips_per_driver, refreshed_at, loaded_at FROM {STAGING}")
             inserted = cur.rowcount
             conn.commit()
             cur.execute(f"DROP TABLE IF EXISTS {STAGING}")
+            conn.commit()
             print(f"  Deleted {deleted}, Inserted {inserted}")
             print(f"  COMPLETE — day_fact now from bridge (trips/drivers)")
             return 0

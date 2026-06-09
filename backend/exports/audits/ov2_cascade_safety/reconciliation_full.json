@@ -1,0 +1,633 @@
+{
+  "timestamp": "2026-06-09",
+  "task2_matrix_recon": {
+    "all_match": false,
+    "match_count": 5,
+    "total": 15,
+    "results": [
+      {
+        "grain": "day",
+        "kpi": "trips",
+        "cell_audit": 13041,
+        "matrix": 26082,
+        "inspector": 26082,
+        "delta": -13041,
+        "status": "DELTA"
+      },
+      {
+        "grain": "day",
+        "kpi": "revenue",
+        "cell_audit": 5948.02,
+        "matrix": 5948.02,
+        "inspector": 5948.02,
+        "delta": 0.0,
+        "status": "MATCH"
+      },
+      {
+        "grain": "day",
+        "kpi": "active_drivers",
+        "cell_audit": 1585,
+        "matrix": 1585,
+        "inspector": 3170,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "grain": "day",
+        "kpi": "avg_ticket",
+        "cell_audit": 0.46,
+        "matrix": 0.23,
+        "inspector": 0,
+        "delta": 0.23,
+        "status": "DELTA"
+      },
+      {
+        "grain": "day",
+        "kpi": "trips_per_driver",
+        "cell_audit": 8.23,
+        "matrix": 16.46,
+        "inspector": 0,
+        "delta": -8.23,
+        "status": "DELTA"
+      },
+      {
+        "grain": "week",
+        "kpi": "trips",
+        "cell_audit": 79927,
+        "matrix": 0,
+        "inspector": 0,
+        "delta": 79927,
+        "status": "DELTA"
+      },
+      {
+        "grain": "week",
+        "kpi": "revenue",
+        "cell_audit": 35963.13,
+        "matrix": 0,
+        "inspector": 0,
+        "delta": 35963.13,
+        "status": "DELTA"
+      },
+      {
+        "grain": "week",
+        "kpi": "active_drivers",
+        "cell_audit": 2866,
+        "matrix": 0,
+        "inspector": 0,
+        "delta": 2866,
+        "status": "DELTA"
+      },
+      {
+        "grain": "week",
+        "kpi": "avg_ticket",
+        "cell_audit": 0.45,
+        "matrix": 0,
+        "inspector": 0,
+        "delta": 0.45,
+        "status": "DELTA"
+      },
+      {
+        "grain": "week",
+        "kpi": "trips_per_driver",
+        "cell_audit": 27.89,
+        "matrix": 0,
+        "inspector": 0,
+        "delta": 27.89,
+        "status": "DELTA"
+      },
+      {
+        "grain": "month",
+        "kpi": "trips",
+        "cell_audit": 89134,
+        "matrix": 89134,
+        "inspector": 89134,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "grain": "month",
+        "kpi": "revenue",
+        "cell_audit": 40165.63,
+        "matrix": 0,
+        "inspector": 0,
+        "delta": 40165.63,
+        "status": "DELTA"
+      },
+      {
+        "grain": "month",
+        "kpi": "active_drivers",
+        "cell_audit": 2980,
+        "matrix": 2980,
+        "inspector": 17880,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "grain": "month",
+        "kpi": "avg_ticket",
+        "cell_audit": 0.45,
+        "matrix": 0,
+        "inspector": 0,
+        "delta": 0.45,
+        "status": "DELTA"
+      },
+      {
+        "grain": "month",
+        "kpi": "trips_per_driver",
+        "cell_audit": 29.91,
+        "matrix": 29.91,
+        "inspector": 0,
+        "delta": 0.0,
+        "status": "MATCH"
+      }
+    ]
+  },
+  "task3_cross_slice": {
+    "all_match": false,
+    "match_count": 46,
+    "total": 48,
+    "results": [
+      {
+        "slice": "Auto regular",
+        "grain": "day",
+        "kpi": "trips",
+        "cell_audit": 13041,
+        "matrix": 13041,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Auto regular",
+        "grain": "day",
+        "kpi": "active_drivers",
+        "cell_audit": 1585,
+        "matrix": 1585,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Auto regular",
+        "grain": "week",
+        "kpi": "trips",
+        "cell_audit": 79927,
+        "matrix": 0,
+        "delta": 79927,
+        "status": "DELTA"
+      },
+      {
+        "slice": "Auto regular",
+        "grain": "week",
+        "kpi": "active_drivers",
+        "cell_audit": 2866,
+        "matrix": 0,
+        "delta": 2866,
+        "status": "DELTA"
+      },
+      {
+        "slice": "Auto regular",
+        "grain": "month",
+        "kpi": "trips",
+        "cell_audit": 89134,
+        "matrix": 89134,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Auto regular",
+        "grain": "month",
+        "kpi": "active_drivers",
+        "cell_audit": 2980,
+        "matrix": 2980,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "PRO",
+        "grain": "day",
+        "kpi": "trips",
+        "cell_audit": 488,
+        "matrix": 488,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "PRO",
+        "grain": "day",
+        "kpi": "active_drivers",
+        "cell_audit": 22,
+        "matrix": 22,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "PRO",
+        "grain": "week",
+        "kpi": "trips",
+        "cell_audit": 2972,
+        "matrix": 2972,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "PRO",
+        "grain": "week",
+        "kpi": "active_drivers",
+        "cell_audit": 25,
+        "matrix": 25,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "PRO",
+        "grain": "month",
+        "kpi": "trips",
+        "cell_audit": 3210,
+        "matrix": 3210,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "PRO",
+        "grain": "month",
+        "kpi": "active_drivers",
+        "cell_audit": 27,
+        "matrix": 27,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Delivery",
+        "grain": "day",
+        "kpi": "trips",
+        "cell_audit": 338,
+        "matrix": 338,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Delivery",
+        "grain": "day",
+        "kpi": "active_drivers",
+        "cell_audit": 50,
+        "matrix": 50,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Delivery",
+        "grain": "week",
+        "kpi": "trips",
+        "cell_audit": 2219,
+        "matrix": 2219,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Delivery",
+        "grain": "week",
+        "kpi": "active_drivers",
+        "cell_audit": 108,
+        "matrix": 108,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Delivery",
+        "grain": "month",
+        "kpi": "trips",
+        "cell_audit": 2526,
+        "matrix": 2526,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Delivery",
+        "grain": "month",
+        "kpi": "active_drivers",
+        "cell_audit": 119,
+        "matrix": 119,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Tuk Tuk",
+        "grain": "day",
+        "kpi": "trips",
+        "cell_audit": 1143,
+        "matrix": 1143,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Tuk Tuk",
+        "grain": "day",
+        "kpi": "active_drivers",
+        "cell_audit": 47,
+        "matrix": 47,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Tuk Tuk",
+        "grain": "week",
+        "kpi": "trips",
+        "cell_audit": 8195,
+        "matrix": 8195,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Tuk Tuk",
+        "grain": "week",
+        "kpi": "active_drivers",
+        "cell_audit": 78,
+        "matrix": 78,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Tuk Tuk",
+        "grain": "month",
+        "kpi": "trips",
+        "cell_audit": 9176,
+        "matrix": 9176,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Tuk Tuk",
+        "grain": "month",
+        "kpi": "active_drivers",
+        "cell_audit": 81,
+        "matrix": 81,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "YMA",
+        "grain": "day",
+        "kpi": "trips",
+        "cell_audit": 931,
+        "matrix": 931,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "YMA",
+        "grain": "day",
+        "kpi": "active_drivers",
+        "cell_audit": 47,
+        "matrix": 47,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "YMA",
+        "grain": "week",
+        "kpi": "trips",
+        "cell_audit": 5375,
+        "matrix": 5375,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "YMA",
+        "grain": "week",
+        "kpi": "active_drivers",
+        "cell_audit": 50,
+        "matrix": 50,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "YMA",
+        "grain": "month",
+        "kpi": "trips",
+        "cell_audit": 5859,
+        "matrix": 5859,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "YMA",
+        "grain": "month",
+        "kpi": "active_drivers",
+        "cell_audit": 50,
+        "matrix": 50,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Carga",
+        "grain": "day",
+        "kpi": "trips",
+        "cell_audit": 39,
+        "matrix": 39,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Carga",
+        "grain": "day",
+        "kpi": "active_drivers",
+        "cell_audit": 19,
+        "matrix": 19,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Carga",
+        "grain": "week",
+        "kpi": "trips",
+        "cell_audit": 181,
+        "matrix": 181,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Carga",
+        "grain": "week",
+        "kpi": "active_drivers",
+        "cell_audit": 40,
+        "matrix": 40,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Carga",
+        "grain": "month",
+        "kpi": "trips",
+        "cell_audit": 207,
+        "matrix": 207,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Carga",
+        "grain": "month",
+        "kpi": "active_drivers",
+        "cell_audit": 42,
+        "matrix": 42,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Delivery moto",
+        "grain": "day",
+        "kpi": "trips",
+        "cell_audit": 0,
+        "matrix": 0,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Delivery moto",
+        "grain": "day",
+        "kpi": "active_drivers",
+        "cell_audit": 0,
+        "matrix": 0,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Delivery moto",
+        "grain": "week",
+        "kpi": "trips",
+        "cell_audit": 0,
+        "matrix": 0,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Delivery moto",
+        "grain": "week",
+        "kpi": "active_drivers",
+        "cell_audit": 0,
+        "matrix": 0,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Delivery moto",
+        "grain": "month",
+        "kpi": "trips",
+        "cell_audit": 0,
+        "matrix": 0,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Delivery moto",
+        "grain": "month",
+        "kpi": "active_drivers",
+        "cell_audit": 0,
+        "matrix": 0,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Taxi Moto",
+        "grain": "day",
+        "kpi": "trips",
+        "cell_audit": 0,
+        "matrix": 0,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Taxi Moto",
+        "grain": "day",
+        "kpi": "active_drivers",
+        "cell_audit": 0,
+        "matrix": 0,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Taxi Moto",
+        "grain": "week",
+        "kpi": "trips",
+        "cell_audit": 0,
+        "matrix": 0,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Taxi Moto",
+        "grain": "week",
+        "kpi": "active_drivers",
+        "cell_audit": 0,
+        "matrix": 0,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Taxi Moto",
+        "grain": "month",
+        "kpi": "trips",
+        "cell_audit": 0,
+        "matrix": 0,
+        "delta": 0,
+        "status": "MATCH"
+      },
+      {
+        "slice": "Taxi Moto",
+        "grain": "month",
+        "kpi": "active_drivers",
+        "cell_audit": 0,
+        "matrix": 0,
+        "delta": 0,
+        "status": "MATCH"
+      }
+    ]
+  },
+  "task4_derived_kpis": {
+    "ok": true
+  },
+  "task5_freshness": {
+    "ok": false,
+    "layers": {
+      "RAW/Bridge": {
+        "min": "2026-04-01",
+        "max": "2026-06-08",
+        "rows": 164535,
+        "gap_days": 1,
+        "status": "OK"
+      },
+      "DAY_FACT": {
+        "min": "2025-02-28",
+        "max": "2026-06-08",
+        "rows": 2659,
+        "gap_days": 1,
+        "status": "OK"
+      },
+      "WEEK_FACT": {
+        "min": "2026-02-23",
+        "max": "2026-06-08",
+        "rows": 120,
+        "gap_days": 1,
+        "status": "OK"
+      },
+      "MONTH_FACT": {
+        "min": "2025-02-01",
+        "max": "2026-06-01",
+        "rows": 110,
+        "gap_days": 8,
+        "status": "STALE"
+      },
+      "SNAPSHOT": {
+        "min": "2026-05-31",
+        "max": "2026-06-08",
+        "rows": 8,
+        "gap_days": 1,
+        "status": "OK"
+      }
+    },
+    "waterfall": {
+      "RAW_to_DAY": "OK",
+      "DAY_to_WEEK": "OK",
+      "WEEK_to_MONTH": "OK"
+    }
+  },
+  "overall_pass": false
+}

@@ -12,7 +12,9 @@ from app.db.connection import get_db
 BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TODAY = dt_date.today()
 D1 = (TODAY - timedelta(days=1)).isoformat()
-D2 = (TODAY - timedelta(days=2)).isoformat()
+D14 = (TODAY - timedelta(days=14)).isoformat()
+D90 = (TODAY - timedelta(days=90)).isoformat()
+FIRST_OF_PREV_MONTH = (TODAY.replace(day=1) - timedelta(days=1)).replace(day=1).isoformat()
 TIMESTAMP = datetime.now(timezone.utc).isoformat()
 GIT_HASH = None
 try:
@@ -22,9 +24,9 @@ except: pass
 
 LAYERS = [
     {"name": "driver_bridge", "pipeline": "bridge_update", "table": "ops.driver_day_slice_fact", "col": "activity_date", "filter": "WHERE country='peru' AND city='lima'"},
+    {"name": "day_fact", "pipeline": "day_rebuild", "table": "ops.real_business_slice_day_fact", "col": "trip_date", "filter": "WHERE LOWER(TRIM(country))='peru' AND LOWER(TRIM(city))='lima'"},
     {"name": "week_fact", "pipeline": "week_rebuild", "table": "ops.real_business_slice_week_fact", "col": "week_start", "filter": "WHERE LOWER(TRIM(country))='peru' AND LOWER(TRIM(city))='lima'"},
     {"name": "month_fact", "pipeline": "month_rebuild", "table": "ops.real_business_slice_month_fact", "col": "month", "filter": "WHERE LOWER(TRIM(country))='peru' AND LOWER(TRIM(city))='lima'"},
-    {"name": "day_fact", "pipeline": "day_rebuild", "table": "ops.real_business_slice_day_fact", "col": "trip_date", "filter": "WHERE LOWER(TRIM(country))='peru' AND LOWER(TRIM(city))='lima'"},
 ]
 
 def measure_before(cur, layer):
@@ -101,19 +103,19 @@ def main():
                     if layer['name'] == 'driver_bridge':
                         r = run_step("bridge_update",
                             [python, "-m", "scripts.build_driver_bridge_direct",
-                             "--date-from", D2, "--date-to", D1, "--batch-days", "1", "--confirm"], timeout=180)
-                    elif layer['name'] == 'week_fact':
-                        r = run_step("week_rebuild",
-                            [python, "-m", "scripts.rebuild_week_from_day_and_bridge",
-                             "--date-from", "2026-04-01", "--date-to", D1, "--confirm"], timeout=120)
-                    elif layer['name'] == 'month_fact':
-                        r = run_step("month_rebuild",
-                            [python, "-m", "scripts.rebuild_month_from_day_and_bridge",
-                             "--date-from", "2026-06-01", "--date-to", D1, "--confirm"], timeout=120)
+                             "--date-from", D14, "--date-to", D1, "--batch-days", "3", "--confirm"], timeout=180)
                     elif layer['name'] == 'day_fact':
                         r = run_step("day_rebuild",
                             [python, "-m", "scripts.rebuild_day_from_bridge",
-                             "--date-from", D2, "--date-to", D1, "--confirm"], timeout=120)
+                             "--date-from", D14, "--date-to", D1, "--confirm"], timeout=120)
+                    elif layer['name'] == 'week_fact':
+                        r = run_step("week_rebuild",
+                            [python, "-m", "scripts.rebuild_week_from_day_and_bridge",
+                             "--date-from", D90, "--date-to", D1, "--confirm"], timeout=120)
+                    elif layer['name'] == 'month_fact':
+                        r = run_step("month_rebuild",
+                            [python, "-m", "scripts.rebuild_month_from_day_and_bridge",
+                             "--date-from", FIRST_OF_PREV_MONTH, "--date-to", D1, "--confirm"], timeout=120)
 
                     after_max, after_rows = measure_after(cur, layer)
                     advanced = after_max and before_max != after_max

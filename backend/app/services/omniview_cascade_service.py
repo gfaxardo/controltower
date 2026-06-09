@@ -85,14 +85,16 @@ def run_cascade(
     """
     today = _get_today()
     d1 = (today - timedelta(days=1)).isoformat()
-    d2 = (today - timedelta(days=2)).isoformat()
+    d14 = (today - timedelta(days=14)).isoformat()
+    d90 = (today - timedelta(days=90)).isoformat()
+    first_of_prev_month = (today.replace(day=1) - timedelta(days=1)).replace(day=1).isoformat()
 
     layers = [
         {
             "name": "driver_bridge",
             "pipeline": "bridge_update",
             "script": "scripts/build_driver_bridge_direct",
-            "args": ["--date-from", d2, "--date-to", d1, "--batch-days", "1", "--confirm"],
+            "args": ["--date-from", d14, "--date-to", d1, "--batch-days", "3", "--confirm"],
             "timeout": 180,
             "table": "ops.driver_day_slice_fact",
             "col": "activity_date",
@@ -102,7 +104,7 @@ def run_cascade(
             "name": "day_fact",
             "pipeline": "day_rebuild",
             "script": "scripts/rebuild_day_from_bridge",
-            "args": ["--date-from", d2, "--date-to", d1, "--confirm"],
+            "args": ["--date-from", d14, "--date-to", d1, "--confirm"],
             "timeout": 120,
             "table": "ops.real_business_slice_day_fact",
             "col": "trip_date",
@@ -112,7 +114,7 @@ def run_cascade(
             "name": "week_fact",
             "pipeline": "week_rebuild",
             "script": "scripts/rebuild_week_from_day_and_bridge",
-            "args": ["--date-from", "2026-04-01", "--date-to", d1, "--confirm"],
+            "args": ["--date-from", d90, "--date-to", d1, "--confirm"],
             "timeout": 300,
             "table": "ops.real_business_slice_week_fact",
             "col": "week_start",
@@ -122,7 +124,7 @@ def run_cascade(
             "name": "month_fact",
             "pipeline": "month_rebuild",
             "script": "scripts/rebuild_month_from_day_and_bridge",
-            "args": ["--date-from", "2026-06-01", "--date-to", d1, "--confirm"],
+            "args": ["--date-from", first_of_prev_month, "--date-to", d1, "--confirm"],
             "timeout": 120,
             "table": "ops.real_business_slice_month_fact",
             "col": "month",

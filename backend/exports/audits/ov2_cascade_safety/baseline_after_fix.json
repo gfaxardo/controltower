@@ -1,0 +1,75 @@
+{
+  "captured_at": "2026-06-09",
+  "tables": {
+    "ops.driver_day_slice_fact": {
+      "row_count": 164535,
+      "min_date": "2026-04-01",
+      "max_date": "2026-06-08"
+    },
+    "ops.real_business_slice_day_fact": {
+      "row_count": 2659,
+      "min_date": "2025-02-28",
+      "max_date": "2026-06-08"
+    },
+    "ops.real_business_slice_week_fact": {
+      "row_count": 120,
+      "min_date": "2026-02-23",
+      "max_date": "2026-06-08"
+    },
+    "ops.real_business_slice_month_fact": {
+      "row_count": 110,
+      "min_date": "2025-02-01",
+      "max_date": "2026-06-01"
+    },
+    "ops.omniview_v2_serving_snapshot": {
+      "row_count": 8,
+      "min_date": "2026-05-31",
+      "max_date": "2026-06-08"
+    }
+  },
+  "smoke_day": {
+    "period": "2026-06-06",
+    "slice": "Auto regular",
+    "trips_completed": 13041,
+    "trips_cancelled": 21527,
+    "active_drivers": 1585,
+    "revenue_yego_final": 214128.72,
+    "revenue_yego_net": 0.0
+  },
+  "smoke_week": {
+    "period": "2026-06-01",
+    "slice": "Auto regular",
+    "trips_completed": 79927,
+    "trips_cancelled": 127100,
+    "active_drivers": 17196,
+    "revenue_yego_final": 1294672.824,
+    "revenue_yego_net": 0.0
+  },
+  "smoke_month": {
+    "period": "2026-06-01",
+    "slice": "Auto regular",
+    "trips_completed": 89134,
+    "trips_cancelled": 142087,
+    "active_drivers": 17880,
+    "revenue_yego_final": 1445962.716,
+    "revenue_yego_net": 0.0
+  },
+  "day_2026-06-06_all_slices": {
+    "slices": 7,
+    "trips": 16054,
+    "rev": 214970.957,
+    "drivers": 1777
+  },
+  "week_2026-06-01_all_slices": {
+    "slices": 7,
+    "trips": 99239,
+    "rev": 1299707.67,
+    "drivers": 17508
+  },
+  "month_2026-06-01_all_slices": {
+    "slices": 7,
+    "trips": 110530,
+    "rev": 1451551.049,
+    "drivers": 18210
+  }
+}
