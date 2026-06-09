@@ -1,400 +1,183 @@
 """
-YEGO Lima Growth — Movement Engine Service (ME-1 V1).
-
-Tracks lifecycle_state transitions before/after contact.
-Deterministic. NO causalidad. NO ROI. NO attribution.
+YEGO Lima Growth — Movement Attribution Service (LG-ATTR-1.0A)
+Aggregates movements from existing transition + decision traces.
+No new tables needed. Builds on R1.3A persistence.
 """
-
 from __future__ import annotations
-
 import logging
-from datetime import date as date_type, datetime, timezone
 from typing import Any, Dict, List, Optional
-
-from psycopg2.extras import RealDictCursor
 from app.db.connection import get_db
 
 logger = logging.getLogger(__name__)
 
-TABLE_MOVEMENT = "growth.yego_lima_movement_tracking"
-TABLE_IMPACT = "growth.yego_lima_impact_tracking"
-TABLE_STATE = "growth.yango_lima_driver_state_snapshot"
 
-POSITIVE_TRANSITIONS = {
-    ("CHURN", "ACTIVE"),
-    ("CHURN", "ONBOARDING"),
-    ("AT_RISK", "ACTIVE"),
-    ("DECLINING", "ACTIVE"),
-    ("DECLINING", "STABLE"),
-    ("ACTIVE", "HIGH_VALUE"),
-    ("ONBOARDING", "ACTIVE"),
-    ("DORMANT", "ACTIVE"),
-}
+def get_daily_movement_summary(snapshot_date: str) -> Dict[str, Any]:
+    with get_db() as conn:
+        cur = conn.cursor()
 
-NEGATIVE_TRANSITIONS = {
-    ("ACTIVE", "CHURN"),
-    ("ACTIVE", "DORMANT"),
-    ("ACTIVE", "AT_RISK"),
-    ("ACTIVE", "DECLINING"),
-    ("STABLE", "DECLINING"),
-    ("STABLE", "CHURN"),
-    ("HIGH_VALUE", "ACTIVE"),
-    ("HIGH_VALUE", "DECLINING"),
-    ("HIGH_VALUE", "CHURN"),
-}
+        # Program changes from decision traces
+        cur.execute("""
+            SELECT COUNT(*) FROM growth.yego_lima_program_decision_trace
+            WHERE snapshot_date = %(d)s
+        """, {"d": snapshot_date})
+        program_total = cur.fetchone()[0] or 0
 
+        # State changes from transition traces
+        cur.execute("""
+            SELECT transition_type, COUNT(*) FROM growth.yego_lima_state_transition_trace
+            WHERE snapshot_after = %(d)s
+            GROUP BY transition_type ORDER BY COUNT(*) DESC
+        """, {"d": snapshot_date})
+        transitions = {r[0]: r[1] for r in cur.fetchall()}
 
-def _classify_movement(from_state: Optional[str], to_state: Optional[str]) -> Dict[str, str]:
-    if not from_state or not to_state:
-        return {
-            "movement_type": "NO_MOVEMENT" if from_state == to_state else "UNKNOWN",
-            "movement_direction": "NEUTRAL_MOVEMENT",
-            "movement_status": "INSUFFICIENT_DATA",
-        }
+        state_changes = sum(transitions.values())
+        entries = sum(v for k, v in transitions.items() if 'ENTERED' in str(k))
+        exits = sum(v for k, v in transitions.items() if 'EXITED' in str(k))
 
-    if from_state == to_state:
-        return {
-            "movement_type": f"{from_state}->{to_state}",
-            "movement_direction": "NEUTRAL_MOVEMENT",
-            "movement_status": "STABLE",
-        }
+        # Membership history
+        cur.execute("""
+            SELECT COUNT(*) FROM growth.yego_lima_driver_list_history
+            WHERE action_date = %(d)s
+        """, {"d": snapshot_date})
+        membership_total = cur.fetchone()[0] or 0
 
-    pair = (from_state, to_state)
-    if pair in POSITIVE_TRANSITIONS:
-        return {
-            "movement_type": f"{from_state}->{to_state}",
-            "movement_direction": "POSITIVE_MOVEMENT",
-            "movement_status": "IMPROVED",
-        }
-    elif pair in NEGATIVE_TRANSITIONS:
-        return {
-            "movement_type": f"{from_state}->{to_state}",
-            "movement_direction": "NEGATIVE_MOVEMENT",
-            "movement_status": "DECLINED",
-        }
-    else:
-        return {
-            "movement_type": f"{from_state}->{to_state}",
-            "movement_direction": "NEUTRAL_MOVEMENT",
-            "movement_status": "TRANSITIONED",
-        }
+    return {
+        "date": snapshot_date,
+        "total_movements": program_total + state_changes,
+        "program_decisions": program_total,
+        "state_changes": state_changes,
+        "entries": entries,
+        "exits": exits,
+        "membership_records": membership_total,
+        "transition_types": transitions,
+    }
 
 
-def rebuild_movement_tracking(
-    date_str: Optional[str] = None,
-    campaign_id_external: Optional[str] = None,
+def get_driver_movement_history(driver_id: str) -> Dict[str, Any]:
+    with get_db() as conn:
+        cur = conn.cursor()
+
+        # State transitions
+        cur.execute("""
+            SELECT snapshot_before, snapshot_after, transition_type,
+                   trigger_reason, rule_delta_json, state_before_json, state_after_json
+            FROM growth.yego_lima_state_transition_trace
+            WHERE driver_profile_id = %(did)s
+            ORDER BY snapshot_after DESC LIMIT 20
+        """, {"did": driver_id})
+        state_movements = []
+        for r in cur.fetchall():
+            state_movements.append({
+                "date": str(r[1]),
+                "type": "STATE_CHANGE",
+                "transition": r[2],
+                "trigger": r[3],
+                "rule_deltas": r[4] if isinstance(r[4], list) else [],
+            })
+
+        # Program changes
+        cur.execute("""
+            SELECT snapshot_date, selected_program_code, selection_reason,
+                   eligible_programs_json
+            FROM growth.yego_lima_program_decision_trace
+            WHERE driver_profile_id = %(did)s
+            ORDER BY snapshot_date DESC LIMIT 20
+        """, {"did": driver_id})
+        program_movements = []
+        prev_prog = None
+        for r in cur.fetchall():
+            curr = r[1]
+            change = None
+            if prev_prog and prev_prog != curr:
+                change = f"{prev_prog} -> {curr}"
+            elif not prev_prog:
+                change = f"ENTERED: {curr}"
+            prev_prog = curr
+
+            program_movements.append({
+                "date": str(r[0]),
+                "type": "PROGRAM_CHANGE" if change and 'ENTERED' not in str(change) else "PROGRAM_ENTRY",
+                "change": change or f"CONTINUED: {curr}",
+                "program": curr,
+                "reason": r[2],
+            })
+
+        # Membership
+        cur.execute("""
+            SELECT action_date, program_code, queue_status
+            FROM growth.yego_lima_driver_list_history
+            WHERE driver_profile_id = %(did)s
+            ORDER BY action_date DESC LIMIT 20
+        """, {"did": driver_id})
+        membership = []
+        for r in cur.fetchall():
+            membership.append({"date": str(r[0]), "program": r[1], "status": r[2]})
+
+    # Merge all movements chronologically
+    all_movements = []
+    for m in state_movements:
+        all_movements.append({"date": m["date"], "type": m["type"], "detail": m})
+    for m in program_movements:
+        all_movements.append({"date": m["date"], "type": m["type"], "detail": m})
+    all_movements.sort(key=lambda x: x["date"], reverse=True)
+
+    return {
+        "driver_id": driver_id,
+        "found": bool(state_movements or program_movements or membership),
+        "total_movements": len(all_movements),
+        "movements": all_movements[:30],
+        "state_movements": state_movements,
+        "program_movements": program_movements,
+        "membership": membership,
+    }
+
+
+def get_movement_list(
+    movement_date: Optional[str] = None,
+    driver_id: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
 ) -> Dict[str, Any]:
-    conditions = []
-    params: Dict[str, Any] = {}
-
-    if date_str:
-        conditions.append("i.contact_date = %(d)s")
-        params["d"] = date_str
-    if campaign_id_external:
-        conditions.append("i.campaign_id_external = %(cid)s")
-        params["cid"] = campaign_id_external
-
-    where = " AND ".join(conditions) if conditions else "TRUE"
-
     with get_db() as conn:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur = conn.cursor()
+        params: Dict[str, Any] = {"lim": min(limit, 1000), "off": offset}
 
-        cur.execute(
-            f"""
-            SELECT i.id as impact_id, i.driver_id, i.assignment_queue_id,
-                   i.campaign_id_external, i.contact_status, i.contact_date
-            FROM {TABLE_IMPACT} i
-            WHERE {where}
-              AND i.contact_status = 'CONTACTED'
-              AND i.driver_id IS NOT NULL
-              AND i.contact_date IS NOT NULL
-            ORDER BY i.contact_date ASC
-        """,
-            params,
-        )
-        impacts = [dict(r) for r in cur.fetchall()]
+        where_state = []
+        where_prog = []
+        if movement_date:
+            where_state.append("snapshot_after = %(d)s")
+            where_prog.append("snapshot_date = %(d)s")
+            params["d"] = movement_date
+        if driver_id:
+            where_state.append("driver_profile_id = %(did)s")
+            where_prog.append("driver_profile_id = %(did)s")
+            params["did"] = driver_id
 
-    if not impacts:
-        return {
-            "total_processed": 0,
-            "positive_movements": 0,
-            "negative_movements": 0,
-            "neutral_movements": 0,
-            "no_movements": 0,
-        }
+        wc_s = "WHERE " + " AND ".join(where_state) if where_state else ""
+        wc_p = "WHERE " + " AND ".join(where_prog) if where_prog else ""
 
-    processed = 0
-    positive = 0
-    negative = 0
-    neutral = 0
-    no_movement = 0
+        cur.execute(f"SELECT COUNT(*) FROM growth.yego_lima_state_transition_trace {wc_s}", params)
+        state_total = cur.fetchone()[0] or 0
+        cur.execute(f"SELECT COUNT(*) FROM growth.yego_lima_program_decision_trace {wc_p}", params)
+        prog_total = cur.fetchone()[0] or 0
 
-    with get_db() as conn:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-
-        for imp in impacts:
-            driver_id = imp["driver_id"]
-            contact_date = imp["contact_date"]
-            cd = contact_date.date() if hasattr(contact_date, 'date') else contact_date
-            if isinstance(cd, str):
-                cd = datetime.fromisoformat(cd.replace('Z', '+00:00')).date()
-
-            aq_id = imp.get("assignment_queue_id")
-            campaign_id = imp.get("campaign_id_external")
-            impact_id = imp.get("impact_id")
-
-            cur.execute(
-                f"""
-                SELECT lifecycle_state
-                FROM {TABLE_STATE}
-                WHERE driver_profile_id = %(did)s
-                  AND snapshot_date <= %(cd)s
-                ORDER BY snapshot_date DESC
-                LIMIT 1
-            """,
-                {"did": driver_id, "cd": cd.isoformat()},
-            )
-            before_row = cur.fetchone()
-            from_state = before_row["lifecycle_state"] if before_row else None
-
-            cur.execute(
-                f"""
-                SELECT lifecycle_state
-                FROM {TABLE_STATE}
-                WHERE driver_profile_id = %(did)s
-                  AND snapshot_date > %(cd)s
-                ORDER BY snapshot_date ASC
-                LIMIT 1
-            """,
-                {"did": driver_id, "cd": cd.isoformat()},
-            )
-            after_row = cur.fetchone()
-            to_state = after_row["lifecycle_state"] if after_row else None
-
-            classification = _classify_movement(from_state, to_state)
-            direction = classification["movement_direction"]
-
-            if direction == "POSITIVE_MOVEMENT":
-                positive += 1
-            elif direction == "NEGATIVE_MOVEMENT":
-                negative += 1
-            elif direction == "NEUTRAL_MOVEMENT" and from_state == to_state:
-                no_movement += 1
-            else:
-                neutral += 1
-
-            _upsert_movement(
-                cur, driver_id, campaign_id, aq_id, impact_id,
-                from_state, to_state,
-                classification["movement_type"],
-                classification["movement_direction"],
-                classification["movement_status"],
-                cd.isoformat(),
-            )
-            processed += 1
-
-        conn.commit()
+        # Get state movements
+        cur.execute(f"""
+            SELECT driver_profile_id, snapshot_before, snapshot_after, transition_type,
+                   trigger_reason
+            FROM growth.yego_lima_state_transition_trace {wc_s}
+            ORDER BY snapshot_after DESC LIMIT %(lim)s OFFSET %(off)s
+        """, params)
+        records = []
+        for r in cur.fetchall():
+            records.append({
+                "driver_id": r[0], "type": "STATE_CHANGE",
+                "before": str(r[1]), "after": str(r[2]),
+                "transition": r[3], "trigger": r[4],
+            })
 
     return {
-        "total_processed": processed,
-        "positive_movements": positive,
-        "negative_movements": negative,
-        "neutral_movements": neutral,
-        "no_movements": no_movement,
+        "total": state_total + prog_total,
+        "limit": limit, "offset": offset,
+        "records": records,
     }
-
-
-def _upsert_movement(cur, driver_id, campaign_id, aq_id, impact_id,
-                     from_state, to_state, movement_type, direction, status, mdate):
-    cur.execute(
-        f"""
-        SELECT id FROM {TABLE_MOVEMENT}
-        WHERE driver_id = %(did)s
-          AND impact_tracking_id IS NOT DISTINCT FROM %(iid)s
-        LIMIT 1
-    """,
-        {"did": driver_id, "iid": impact_id},
-    )
-    existing = cur.fetchone()
-
-    if existing:
-        cur.execute(
-            f"""
-            UPDATE {TABLE_MOVEMENT}
-            SET from_state = %(fs)s, to_state = %(ts)s,
-                movement_type = %(mt)s, movement_direction = %(md)s,
-                movement_status = %(ms)s, movement_date = %(mdate)s,
-                updated_at = now()
-            WHERE id = %(eid)s
-        """,
-            {
-                "fs": from_state, "ts": to_state,
-                "mt": movement_type, "md": direction,
-                "ms": status, "mdate": mdate,
-                "eid": existing["id"],
-            },
-        )
-    else:
-        cur.execute(
-            f"""
-            INSERT INTO {TABLE_MOVEMENT} (
-                driver_id, campaign_id_external, assignment_queue_id, impact_tracking_id,
-                from_state, to_state, movement_type, movement_direction,
-                movement_status, movement_date
-            ) VALUES (
-                %(did)s, %(cid)s, %(aq)s, %(iid)s,
-                %(fs)s, %(ts)s, %(mt)s, %(md)s,
-                %(ms)s, %(mdate)s
-            )
-        """,
-            {
-                "did": driver_id, "cid": campaign_id,
-                "aq": aq_id, "iid": impact_id,
-                "fs": from_state, "ts": to_state,
-                "mt": movement_type, "md": direction,
-                "ms": status, "mdate": mdate,
-            },
-        )
-
-
-def get_movement_summary(date_str: Optional[str] = None,
-                         campaign_id_external: Optional[str] = None) -> Dict[str, Any]:
-    conditions = []
-    params: Dict[str, Any] = {}
-
-    if date_str:
-        conditions.append("movement_date = %(d)s")
-        params["d"] = date_str
-    if campaign_id_external:
-        conditions.append("campaign_id_external = %(cid)s")
-        params["cid"] = campaign_id_external
-
-    where = " AND ".join(conditions) if conditions else "TRUE"
-
-    with get_db() as conn:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-
-        cur.execute(
-            f"""
-            SELECT
-                COUNT(*) as total,
-                SUM(CASE WHEN movement_direction = 'POSITIVE_MOVEMENT' THEN 1 ELSE 0 END) as positive,
-                SUM(CASE WHEN movement_direction = 'NEGATIVE_MOVEMENT' THEN 1 ELSE 0 END) as negative,
-                SUM(CASE WHEN movement_direction = 'NEUTRAL_MOVEMENT' THEN 1 ELSE 0 END) as neutral
-            FROM {TABLE_MOVEMENT}
-            WHERE {where}
-        """,
-            params,
-        )
-        row = cur.fetchone()
-        total = int(row["total"] or 0)
-        positive = int(row["positive"] or 0)
-        negative = int(row["negative"] or 0)
-        neutral = int(row["neutral"] or 0)
-
-        movement_rate = round(positive / total, 4) if total > 0 else 0.0
-
-    return {
-        "date": date_str,
-        "campaign_id_external": campaign_id_external,
-        "total_movements": total,
-        "positive_movements": positive,
-        "negative_movements": negative,
-        "neutral_movements": neutral,
-        "movement_rate": movement_rate,
-    }
-
-
-def get_movement_records(date_str: Optional[str] = None,
-                         campaign_id_external: Optional[str] = None,
-                         movement_direction: Optional[str] = None,
-                         limit: int = 200) -> Dict[str, Any]:
-    conditions = []
-    params: Dict[str, Any] = {"lim": min(limit, 500)}
-
-    if date_str:
-        conditions.append("m.movement_date = %(d)s")
-        params["d"] = date_str
-    if campaign_id_external:
-        conditions.append("m.campaign_id_external = %(cid)s")
-        params["cid"] = campaign_id_external
-    if movement_direction:
-        conditions.append("m.movement_direction = %(md)s")
-        params["md"] = movement_direction
-
-    where = " AND ".join(conditions) if conditions else "TRUE"
-
-    with get_db() as conn:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-
-        cur.execute(
-            f"SELECT COUNT(*) as cnt FROM {TABLE_MOVEMENT} m WHERE {where}",
-            {k: v for k, v in params.items() if k != "lim"},
-        )
-        total = cur.fetchone()["cnt"]
-
-        cur.execute(
-            f"""
-            SELECT m.*, q.driver_name as queue_driver_name
-            FROM {TABLE_MOVEMENT} m
-            LEFT JOIN growth.yego_lima_assignment_queue q ON q.id = m.assignment_queue_id
-            WHERE {where}
-            ORDER BY m.movement_date DESC NULLS LAST
-            LIMIT %(lim)s
-        """,
-            params,
-        )
-        rows = cur.fetchall()
-
-    records = []
-    for r in rows:
-        records.append({
-            "id": str(r["id"]),
-            "driver_id": r["driver_id"],
-            "driver_name": r.get("queue_driver_name"),
-            "campaign_id_external": r.get("campaign_id_external"),
-            "from_state": r.get("from_state"),
-            "to_state": r.get("to_state"),
-            "movement_type": r.get("movement_type"),
-            "movement_direction": r.get("movement_direction"),
-            "movement_status": r.get("movement_status"),
-            "movement_date": r["movement_date"].isoformat() if hasattr(r.get("movement_date"), 'isoformat') else str(r.get("movement_date")) if r.get("movement_date") else None,
-        })
-
-    return {"total_records": total, "records": records}
-
-
-def get_movement_transitions(date_str: Optional[str] = None) -> Dict[str, Any]:
-    conditions = []
-    params: Dict[str, Any] = {}
-
-    if date_str:
-        conditions.append("movement_date = %(d)s")
-        params["d"] = date_str
-
-    where = " AND ".join(conditions) if conditions else "TRUE"
-
-    with get_db() as conn:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-
-        cur.execute(
-            f"""
-            SELECT from_state, to_state, COUNT(*) as cnt
-            FROM {TABLE_MOVEMENT}
-            WHERE {where} AND from_state IS NOT NULL AND to_state IS NOT NULL
-            GROUP BY from_state, to_state
-            ORDER BY cnt DESC
-        """,
-            params,
-        )
-        rows = cur.fetchall()
-
-    transitions = []
-    for r in rows:
-        transitions.append({
-            "from_state": r["from_state"],
-            "to_state": r["to_state"],
-            "count": int(r["cnt"]),
-        })
-
-    return {"date": date_str, "total_transitions": len(transitions), "transitions": transitions}

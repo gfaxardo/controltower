@@ -16,6 +16,12 @@ import {
   updateLimaGrowthCapacityConfig,
   getLimaGrowthPriorityAllocation,
   getLimaGrowthChannelAllocation,
+  getLimaGrowthIntradaySignalsSummary,
+  getLimaGrowthIntradaySignalsByCampaign,
+  getLimaGrowthIntradaySignalsByProgram,
+  buildLimaGrowthIntradaySignals,
+  getLimaGrowthOperationalTruth,
+  getLimaGrowthProgramStatus,
 } from '../../../services/api.js'
 import api from '../../../services/api.js'
 
@@ -58,6 +64,11 @@ export default function useLimaGrowthData(date) {
     fetchSection('priorityAlloc', () => getLimaGrowthPriorityAllocation(date))
     fetchSection('channelAlloc', () => getLimaGrowthChannelAllocation(date))
     fetchSection('queueSummary', () => getLimaGrowthQueueSummary(date))
+    fetchSection('intradaySignals', () => getLimaGrowthIntradaySignalsSummary(date))
+    fetchSection('intradaySignalsByCampaign', () => getLimaGrowthIntradaySignalsByCampaign(date))
+    fetchSection('intradaySignalsByProgram', () => getLimaGrowthIntradaySignalsByProgram(date))
+    fetchSection('operationalTruth', () => getLimaGrowthOperationalTruth(date))
+    fetchSection('programStatus', () => getLimaGrowthProgramStatus(date))
   }, [date, fetchSection])
 
   const refreshQueue = useCallback((filters = {}) => {
@@ -106,9 +117,18 @@ export default function useLimaGrowthData(date) {
     return result
   }, [date, fetchSection])
 
+  const buildIntradaySignals = useCallback(async () => {
+    const result = await buildLimaGrowthIntradaySignals(date)
+    await fetchSection('intradaySignals', () => getLimaGrowthIntradaySignalsSummary(date))
+    await fetchSection('intradaySignalsByCampaign', () => getLimaGrowthIntradaySignalsByCampaign(date))
+    await fetchSection('intradaySignalsByProgram', () => getLimaGrowthIntradaySignalsByProgram(date))
+    return result
+  }, [date, fetchSection])
+
   return {
     data, loading, errors,
     refreshQueue, buildQueue, refreshWorklist, exportQueue, saveCapacity,
+    buildIntradaySignals,
     fetchSection,
   }
 }

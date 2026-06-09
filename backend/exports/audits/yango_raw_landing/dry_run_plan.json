@@ -1,16 +1,16 @@
 {
-  "run_id": "ingest_20260605_182317",
+  "run_id": "ingest_20260608_170901",
   "dry_run": true,
   "endpoint_groups": [
     "orders"
   ],
   "days": [
-    "2026-06-04"
+    "2026-06-06"
   ],
-  "max_pages_per_endpoint": 20,
-  "estimated_api_calls": 20,
+  "max_pages_per_endpoint": 5,
+  "estimated_api_calls": 5,
   "park_id_masked": "08e20910***",
-  "date_from": "2026-06-04",
-  "date_to": "2026-06-04",
-  "generated_at": "2026-06-05T18:23:17.353163-05:00"
+  "date_from": "2026-06-06",
+  "date_to": "2026-06-06",
+  "generated_at": "2026-06-08T17:09:01.567042-05:00"
 }

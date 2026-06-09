@@ -1601,6 +1601,42 @@ export const getLimaGrowthOperationalTruth = async (date) => {
   return response.data
 }
 
+export const getLimaGrowthProgramStatus = async (date) => {
+  const params = {}
+  if (date) params.date = date
+  const response = await api.get('/yego-lima-growth/programs/status', { params, timeout: 15000 })
+  return response.data
+}
+
+// ── Lima Growth — Result Sync (LG-C2.0) ──
+
+export const getLoopControlResultSummary = async (campaignId) => {
+  const response = await api.get('/yego-lima-growth/loopcontrol/results/summary', { params: { campaign_id_external: campaignId }, timeout: 15000 })
+  return response.data
+}
+
+export const getLoopControlResultRecords = async (campaignId, limit = 100) => {
+  const response = await api.get('/yego-lima-growth/loopcontrol/results', { params: { campaign_id_external: campaignId, limit }, timeout: 15000 })
+  return response.data
+}
+
+// ── Lima Growth — Diagnostic Trace (LG-DIAG-R1.5A) ──
+
+export const getDriverDiagnosticTrace = async (driverId) => {
+  const response = await api.get(`/yego-lima-growth/diagnostic-trace/${driverId}`, { timeout: 15000 })
+  return response.data
+}
+
+export const getProgramTraceList = async (filters = {}) => {
+  const response = await api.get('/yego-lima-growth/diagnostic-trace/program/list', { params: filters, timeout: 15000 })
+  return response.data
+}
+
+export const getTransitionTraceList = async (filters = {}) => {
+  const response = await api.get('/yego-lima-growth/diagnostic-trace/transition/list', { params: filters, timeout: 15000 })
+  return response.data
+}
+
 // ── Lima Growth — Intraday Signals (LG-INFRA-R1.3) ──
 
 export const getLimaGrowthIntradaySignalsSummary = async (date) => {

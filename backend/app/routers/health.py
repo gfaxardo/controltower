@@ -7,6 +7,29 @@ from app.services.scheduler_status_service import get_scheduler_status
 
 router = APIRouter(tags=["health"])
 
+_app_start_ts = None
+
+
+def _get_app_start_time() -> str | None:
+    global _app_start_ts
+    if _app_start_ts:
+        return _app_start_ts
+    try:
+        from app.services.omniview_v1_runtime_identity import get_v1_runtime_identity
+        rid = get_v1_runtime_identity()
+        _app_start_ts = rid.get("app_start_time")
+        return _app_start_ts
+    except Exception:
+        return None
+
+
+def _get_runtime_identity() -> dict | None:
+    try:
+        from app.services.omniview_v1_runtime_identity import get_v1_runtime_identity
+        return get_v1_runtime_identity()
+    except Exception:
+        return None
+
 
 @router.get("/health")
 async def health_check():
@@ -48,6 +71,20 @@ async def health_check():
         "scheduler_detail": scheduler["detail"],
         "scheduler_jobs": scheduler["jobs"],
     }
+
+    # OMNI-V1 HARDENING: Runtime Identity (additive, non-breaking)
+    rid = _get_runtime_identity()
+    if rid:
+        body["runtime_identity"] = {
+            "git_hash": rid.get("git_hash"),
+            "git_branch": rid.get("git_branch"),
+            "build_time": rid.get("build_time"),
+            "backend_instance": rid.get("backend_instance"),
+            "python_version": rid.get("python_version"),
+            "app_start_time": rid.get("app_start_time"),
+            "pycache_risk_checked": rid.get("pycache_risk_checked"),
+        }
+
     code = 503 if overall == "blocked" else 200
     return JSONResponse(status_code=code, content=body)
 

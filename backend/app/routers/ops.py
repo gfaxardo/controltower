@@ -4326,3 +4326,68 @@ async def action_learning_evaluate(
     except Exception as e:
         logger.error("action-learning/evaluate: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ────────────────────────────────────────────────────────────
+# OMNI-V1 HARDENING endpoints
+# ────────────────────────────────────────────────────────────
+
+
+@router.get("/v1-trust-sensor")
+async def v1_trust_sensor(force: bool = Query(False)):
+    """
+    OMNI-V1 HARDENING: Trust Sensor specific to Omniview V1 (Evolution).
+
+    Returns structured check results for:
+    - DAY_FACT_STALE / WEEK_FACT_STALE / MONTH_FACT_STALE
+    - SNAPSHOT_STALE
+    - WATERFALL_BROKEN
+    - MULTIPLE_WRITERS_DETECTED
+    - LEGACY_ROUTE_ACTIVE
+    - DRIVER_AGGREGATION_AMBIGUOUS
+    - RUNTIME_IDENTITY_MISSING
+    - PYCACHE_RISK
+
+    Status: OK | WARN | FAIL
+    """
+    from app.services.omniview_v1_trust_sensor import run_omniview_v1_trust_sensor
+    try:
+        result = run_omniview_v1_trust_sensor(force=force)
+        return sanitize_for_json(result)
+    except Exception as e:
+        logger.error("v1-trust-sensor: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/v1-waterfall-validation")
+async def v1_waterfall_validation():
+    """
+    OMNI-V1 HARDENING: Waterfall validation for the V1 data pipeline.
+
+    Validates: RAW -> FACTS -> SERVING -> UI
+    Returns: WATERFALL_OK | WATERFALL_WARN | WATERFALL_BROKEN
+    """
+    from app.services.omniview_v1_waterfall_validation import validate_omniview_v1_waterfall
+    try:
+        result = validate_omniview_v1_waterfall()
+        return sanitize_for_json(result)
+    except Exception as e:
+        logger.error("v1-waterfall-validation: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/v1-runtime-identity")
+async def v1_runtime_identity():
+    """
+    OMNI-V1 HARDENING: Runtime identity for backend instance.
+
+    Returns: git_hash, build_time, backend_instance, python_version,
+             app_start_time, loaded_module_paths, pycache_risk_checked
+    """
+    from app.services.omniview_v1_runtime_identity import get_v1_runtime_identity
+    try:
+        result = get_v1_runtime_identity()
+        return sanitize_for_json(result)
+    except Exception as e:
+        logger.error("v1-runtime-identity: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))

@@ -2,47 +2,83 @@ import { SectionCard, LoadingState, ErrorState, StatusBadge, formatNum } from '.
 import FreshnessBadge from '../components/FreshnessBadge.jsx'
 import ExplainabilityTooltip from '../components/ExplainabilityTooltip.jsx'
 
+const STATUS_COLORS = {
+  HEALTHY: { border: '#059669', bg: 'bg-emerald-50', text: 'text-emerald-700', label: 'HEALTHY' },
+  WARNING: { border: '#d97706', bg: 'bg-amber-50', text: 'text-amber-700', label: 'WARNING' },
+  CRITICAL: { border: '#dc2626', bg: 'bg-red-50', text: 'text-red-700', label: 'CRITICAL' },
+  NOT_GENERATED: { border: '#d97706', bg: 'bg-amber-50', text: 'text-amber-700', label: 'NOT_GENERATED' },
+  NO_QUEUE: { border: '#d97706', bg: 'bg-amber-50', text: 'text-amber-700', label: 'NO_QUEUE' },
+  EXPORTED: { border: '#7c3aed', bg: 'bg-purple-50', text: 'text-purple-700', label: 'EXPORTED' },
+}
+
 export default function ProgramsSection({ data, loading, errors, onRetry, sectionFilter }) {
   const programs = data.programs
   const driverState = data.driverState
+  const programStatus = data.programStatus
 
   if (loading.programs && !programs) return <LoadingState />
   if (errors.programs && !programs) return <ErrorState message={errors.programs} onRetry={onRetry} />
 
+  // Use program status data if available for operational state
+  const getProgStatus = (progCode) => {
+    if (!programStatus?.programs) return null
+    return programStatus.programs.find(p => p.program_code === progCode)
+  }
+
   return (
     <div className="space-y-5">
+      {/* Program Status Summary */}
+      {programStatus && (
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
+            <p className="text-2xl font-bold text-emerald-700">{programStatus.healthy}</p>
+            <p className="text-xs text-emerald-600">Healthy</p>
+          </div>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
+            <p className="text-2xl font-bold text-amber-700">{programStatus.warning}</p>
+            <p className="text-xs text-amber-600">Warning</p>
+          </div>
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
+            <p className="text-2xl font-bold text-red-700">{programStatus.critical}</p>
+            <p className="text-xs text-red-600">Critical</p>
+          </div>
+        </div>
+      )}
+
       {/* Program Operations */}
       <SectionCard title="Program Operations" color="#059669" freshness={programs?.freshness?.program_eligibility}>
-        <div className="text-xs text-gray-400 mb-4">
-          Programas definidos en STATIC_REGISTRY. Cada programa muestra su pipeline operativo completo.
-        </div>
-
         {programs?.programs ? (
           <div className="space-y-3">
             {(programs.programs || []).map((prog) => {
-              const hasBlockers = (prog.blockers || []).length > 0
+              const status = getProgStatus(prog.program_code)
+              const opStatus = status?.operational_status || prog.status || 'UNKNOWN'
+              const cfg = STATUS_COLORS[opStatus] || STATUS_COLORS.WARNING
 
               return (
                 <div key={prog.program_code} className="bg-gray-50 rounded-xl border border-gray-100 overflow-hidden">
-                  {/* Header */}
-                  <div className="px-4 py-3 flex items-center justify-between" style={{ borderLeftWidth: 4, borderLeftColor: prog.color || '#059669' }}>
+                  {/* Header with operational status */}
+                  <div className="px-4 py-3 flex items-center justify-between" style={{ borderLeftWidth: 4, borderLeftColor: cfg.border }}>
                     <div className="flex items-center gap-3">
                       <span className="text-sm font-semibold text-gray-700">{prog.program_name || prog.program_code?.replace('PROGRAM_', '')}</span>
-                      <StatusBadge status={prog.status} />
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${cfg.bg} ${cfg.text}`}>
+                        {cfg.label}
+                      </span>
                       <FreshnessBadge freshness={prog.freshness} compact />
                       <ExplainabilityTooltip explainability={prog.explainability} />
                     </div>
-                    <span className="text-xs text-gray-400">last run: {prog.last_run_at}</span>
+                    {status?.explanation && (
+                      <span className="text-xs text-gray-500 max-w-xs truncate">{status.explanation}</span>
+                    )}
                   </div>
 
-                  {/* Metrics Grid */}
+                  {/* Operational Metrics */}
                   <div className="px-4 py-3 grid grid-cols-6 gap-3">
                     {[
-                      { v: prog.eligible_total, l: 'Elegibles', c: 'text-gray-800' },
-                      { v: prog.prioritized_total, l: 'Priorizados', c: 'text-[#7c3aed]' },
-                      { v: prog.actionable_today, l: 'Accionables', c: 'text-green-600' },
-                      { v: prog.queued_total, l: 'En Cola', c: 'text-[#d97706]' },
-                      { v: prog.exported_total, l: 'Exportados', c: 'text-[#7c3aed]' },
+                      { v: status?.eligible_total ?? prog.eligible_total, l: 'Elegibles', c: 'text-gray-800' },
+                      { v: status?.prioritized_total ?? prog.prioritized_total, l: 'Priorizados', c: 'text-purple-700' },
+                      { v: status?.actionable_today ?? prog.actionable_today, l: 'Accionables', c: 'text-green-600' },
+                      { v: status?.queue_total ?? prog.queued_total, l: 'En Cola', c: 'text-amber-700' },
+                      { v: status?.exported_total ?? prog.exported_total, l: 'Exportados', c: 'text-purple-700' },
                       { v: prog.exported_campaigns_count, l: 'Campanas', c: 'text-gray-500' },
                     ].map((m, i) => (
                       <div key={i} className="text-center">
@@ -52,22 +88,28 @@ export default function ProgramsSection({ data, loading, errors, onRetry, sectio
                     ))}
                   </div>
 
-                  {/* Blockers + Remediation */}
-                  {hasBlockers && (
-                    <div className="px-4 py-2 bg-red-50 border-t border-red-100">
-                      <div className="flex items-start gap-2 text-xs">
-                        <svg className="w-3.5 h-3.5 text-red-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                        </svg>
-                        <div>
-                          {prog.blockers.map((b, j) => (
-                            <div key={j} className="text-red-700">{b.message}</div>
-                          ))}
-                          {(prog.remediation || []).map((r, j) => (
-                            <div key={j} className="text-red-500 mt-0.5">{r}</div>
-                          ))}
-                        </div>
-                      </div>
+                  {/* Pipeline bar */}
+                  <div className="px-4 pb-3">
+                    <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
+                      <span>Pipeline:</span>
+                      <span className="bg-gray-200 px-1.5 py-0.5 rounded">{formatNum(status?.eligible_total ?? prog.eligible_total)} elig</span>
+                      <span>-></span>
+                      <span className="bg-gray-200 px-1.5 py-0.5 rounded">{formatNum(status?.prioritized_total ?? prog.prioritized_total)} pri</span>
+                      <span>-></span>
+                      <span className="bg-gray-200 px-1.5 py-0.5 rounded">{formatNum(status?.actionable_today ?? prog.actionable_today)} act</span>
+                      <span>-></span>
+                      <span className="bg-gray-200 px-1.5 py-0.5 rounded">{formatNum(status?.queue_total ?? prog.queued_total)} queue</span>
+                      <span>-></span>
+                      <span className="bg-gray-200 px-1.5 py-0.5 rounded">{formatNum(status?.exported_total ?? prog.exported_total)} exp</span>
+                    </div>
+                  </div>
+
+                  {/* Recommended action */}
+                  {status?.recommended_action && (
+                    <div className="px-4 pb-3">
+                      <p className="text-[10px] text-amber-600 font-medium">
+                        Accion: {status.recommended_action}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -75,66 +117,45 @@ export default function ProgramsSection({ data, loading, errors, onRetry, sectio
             })}
           </div>
         ) : (
-          <LoadingState text="Cargando programas..." />
+          <div className="text-center py-8 text-gray-400 text-sm">No programs data available</div>
+        )}
+
+        {/* Operational Ranking */}
+        {programStatus?.programs && (
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <p className="text-xs font-semibold text-gray-500 mb-2">Operational Ranking</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="text-gray-400 border-b border-gray-100">
+                    <th className="text-left py-1">Programa</th>
+                    <th className="text-right py-1">Eligible</th>
+                    <th className="text-right py-1">Queue</th>
+                    <th className="text-right py-1">Exportados</th>
+                    <th className="text-right py-1">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {programStatus.programs.map(p => {
+                    const cfg = STATUS_COLORS[p.operational_status] || STATUS_COLORS.WARNING
+                    return (
+                      <tr key={p.program_code} className="border-b border-gray-50">
+                        <td className="py-1 font-medium">{p.program_name}</td>
+                        <td className="py-1 text-right">{formatNum(p.eligible_total)}</td>
+                        <td className="py-1 text-right">{formatNum(p.queue_total)}</td>
+                        <td className="py-1 text-right">{formatNum(p.exported_total)}</td>
+                        <td className="py-1 text-right">
+                          <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-medium ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
       </SectionCard>
-
-      {/* Driver State */}
-      <SectionCard title="Estado del Conductor" color="#1a56db" freshness={driverState?.freshness?.driver_snapshot}>
-        <div className="text-xs text-gray-400 mb-3 bg-blue-50 border border-blue-100 rounded-lg p-2">
-          Driver State es un snapshot de segmentacion. No es una lista accionable. Los estados de lifecycle, performance y retention describen al conductor pero no permiten gestion directa todavia.
-        </div>
-        {loading.driverState && !driverState ? (
-          <LoadingState />
-        ) : errors.driverState && !driverState ? (
-          <ErrorState message={errors.driverState} />
-        ) : driverState ? (
-          <>
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <MetricCardMini label="Total Drivers" value={formatNum(driverState.total_drivers)} />
-              <MetricCardMini label="Snapshot" value={driverState.latest_date} />
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <StateBreakdown title="Lifecycle" color="#1a56db" items={driverState.by_lifecycle_state} total={driverState.total_drivers} />
-              <StateBreakdown title="Performance" color="#059669" items={driverState.by_performance_state} total={driverState.total_drivers} />
-              <StateBreakdown title="Retention" color="#dc2626" items={driverState.by_retention_state} total={driverState.total_drivers} />
-            </div>
-          </>
-        ) : null}
-      </SectionCard>
-    </div>
-  )
-}
-
-function MetricCardMini({ label, value }) {
-  return (
-    <div className="bg-gray-50 rounded-xl p-3 text-center">
-      <span className="text-xl font-bold text-gray-800">{value}</span>
-      <p className="text-xs text-gray-400 mt-0.5">{label}</p>
-    </div>
-  )
-}
-
-function StateBreakdown({ title, color, items = [], total }) {
-  return (
-    <div className="bg-gray-50 rounded-xl p-3">
-      <span className="text-xs font-semibold text-gray-500">{title}</span>
-      <div className="mt-2 space-y-1.5">
-        {(items || []).map((s) => {
-          const pct = total > 0 ? Math.round((s.count / total) * 100) : 0
-          return (
-            <div key={s.state}>
-              <div className="flex justify-between text-xs mb-0.5">
-                <span className="text-gray-600">{s.state}</span>
-                <span className="font-medium text-gray-700">{formatNum(s.count)} ({pct}%)</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-1.5">
-                <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
-              </div>
-            </div>
-          )
-        })}
-      </div>
     </div>
   )
 }

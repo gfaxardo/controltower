@@ -1,7 +1,18 @@
 {
+  "config": {
+    "run_id": "ingest_20260608_202109",
+    "park_id_masked": "08e20910***",
+    "date_from": "2026-06-06",
+    "date_to": "2026-06-06",
+    "days_count": 1,
+    "endpoint_group": [
+      "orders"
+    ],
+    "dry_run": false,
+    "max_pages": 100,
+    "max_concurrency": 3
+  },
   "completed_pages": {
-    "orders_08e20910d81d42658d4334d3f6d10ac0_orders_2026-06-04_18_19_N/A_0": true,
-    "orders_08e20910d81d42658d4334d3f6d10ac0_orders_2026-06-04_18_19_N/A_1": true,
-    "orders_08e20910d81d42658d4334d3f6d10ac0_orders_2026-06-04_18_19_N/A_2": true
+    "orders_2026-06-06_0": true
   }
 }
