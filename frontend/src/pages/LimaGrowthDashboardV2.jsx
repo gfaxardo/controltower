@@ -4,20 +4,23 @@ import TodayActionPlanSection from './lima-growth-v2/sections/TodayActionPlanSec
 import ProgramsSection from './lima-growth-v2/sections/ProgramsSection.jsx'
 import ExecutionQueueSection from './lima-growth-v2/sections/ExecutionQueueSection.jsx'
 import ControlConfigSection from './lima-growth-v2/sections/ControlConfigSection.jsx'
+import IntradaySignalsSection from './lima-growth-v2/sections/IntradaySignalsSection.jsx'
 import { formatNum, StatusBadge, HealthDot, StaleDataBanner } from './lima-growth-v2/components/SharedComponents.jsx'
 
 const NAV_ITEMS = [
   { id: 'action_plan', label: "Today's Action Plan", testid: 'nav-today-action-plan' },
   { id: 'programs', label: 'Programas y Estado', testid: 'nav-programs' },
   { id: 'queue', label: 'Execution Queue', testid: 'nav-execution-queue' },
+  { id: 'intraday_signals', label: 'Intraday Signals', testid: 'nav-intraday-signals' },
   { id: 'config', label: 'Configuracion', testid: 'nav-control-config' },
 ]
 
 export default function LimaGrowthDashboardV2() {
-  const [operationalDate, setOperationalDate] = useState('2026-06-02')
+  const [operationalDate, setOperationalDate] = useState(null)
   const [dateLoading, setDateLoading] = useState(true)
   const [dateError, setDateError] = useState(null)
   const [governance, setGovernance] = useState(null)
+  const [governanceError, setGovernanceError] = useState(null)
   const [activeSection, setActiveSection] = useState('action_plan')
   const [crossSectionFilter, setCrossSectionFilter] = useState(null)
   const { data, loading, errors, refreshQueue, buildQueue, exportQueue, saveCapacity, fetchSection } = useLimaGrowthData(operationalDate)
@@ -36,18 +39,21 @@ export default function LimaGrowthDashboardV2() {
         setDateError('No operational data found. Run refresh pipeline.')
         setDateLoading(false)
       }
-    }).catch(() => {
+    }).catch((err) => {
       if (cancelled) return
       setDateLoading(false)
+      setDateError('Backend unreachable: operational-date endpoint failed. Check API connectivity.')
     })
 
-    // Fetch governance status
     import('../services/api.js').then(m => {
       return m.api.get('/yego-lima-growth/refresh/governance-status')
     }).then(resp => {
       if (cancelled) return
       setGovernance(resp.data)
-    }).catch(() => {})
+    }).catch((err) => {
+      if (cancelled) return
+      setGovernanceError('Governance status endpoint failed. Check server logs.')
+    })
     return () => { cancelled = true }
   }, [])
 
@@ -56,6 +62,9 @@ export default function LimaGrowthDashboardV2() {
     fetchSection('summary', () => import('../services/api.js').then(m => m.getLimaGrowthOperationalSummary(operationalDate)))
     fetchSection('driverState', () => import('../services/api.js').then(m => m.getLimaGrowthDriverStateSummary(operationalDate)))
     fetchSection('programs', () => import('../services/api.js').then(m => m.getLimaGrowthProgramsSummary(operationalDate)))
+    fetchSection('intradaySignals', () => import('../services/api.js').then(m => m.getLimaGrowthIntradaySignalsSummary(operationalDate)))
+    fetchSection('intradaySignalsByCampaign', () => import('../services/api.js').then(m => m.getLimaGrowthIntradaySignalsByCampaign(operationalDate)))
+    fetchSection('intradaySignalsByProgram', () => import('../services/api.js').then(m => m.getLimaGrowthIntradaySignalsByProgram(operationalDate)))
   }
 
   const navigateTo = useCallback((section, filter = null) => {
@@ -148,9 +157,30 @@ export default function LimaGrowthDashboardV2() {
         )}
 
         <div className="p-6">
+          {dateLoading && (
+            <div className="flex items-center justify-center py-20">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3" />
+                <p className="text-sm text-gray-500">Cargando operational date...</p>
+              </div>
+            </div>
+          )}
+
           {dateError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+              <p className="text-xs font-bold text-red-800">ERROR: {dateError}</p>
+              <p className="text-xs text-red-600 mt-1">
+                La UI NO puede usar un valor default silencioso. Verifica conectividad con backend.
+              </p>
+              {operationalDate && (
+                <p className="text-xs text-red-400 mt-1">Fallback date activo: {operationalDate} (ultimo valor conocido)</p>
+              )}
+            </div>
+          )}
+
+          {governanceError && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-xs text-red-700">
-              {dateError} <span className="text-red-400">Mostrando datos de: {operationalDate}</span>
+              {governanceError}
             </div>
           )}
 
@@ -227,6 +257,11 @@ export default function LimaGrowthDashboardV2() {
           {activeSection === 'config' && (
             <div id="control-config-section" data-testid="control-config-section">
               <ControlConfigSection data={data} loading={loading} errors={errors} onSaveCapacity={saveCapacity} navigateTo={navigateTo} />
+            </div>
+          )}
+          {activeSection === 'intraday_signals' && (
+            <div id="intraday-signals-section" data-testid="intraday-signals-section">
+              <IntradaySignalsSection data={data} loading={loading} errors={errors} onRetry={handleRetryAll} navigateTo={navigateTo} />
             </div>
           )}
         </div>

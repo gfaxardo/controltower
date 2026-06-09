@@ -344,7 +344,7 @@ async def startup_event():
                         wd_min,
                     )
 
-                # LG-INFRA-R1.7 — Lima Growth Autonomous Scheduler (every 5 min)
+                # LG-INFRA-R1.7 / LG-CF-HOTFIX-1B — Lima Growth Autonomous Scheduler (every 5 min)
                 try:
                     from app.services.yego_lima_scheduler_service import autonomous_tick
                     _omniview_real_refresh_scheduler.add_job(
@@ -355,10 +355,10 @@ async def startup_event():
                         replace_existing=True,
                         max_instances=1,
                         coalesce=True,
-                        misfire_grace_time=120,
+                        misfire_grace_time=600,
                     )
                     jobs_registered.append("lima_growth_autonomous_tick")
-                    logger.info("Lima Growth autonomous scheduler programado: cada 5 min.")
+                    logger.info("Lima Growth autonomous scheduler programado: cada 5 min. (overlap-protected)")
                 except Exception as e:
                     logger.warning("No se pudo registrar Lima Growth autonomous scheduler: %s", e)
 
