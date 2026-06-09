@@ -75,6 +75,7 @@ class RefreshGuardState:
     blocked_reason: str = ""
     started_at: float = 0.0
     _conn: Any = None
+    _db_ctx: Any = None
 
 
 def _compute_lock_key(refresh_name: str, scope_key: Optional[str] = None) -> int:
@@ -181,8 +182,10 @@ def start_refresh_run(
         state.lock_acquired = True
         state.skipped = False
     else:
+        db_ctx = None
         try:
-            conn = get_db().__enter__()
+            db_ctx = get_db()
+            conn = db_ctx.__enter__()
             cur = conn.cursor()
             cur.execute("SELECT pg_try_advisory_lock(%s)", (state.lock_key,))
             acquired = cur.fetchone()[0]
@@ -207,9 +210,14 @@ def start_refresh_run(
                         warning_message="Lock already held by another process",
                     )
                     conn.commit()
-                get_db().__exit__(None, None, None)
+                if db_ctx is not None:
+                    try:
+                        db_ctx.__exit__(None, None, None)
+                    except Exception:
+                        pass
                 state.lock_acquired = False
                 state.skipped = True
+                state._conn = None
                 logger.info(
                     "Refresh SKIPPED (lock held): refresh_name=%s lock_key=%s",
                     refresh_name,
@@ -219,6 +227,7 @@ def start_refresh_run(
 
             state.lock_acquired = True
             state._conn = conn
+            state._db_ctx = db_ctx
             logger.info(
                 "Lock ACQUIRED: refresh_name=%s lock_key=%s",
                 refresh_name,
@@ -226,12 +235,18 @@ def start_refresh_run(
             )
         except Exception as e:
             logger.exception("Error acquiring lock for %s: %s", refresh_name, e)
-            try:
-                get_db().__exit__(None, None, None)
-            except Exception:
-                pass
+            if db_ctx is not None:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                try:
+                    db_ctx.__exit__(None, None, None)
+                except Exception:
+                    pass
             state.lock_acquired = False
             state.skipped = True
+            state._conn = None
             return state
 
     if _refresh_ledger_enabled():
@@ -311,20 +326,21 @@ def _end_refresh(
     if isinstance(state_or_run_id, RefreshGuardState):
         run_id = state_or_run_id.run_id
         conn = state_or_run_id._conn
+        db_ctx = state_or_run_id._db_ctx
         started_at = state_or_run_id.started_at
     else:
         run_id = state_or_run_id
         conn = None
+        db_ctx = None
         started_at = 0.0
 
     duration = round(time.perf_counter() - started_at, 2) if started_at > 0 else None
 
     try:
+        own_ctx = None
         if conn is None:
-            conn = get_db().__enter__()
-            own_conn = True
-        else:
-            own_conn = False
+            own_ctx = get_db()
+            conn = own_ctx.__enter__()
 
         cur = conn.cursor()
         cur.execute(
@@ -355,15 +371,18 @@ def _end_refresh(
         cur.close()
         conn.commit()
 
-        if own_conn:
-            get_db().__exit__(None, None, None)
+        if own_ctx is not None:
+            try:
+                own_ctx.__exit__(None, None, None)
+            except Exception:
+                pass
     except Exception as e:
         logger.warning("Failed to update refresh_run_log (id=%s): %s", run_id, e)
-        try:
-            if own_conn:
-                get_db().__exit__(None, None, None)
-        except Exception:
-            pass
+        if own_ctx is not None:
+            try:
+                own_ctx.__exit__(None, None, None)
+            except Exception:
+                pass
 
 
 def _release(state_or_run_id: Any) -> None:
@@ -388,12 +407,12 @@ def _release(state_or_run_id: Any) -> None:
         except Exception as e:
             logger.warning("Failed to release advisory lock (key=%s): %s", state.lock_key, e)
 
-    if state._conn is not None:
+    if state._db_ctx is not None:
         try:
-            state._conn.rollback()
-            get_db().__exit__(None, None, None)
+            state._db_ctx.__exit__(None, None, None)
         except Exception:
             pass
+        state._db_ctx = None
         state._conn = None
 
 

@@ -94,8 +94,7 @@ def get_ct_matrix_data(
             {date_field} AS period_date,
             business_slice_name,
             COALESCE(SUM(trips_completed), 0)::bigint AS trips_completed,
-            COALESCE(SUM(revenue_yego_final), 0)::numeric AS revenue_yego_final,
-            COALESCE(SUM(active_drivers), 0)::bigint AS active_drivers
+            COALESCE(SUM(revenue_yego_final), 0)::numeric AS revenue_yego_final
         FROM {table}
         WHERE LOWER(TRIM(country)) = %s
           AND LOWER(TRIM(city)) = %s
@@ -107,11 +106,52 @@ def get_ct_matrix_data(
         (country, city, date_from, date_to),
     )
 
+    # Compute active_drivers from bridge (driver_day_slice_fact)
+    # using COUNT(DISTINCT driver_id) per slice per period,
+    # which correctly deduplicates across parks.
+    # The fact table stores per-park values; SUM inflates counts.
+    # Group by the grain's date trunc to match fact table period column.
+    grain_sql = {
+        "day": "activity_date::date",
+        "week": "date_trunc('week', activity_date)::date",
+        "month": "date_trunc('month', activity_date)::date",
+    }
+    period_expr = grain_sql.get(grain, "activity_date::date")
+
+    driver_rows = _query(
+        f"""
+        SELECT
+            {period_expr} AS period_date,
+            business_slice_name,
+            COUNT(DISTINCT driver_id) FILTER (WHERE completed_trips > 0)::bigint AS active_drivers
+        FROM ops.driver_day_slice_fact
+        WHERE country = %s
+          AND city = %s
+          AND activity_date >= %s::date
+          AND activity_date <= %s::date
+        GROUP BY {period_expr}, business_slice_name
+        ORDER BY {period_expr}::date, business_slice_name
+        """,
+        (country, city, date_from, date_to),
+    )
+
+    # Merge driver counts into rows by matching period_date + business_slice_name
+    driver_map = {}
+    for dr in driver_rows:
+        pd = _serialize_date(dr.get("period_date"))
+        sn = dr.get("business_slice_name", "")
+        if pd and sn:
+            driver_map[(pd, sn)] = dr.get("active_drivers", 0)
+
     for r in rows:
         if r.get("period_date") and hasattr(r["period_date"], "isoformat"):
             r["period_date"] = r["period_date"].isoformat()
         elif isinstance(r.get("period_date"), date):
             r["period_date"] = r["period_date"].isoformat()
+
+        pd = _serialize_date(r.get("period_date"))
+        sn = r.get("business_slice_name", "")
+        r["active_drivers"] = driver_map.get((pd, sn), 0)
 
     status = "FULL" if rows else "NO_DATA"
     return status, rows

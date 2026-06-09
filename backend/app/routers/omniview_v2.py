@@ -350,6 +350,94 @@ def drill_cell(
 
     if not period or not business_slice_name:
         result["warnings"].append({"code": "MISSING_PARAMS", "message": "period and business_slice_name required"})
+        return result
+
+    date_from = period
+    date_to = period
+    if grain == "day":
+        try:
+            d = dt_date.fromisoformat(period)
+            date_to = (d + timedelta(days=1)).isoformat()
+        except:
+            pass
+    elif grain == "week":
+        try:
+            d = dt_date.fromisoformat(period)
+            date_to = (d + timedelta(days=7)).isoformat()
+        except:
+            pass
+    elif grain == "month":
+        try:
+            d = dt_date.fromisoformat(period[:7] + "-01")
+            if d.month == 12:
+                date_to = dt_date(d.year + 1, 1, 1).isoformat()
+            else:
+                date_to = dt_date(d.year, d.month + 1, 1).isoformat()
+        except:
+            pass
+
+    try:
+        parks = []
+        total_drivers = 0
+        with get_db() as conn:
+            cur = conn.cursor()
+
+            cur.execute("""
+                SELECT park_id, COUNT(DISTINCT driver_id) FILTER (WHERE completed_trips > 0) AS drivers,
+                       SUM(completed_trips) AS trips
+                FROM ops.driver_day_slice_fact
+                WHERE country = %s AND city = %s
+                  AND activity_date >= %s AND activity_date < %s
+                  AND business_slice_name = %s
+                GROUP BY park_id ORDER BY trips DESC
+            """, (country, city, date_from, date_to, business_slice_name))
+            parks = [{"park_id": r[0], "drivers": r[1], "trips": r[2]} for r in cur.fetchall()]
+            result["drill"]["park"]["data"] = parks
+
+            cur.execute("""
+                SELECT driver_id, SUM(completed_trips) AS trips
+                FROM ops.driver_day_slice_fact
+                WHERE country = %s AND city = %s
+                  AND activity_date >= %s AND activity_date < %s
+                  AND business_slice_name = %s
+                GROUP BY driver_id ORDER BY trips DESC LIMIT %s
+            """, (country, city, date_from, date_to, business_slice_name, limit))
+            drivers = [{"driver_id": r[0], "trips": r[1]} for r in cur.fetchall()]
+
+            cur.execute("""
+                SELECT COUNT(DISTINCT driver_id) FILTER (WHERE completed_trips > 0)
+                FROM ops.driver_day_slice_fact
+                WHERE country = %s AND city = %s
+                  AND activity_date >= %s AND activity_date < %s
+                  AND business_slice_name = %s
+            """, (country, city, date_from, date_to, business_slice_name))
+            total_drivers = cur.fetchone()[0] or 0
+
+            result["drill"]["driver"]["data"] = drivers
+            result["drill"]["driver"]["total_count"] = total_drivers
+
+            cur.execute("""
+                SELECT SUM(completed_trips) FROM ops.driver_day_slice_fact
+                WHERE country = %s AND city = %s
+                  AND activity_date >= %s AND activity_date < %s
+                  AND business_slice_name = %s
+            """, (country, city, date_from, date_to, business_slice_name))
+            total_trips = cur.fetchone()[0] or 0
+            result["total"] = {"trips": int(total_trips), "drivers": int(total_drivers)}
+
+            cur.close()
+    except Exception as e:
+        result["warnings"].append({"code": "DRILL_ERROR", "message": str(e)[:200]})
+
+    result["lineage_status"] = {
+        "city": "READY",
+        "park": "READY" if parks else "READY (empty)",
+        "driver": "READY" if total_drivers > 0 else "READY (empty)",
+        "fleet": "PARTIAL",
+        "raw_trip": "PARTIAL",
+        "yango": "PARTIAL",
+    }
+
     return result
 
 
@@ -376,6 +464,107 @@ def cell_audit(
 
     if not period or not business_slice_name:
         result["error"] = "period and business_slice_name required"
+        return result
+
+    date_from = period
+    date_to = period
+    try:
+        d = dt_date.fromisoformat(period[:10])
+        if grain == "day":
+            date_to = (d + timedelta(days=1)).isoformat()
+        elif grain == "week":
+            date_to = (d + timedelta(days=7)).isoformat()
+        elif grain == "month" and len(period) == 10:
+            if d.month == 12:
+                date_to = dt_date(d.year + 1, 1, 1).isoformat()
+            else:
+                date_to = dt_date(d.year, d.month + 1, 1).isoformat()
+    except:
+        pass
+
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+
+            cur.execute("""
+                SELECT SUM(completed_trips), SUM(cancelled_trips),
+                       COUNT(DISTINCT driver_id) FILTER (WHERE completed_trips > 0),
+                       COUNT(DISTINCT driver_id) FILTER (WHERE completed_trips = 0 AND total_trips > 0)
+                FROM ops.driver_day_slice_fact
+                WHERE country=%s AND city=%s AND activity_date>=%s AND activity_date<%s AND business_slice_name=%s
+            """, (country, city, date_from, date_to, business_slice_name))
+            total_trips, total_canc, total_drivers, empty_drivers = cur.fetchone()
+            total_trips = int(total_trips or 0)
+            total_drivers = int(total_drivers or 0)
+
+            rev_val = 0
+            if metric_id in ("revenue", "avg_ticket", "trips_per_driver"):
+                cur.execute("""
+                    SELECT SUM(COALESCE(revenue_yego_final,0)) FROM ops.real_business_slice_day_fact
+                    WHERE LOWER(TRIM(country))=%s AND LOWER(TRIM(city))=%s
+                    AND trip_date>=%s AND trip_date<%s AND business_slice_name=%s
+                """, (country, city, date_from[:10], date_to[:10], business_slice_name))
+                rev_val = float(cur.fetchone()[0] or 0)
+
+            avg_ticket = round(rev_val / total_trips, 2) if total_trips else None
+            tpd = round(total_trips / total_drivers, 2) if total_drivers else None
+
+            result["value"] = {
+                "trips": total_trips,
+                "revenue": round(rev_val, 2),
+                "active_drivers": total_drivers,
+                "empty_supply_drivers": int(empty_drivers or 0),
+                "avg_ticket": avg_ticket,
+                "trips_per_driver": tpd,
+            }
+
+            cur.execute("""
+                SELECT park_id, SUM(completed_trips) AS trips,
+                       COUNT(DISTINCT driver_id) FILTER (WHERE completed_trips > 0) AS drivers
+                FROM ops.driver_day_slice_fact
+                WHERE country=%s AND city=%s AND activity_date>=%s AND activity_date<%s AND business_slice_name=%s
+                GROUP BY park_id ORDER BY trips DESC
+            """, (country, city, date_from, date_to, business_slice_name))
+            for r in cur.fetchall():
+                pct = round(r[1] / total_trips * 100, 1) if total_trips else 0
+                result["contributions"]["parks"].append({
+                    "park_id": r[0], "trips": r[1], "drivers": r[2],
+                    "contribution_pct": pct
+                })
+
+            cur.execute("""
+                SELECT driver_id, SUM(completed_trips) AS trips
+                FROM ops.driver_day_slice_fact
+                WHERE country=%s AND city=%s AND activity_date>=%s AND activity_date<%s AND business_slice_name=%s
+                GROUP BY driver_id ORDER BY trips DESC LIMIT 10
+            """, (country, city, date_from, date_to, business_slice_name))
+            for r in cur.fetchall():
+                pct = round(r[1] / total_trips * 100, 1) if total_trips else 0
+                result["contributions"]["drivers"].append({
+                    "driver_id": r[0], "trips": r[1], "contribution_pct": pct
+                })
+
+            result["writer"] = {
+                "canonical": "rebuild_day_from_bridge.py" if grain == "day" else f"rebuild_{grain}_from_day_and_bridge.py",
+                "source": "ops.driver_day_slice_fact",
+            }
+
+            cur.execute("SELECT MAX(activity_date) FROM ops.driver_day_slice_fact WHERE country=%s AND city=%s", (country, city))
+            bridge_max = cur.fetchone()[0]
+            result["freshness"] = {
+                "bridge_max": str(bridge_max)[:10] if bridge_max else None,
+                "cell_period": period[:10] if period else None,
+            }
+
+            result["lineage"] = {
+                "city": "READY", "park": "READY", "driver": "READY",
+                "fleet": "PARTIAL", "raw_trip": "PARTIAL"
+            }
+
+            cur.close()
+    except Exception as e:
+        result["error"] = str(e)[:200]
+
     return result
 
 
@@ -461,190 +650,6 @@ def reconcile_park(
             cur.close()
     except Exception as e:
         result["error"] = str(e)[:200]
-
-    return result
-
-    date_from = period
-    date_to = period
-    try:
-        d = dt_date.fromisoformat(period[:10])
-        if grain == "day": date_to = (d + timedelta(days=1)).isoformat()
-        elif grain == "week": date_to = (d + timedelta(days=7)).isoformat()
-        elif grain == "month" and len(period) == 10:
-            if d.month == 12: date_to = dt_date(d.year+1, 1, 1).isoformat()
-            else: date_to = dt_date(d.year, d.month+1, 1).isoformat()
-    except: pass
-
-    try:
-        with get_db() as conn:
-            cur = conn.cursor()
-
-            # Total aggregate from bridge
-            cur.execute("""
-                SELECT SUM(completed_trips), SUM(cancelled_trips),
-                       COUNT(DISTINCT driver_id) FILTER (WHERE completed_trips > 0),
-                       COUNT(DISTINCT driver_id) FILTER (WHERE completed_trips = 0 AND total_trips > 0)
-                FROM ops.driver_day_slice_fact
-                WHERE country=%s AND city=%s AND activity_date>=%s AND activity_date<%s AND business_slice_name=%s
-            """, (country, city, date_from, date_to, business_slice_name))
-            total_trips, total_canc, total_drivers, empty_drivers = cur.fetchone()
-            total_trips = int(total_trips or 0)
-            total_drivers = int(total_drivers or 0)
-
-            # Revenue from day_fact
-            rev_val = 0
-            if metric_id in ("revenue", "avg_ticket", "trips_per_driver"):
-                cur.execute("""
-                    SELECT SUM(COALESCE(revenue_yego_final,0)) FROM ops.real_business_slice_day_fact
-                    WHERE LOWER(TRIM(country))=%s AND LOWER(TRIM(city))=%s
-                    AND trip_date>=%s AND trip_date<%s AND business_slice_name=%s
-                """, (country, city, date_from[:10], date_to[:10], business_slice_name))
-                rev_val = float(cur.fetchone()[0] or 0)
-
-            avg_ticket = round(rev_val / total_trips, 2) if total_trips else None
-            tpd = round(total_trips / total_drivers, 2) if total_drivers else None
-
-            result["value"] = {
-                "trips": total_trips,
-                "revenue": round(rev_val, 2),
-                "active_drivers": total_drivers,
-                "empty_supply_drivers": int(empty_drivers or 0),
-                "avg_ticket": avg_ticket,
-                "trips_per_driver": tpd,
-            }
-
-            # Park contributions with %
-            cur.execute("""
-                SELECT park_id, SUM(completed_trips) AS trips,
-                       COUNT(DISTINCT driver_id) FILTER (WHERE completed_trips > 0) AS drivers
-                FROM ops.driver_day_slice_fact
-                WHERE country=%s AND city=%s AND activity_date>=%s AND activity_date<%s AND business_slice_name=%s
-                GROUP BY park_id ORDER BY trips DESC
-            """, (country, city, date_from, date_to, business_slice_name))
-            for r in cur.fetchall():
-                pct = round(r[1] / total_trips * 100, 1) if total_trips else 0
-                result["contributions"]["parks"].append({
-                    "park_id": r[0], "trips": r[1], "drivers": r[2],
-                    "contribution_pct": pct
-                })
-
-            # Top driver contributions
-            cur.execute("""
-                SELECT driver_id, SUM(completed_trips) AS trips
-                FROM ops.driver_day_slice_fact
-                WHERE country=%s AND city=%s AND activity_date>=%s AND activity_date<%s AND business_slice_name=%s
-                GROUP BY driver_id ORDER BY trips DESC LIMIT 10
-            """, (country, city, date_from, date_to, business_slice_name))
-            for r in cur.fetchall():
-                pct = round(r[1] / total_trips * 100, 1) if total_trips else 0
-                result["contributions"]["drivers"].append({
-                    "driver_id": r[0], "trips": r[1], "contribution_pct": pct
-                })
-
-            # Writer traceability
-            result["writer"] = {
-                "canonical": "rebuild_day_from_bridge.py" if grain == "day" else f"rebuild_{grain}_from_day_and_bridge.py",
-                "source": "ops.driver_day_slice_fact",
-            }
-
-            # Freshness traceability
-            cur.execute("SELECT MAX(activity_date) FROM ops.driver_day_slice_fact WHERE country=%s AND city=%s", (country, city))
-            bridge_max = cur.fetchone()[0]
-            result["freshness"] = {
-                "bridge_max": str(bridge_max)[:10] if bridge_max else None,
-                "cell_period": period[:10] if period else None,
-            }
-
-            # Lineage
-            result["lineage"] = {
-                "city": "READY", "park": "READY", "driver": "READY",
-                "fleet": "PARTIAL", "raw_trip": "PARTIAL"
-            }
-
-            cur.close()
-    except Exception as e:
-        result["error"] = str(e)[:200]
-
-    return result
-
-    # Compute date range from grain + period
-    date_from = period
-    date_to = period
-    if grain == "day":
-        try:
-            d = dt_date.fromisoformat(period)
-            date_to = (d + timedelta(days=1)).isoformat()
-        except:
-            pass
-    elif grain == "week":
-        try:
-            d = dt_date.fromisoformat(period)
-            date_to = (d + timedelta(days=7)).isoformat()
-        except:
-            pass
-    elif grain == "month":
-        try:
-            d = dt_date.fromisoformat(period[:7] + "-01")
-            if d.month == 12:
-                date_to = dt_date(d.year + 1, 1, 1).isoformat()
-            else:
-                date_to = dt_date(d.year, d.month + 1, 1).isoformat()
-        except:
-            pass
-
-    try:
-        with get_db() as conn:
-            cur = conn.cursor()
-
-            # Park breakdown
-            cur.execute("""
-                SELECT park_id, COUNT(DISTINCT driver_id) FILTER (WHERE completed_trips > 0) AS drivers,
-                       SUM(completed_trips) AS trips
-                FROM ops.driver_day_slice_fact
-                WHERE country = %s AND city = %s
-                  AND activity_date >= %s AND activity_date < %s
-                  AND business_slice_name = %s
-                GROUP BY park_id ORDER BY trips DESC
-            """, (country, city, date_from, date_to, business_slice_name))
-            parks = [{"park_id": r[0], "drivers": r[1], "trips": r[2]} for r in cur.fetchall()]
-            result["drill"]["park"]["data"] = parks
-
-            # Top drivers
-            cur.execute("""
-                SELECT driver_id, SUM(completed_trips) AS trips
-                FROM ops.driver_day_slice_fact
-                WHERE country = %s AND city = %s
-                  AND activity_date >= %s AND activity_date < %s
-                  AND business_slice_name = %s
-                GROUP BY driver_id ORDER BY trips DESC LIMIT %s
-            """, (country, city, date_from, date_to, business_slice_name, limit))
-            drivers = [{"driver_id": r[0], "trips": r[1]} for r in cur.fetchall()]
-
-            cur.execute("""
-                SELECT COUNT(DISTINCT driver_id) FILTER (WHERE completed_trips > 0)
-                FROM ops.driver_day_slice_fact
-                WHERE country = %s AND city = %s
-                  AND activity_date >= %s AND activity_date < %s
-                  AND business_slice_name = %s
-            """, (country, city, date_from, date_to, business_slice_name))
-            total_drivers = cur.fetchone()[0] or 0
-
-            result["drill"]["driver"]["data"] = drivers
-            result["drill"]["driver"]["total_count"] = total_drivers
-
-            cur.close()
-    except Exception as e:
-        result["warnings"].append({"code": "DRILL_ERROR", "message": str(e)[:200]})
-
-    # Lineage statuses from F.5
-    result["lineage_status"] = {
-        "city": "READY",
-        "park": "READY" if parks else "READY (empty)",
-        "driver": "READY" if total_drivers > 0 else "READY (empty)",
-        "fleet": "PARTIAL",
-        "raw_trip": "PARTIAL",
-        "yango": "PARTIAL",
-    }
 
     return result
 

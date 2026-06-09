@@ -5,7 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from app.settings import settings
 from app.startup_checks import run_startup_checks
 from app.startup_state import set_startup_report
-from app.routers import auth, plan, real, core, ops, health, ingestion, phase2b, phase2c, driver_lifecycle, driver_lifecycle_diagnostic, driver_behavior_benchmarking, controltower, observability, real_vs_projection, diagnostics, ops_refresh, fraud, behavioral_pattern_diagnosis, behavioral_mvp, operational_behavioral_intelligence, recoverability_intelligence, yango_loyalty, drivers, yego_pro_profitability, yego_lima_growth_lab, yego_lima_growth_control_loop, yego_lima_executive, yego_lima_pipeline, yego_lima_growth_state, yego_lima_pilot, yego_lima_universe, yego_lima_productivity, yego_lima_freshness, yego_lima_opportunity_policy, yego_lima_loopcontrol_export, yego_lima_capacity, yego_lima_priority_allocation, yego_lima_channel_allocation, yego_lima_opportunity_worklist, yego_lima_assignment_queue, yego_lima_queue_export, yego_lima_loopcontrol_result_sync, yego_lima_risk_panel, yego_lima_impact, yego_lima_impact_dashboard, yego_lima_movement, yego_lima_attribution, yego_lima_today_action_plan, yego_lima_allocation_trace, yego_lima_program_capacity_policy, yego_lima_daily_refresh, yego_lima_scheduler, yego_lima_operational_summary, yego_lima_freshness_health, omniview_v2, omniview_v2_shell, omniview_v2_shadow
+from app.routers import auth, plan, real, core, ops, health, ingestion, phase2b, phase2c, driver_lifecycle, driver_lifecycle_diagnostic, driver_behavior_benchmarking, controltower, observability, real_vs_projection, diagnostics, ops_refresh, fraud, behavioral_pattern_diagnosis, behavioral_mvp, operational_behavioral_intelligence, recoverability_intelligence, yango_loyalty, drivers, yego_pro_profitability, yego_lima_growth_lab, yego_lima_growth_control_loop, yego_lima_executive, yego_lima_pipeline, yego_lima_growth_state, yego_lima_pilot, yego_lima_universe, yego_lima_productivity, yego_lima_freshness, yego_lima_opportunity_policy, yego_lima_loopcontrol_export, yego_lima_capacity, yego_lima_priority_allocation, yego_lima_channel_allocation, yego_lima_opportunity_worklist, yego_lima_assignment_queue, yego_lima_queue_export, yego_lima_loopcontrol_result_sync, yego_lima_risk_panel, yego_lima_impact, yego_lima_impact_dashboard, yego_lima_movement, yego_lima_attribution, yego_lima_today_action_plan, yego_lima_allocation_trace, yego_lima_program_capacity_policy, yego_lima_daily_refresh, yego_lima_scheduler, yego_lima_operational_summary, yego_lima_freshness_health, yego_lima_intraday_signal, yego_lima_list_history, yego_lima_program_explainability, yego_lima_freshness_chain, yego_lima_operational_truth, yego_lima_program_status, yego_lima_queue_operational, yego_lima_todays_action_plan, yego_lima_result_sync, yego_lima_diagnostic_trace, yego_lima_driver_history, yego_lima_governance, yego_lima_movement_router, yego_lima_control_loop_router, omniview_v2, omniview_v2_shell, omniview_v2_shadow
 import logging
 import time
 import uuid
@@ -161,6 +161,34 @@ app.include_router(yego_lima_operational_summary.router)
 
 app.include_router(yego_lima_freshness_health.router)
 
+app.include_router(yego_lima_intraday_signal.router)
+
+app.include_router(yego_lima_list_history.router)
+
+app.include_router(yego_lima_program_explainability.router)
+
+app.include_router(yego_lima_freshness_chain.router)
+
+app.include_router(yego_lima_operational_truth.router)
+
+app.include_router(yego_lima_program_status.router)
+
+app.include_router(yego_lima_queue_operational.router)
+
+app.include_router(yego_lima_todays_action_plan.router)
+
+app.include_router(yego_lima_result_sync.router)
+
+app.include_router(yego_lima_diagnostic_trace.router)
+
+app.include_router(yego_lima_driver_history.router)
+
+app.include_router(yego_lima_governance.router)
+
+app.include_router(yego_lima_movement_router.router)
+
+app.include_router(yego_lima_control_loop_router.router)
+
 app.include_router(omniview_v2.router)
 app.include_router(omniview_v2_shell.router)
 app.include_router(omniview_v2_shadow.router)
@@ -250,24 +278,53 @@ async def startup_event():
                 except Exception as e:
                     logger.warning("No se pudo registrar serving refresh scheduler: %s", e)
 
+                # OV2-CLOSE.2C.1 — Canonical cascade replaces vacated legacy refresh job
                 if settings.OMNIVIEW_REAL_REFRESH_ENABLED:
-                    _omniview_real_refresh_scheduler.add_job(
-                        run_business_slice_real_refresh_job_safe,
-                        "cron",
-                        hour=settings.OMNIVIEW_REAL_REFRESH_HOUR,
-                        minute=settings.OMNIVIEW_REAL_REFRESH_MINUTE,
-                        id="omniview_business_slice_real_refresh",
-                        replace_existing=True,
-                        max_instances=1,
-                        coalesce=True,
-                        misfire_grace_time=600,
-                    )
-                    jobs_registered.append("omniview_business_slice_real_refresh")
-                    logger.info(
-                        "Omniview REAL refresh programado: %02d:%02d (day_fact + week_fact + month_fact, 2 meses).",
-                        settings.OMNIVIEW_REAL_REFRESH_HOUR,
-                        settings.OMNIVIEW_REAL_REFRESH_MINUTE,
-                    )
+                    try:
+                        from app.services.omniview_cascade_service import run_cascade_with_lock as cascade_job
+
+                        def _cascade_scheduled_wrapper():
+                            """Wrapper for APScheduler: runs cascade with scheduler trigger source."""
+                            logger.info("CASCADE scheduled run starting")
+                            return cascade_job(trigger_source="scheduler")
+
+                        _omniview_real_refresh_scheduler.add_job(
+                            _cascade_scheduled_wrapper,
+                            "cron",
+                            hour=settings.OMNIVIEW_REAL_REFRESH_HOUR,
+                            minute=settings.OMNIVIEW_REAL_REFRESH_MINUTE,
+                            id="omniview_cascade_refresh",
+                            replace_existing=True,
+                            max_instances=1,
+                            coalesce=True,
+                            misfire_grace_time=600,
+                        )
+                        jobs_registered.append("omniview_cascade_refresh")
+                        logger.info(
+                            "Omniview CASCADE refresh programado: %02d:%02d (bridge+day+week+month+snapshot).",
+                            settings.OMNIVIEW_REAL_REFRESH_HOUR,
+                            settings.OMNIVIEW_REAL_REFRESH_MINUTE,
+                        )
+                    except Exception as e:
+                        logger.warning("No se pudo registrar cascade refresh: %s — usando fallback legacy", e)
+                        # Fallback: keep old vacated job for compatibility
+                        _omniview_real_refresh_scheduler.add_job(
+                            run_business_slice_real_refresh_job_safe,
+                            "cron",
+                            hour=settings.OMNIVIEW_REAL_REFRESH_HOUR,
+                            minute=settings.OMNIVIEW_REAL_REFRESH_MINUTE,
+                            id="omniview_business_slice_real_refresh",
+                            replace_existing=True,
+                            max_instances=1,
+                            coalesce=True,
+                            misfire_grace_time=600,
+                        )
+                        jobs_registered.append("omniview_business_slice_real_refresh")
+                        logger.info(
+                            "Omniview LEGACY refresh programado: %02d:%02d (vacated — no-op).",
+                            settings.OMNIVIEW_REAL_REFRESH_HOUR,
+                            settings.OMNIVIEW_REAL_REFRESH_MINUTE,
+                        )
 
                 if settings.OMNIVIEW_REAL_WATCHDOG_ENABLED:
                     wd_min = max(5, int(settings.OMNIVIEW_REAL_WATCHDOG_INTERVAL_MINUTES))
@@ -287,10 +344,43 @@ async def startup_event():
                         wd_min,
                     )
 
+                # LG-INFRA-R1.7 — Lima Growth Autonomous Scheduler (every 5 min)
+                try:
+                    from app.services.yego_lima_scheduler_service import autonomous_tick
+                    _omniview_real_refresh_scheduler.add_job(
+                        autonomous_tick,
+                        "interval",
+                        minutes=5,
+                        id="lima_growth_autonomous_tick",
+                        replace_existing=True,
+                        max_instances=1,
+                        coalesce=True,
+                        misfire_grace_time=120,
+                    )
+                    jobs_registered.append("lima_growth_autonomous_tick")
+                    logger.info("Lima Growth autonomous scheduler programado: cada 5 min.")
+                except Exception as e:
+                    logger.warning("No se pudo registrar Lima Growth autonomous scheduler: %s", e)
+
                 _omniview_real_refresh_scheduler.start()
                 attach_omniview_scheduler(_omniview_real_refresh_scheduler)
                 set_scheduler_active(jobs_registered)
                 logger.info("APScheduler Omniview (refresh/watchdog) iniciado.")
+
+                # OV2-CLOSE.2C.1 — Startup self-heal: detect stale layers and trigger cascade if needed
+                try:
+                    from app.services.omniview_cascade_service import run_startup_self_heal
+                    heal_result = run_startup_self_heal()
+                    action = heal_result.get("action", "unknown")
+                    logger.info("STARTUP_SELF_HEAL action=%s reason=%s", action, heal_result.get("reason", ""))
+                    if action == "triggered":
+                        logger.info("STARTUP_SELF_HEAL cascade triggered — freshness recovery in progress")
+                    elif action == "skipped_locked":
+                        logger.info("STARTUP_SELF_HEAL skipped — cascade already running")
+                    elif action == "skipped_fresh":
+                        logger.debug("STARTUP_SELF_HEAL skipped — all layers fresh")
+                except Exception as e:
+                    logger.warning("STARTUP_SELF_HEAL failed (non-blocking): %s", e)
             except Exception as e:
                 set_scheduler_error(str(e)[:200])
                 logger.exception(
