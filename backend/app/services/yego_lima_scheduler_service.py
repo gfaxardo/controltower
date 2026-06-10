@@ -767,6 +767,7 @@ def _log_autonomous_run(tick_id: str, op_date, status: str, result: dict, now: d
                         "refresh_success": result.get("refresh_success"),
                         "control_loop_inserted": result.get("control_loop_inserted"),
                         "serving_facts_generated": result.get("serving_facts_generated"),
+                        "raw_ingest": result.get("raw_ingest"),
                     }),
                     "warn": json.dumps(result.get("error")) if result.get("error") else json.dumps(None),
                 }

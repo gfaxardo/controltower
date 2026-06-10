@@ -25,7 +25,6 @@ from app.settings import settings
 logger = logging.getLogger(__name__)
 
 PET = timezone(timedelta(hours=-5))
-PARK_ID_DEFAULT = "yango_lima"
 API_BASE_URL_DEFAULT = "https://fleet-api.yango.tech"
 ORDERS_PATH = "/v1/parks/orders/list"
 PAGE_SIZE = 500
@@ -33,6 +32,22 @@ MAX_DAYS_BACKFILL = 3
 REQUEST_TIMEOUT = 30
 MAX_TOTAL_SECONDS = 120
 MIN_INTER_REQUEST = 0.5
+
+
+def _get_active_park_id() -> Optional[str]:
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT park_id FROM raw_yango.api_park_credentials_registry "
+                "WHERE is_active = true ORDER BY park_id LIMIT 1"
+            )
+            row = cur.fetchone()
+            if row:
+                return str(row[0])
+    except Exception as e:
+        logger.warning("Failed to resolve active park_id: %s", e)
+    return None
 
 
 def _now_iso():
@@ -43,23 +58,37 @@ def _today():
     return datetime.now(PET).date()
 
 
-def _get_yango_token(cred: dict) -> Optional[str]:
+def _get_yango_token(cred: dict) -> tuple:
     prefix = cred.get("env_var_name", "")
-    client_id = os.environ.get(f"{prefix}_CLIENT_ID") or getattr(settings, f"{prefix}_CLIENT_ID", None)
-    api_key = os.environ.get(f"{prefix}_API_KEY") or getattr(settings, f"{prefix}_API_KEY", None)
-    if not client_id or not api_key:
-        return None
-    return api_key
+    sources = [
+        (f"{prefix}_CLIENT_ID", f"{prefix}_API_KEY", "env_prefix"),
+        ("YANGO_CLIENT_ID", "YANGO_API_KEY", "env_legacy"),
+    ]
+    for client_key, api_key_name, source in sources:
+        client_id = os.environ.get(client_key) or getattr(settings, client_key, None)
+        api_key = os.environ.get(api_key_name) or getattr(settings, api_key_name, None)
+        if client_id and api_key:
+            return api_key, source
+
+    return None, "missing"
+
+
+def _mask(val: str) -> str:
+    if not val:
+        return "***"
+    return val[:4] + "***" + val[-2:] if len(val) > 6 else "***"
 
 
 def ingest_recent_orders(
     max_days: int = MAX_DAYS_BACKFILL,
-    park_id: str = PARK_ID_DEFAULT,
+    park_id: str = None,
 ) -> Dict[str, Any]:
     start_ts = time.time()
     result = {
         "attempted": True,
-        "park_id": park_id,
+        "park_id_used": None,
+        "env_prefix_used": None,
+        "credential_source": None,
         "dates_attempted": [],
         "dates_inserted": [],
         "total_inserted": 0,
@@ -68,14 +97,25 @@ def ingest_recent_orders(
         "api_errors": [],
     }
 
+    if not park_id:
+        park_id = _get_active_park_id()
+    result["park_id_used"] = park_id
+
+    if not park_id:
+        result["error"] = "No active park found in api_park_credentials_registry"
+        return result
+
     cred = get_credential_for_park(park_id)
     if not cred:
         result["error"] = f"No credentials found for park {park_id}"
         return result
 
-    api_key = _get_yango_token(cred)
+    result["env_prefix_used"] = cred.get("env_var_name", "")
+
+    api_key, cred_source = _get_yango_token(cred)
+    result["credential_source"] = cred_source
     if not api_key:
-        result["error"] = "Missing Yango API credentials in environment"
+        result["error"] = f"Missing Yango API credentials (tried prefix={cred.get('env_var_name')}, legacy YANGO_CLIENT_ID/API_KEY, settings)"
         return result
 
     base_url = cred.get("api_base_url") or settings.YANGO_API_BASE_URL or API_BASE_URL_DEFAULT
