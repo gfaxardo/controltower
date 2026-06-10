@@ -724,6 +724,7 @@ def _log_autonomous_run(tick_id: str, op_date, status: str, result: dict, now: d
     try:
         import json, uuid
         run_uuid = str(uuid.uuid4())
+        db_status = _normalize_run_log_status(status)
         with get_db() as conn:
             cur = conn.cursor()
             cur.execute(
@@ -735,12 +736,13 @@ def _log_autonomous_run(tick_id: str, op_date, status: str, result: dict, now: d
                 {
                     "id": run_uuid,
                     "d": op_date,
-                    "st": status,
+                    "st": db_status,
                     "sa": now,
                     "fa": _now(),
                     "sum": json.dumps({
                         "tick_id": tick_id,
                         "run_uuid": run_uuid,
+                        "raw_status": status,
                         "cascade_executed": result.get("cascade_executed", False),
                         "refresh_success": result.get("refresh_success"),
                         "control_loop_inserted": result.get("control_loop_inserted"),
@@ -752,6 +754,39 @@ def _log_autonomous_run(tick_id: str, op_date, status: str, result: dict, now: d
             conn.commit()
     except Exception as e:
         logger.warning("Failed to write autonomous run log: %s", e)
+
+
+def _normalize_run_log_status(status):
+    allowed = {"SUCCESS", "PARTIAL_SUCCESS", "FAILED", "PENDING", "RUNNING"}
+    if status in allowed:
+        return status
+    mapping = {
+        "SUCCESS_NO_CASCADE": "SUCCESS",
+        "NOOP_NO_DATA": "SUCCESS",
+        "NOOP_CAUGHT_UP": "SUCCESS",
+        "PARTIAL_CASCADE_FAILED": "PARTIAL_SUCCESS",
+        "SKIPPED_OVERLAP": "SUCCESS",
+        "SKIPPED": "PENDING",
+    }
+    mapped = mapping.get(status, "SUCCESS")
+    logger.info("Normalized run_log status: %s → %s", status, mapped)
+    return mapped
+
+
+def _normalize_tick_status(status):
+    allowed = {"STARTED", "SUCCESS", "FAILED", "PARTIAL", "SKIPPED"}
+    if status in allowed:
+        return status
+    mapping = {
+        "SUCCESS_NO_CASCADE": "SUCCESS",
+        "NOOP_NO_DATA": "SUCCESS",
+        "NOOP_CAUGHT_UP": "SUCCESS",
+        "PARTIAL_CASCADE_FAILED": "PARTIAL",
+        "SKIPPED_OVERLAP": "SKIPPED",
+    }
+    mapped = mapping.get(status, "SUCCESS")
+    logger.info("Normalized tick_status: %s → %s", status, mapped)
+    return mapped
 
 
 def _update_scheduler(now, status, run_id, error):
@@ -795,7 +830,7 @@ def _write_tick_log_always(started, finished, duration_ms, result, _unused_conn=
                     "st": started,
                     "ft": finished,
                     "dur": duration_ms,
-                    "ts": result.get("status", "UNKNOWN"),
+                    "ts": _normalize_tick_status(result.get("status", "UNKNOWN")),
                     "ca": bool(result.get("catch_up_needed", False)),
                     "cst": "GAP_DETECTED" if result.get("catch_up_needed") else "CAUGHT_UP",
                     "sb": result.get("signals", {}).get("count", 0),
