@@ -199,7 +199,12 @@ export default function ExecutionQueueSection({ data, loading, errors, onBuildQu
           </button>
         </div>
 
-        {buildResult && !buildResult.error && (
+        {buildResult && !buildResult.error && buildResult.skipped_duplicates > 0 && buildResult.created_count === 0 && (
+          <div className="mt-2 bg-blue-500/20 rounded-lg p-2 text-xs text-blue-200">
+            Cola ya construida: {buildResult.skipped_duplicates} registros ({buildResult.ready_count || 0} READY, {buildResult.held_count || 0} HELD{buildResult.exported_count ? `, ${buildResult.exported_count} EXPORTED` : ''})
+          </div>
+        )}
+        {buildResult && !buildResult.error && !(buildResult.skipped_duplicates > 0 && buildResult.created_count === 0) && (
           <div className="mt-2 bg-emerald-500/20 rounded-lg p-2 text-xs text-emerald-200">
             +{buildResult.created_count || buildResult.ready_count} en cola ({buildResult.ready_count || 0} READY, {buildResult.held_count || 0} HELD)
           </div>

@@ -78,7 +78,40 @@ async def assignment_queue_build(
     program: Optional[str] = Query(None),
     channel: Optional[str] = Query(None),
     city: Optional[str] = Query(None),
+    force: bool = Query(False, description="Force full rebuild even if queue already exists"),
 ):
+    import time
+    t0 = time.time()
+
+    if not force:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT "
+                "COUNT(*) AS total, "
+                "SUM(CASE WHEN queue_status = 'READY' THEN 1 ELSE 0 END) AS ready, "
+                "SUM(CASE WHEN queue_status = 'HELD' THEN 1 ELSE 0 END) AS held, "
+                "SUM(CASE WHEN queue_status = 'EXPORTED' THEN 1 ELSE 0 END) AS exported "
+                "FROM growth.yego_lima_assignment_queue "
+                "WHERE assignment_date = %(d)s",
+                {"d": date},
+            )
+            row = cur.fetchone()
+            total = row[0] or 0
+            if total > 0:
+                return {
+                    "assignment_batch_id": "fast-path-" + date,
+                    "assignment_date": date,
+                    "created_count": 0,
+                    "ready_count": row[1] or 0,
+                    "held_count": row[2] or 0,
+                    "skipped_duplicates": total,
+                    "skipped_invalid": 0,
+                    "skipped_reasons": {"fast_path": "Queue already exists for this date. Use force=true to rebuild."},
+                    "exported_count": row[3] or 0,
+                    "duration_ms": round((time.time() - t0) * 1000),
+                }
+
     return create_assignment_batch(
         date_str=date,
         program=program,
