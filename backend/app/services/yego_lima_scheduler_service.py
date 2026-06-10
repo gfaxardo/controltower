@@ -26,6 +26,18 @@ def _now():
     return datetime.now(timezone.utc)
 
 
+def _ensure_scheduler_row(conn):
+    cur = conn.cursor()
+    cur.execute(
+        f"INSERT INTO {TABLE} (scheduler_name, enabled, interval_minutes, last_tick_at, "
+        f"next_tick_at, last_run_id, last_status, last_error, tick_count, "
+        f"success_count, fail_count, updated_at) "
+        f"VALUES (%(n)s, true, 5, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, now()) "
+        f"ON CONFLICT (scheduler_name) DO NOTHING",
+        {"n": SCHEDULER_NAME}
+    )
+
+
 def _try_acquire_tick_lock(conn) -> bool:
     cur = conn.cursor()
     cur.execute("SELECT pg_try_advisory_lock(%(id)s)", {"id": TICK_LOCK_ID})
@@ -521,54 +533,43 @@ def run_live_monitoring() -> Dict[str, Any]:
 
 def autonomous_tick() -> Dict[str, Any]:
     """
-    Lightweight autonomous tick for APScheduler.
-    Runs every 5 minutes without human intervention.
+    Autonomous tick for APScheduler. Every 5 min.
 
-    Executes:
-    - Governance check (lightweight)
-    - Catch-up detection (gap audit only)
-    - Intraday signals
-    - History snapshot
-    - Tick log recording
+    Detects new raw data → runs daily cascade → syncs control_loop.
+    If no new data → lightweight governance + signals + history snapshot.
 
-    Does NOT:
-    - Rebuild lists
-    - Call Yango API
-    - Export campaigns
-    - Block for more than a few seconds
-
-    LG-CF-HOTFIX-1B: Advisory lock prevents overlapping ticks.
-    If a previous tick is still running, this tick logs SKIPPED_OVERLAP and exits.
+    Always writes to refresh_run_log (triggered_by='autonomous_tick') and tick_log.
+    LG-CTRL-HOTFIX-1E: Full rollover capability + never fail silently.
     """
     now = _now()
+    import uuid
+    tick_id = f"tick-{now.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+
     result = {
         "mode": "autonomous_tick",
+        "tick_id": tick_id,
         "tick_at": now.isoformat(),
         "governance_checked": False,
         "catch_up_needed": False,
+        "cascade_executed": False,
+        "control_loop_synced": False,
+        "serving_facts_generated": False,
     }
+
+    op_date = None
+    refresh_run_id = None
+    refresh_status = None
+
+    with get_db() as conn:
+        _ensure_scheduler_row(conn)
+        conn.commit()
 
     conn = get_db().__enter__()
     if not _try_acquire_tick_lock(conn):
-        overlap_result = {
-            "status": "SKIPPED_OVERLAP",
-            "tick_at": now.isoformat(),
-            "reason": "Previous tick still running. Tick skipped to prevent overlap.",
-            "mode": "autonomous_tick",
-        }
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                "INSERT INTO %s (started_at, finished_at, duration_ms, tick_status, "
-                " operational_date, error_message, raw_result_json) "
-                "VALUES (%%(st)s, %%(ft)s, 0, 'SKIPPED_OVERLAP', NULL, "
-                " 'Previous tick still running', %%(raw)s::jsonb)" % TABLE_TICK_LOG,
-                {"st": now, "ft": now, "raw": __import__('json').dumps(overlap_result, default=str)}
-            )
-            conn.commit()
-        except Exception:
-            pass
-        return overlap_result
+        result["status"] = "SKIPPED_OVERLAP"
+        result["reason"] = "Previous tick still running"
+        _write_tick_log_always(now, now, 0, result, conn)
+        return result
 
     try:
         with conn:
@@ -582,6 +583,7 @@ def autonomous_tick() -> Dict[str, Any]:
                 result["status"] = "SKIPPED"
                 result["reason"] = "Scheduler not enabled"
                 _release_tick_lock(conn)
+                _write_tick_log_always(now, _now(), 0, result, conn)
                 return result
 
         from app.services.yego_lima_daily_refresh_service import detect_latest_closed_data_date
@@ -589,20 +591,73 @@ def autonomous_tick() -> Dict[str, Any]:
         op_date = date_info.get("operational_data_date")
         result["operational_date"] = op_date
 
-        if op_date:
-            with conn:
-                cur = conn.cursor()
-                cur.execute(
-                    "SELECT MAX(operational_data_date) FROM growth.yego_lima_refresh_run_log "
-                    "WHERE status = 'SUCCESS'"
-                )
-                last_processed = cur.fetchone()[0]
-                last_processed_str = str(last_processed) if last_processed else None
+        if not op_date:
+            result["status"] = "NOOP_NO_DATA"
+            result["reason"] = "No operational data available — Yango API may be empty or not ingested"
+            _release_tick_lock(conn)
+            _log_autonomous_run(tick_id, op_date, "NOOP_NO_DATA", result, now)
+            _update_scheduler(conn, now, "NOOP_NO_DATA", None, None)
+            _write_tick_log_always(now, _now(), 0, result, conn)
+            return result
 
-            if last_processed_str != op_date:
-                result["catch_up_needed"] = True
-                result["last_processed"] = last_processed_str
-                result["latest_available"] = op_date
+        with conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT MAX(operational_data_date) FROM growth.yego_lima_refresh_run_log "
+                "WHERE status = 'SUCCESS'"
+            )
+            last_processed = cur.fetchone()[0]
+            last_processed_str = str(last_processed) if last_processed else None
+
+        if last_processed_str != op_date:
+            result["catch_up_needed"] = True
+            result["last_processed"] = last_processed_str
+            result["latest_available"] = op_date
+
+        run_refresh = False
+        if result["catch_up_needed"]:
+            run_refresh = True
+            logger.info("Autonomous tick: new day detected %s (last processed: %s)", op_date, last_processed_str)
+
+        if run_refresh:
+            try:
+                from app.services.yego_lima_daily_refresh_service import run_daily_refresh
+                refresh = run_daily_refresh(target_date=op_date, triggered_by="autonomous_tick")
+                result["cascade_executed"] = True
+                result["refresh_success"] = refresh.get("success", False)
+                result["refresh_status"] = refresh.get("status", "UNKNOWN")
+                result["refresh_run_id"] = refresh.get("run_id")
+                result["refresh_steps"] = refresh.get("steps", [])
+                refresh_status = "SUCCESS" if refresh.get("success") else "FAILED"
+                refresh_run_id = refresh.get("run_id")
+            except Exception as e:
+                result["cascade_executed"] = True
+                result["refresh_success"] = False
+                result["refresh_error"] = str(e)[:200]
+                refresh_status = "FAILED"
+                refresh_run_id = None
+                logger.error("Autonomous tick: daily refresh failed — %s", e)
+        else:
+            refresh_status = "NOOP_CAUGHT_UP"
+            refresh_run_id = None
+
+        try:
+            from app.services.yego_lima_control_loop_sync_service import sync_assignment_queue_to_control_loop
+            cl_sync = sync_assignment_queue_to_control_loop(op_date)
+            result["control_loop_synced"] = True
+            result["control_loop_inserted"] = cl_sync.get("inserted", 0)
+            result["control_loop_skipped"] = cl_sync.get("skipped", 0)
+        except Exception as e:
+            result["control_loop_error"] = str(e)[:100]
+            logger.warning("Autonomous tick: control_loop sync failed — %s", e)
+
+        try:
+            from app.services.yego_lima_serving_facts_service import generate_all_serving_facts
+            facts = generate_all_serving_facts(op_date)
+            result["serving_facts_generated"] = True
+            result["serving_facts_count"] = facts.get("generated_count", 0) if isinstance(facts, dict) else 0
+        except Exception as e:
+            result["serving_facts_error"] = str(e)[:100]
 
         try:
             from app.services.yego_lima_refresh_governance_service import get_governance_status, _refresh_freshness_registry
@@ -618,7 +673,7 @@ def autonomous_tick() -> Dict[str, Any]:
 
         try:
             from app.services.yego_lima_intraday_signal_service import build_intraday_signals
-            signals = build_intraday_signals(op_date) if op_date else {"signal_count": 0}
+            signals = build_intraday_signals(op_date)
             result["signals"] = {
                 "count": signals.get("signal_count", 0),
                 "new": signals.get("new_signals", 0),
@@ -628,42 +683,100 @@ def autonomous_tick() -> Dict[str, Any]:
 
         try:
             from app.services.yego_lima_driver_list_history_service import snapshot_queue_to_history
-            hist = snapshot_queue_to_history(op_date) if op_date else {"rows_snapshotted": 0}
+            hist = snapshot_queue_to_history(op_date)
             result["history_snapshot"] = hist.get("rows_snapshotted", 0)
         except Exception as e:
             result["history_error"] = str(e)[:100]
 
-        result["status"] = "SUCCESS"
+        if not run_refresh and result.get("refresh_success") is not False:
+            result["status"] = "SUCCESS_NO_CASCADE"
+        elif result.get("refresh_success") is False:
+            result["status"] = "PARTIAL_CASCADE_FAILED"
+        else:
+            result["status"] = "SUCCESS"
 
     except Exception as e:
         result["status"] = "FAILED"
         result["error"] = str(e)[:200]
-        logger.error("Autonomous tick failed: %s", e)
+        refresh_status = "FAILED"
+        refresh_run_id = None
+        logger.error("Autonomous tick exception: %s", e)
 
     finally:
         _release_tick_lock(conn)
 
     finished = _now()
     duration_ms = int((finished - now).total_seconds() * 1000)
+    result["duration_ms"] = duration_ms
+
+    _log_autonomous_run(tick_id, op_date,
+                        result.get("status", "UNKNOWN"), result, now)
+
+    next_tick = finished + timedelta(minutes=5)
+    _update_scheduler(conn, finished, result.get("status", "UNKNOWN"),
+                      refresh_run_id, result.get("error"))
+
+    _write_tick_log_always(now, finished, duration_ms, result, conn)
+
+    result["next_tick_at"] = next_tick.isoformat()
+    return result
+
+
+def _log_autonomous_run(tick_id: str, op_date, status: str, result: dict, now: datetime):
     try:
-        next_tick = finished + timedelta(minutes=5)
+        import json
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO growth.yego_lima_refresh_run_log "
+                "(id, operational_data_date, status, started_at, finished_at, "
+                " triggered_by, summary, warnings) "
+                "VALUES (%(id)s, %(d)s, %(st)s, %(sa)s, %(fa)s, "
+                " 'autonomous_tick', %(sum)s::jsonb, %(warn)s::jsonb)",
+                {
+                    "id": tick_id,
+                    "d": op_date,
+                    "st": status,
+                    "sa": now,
+                    "fa": _now(),
+                    "sum": json.dumps({
+                        "tick_id": tick_id,
+                        "cascade_executed": result.get("cascade_executed", False),
+                        "refresh_success": result.get("refresh_success"),
+                        "control_loop_inserted": result.get("control_loop_inserted"),
+                        "serving_facts_generated": result.get("serving_facts_generated"),
+                    }),
+                    "warn": json.dumps(result.get("error")) if result.get("error") else json.dumps(None),
+                }
+            )
+            conn.commit()
+    except Exception as e:
+        logger.warning("Failed to write autonomous run log: %s", e)
+
+
+def _update_scheduler(conn, now, status, run_id, error):
+    try:
+        next_tick = now + timedelta(minutes=5)
         with conn:
             cur = conn.cursor()
             cur.execute(
                 f"UPDATE {TABLE} SET last_tick_at = %(now)s, next_tick_at = %(nt)s, "
-                f"tick_count = tick_count + 1, last_status = %(st)s, "
-                f"success_count = success_count + CASE WHEN %(st)s = 'SUCCESS' THEN 1 ELSE 0 END, "
-                f"fail_count = fail_count + CASE WHEN %(st)s = 'FAILED' THEN 1 ELSE 0 END, "
+                f"tick_count = tick_count + 1, last_run_id = %(rid)s, last_status = %(st)s, "
+                f"last_error = %(err)s, "
+                f"success_count = success_count + CASE WHEN %(st)s IN ('SUCCESS','SUCCESS_NO_CASCADE','NOOP_NO_DATA','NOOP_CAUGHT_UP') THEN 1 ELSE 0 END, "
+                f"fail_count = fail_count + CASE WHEN %(st)s IN ('FAILED','PARTIAL_CASCADE_FAILED') THEN 1 ELSE 0 END, "
                 f"updated_at = now() WHERE scheduler_name = %(n)s",
-                {"now": finished, "nt": next_tick, "st": result.get("status", "UNKNOWN"),
-                 "n": SCHEDULER_NAME}
+                {"now": now, "nt": next_tick, "rid": run_id, "st": status,
+                 "err": error, "n": SCHEDULER_NAME}
             )
             conn.commit()
     except Exception as e:
-        logger.warning("Failed to update scheduler status: %s", e)
+        logger.warning("Failed to update scheduler: %s", e)
 
-    import json
+
+def _write_tick_log_always(started, finished, duration_ms, result, conn):
     try:
+        import json
         with conn:
             cur = conn.cursor()
             cur.execute(
@@ -679,11 +792,11 @@ def autonomous_tick() -> Dict[str, Any]:
                 f" %(hsr)s, %(gc)s, %(go)s, "
                 f" %(od)s, %(nd)s, %(err)s, %(raw)s::jsonb)",
                 {
-                    "st": now,
+                    "st": started,
                     "ft": finished,
                     "dur": duration_ms,
                     "ts": result.get("status", "UNKNOWN"),
-                    "ca": result.get("catch_up_needed", False),
+                    "ca": bool(result.get("catch_up_needed", False)),
                     "cst": "GAP_DETECTED" if result.get("catch_up_needed") else "CAUGHT_UP",
                     "sb": result.get("signals", {}).get("count", 0),
                     "sn": result.get("signals", {}).get("new", 0),
@@ -691,15 +804,11 @@ def autonomous_tick() -> Dict[str, Any]:
                     "gc": result.get("governance_checked", False),
                     "go": result.get("governance", {}).get("operability") if result.get("governance") else None,
                     "od": result.get("operational_date"),
-                    "nd": result.get("catch_up_needed", False),
+                    "nd": bool(result.get("catch_up_needed", False)),
                     "err": result.get("error", "")[:500] if result.get("error") else None,
                     "raw": json.dumps(result, default=str),
                 }
             )
             conn.commit()
     except Exception as e:
-        logger.warning("Failed to record tick log: %s", e)
-
-    result["duration_ms"] = duration_ms
-    result["next_tick_at"] = next_tick.isoformat()
-    return result
+        logger.warning("Failed to write tick log: %s", e)

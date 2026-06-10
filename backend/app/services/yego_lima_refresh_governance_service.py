@@ -221,6 +221,36 @@ def get_governance_status() -> Dict[str, Any]:
         operability = "UNKNOWN"
         is_operable = True
 
+    last_autonomous = {}
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT latest_tick_at, latest_tick_status, latest_tick_reason "
+                "FROM growth.yego_lima_scheduler_status "
+                "WHERE scheduler_name = 'lima_growth_refresh'"
+            )
+            sch = cur.fetchone()
+            if sch:
+                last_autonomous = {
+                    "last_autonomous_tick_at": sch[0].isoformat() if sch[0] else None,
+                    "last_autonomous_tick_status": sch[1],
+                    "last_autonomous_tick_reason": None,
+                }
+            cur.execute(
+                "SELECT id, tick_status, error_message FROM growth.yego_lima_scheduler_tick_log "
+                "ORDER BY started_at DESC LIMIT 1"
+            )
+            tick = cur.fetchone()
+            if tick:
+                last_autonomous["last_autonomous_run_id"] = str(tick[0]) if tick[0] else None
+                if tick[1]:
+                    last_autonomous["last_autonomous_tick_status"] = last_autonomous.get("last_autonomous_tick_status") or tick[1]
+                if tick[2]:
+                    last_autonomous["last_autonomous_tick_reason"] = tick[2]
+    except Exception:
+        pass
+
     return {
         "operational_data_date": op_date,
         "today_action_date": today,
@@ -241,4 +271,5 @@ def get_governance_status() -> Dict[str, Any]:
         ),
         "facts": facts,
         "pipeline": pipeline,
+        "last_autonomous_tick": last_autonomous,
     }
