@@ -586,6 +586,26 @@ def autonomous_tick() -> Dict[str, Any]:
             return result
 
         from app.services.yego_lima_daily_refresh_service import detect_latest_closed_data_date
+
+        try:
+            from app.services.yango_raw_tick_ingestion_service import ingest_recent_orders
+            raw_ingest = ingest_recent_orders()
+            result["raw_ingest"] = {
+                "attempted": raw_ingest.get("attempted"),
+                "dates_attempted": raw_ingest.get("dates_attempted", []),
+                "dates_inserted": raw_ingest.get("dates_inserted", []),
+                "total_inserted": raw_ingest.get("total_inserted", 0),
+                "total_skipped": raw_ingest.get("total_skipped", 0),
+                "api_empty_dates": raw_ingest.get("api_empty_dates", []),
+                "api_errors": raw_ingest.get("api_errors", []),
+                "duration_seconds": raw_ingest.get("duration_seconds"),
+            }
+            if raw_ingest.get("error"):
+                result["raw_ingest"]["error"] = raw_ingest["error"]
+        except Exception as e:
+            result["raw_ingest"] = {"attempted": True, "error": str(e)[:200]}
+            logger.warning("Autonomous tick: raw ingestion failed — %s", e)
+
         date_info = detect_latest_closed_data_date()
         op_date = date_info.get("operational_data_date")
         result["operational_date"] = op_date
