@@ -178,7 +178,7 @@ def _is_date_already_ingested(park_id: str, date_str: str) -> Optional[dict]:
         with get_db() as conn:
             cur = conn.cursor()
             cur.execute(
-                "SELECT run_id, status, records_fetched, records_inserted, records_skipped "
+                "SELECT run_id, status, records_fetched, records_inserted, record_skips "
                 "FROM raw_yango.api_ingestion_run "
                 "WHERE park_id = %(p)s AND endpoint_group = 'orders' "
                 "  AND date_from = %(d)s AND date_to = %(d)s "
@@ -387,7 +387,7 @@ def _record_ingestion_run_done(run_uuid, fetched, inserted, skipped):
             cur = conn.cursor()
             cur.execute(
                 "UPDATE raw_yango.api_ingestion_run SET status = 'completed', "
-                "records_fetched = %(f)s, records_inserted = %(i)s, records_skipped = %(s)s, "
+                "records_fetched = %(f)s, records_inserted = %(i)s, record_skips = %(s)s, "
                 "finished_at = now() WHERE run_id = %(r)s",
                 {"f": fetched, "i": inserted, "s": skipped, "r": run_uuid}
             )
@@ -416,7 +416,7 @@ def _record_ingestion_run_partial(run_uuid, status, fetched, inserted, skipped, 
             cur = conn.cursor()
             cur.execute(
                 "UPDATE raw_yango.api_ingestion_run SET status = %(st)s, "
-                "records_fetched = %(f)s, records_inserted = %(i)s, records_skipped = %(s)s, "
+                "records_fetched = %(f)s, records_inserted = %(i)s, record_skips = %(s)s, "
                 "error_message = %(e)s, finished_at = now() WHERE run_id = %(r)s",
                 {"st": status, "f": fetched, "i": inserted, "s": skipped,
                  "e": error[:500] if error else None, "r": run_uuid}
