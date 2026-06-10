@@ -568,23 +568,22 @@ def autonomous_tick() -> Dict[str, Any]:
     if not _try_acquire_tick_lock(conn):
         result["status"] = "SKIPPED_OVERLAP"
         result["reason"] = "Previous tick still running"
-        _write_tick_log_always(now, now, 0, result, conn)
+        _write_tick_log_always(now, now, 0, result)
         return result
 
     try:
-        with conn:
-            cur = conn.cursor()
-            cur.execute(
-                f"SELECT enabled FROM {TABLE} WHERE scheduler_name = %(n)s",
-                {"n": SCHEDULER_NAME}
-            )
-            row = cur.fetchone()
-            if not row or not row[0]:
-                result["status"] = "SKIPPED"
-                result["reason"] = "Scheduler not enabled"
-                _release_tick_lock(conn)
-                _write_tick_log_always(now, _now(), 0, result, conn)
-                return result
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT enabled FROM {TABLE} WHERE scheduler_name = %(n)s",
+            {"n": SCHEDULER_NAME}
+        )
+        row = cur.fetchone()
+        if not row or not row[0]:
+            result["status"] = "SKIPPED"
+            result["reason"] = "Scheduler not enabled"
+            _release_tick_lock(conn)
+            _write_tick_log_always(now, _now(), 0, result)
+            return result
 
         from app.services.yego_lima_daily_refresh_service import detect_latest_closed_data_date
         date_info = detect_latest_closed_data_date()
@@ -596,18 +595,17 @@ def autonomous_tick() -> Dict[str, Any]:
             result["reason"] = "No operational data available — Yango API may be empty or not ingested"
             _release_tick_lock(conn)
             _log_autonomous_run(tick_id, op_date, "NOOP_NO_DATA", result, now)
-            _update_scheduler(conn, now, "NOOP_NO_DATA", None, None)
-            _write_tick_log_always(now, _now(), 0, result, conn)
+            _update_scheduler(now, "NOOP_NO_DATA", None, None)
+            _write_tick_log_always(now, _now(), 0, result)
             return result
 
-        with conn:
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT MAX(operational_data_date) FROM growth.yego_lima_refresh_run_log "
-                "WHERE status = 'SUCCESS'"
-            )
-            last_processed = cur.fetchone()[0]
-            last_processed_str = str(last_processed) if last_processed else None
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT MAX(operational_data_date) FROM growth.yego_lima_refresh_run_log "
+            "WHERE status = 'SUCCESS'"
+        )
+        last_processed = cur.fetchone()[0]
+        last_processed_str = str(last_processed) if last_processed else None
 
         if last_processed_str != op_date:
             result["catch_up_needed"] = True
@@ -713,10 +711,10 @@ def autonomous_tick() -> Dict[str, Any]:
                         result.get("status", "UNKNOWN"), result, now)
 
     next_tick = finished + timedelta(minutes=5)
-    _update_scheduler(conn, finished, result.get("status", "UNKNOWN"),
+    _update_scheduler(finished, result.get("status", "UNKNOWN"),
                       refresh_run_id, result.get("error"))
 
-    _write_tick_log_always(now, finished, duration_ms, result, conn)
+    _write_tick_log_always(now, finished, duration_ms, result)
 
     result["next_tick_at"] = next_tick.isoformat()
     return result
@@ -724,7 +722,8 @@ def autonomous_tick() -> Dict[str, Any]:
 
 def _log_autonomous_run(tick_id: str, op_date, status: str, result: dict, now: datetime):
     try:
-        import json
+        import json, uuid
+        run_uuid = str(uuid.uuid4())
         with get_db() as conn:
             cur = conn.cursor()
             cur.execute(
@@ -734,13 +733,14 @@ def _log_autonomous_run(tick_id: str, op_date, status: str, result: dict, now: d
                 "VALUES (%(id)s, %(d)s, %(st)s, %(sa)s, %(fa)s, "
                 " 'autonomous_tick', %(sum)s::jsonb, %(warn)s::jsonb)",
                 {
-                    "id": tick_id,
+                    "id": run_uuid,
                     "d": op_date,
                     "st": status,
                     "sa": now,
                     "fa": _now(),
                     "sum": json.dumps({
                         "tick_id": tick_id,
+                        "run_uuid": run_uuid,
                         "cascade_executed": result.get("cascade_executed", False),
                         "refresh_success": result.get("refresh_success"),
                         "control_loop_inserted": result.get("control_loop_inserted"),
@@ -754,10 +754,10 @@ def _log_autonomous_run(tick_id: str, op_date, status: str, result: dict, now: d
         logger.warning("Failed to write autonomous run log: %s", e)
 
 
-def _update_scheduler(conn, now, status, run_id, error):
+def _update_scheduler(now, status, run_id, error):
     try:
         next_tick = now + timedelta(minutes=5)
-        with conn:
+        with get_db() as conn:
             cur = conn.cursor()
             cur.execute(
                 f"UPDATE {TABLE} SET last_tick_at = %(now)s, next_tick_at = %(nt)s, "
@@ -774,10 +774,10 @@ def _update_scheduler(conn, now, status, run_id, error):
         logger.warning("Failed to update scheduler: %s", e)
 
 
-def _write_tick_log_always(started, finished, duration_ms, result, conn):
+def _write_tick_log_always(started, finished, duration_ms, result, _unused_conn=None):
     try:
         import json
-        with conn:
+        with get_db() as conn:
             cur = conn.cursor()
             cur.execute(
                 f"INSERT INTO {TABLE_TICK_LOG} "
