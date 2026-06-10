@@ -58,7 +58,7 @@ def _today():
     return datetime.now(PET).date()
 
 
-def _get_yango_token(cred: dict) -> tuple:
+def _get_yango_credentials(cred: dict) -> tuple:
     prefix = cred.get("env_var_name", "")
     sources = [
         (f"{prefix}_CLIENT_ID", f"{prefix}_API_KEY", "env_prefix"),
@@ -68,9 +68,9 @@ def _get_yango_token(cred: dict) -> tuple:
         client_id = os.environ.get(client_key) or getattr(settings, client_key, None)
         api_key = os.environ.get(api_key_name) or getattr(settings, api_key_name, None)
         if client_id and api_key:
-            return api_key, source
+            return client_id, api_key, source
 
-    return None, "missing"
+    return None, None, "missing"
 
 
 def _mask(val: str) -> str:
@@ -112,15 +112,16 @@ def ingest_recent_orders(
 
     result["env_prefix_used"] = cred.get("env_var_name", "")
 
-    api_key, cred_source = _get_yango_token(cred)
+    client_id, api_key, cred_source = _get_yango_credentials(cred)
     result["credential_source"] = cred_source
-    if not api_key:
+    if not api_key or not client_id:
         result["error"] = f"Missing Yango API credentials (tried prefix={cred.get('env_var_name')}, legacy YANGO_CLIENT_ID/API_KEY, settings)"
         return result
 
     base_url = cred.get("api_base_url") or settings.YANGO_API_BASE_URL or API_BASE_URL_DEFAULT
     headers = {
-        "Authorization": f"Bearer {api_key}",
+        "X-Client-ID": client_id,
+        "X-API-Key": api_key,
         "Content-Type": "application/json",
     }
 
