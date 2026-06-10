@@ -29,39 +29,35 @@ def get_driver_state_summary(date: str) -> Dict[str, Any]:
         total = row["total"]
 
         cur.execute(
-            "SELECT lifecycle_state, COUNT(*) as cnt "
+            "SELECT lifecycle_state, performance_state, retention_state "
             "FROM growth.yango_lima_driver_state_snapshot "
-            "WHERE snapshot_date = %(ld)s "
-            "GROUP BY lifecycle_state ORDER BY cnt DESC",
+            "WHERE snapshot_date = %(ld)s",
             {"ld": latest},
         )
+        rows = cur.fetchall()
+
+        lc_counts: Dict[str, int] = {}
+        pf_counts: Dict[str, int] = {}
+        rt_counts: Dict[str, int] = {}
+        for r in rows:
+            lc = r.get("lifecycle_state") or "UNKNOWN"
+            pf = r.get("performance_state") or "UNKNOWN"
+            rt = r.get("retention_state") or "UNKNOWN"
+            lc_counts[lc] = lc_counts.get(lc, 0) + 1
+            pf_counts[pf] = pf_counts.get(pf, 0) + 1
+            rt_counts[rt] = rt_counts.get(rt, 0) + 1
+
         by_lifecycle = [
-            {"state": r["lifecycle_state"] or "UNKNOWN", "count": r["cnt"]}
-            for r in cur.fetchall()
+            {"state": k, "count": v}
+            for k, v in sorted(lc_counts.items(), key=lambda x: -x[1])
         ]
-
-        cur.execute(
-            "SELECT performance_state, COUNT(*) as cnt "
-            "FROM growth.yango_lima_driver_state_snapshot "
-            "WHERE snapshot_date = %(ld)s "
-            "GROUP BY performance_state ORDER BY cnt DESC",
-            {"ld": latest},
-        )
         by_performance = [
-            {"state": r["performance_state"] or "UNKNOWN", "count": r["cnt"]}
-            for r in cur.fetchall()
+            {"state": k, "count": v}
+            for k, v in sorted(pf_counts.items(), key=lambda x: -x[1])
         ]
-
-        cur.execute(
-            "SELECT retention_state, COUNT(*) as cnt "
-            "FROM growth.yango_lima_driver_state_snapshot "
-            "WHERE snapshot_date = %(ld)s "
-            "GROUP BY retention_state ORDER BY cnt DESC",
-            {"ld": latest},
-        )
         by_retention = [
-            {"state": r["retention_state"] or "UNKNOWN", "count": r["cnt"]}
-            for r in cur.fetchall()
+            {"state": k, "count": v}
+            for k, v in sorted(rt_counts.items(), key=lambda x: -x[1])
         ]
 
     return {

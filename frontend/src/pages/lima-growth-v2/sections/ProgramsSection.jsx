@@ -93,13 +93,13 @@ export default function ProgramsSection({ data, loading, errors, onRetry, sectio
                     <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
                       <span>Pipeline:</span>
                       <span className="bg-gray-200 px-1.5 py-0.5 rounded">{formatNum(status?.eligible_total ?? prog.eligible_total)} elig</span>
-                      <span>-></span>
+                      <span>{'->'}</span>
                       <span className="bg-gray-200 px-1.5 py-0.5 rounded">{formatNum(status?.prioritized_total ?? prog.prioritized_total)} pri</span>
-                      <span>-></span>
+                      <span>{'->'}</span>
                       <span className="bg-gray-200 px-1.5 py-0.5 rounded">{formatNum(status?.actionable_today ?? prog.actionable_today)} act</span>
-                      <span>-></span>
+                      <span>{'->'}</span>
                       <span className="bg-gray-200 px-1.5 py-0.5 rounded">{formatNum(status?.queue_total ?? prog.queued_total)} queue</span>
-                      <span>-></span>
+                      <span>{'->'}</span>
                       <span className="bg-gray-200 px-1.5 py-0.5 rounded">{formatNum(status?.exported_total ?? prog.exported_total)} exp</span>
                     </div>
                   </div>

@@ -62,13 +62,12 @@ export default function ExecutionQueueSection({ data, loading, errors, onBuildQu
     setBuilding(true)
     setBuildResult(null)
     try {
-      const { default: api } = await import('../../../services/api.js')
-      const payload = { date: qSummary?.date || summary?.date, mode: buildMode }
-      if (Object.keys(programLimits).length > 0) payload.program_limits_json = programLimits
-      if (Object.keys(channelLimits).length > 0) payload.channel_limits_json = channelLimits
-      if (overrideReason.trim()) payload.override_reason = overrideReason.trim()
-      const resp = await api.post('/yego-lima-growth/assignment-queue/build', payload, { timeout: 60000 })
-      setBuildResult(resp.data)
+      const result = await onBuildQueue()
+      if (result) {
+        setBuildResult(result)
+      } else {
+        setBuildResult({ error: 'Build completed but returned no data' })
+      }
       if (onRefresh) await onRefresh()
     } catch (e) {
       setBuildResult({ error: e.message || 'Build failed' })

@@ -52,6 +52,7 @@ export default function useLimaGrowthData(date) {
   }, [])
 
   useEffect(() => {
+    if (!date) return
     fetchSection('todayActionPlan', () => getLimaGrowthTodayActionPlan(date))
     fetchSection('allocationTrace', () => getLimaGrowthAllocationTrace(date))
     fetchSection('programPolicy', () => getLimaGrowthProgramCapacityPolicy(date))
@@ -76,6 +77,7 @@ export default function useLimaGrowthData(date) {
   }, [date, fetchSection])
 
   const buildQueue = useCallback(async () => {
+    if (!date) throw new Error('No operational date available. Wait for data to load.')
     const result = await buildLimaGrowthAssignmentQueue(date)
     await refreshQueue()
     return result
@@ -86,6 +88,7 @@ export default function useLimaGrowthData(date) {
   }, [date, fetchSection])
 
   const exportQueue = useCallback(async (limit = 5) => {
+    if (!date) throw new Error('No operational date available. Wait for data to load.')
     try {
       const response = await api.post('/yego-lima-growth/assignment-queue/export', {
         date,
@@ -118,6 +121,7 @@ export default function useLimaGrowthData(date) {
   }, [date, fetchSection])
 
   const buildIntradaySignals = useCallback(async () => {
+    if (!date) throw new Error('No operational date available. Wait for data to load.')
     const result = await buildLimaGrowthIntradaySignals(date)
     await fetchSection('intradaySignals', () => getLimaGrowthIntradaySignalsSummary(date))
     await fetchSection('intradaySignalsByCampaign', () => getLimaGrowthIntradaySignalsByCampaign(date))

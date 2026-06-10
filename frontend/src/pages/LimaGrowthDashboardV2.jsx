@@ -28,7 +28,7 @@ export default function LimaGrowthDashboardV2() {
   useEffect(() => {
     let cancelled = false
     import('../services/api.js').then(m => {
-      return m.api.get('/yego-lima-growth/refresh/operational-date')
+      return m.default.get('/yego-lima-growth/refresh/operational-date')
     }).then(resp => {
       if (cancelled) return
       const d = resp.data
@@ -46,7 +46,7 @@ export default function LimaGrowthDashboardV2() {
     })
 
     import('../services/api.js').then(m => {
-      return m.api.get('/yego-lima-growth/refresh/governance-status')
+      return m.default.get('/yego-lima-growth/refresh/governance-status')
     }).then(resp => {
       if (cancelled) return
       setGovernance(resp.data)

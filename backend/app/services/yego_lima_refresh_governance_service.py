@@ -12,6 +12,8 @@ from typing import Any, Dict, List
 from app.db.connection import get_db
 from app.services.freshness_service import compute_freshness
 
+LIMA_TZ = timezone(timedelta(hours=-5))
+
 
 COMPONENTS = [
     ("raw_orders", "growth.yango_lima_orders_raw", "ended_at"),
@@ -66,7 +68,7 @@ def _refresh_freshness_registry(op_date: str = None):
 
 
 def get_governance_status() -> Dict[str, Any]:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(LIMA_TZ)
     today = now.date().isoformat()
 
     op_date = None

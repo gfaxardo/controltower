@@ -40,7 +40,7 @@ KPI_DEFINITIONS = {
         "source_date_col": "opportunity_date",
         "filter": "is_actionable_today = true",
         "layer": "prioritized",
-        "explanation_template": "Priorizados dentro del capacity cap ({capacity}) para {date}.",
+        "explanation_template": "Priorizados dentro del capacity cap ({{capacity}}) para {date}.",
     },
     "queue_total": {
         "label": "Queue Total",

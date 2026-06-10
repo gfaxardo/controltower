@@ -201,17 +201,18 @@ def get_program_summary(eligibility_date_str: Optional[str] = None) -> Dict[str,
             eligibility_date_str = str(r["max"])
 
         cur.execute(f"""
+            WITH latest_state AS (
+                SELECT DISTINCT ON (driver_profile_id)
+                    driver_profile_id, lifecycle_state, recoverable_flag, churn_risk_flag
+                FROM {TABLE_STATE}
+                ORDER BY driver_profile_id, snapshot_date DESC
+            )
             SELECT e.program_code, COUNT(*) AS total,
                    SUM(CASE WHEN s.lifecycle_state = 'EARLY_LIFE' THEN 1 ELSE 0 END) AS early_life,
                    SUM(CASE WHEN s.recoverable_flag THEN 1 ELSE 0 END) AS recoverable,
                    SUM(CASE WHEN s.churn_risk_flag THEN 1 ELSE 0 END) AS churn_risk
             FROM {TABLE_OUT} e
-            LEFT JOIN {TABLE_STATE} s
-                ON e.driver_profile_id = s.driver_profile_id
-                AND s.snapshot_date = (
-                    SELECT MAX(snapshot_date) FROM {TABLE_STATE}
-                    WHERE driver_profile_id = e.driver_profile_id
-                )
+            LEFT JOIN latest_state s ON e.driver_profile_id = s.driver_profile_id
             WHERE e.eligibility_date = %(d)s
             GROUP BY e.program_code ORDER BY total DESC
         """, {"d": eligibility_date_str})
@@ -241,7 +242,8 @@ def get_program_summary(eligibility_date_str: Optional[str] = None) -> Dict[str,
         cur.execute(
             "SELECT program_code, SUM(contacts_inserted) as exported "
             "FROM growth.yango_lima_loopcontrol_campaign_export "
-            "WHERE export_status = 'exported' GROUP BY program_code"
+            "WHERE export_status = 'exported' AND opportunity_date = %(d)s GROUP BY program_code",
+            {"d": eligibility_date_str}
         )
         exported_map = {r["program_code"] or "": r["exported"] for r in cur.fetchall()}
 

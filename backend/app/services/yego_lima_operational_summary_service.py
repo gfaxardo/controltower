@@ -99,7 +99,8 @@ def get_operational_summary(date: str) -> Dict[str, Any]:
         cur.execute(
             "SELECT COUNT(*) as campaigns, SUM(contacts_inserted) as contacts "
             "FROM growth.yango_lima_loopcontrol_campaign_export "
-            "WHERE export_status = 'exported'"
+            "WHERE export_status = 'exported' AND opportunity_date = %(d)s",
+            {"d": date}
         )
         row = cur.fetchone()
         lc_campaigns = _safe_int(row["campaigns"])

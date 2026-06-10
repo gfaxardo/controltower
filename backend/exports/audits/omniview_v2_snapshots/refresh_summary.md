@@ -1,14 +1,14 @@
 # OV2 Snapshot Refresh Report
 
-**Generated:** 2026-06-09T14:57:03.469321
+**Generated:** 2026-06-09T22:23:22.391502
 **Source:** CT_TRIPS_2026
 **Grain:** day
 **Date:** 2026-06-08
 
 | Type | Status | Build (ms) |
 |------|--------|------------|
-| shell | OK | 7015 |
-| matrix | OK | 2611 |
+| shell | OK | 6498 |
+| matrix | OK | 2358 |
 
 ## Snapshot Health
 
