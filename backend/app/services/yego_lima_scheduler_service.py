@@ -646,24 +646,78 @@ def autonomous_tick() -> Dict[str, Any]:
 
         run_refresh = False
         if cascade_required:
-            from app.services.yego_lima_daily_refresh_service import run_daily_refresh
+            pipeline_steps = []
+            pipeline_failed = False
             for target_date in target_dates:
-                try:
-                    refresh = run_daily_refresh(target_date=target_date, triggered_by="autonomous_tick")
-                    result["cascade_executed"] = True
-                    result["refresh_success"] = refresh.get("success", False)
-                    result["refresh_status"] = refresh.get("status", "UNKNOWN")
-                    result["refresh_run_id"] = refresh.get("run_id")
-                    result["refresh_steps"] = refresh.get("steps", [])
-                    refresh_status = "SUCCESS" if refresh.get("success") else "FAILED"
-                    refresh_run_id = refresh.get("run_id")
-                except Exception as e:
-                    result["cascade_executed"] = True
-                    result["refresh_success"] = False
-                    result["refresh_error"] = str(e)[:200]
-                    refresh_status = "FAILED"
-                    refresh_run_id = None
-                    logger.error("Autonomous tick: daily refresh failed for %s - %s", target_date, e)
+                if pipeline_failed:
+                    break
+
+                def _run_step(name, fn):
+                    nonlocal pipeline_failed
+                    t0 = _now()
+                    try:
+                        r = fn()
+                        elapsed = int((_now() - t0).total_seconds() * 1000)
+                        step = {"step": name, "status": "SUCCESS", "duration_ms": elapsed,
+                                "date": target_date}
+                        if isinstance(r, dict):
+                            step["result"] = {k: v for k, v in r.items()
+                                              if k in ('drivers_processed', 'rows_inserted', 'rows_updated',
+                                                       'programs_found', 'opportunities_created',
+                                                       'prioritized_count', 'actionable_today',
+                                                       'created_count', 'ready_count', 'held_count')}
+                        pipeline_steps.append(step)
+                        return r
+                    except Exception as e:
+                        elapsed = int((_now() - t0).total_seconds() * 1000)
+                        err = str(e)[:200]
+                        pipeline_steps.append({"step": name, "status": "FAILED",
+                                               "duration_ms": elapsed, "date": target_date,
+                                               "error": err})
+                        pipeline_failed = True
+                        logger.error("Pipeline step %s failed for %s: %s", name, target_date, err)
+                        return None
+
+                from app.services.yego_lima_driver_state_service import build_driver_state_snapshot
+                _run_step("driver_state", lambda d=target_date: build_driver_state_snapshot(d))
+
+                from app.services.yego_lima_program_eligibility_service import build_program_eligibility
+                _run_step("eligibility", lambda d=target_date: build_program_eligibility(d))
+
+                from app.services.yego_lima_daily_opportunity_service import build_daily_opportunity_lists
+                _run_step("opportunity_lists", lambda d=target_date: build_daily_opportunity_lists(d))
+
+                from app.services.yego_lima_opportunity_policy_service import build_prioritized_opportunities
+                _run_step("prioritized", lambda d=target_date: build_prioritized_opportunities(d, max_drivers=500))
+
+                from app.services.yego_lima_daily_refresh_service import run_daily_refresh
+                refresh = run_daily_refresh(target_date=target_date, triggered_by="autonomous_tick")
+
+            result["cascade_executed"] = True
+            result["pipeline_steps"] = pipeline_steps
+            result["refresh_success"] = not pipeline_failed
+            result["refresh_status"] = "SUCCESS" if not pipeline_failed else "PARTIAL_CASCADE_FAILED"
+            result["target_dates"] = target_dates
+            refresh_status = "SUCCESS" if not pipeline_failed else "FAILED"
+            refresh_run_id = None
+
+            if not pipeline_failed:
+                for target_date in target_dates:
+                    try:
+                        from app.services.yego_lima_control_loop_sync_service import sync_assignment_queue_to_control_loop
+                        cl_result = sync_assignment_queue_to_control_loop(target_date)
+                        result["control_loop_synced"] = True
+                        result["control_loop_target_date"] = target_date
+                        result["control_loop_inserted"] = cl_result.get("inserted", 0)
+                        result["control_loop_skipped"] = cl_result.get("skipped", 0)
+                        pipeline_steps.append({"step": "control_loop_sync", "status": "SUCCESS",
+                                               "date": target_date,
+                                               "inserted": cl_result.get("inserted", 0),
+                                               "skipped": cl_result.get("skipped", 0)})
+                    except Exception as e:
+                        pipeline_steps.append({"step": "control_loop_sync", "status": "FAILED",
+                                               "date": target_date, "error": str(e)[:100]})
+                        logger.warning("Pipeline control_loop_sync failed for %s: %s", target_date, e)
 
             try:
                 cur = conn.cursor()
@@ -831,6 +885,12 @@ def _log_autonomous_run(tick_id: str, op_date, status: str, result: dict, now: d
                         "control_loop_inserted": result.get("control_loop_inserted"),
                         "serving_facts_generated": result.get("serving_facts_generated"),
                         "raw_ingest": result.get("raw_ingest"),
+                        "raw_max_date": result.get("raw_max_date"),
+                        "snapshot_max_date_before": result.get("snapshot_max_date_before"),
+                        "snapshot_max_date_after": result.get("snapshot_max_date_after"),
+                        "cascade_reason": result.get("cascade_reason"),
+                        "target_dates": result.get("target_dates"),
+                        "pipeline_steps": result.get("pipeline_steps"),
                     }),
                     "warn": json.dumps(result.get("error")) if result.get("error") else json.dumps(None),
                 }
