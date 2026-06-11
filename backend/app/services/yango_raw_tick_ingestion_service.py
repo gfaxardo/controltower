@@ -31,10 +31,11 @@ API_BASE_URL_DEFAULT = "https://fleet-api.yango.tech"
 ORDERS_PATH = "/v1/parks/orders/list"
 PAGE_SIZE = 500
 MAX_DAYS_BACKFILL = 3
-MAX_PAGES_PER_DATE = 20
+MAX_PAGES_PER_DATE = 500
 REQUEST_TIMEOUT = 30
-MAX_TOTAL_SECONDS = 120
+MAX_TOTAL_SECONDS = 600
 MIN_INTER_REQUEST = 0.5
+DEDUP_WINDOW_HOURS = 3
 
 
 def _get_active_park_id() -> Optional[str]:

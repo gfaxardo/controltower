@@ -292,6 +292,128 @@ def get_credential_for_park(park_id: str) -> Optional[Dict[str, Any]]:
             cur.close()
 
 
+# ---------------------------------------------------------------------------
+# Ingestion Watermark (CF-H2C)
+# ---------------------------------------------------------------------------
+
+
+def upsert_watermark(
+    park_id: str,
+    endpoint_group: str,
+    last_source_date: str,
+    run_id: str,
+    records_delta: int = 0,
+    status: str = "active",
+    reset_failures: bool = False,
+) -> bool:
+    with get_db() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            consecutive = "0" if reset_failures else "consecutive_failures"
+            cur.execute(
+                """
+                INSERT INTO raw_yango.ingestion_watermark
+                    (park_id, endpoint_group, last_source_date, last_run_id,
+                     records_total, status, consecutive_failures, last_completed_at)
+                VALUES
+                    (%(park_id)s, %(endpoint_group)s, %(last_source_date)s, %(run_id)s,
+                     %(records_delta)s, %(status)s, %(cf)s, now())
+                ON CONFLICT (park_id, endpoint_group) DO UPDATE SET
+                    last_source_date = EXCLUDED.last_source_date,
+                    last_run_id = EXCLUDED.last_run_id,
+                    records_total = raw_yango.ingestion_watermark.records_total + %(records_delta)s,
+                    status = EXCLUDED.status,
+                    consecutive_failures = %(cf_expr)s,
+                    last_completed_at = EXCLUDED.last_completed_at,
+                    updated_at = now()
+                """,
+                {
+                    "park_id": park_id,
+                    "endpoint_group": endpoint_group,
+                    "last_source_date": last_source_date,
+                    "run_id": run_id,
+                    "records_delta": records_delta,
+                    "status": status,
+                    "cf": 0 if reset_failures else 0,
+                    "cf_expr": "0" if reset_failures else "raw_yango.ingestion_watermark.consecutive_failures",
+                },
+            )
+            return True
+        except Exception as e:
+            logger.warning("Failed to upsert watermark park=%s endpoint=%s: %s",
+                           _mask_id(park_id), endpoint_group, e)
+            return False
+        finally:
+            cur.close()
+
+
+def record_watermark_failure(park_id: str, endpoint_group: str) -> bool:
+    with get_db() as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                UPDATE raw_yango.ingestion_watermark
+                SET consecutive_failures = consecutive_failures + 1,
+                    status = CASE WHEN consecutive_failures + 1 >= 3 THEN 'failed' ELSE status END,
+                    updated_at = now()
+                WHERE park_id = %(park_id)s AND endpoint_group = %(endpoint_group)s
+                """,
+                {"park_id": park_id, "endpoint_group": endpoint_group},
+            )
+            return cur.rowcount > 0
+        finally:
+            cur.close()
+
+
+def get_watermark(park_id: str, endpoint_group: str) -> Optional[Dict[str, Any]]:
+    with get_db() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute(
+                """
+                SELECT park_id, endpoint_group, last_source_date, last_run_id,
+                       last_completed_at, records_total, consecutive_failures, status
+                FROM raw_yango.ingestion_watermark
+                WHERE park_id = %(park_id)s AND endpoint_group = %(endpoint_group)s
+                """,
+                {"park_id": park_id, "endpoint_group": endpoint_group},
+            )
+            r = cur.fetchone()
+            if r:
+                return {
+                    "park_id": r["park_id"],
+                    "endpoint_group": r["endpoint_group"],
+                    "last_source_date": r["last_source_date"],
+                    "last_run_id": r["last_run_id"],
+                    "last_completed_at": r["last_completed_at"].isoformat() if r["last_completed_at"] else None,
+                    "records_total": r["records_total"] or 0,
+                    "consecutive_failures": r["consecutive_failures"] or 0,
+                    "status": r["status"],
+                }
+            return None
+        finally:
+            cur.close()
+
+
+def get_all_watermarks() -> List[Dict[str, Any]]:
+    with get_db() as conn:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute(
+                """
+                SELECT park_id, endpoint_group, last_source_date, last_run_id,
+                       records_total, consecutive_failures, status,
+                       last_completed_at
+                FROM raw_yango.ingestion_watermark
+                ORDER BY park_id, endpoint_group
+                """
+            )
+            return [dict(r) for r in cur.fetchall()]
+        finally:
+            cur.close()
+
+
 def check_existing_run(
     park_id: str, endpoint_group: str, date_from: str, date_to: str
 ) -> Optional[Dict[str, Any]]:

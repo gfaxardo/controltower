@@ -63,7 +63,7 @@ ENDPOINT_GROUP_MAP = {
         "response_key": "transactions",
         "response_keys_alt": ["items"],
         "table": "raw_yango.transactions_raw",
-        "page_size": 100,
+        "page_size": 1000,
     },
     "driver_profiles": {
         "endpoints": ["driver_profiles"],
@@ -71,7 +71,7 @@ ENDPOINT_GROUP_MAP = {
         "pagination": "offset",
         "response_key": "driver_profiles",
         "table": "raw_yango.driver_profiles_raw",
-        "page_size": 100,
+        "page_size": 1000,
     },
     "all": {
         "endpoints": ["orders", "transactions", "driver_profiles"],
