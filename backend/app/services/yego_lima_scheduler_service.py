@@ -628,7 +628,7 @@ def autonomous_tick() -> Dict[str, Any]:
         cascade_required = False
         target_dates = []
         if max_raw_date and max_snapshot_date and max_raw_date > max_snapshot_date:
-            from datetime import date as date_type, timedelta
+            from datetime import date as date_type
             raw_dt = date_type.fromisoformat(max_raw_date)
             snap_dt = date_type.fromisoformat(max_snapshot_date)
             cascade_required = True
