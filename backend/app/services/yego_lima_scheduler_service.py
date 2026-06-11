@@ -610,14 +610,68 @@ def autonomous_tick() -> Dict[str, Any]:
         op_date = date_info.get("operational_data_date")
         result["operational_date"] = op_date
 
-        if not op_date:
-            result["status"] = "NOOP_NO_DATA"
-            result["reason"] = "No operational data available — Yango API may be empty or not ingested"
-            _release_tick_lock(conn)
-            _log_autonomous_run(tick_id, op_date, "NOOP_NO_DATA", result, now)
-            _update_scheduler(now, "NOOP_NO_DATA", None, None)
-            _write_tick_log_always(now, _now(), 0, result)
-            return result
+        max_raw_date = None
+        max_snapshot_date = None
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT MAX(order_ended_at)::date FROM raw_yango.orders_raw")
+            row = cur.fetchone()
+            max_raw_date = str(row[0]) if row and row[0] else None
+            cur.execute("SELECT MAX(snapshot_date) FROM growth.yango_lima_driver_state_snapshot")
+            row = cur.fetchone()
+            max_snapshot_date = str(row[0]) if row and row[0] else None
+            result["raw_max_date"] = max_raw_date
+            result["snapshot_max_date_before"] = max_snapshot_date
+        except Exception:
+            pass
+
+        cascade_required = False
+        target_dates = []
+        if max_raw_date and max_snapshot_date and max_raw_date > max_snapshot_date:
+            from datetime import date as date_type, timedelta
+            raw_dt = date_type.fromisoformat(max_raw_date)
+            snap_dt = date_type.fromisoformat(max_snapshot_date)
+            cascade_required = True
+            d = snap_dt + timedelta(days=1)
+            while d <= raw_dt:
+                target_dates.append(d.strftime("%Y-%m-%d"))
+                d += timedelta(days=1)
+            if len(target_dates) > 3:
+                target_dates = target_dates[-3:]
+            result["cascade_reason"] = "RAW_AHEAD_OF_SNAPSHOT"
+            result["cascade_required"] = True
+            result["target_dates"] = target_dates
+            logger.info("Autonomous tick: raw ahead of snapshot (raw=%s snap=%s). Cascade required for %s.",
+                        max_raw_date, max_snapshot_date, target_dates)
+
+        run_refresh = False
+        if cascade_required:
+            from app.services.yego_lima_daily_refresh_service import run_daily_refresh
+            for target_date in target_dates:
+                try:
+                    refresh = run_daily_refresh(target_date=target_date, triggered_by="autonomous_tick")
+                    result["cascade_executed"] = True
+                    result["refresh_success"] = refresh.get("success", False)
+                    result["refresh_status"] = refresh.get("status", "UNKNOWN")
+                    result["refresh_run_id"] = refresh.get("run_id")
+                    result["refresh_steps"] = refresh.get("steps", [])
+                    refresh_status = "SUCCESS" if refresh.get("success") else "FAILED"
+                    refresh_run_id = refresh.get("run_id")
+                except Exception as e:
+                    result["cascade_executed"] = True
+                    result["refresh_success"] = False
+                    result["refresh_error"] = str(e)[:200]
+                    refresh_status = "FAILED"
+                    refresh_run_id = None
+                    logger.error("Autonomous tick: daily refresh failed for %s - %s", target_date, e)
+
+            try:
+                cur = conn.cursor()
+                cur.execute("SELECT MAX(snapshot_date) FROM growth.yango_lima_driver_state_snapshot")
+                row = cur.fetchone()
+                result["snapshot_max_date_after"] = str(row[0]) if row and row[0] else None
+            except Exception:
+                pass
 
         cur = conn.cursor()
         cur.execute(
@@ -627,17 +681,26 @@ def autonomous_tick() -> Dict[str, Any]:
         last_processed = cur.fetchone()[0]
         last_processed_str = str(last_processed) if last_processed else None
 
-        if last_processed_str != op_date:
+        if not op_date and not cascade_required:
+            result["status"] = "NOOP_NO_DATA"
+            result["reason"] = "No operational data available"
+            _release_tick_lock(conn)
+            _log_autonomous_run(tick_id, op_date, "NOOP_NO_DATA", result, now)
+            _update_scheduler(now, "NOOP_NO_DATA", None, None)
+            _write_tick_log_always(now, _now(), 0, result)
+            return result
+
+        if not cascade_required and last_processed_str != op_date:
             result["catch_up_needed"] = True
             result["last_processed"] = last_processed_str
             result["latest_available"] = op_date
-
-        run_refresh = False
-        if result["catch_up_needed"]:
             run_refresh = True
             logger.info("Autonomous tick: new day detected %s (last processed: %s)", op_date, last_processed_str)
+        elif not cascade_required:
+            refresh_status = "NOOP_CAUGHT_UP"
+            refresh_run_id = None
 
-        if run_refresh:
+        if run_refresh and not cascade_required:
             try:
                 from app.services.yego_lima_daily_refresh_service import run_daily_refresh
                 refresh = run_daily_refresh(target_date=op_date, triggered_by="autonomous_tick")
