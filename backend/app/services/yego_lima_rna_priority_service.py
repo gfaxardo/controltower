@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 TABLE_PRIORITY = "growth.rna_priority_fact"
 TABLE_DS = "growth.yango_lima_driver_state_snapshot"
 TABLE_LC = "growth.yego_lima_driver_lifecycle_daily"
-TABLE_TAX = "growth.yego_lima_driver_taxonomy_v2_daily"
-TABLE_MOV = "growth.driver_movement_fact"
+TABLE_TAX = "growth.yego_lima_v2_taxonomy_daily"
+TABLE_MOV = "growth.yego_lima_v2_movement_fact"
 TABLE_PR = "growth.yango_lima_program_eligibility_daily"
 
 SCORING = [
@@ -38,12 +38,12 @@ def build_rna_priority() -> Dict[str, Any]:
             SELECT ds.driver_profile_id, ds.contactability, ds.cancelled_signal,
                    ds.is_rna, lc.lifecycle_status, lc.completed_trips_7d,
                    lc.completed_trips_30d, lc.days_since_last_completed_trip,
-                   tx.value_tier, tx.momentum_state, mv.movement_score,
+                   tx.elite_tier, tx.loyalty_tier, 0 AS movement_score,
                    pr.program_code
             FROM {TABLE_DS} ds
             LEFT JOIN {TABLE_LC} lc ON ds.driver_profile_id = lc.driver_profile_id
-            LEFT JOIN {TABLE_TAX} tx ON ds.driver_profile_id = tx.driver_profile_id
-            LEFT JOIN {TABLE_MOV} mv ON ds.driver_profile_id = mv.driver_profile_id
+            LEFT JOIN {TABLE_TAX} tx ON ds.driver_profile_id = tx.driver_id
+            LEFT JOIN {TABLE_MOV} mv ON ds.driver_profile_id = mv.driver_id
             LEFT JOIN {TABLE_PR} pr ON ds.driver_profile_id = pr.driver_profile_id
             WHERE ds.is_rna = true
         """)
@@ -58,8 +58,8 @@ def build_rna_priority() -> Dict[str, Any]:
             trips_7d = r[5] or 0
             trips_30d = r[6] or 0
             days_since = r[7]
-            value_tier = r[8] or "mid_60"
-            momentum = r[9] or "stable"
+            value_tier = r[8] or r[9] or "mid_60"
+            momentum = "stable"
             movement_score = r[10] or 0
             program = r[11]
 

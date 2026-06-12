@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 TABLE_EXPORT = "growth.yego_lima_export_audit"
 TABLE_DS = "growth.yango_lima_driver_state_snapshot"
 TABLE_LC = "growth.yego_lima_driver_lifecycle_daily"
-TABLE_TAX = "growth.yego_lima_driver_taxonomy_v2_daily"
+TABLE_TAX = "growth.yego_lima_v2_taxonomy_daily"
 TABLE_PR = "growth.yango_lima_program_eligibility_daily"
 
 MAX_ROWS = 10000
@@ -39,10 +39,10 @@ SOURCE_SQL = {
             ds.city,
             ds.park_id AS park,
             COALESCE(lc.lifecycle_status, ds.lifecycle_status) AS lifecycle,
-            COALESCE(tx.operational_status, ds.segment) AS segment,
-            tx.activity_status,
-            tx.value_tier,
-            tx.momentum_state AS momentum,
+            COALESCE(tx.segment, ds.segment) AS segment,
+            tx.sub_segment AS activity_status,
+            COALESCE(tx.elite_tier, tx.loyalty_tier) AS value_tier,
+            NULL AS momentum,
             pr.program_code AS program,
             ds.movement_status,
             ds.is_rna AS rna_status,
@@ -53,7 +53,7 @@ SOURCE_SQL = {
             lc.lifecycle_reason AS explanation_summary
         FROM {TABLE_DS} ds
         LEFT JOIN {TABLE_LC} lc ON ds.driver_profile_id = lc.driver_profile_id
-        LEFT JOIN {TABLE_TAX} tx ON ds.driver_profile_id = tx.driver_profile_id
+        LEFT JOIN {TABLE_TAX} tx ON ds.driver_profile_id = tx.driver_id
         LEFT JOIN {TABLE_PR} pr ON ds.driver_profile_id = pr.driver_profile_id
         WHERE ds.snapshot_date = (SELECT MAX(snapshot_date) FROM {TABLE_DS})
     """,

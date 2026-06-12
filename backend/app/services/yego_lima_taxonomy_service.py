@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 TABLE_STATE = "growth.yango_lima_driver_state_snapshot"
 TABLE_TAXONOMY = "growth.yego_lima_driver_taxonomy_daily"
+TABLE_TAXONOMY_READ = "growth.yego_lima_v2_taxonomy_daily"
 TABLE_EXPLANATION = "growth.yego_lima_driver_taxonomy_explanation"
 TABLE_TRANSITION = "growth.yego_lima_driver_taxonomy_transition"
 TABLE_CONFIG = "growth.yego_lima_taxonomy_config"
@@ -700,7 +701,7 @@ def _upsert_transitions(cur, rows: list) -> None:
 
 
 def _latest_taxonomy_date(cur) -> Optional[str]:
-    cur.execute(f"SELECT MAX(snapshot_date) FROM {TABLE_TAXONOMY}")
+    cur.execute(f"SELECT MAX(target_date) FROM {TABLE_TAXONOMY_READ}")
     r = cur.fetchone()
     return str(r["max"]) if r and r["max"] else None
 
@@ -717,49 +718,39 @@ def get_taxonomy_summary(snapshot_date_str: Optional[str] = None) -> Dict[str, A
                 return {"error": "No taxonomy data. Run POST /taxonomy/build first."}
 
         cur.execute(
-            f"SELECT operational_status, COUNT(*) as cnt FROM {TABLE_TAXONOMY} "
-            "WHERE snapshot_date = %(d)s GROUP BY 1 ORDER BY cnt DESC",
+            f"SELECT segment AS operational_status, COUNT(*) as cnt FROM {TABLE_TAXONOMY_READ} "
+            "WHERE target_date = %(d)s GROUP BY 1 ORDER BY cnt DESC",
             {"d": sd},
         )
         status = [dict(r) for r in cur.fetchall()]
 
         cur.execute(
-            f"SELECT operational_segment, COUNT(*) as cnt FROM {TABLE_TAXONOMY} "
-            "WHERE snapshot_date = %(d)s GROUP BY 1 ORDER BY cnt DESC",
+            f"SELECT segment AS operational_segment, COUNT(*) as cnt FROM {TABLE_TAXONOMY_READ} "
+            "WHERE target_date = %(d)s GROUP BY 1 ORDER BY cnt DESC",
             {"d": sd},
         )
         segment = [dict(r) for r in cur.fetchall()]
 
         cur.execute(
-            f"SELECT value_overlay, COUNT(*) as cnt FROM {TABLE_TAXONOMY} "
-            "WHERE snapshot_date = %(d)s GROUP BY 1 ORDER BY cnt DESC",
+            f"SELECT COALESCE(elite_tier, loyalty_tier) AS value_overlay, COUNT(*) as cnt FROM {TABLE_TAXONOMY_READ} "
+            "WHERE target_date = %(d)s GROUP BY 1 ORDER BY cnt DESC",
             {"d": sd},
         )
         value = [dict(r) for r in cur.fetchall()]
 
-        cur.execute(
-            f"SELECT momentum_state, COUNT(*) as cnt FROM {TABLE_TAXONOMY} "
-            "WHERE snapshot_date = %(d)s GROUP BY 1 ORDER BY cnt DESC",
-            {"d": sd},
-        )
-        momentum = [dict(r) for r in cur.fetchall()]
+        momentum = []
 
         cur.execute(
-            f"SELECT operational_persona, COUNT(*) as cnt FROM {TABLE_TAXONOMY} "
-            "WHERE snapshot_date = %(d)s GROUP BY 1 ORDER BY cnt DESC LIMIT 20",
+            f"SELECT segment || '|' || COALESCE(sub_segment,'') AS operational_persona, COUNT(*) as cnt FROM {TABLE_TAXONOMY_READ} "
+            "WHERE target_date = %(d)s GROUP BY 1 ORDER BY cnt DESC LIMIT 20",
             {"d": sd},
         )
         personas = [dict(r) for r in cur.fetchall()]
 
-        cur.execute(f"SELECT COUNT(*) as total FROM {TABLE_TAXONOMY} WHERE snapshot_date = %(d)s", {"d": sd})
+        cur.execute(f"SELECT COUNT(*) as total FROM {TABLE_TAXONOMY_READ} WHERE target_date = %(d)s", {"d": sd})
         total = cur.fetchone()["total"]
 
-        cur.execute(
-            f"SELECT signal_quality_flags_json FROM {TABLE_TAXONOMY} "
-            "WHERE snapshot_date = %(d)s AND signal_quality_flags_json IS NOT NULL LIMIT 1",
-            {"d": sd},
-        )
-        has_warnings = cur.fetchone() is not None
+        has_warnings = False
 
     return {
         "snapshot_date": sd,
@@ -788,7 +779,10 @@ def get_driver_taxonomy(driver_id: str, snapshot_date_str: Optional[str] = None)
                 return None
 
         cur.execute(
-            f"SELECT * FROM {TABLE_TAXONOMY} WHERE snapshot_date = %(d)s AND driver_profile_id = %(did)s",
+            f"SELECT target_date AS snapshot_date, driver_id AS driver_profile_id, "
+            f"segment AS operational_status, sub_segment AS activity_status, "
+            f"elite_tier, loyalty_tier, park_id, park_name, city, country "
+            f"FROM {TABLE_TAXONOMY_READ} WHERE target_date = %(d)s AND driver_id = %(did)s",
             {"d": sd, "did": driver_id},
         )
         tax = cur.fetchone()

@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 TABLE_EFF = "growth.program_effectiveness_fact"
 TABLE_DRV = "growth.driver_program_effectiveness_fact"
-TABLE_MOV = "growth.driver_movement_fact"
+TABLE_MOV = "growth.yego_lima_v2_movement_fact"
 TABLE_PR = "growth.yango_lima_program_eligibility_daily"
 
 

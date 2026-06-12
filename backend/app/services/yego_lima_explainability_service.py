@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 TABLE_LC = "growth.yego_lima_driver_lifecycle_daily"
 TABLE_LC_EVENT = "growth.yego_lima_driver_lifecycle_event"
-TABLE_TAX = "growth.yego_lima_driver_taxonomy_v2_daily"
+TABLE_TAX = "growth.yego_lima_v2_taxonomy_daily"
 TABLE_DT = "growth.yego_lima_program_decision_trace"
 TABLE_TT = "growth.yego_lima_state_transition_trace"
 TABLE_DS = "growth.yango_lima_driver_state_snapshot"
@@ -64,13 +64,14 @@ def get_driver_explainability(driver_id: str) -> Dict[str, Any]:
 
         # ── Segment / Taxonomy ──
         cur.execute(f"""
-            SELECT operational_status, activity_status, value_tier,
-                   momentum_state, operational_persona,
-                   matched_rules_json, failed_rules_json,
-                   snapshot_date
+            SELECT segment AS operational_status, sub_segment AS activity_status,
+                   COALESCE(elite_tier, loyalty_tier) AS value_tier,
+                   NULL AS momentum_state, NULL AS operational_persona,
+                   NULL::jsonb AS matched_rules_json, NULL::jsonb AS failed_rules_json,
+                   target_date AS snapshot_date
             FROM {TABLE_TAX}
-            WHERE driver_profile_id = %(did)s
-            ORDER BY snapshot_date DESC LIMIT 1
+            WHERE driver_id = %(did)s
+            ORDER BY target_date DESC LIMIT 1
         """, {"did": driver_id})
         tx = cur.fetchone()
         if tx:

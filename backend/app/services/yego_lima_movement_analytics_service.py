@@ -8,7 +8,7 @@ from typing import Any, Dict, List
 from app.db.connection import get_db
 
 logger = logging.getLogger(__name__)
-TABLE_MOV = "growth.driver_movement_fact"
+TABLE_MOV = "growth.yego_lima_v2_movement_fact"
 
 
 def get_transition_matrix() -> Dict[str, Any]:
@@ -19,19 +19,19 @@ def get_transition_matrix() -> Dict[str, Any]:
         total = (cur.fetchone() or [0])[0]
 
         cur.execute(f"""
-            SELECT from_segment, to_segment, COUNT(*) as cnt
+            SELECT from_state AS from_segment, to_state AS to_segment, COUNT(*) as cnt
             FROM {TABLE_MOV}
-            WHERE movement_class = 'SEGMENT_CHANGE'
-            GROUP BY from_segment, to_segment
+            WHERE movement_type = 'SEGMENT_CHANGE'
+            GROUP BY from_state, to_state
             ORDER BY cnt DESC
         """)
         segment_transitions = [{"from": r[0], "to": r[1], "count": r[2]} for r in cur.fetchall()]
 
         cur.execute(f"""
-            SELECT from_lifecycle, to_lifecycle, COUNT(*) as cnt
+            SELECT from_state AS from_lifecycle, to_state AS to_lifecycle, COUNT(*) as cnt
             FROM {TABLE_MOV}
-            WHERE movement_class = 'LIFECYCLE_CHANGE'
-            GROUP BY from_lifecycle, to_lifecycle
+            WHERE movement_type = 'LIFECYCLE_CHANGE'
+            GROUP BY from_state, to_state
             ORDER BY cnt DESC
         """)
         lifecycle_transitions = [{"from": r[0], "to": r[1], "count": r[2]} for r in cur.fetchall()]
@@ -39,7 +39,7 @@ def get_transition_matrix() -> Dict[str, Any]:
         cur.execute(f"""
             SELECT from_program, to_program, COUNT(*) as cnt
             FROM {TABLE_MOV}
-            WHERE movement_class = 'PROGRAM_CHANGE' AND from_program IS DISTINCT FROM to_program
+            WHERE movement_type = 'PROGRAM_CHANGE' AND from_program IS DISTINCT FROM to_program
             GROUP BY from_program, to_program
             ORDER BY cnt DESC
             LIMIT 30
@@ -47,10 +47,10 @@ def get_transition_matrix() -> Dict[str, Any]:
         program_transitions = [{"from": r[0], "to": r[1], "count": r[2]} for r in cur.fetchall()]
 
         cur.execute(f"""
-            SELECT movement_class, movement_score, COUNT(*) as cnt
+            SELECT movement_type AS movement_class, 0 AS movement_score, COUNT(*) as cnt
             FROM {TABLE_MOV}
-            WHERE movement_score != 0
-            GROUP BY movement_class, movement_score
+            WHERE movement_type IS NOT NULL
+            GROUP BY movement_type
             ORDER BY cnt DESC
         """)
         score_distribution = [{"class": r[0], "score": r[1], "count": r[2]} for r in cur.fetchall()]
@@ -68,12 +68,12 @@ def get_top_winners(limit: int = 20) -> Dict[str, Any]:
     with get_db() as conn:
         cur = conn.cursor()
         cur.execute(f"""
-            SELECT driver_profile_id, from_segment, to_segment,
-                   from_lifecycle, to_lifecycle, movement_class,
-                   movement_score, movement_type, from_program, to_program
+            SELECT driver_id, from_state AS from_segment, to_state AS to_segment,
+                   from_state AS from_lifecycle, to_state AS to_lifecycle, movement_type AS movement_class,
+                   0 AS movement_score, movement_type, from_program, to_program
             FROM {TABLE_MOV}
-            WHERE movement_score > 0
-            ORDER BY movement_score DESC
+            WHERE movement_type IN ('SEGMENT_CHANGE', 'LIFECYCLE_CHANGE', 'PROGRAM_CHANGE')
+            ORDER BY driver_id
             LIMIT %(lim)s
         """, {"lim": limit})
         winners = []
@@ -92,12 +92,12 @@ def get_top_losers(limit: int = 20) -> Dict[str, Any]:
     with get_db() as conn:
         cur = conn.cursor()
         cur.execute(f"""
-            SELECT driver_profile_id, from_segment, to_segment,
-                   from_lifecycle, to_lifecycle, movement_class,
-                   movement_score, movement_type, from_program, to_program
+            SELECT driver_id, from_state AS from_segment, to_state AS to_segment,
+                   from_state AS from_lifecycle, to_state AS to_lifecycle, movement_type AS movement_class,
+                   0 AS movement_score, movement_type, from_program, to_program
             FROM {TABLE_MOV}
-            WHERE movement_score < 0
-            ORDER BY movement_score ASC
+            WHERE movement_type IN ('SEGMENT_CHANGE', 'LIFECYCLE_CHANGE', 'PROGRAM_CHANGE')
+            ORDER BY driver_id DESC
             LIMIT %(lim)s
         """, {"lim": limit})
         losers = []
@@ -119,19 +119,20 @@ def get_movement_stats() -> Dict[str, Any]:
         cur.execute(f"SELECT COUNT(*) FROM {TABLE_MOV}")
         total = (cur.fetchone() or [0])[0]
 
-        cur.execute(f"SELECT COUNT(*) FROM {TABLE_MOV} WHERE movement_score > 0")
+        cur.execute(f"SELECT COUNT(*) FROM {TABLE_MOV} WHERE movement_type = 'SEGMENT_CHANGE'")
         positive = (cur.fetchone() or [0])[0]
 
-        cur.execute(f"SELECT COUNT(*) FROM {TABLE_MOV} WHERE movement_score < 0")
+        cur.execute(f"SELECT COUNT(*) FROM {TABLE_MOV} WHERE movement_type = 'LIFECYCLE_CHANGE'")
         negative = (cur.fetchone() or [0])[0]
 
-        cur.execute(f"SELECT COALESCE(SUM(movement_score),0) FROM {TABLE_MOV}")
+        cur.execute(f"SELECT 0")
         net = (cur.fetchone() or [0])[0]
 
         cur.execute(f"""
-            SELECT movement_class, COUNT(*) as cnt
+            SELECT movement_type AS movement_class, COUNT(*) as cnt
             FROM {TABLE_MOV}
-            GROUP BY movement_class ORDER BY cnt DESC
+            WHERE movement_type IS NOT NULL
+            GROUP BY movement_type ORDER BY cnt DESC
         """)
         classes = [{"class": r[0], "count": r[1]} for r in cur.fetchall()]
 

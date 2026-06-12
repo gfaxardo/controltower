@@ -672,6 +672,7 @@ def _build_movement_fact(target_date: str) -> int:
 
         inserted = 0
 
+        # ── STATE_CHANGE from transition traces (primary source) ──
         cur.execute("""
             INSERT INTO growth.yego_lima_v2_movement_fact
                 (target_date, driver_id, movement_type, from_state, to_state,
@@ -691,6 +692,32 @@ def _build_movement_fact(target_date: str) -> int:
         """, {"d": target_date})
         inserted += cur.rowcount
 
+        # ── FALLBACK: STATE_CHANGE from taxonomy diff (when traces empty) ──
+        if cur.rowcount == 0:
+            prev_date = (date.fromisoformat(target_date) - timedelta(days=1)).isoformat()
+            cur.execute("""
+                INSERT INTO growth.yego_lima_v2_movement_fact
+                    (target_date, driver_id, movement_type, from_state, to_state,
+                     from_program, to_program, trigger_reason)
+                SELECT
+                    %(d)s::date,
+                    t2.driver_id,
+                    'STATE_CHANGE' AS movement_type,
+                    COALESCE(t1.segment, 'UNKNOWN') AS from_state,
+                    t2.segment AS to_state,
+                    NULL AS from_program,
+                    NULL AS to_program,
+                    'segment_transition' AS trigger_reason
+                FROM growth.yego_lima_v2_taxonomy_daily t2
+                LEFT JOIN growth.yego_lima_v2_taxonomy_daily t1
+                    ON t1.driver_id = t2.driver_id AND t1.target_date = %(prev)s
+                WHERE t2.target_date = %(d)s
+                  AND COALESCE(t1.segment, 'UNKNOWN') IS DISTINCT FROM t2.segment
+                ON CONFLICT (target_date, driver_id, movement_type) DO NOTHING
+            """, {"d": target_date, "prev": prev_date})
+            inserted += cur.rowcount
+
+        # ── PROGRAM_CHANGE from decision traces (primary source) ──
         cur.execute("""
             INSERT INTO growth.yego_lima_v2_movement_fact
                 (target_date, driver_id, movement_type, from_state, to_state,
@@ -709,6 +736,30 @@ def _build_movement_fact(target_date: str) -> int:
             ON CONFLICT (target_date, driver_id, movement_type) DO NOTHING
         """, {"d": target_date})
         inserted += cur.rowcount
+
+        # ── FALLBACK: PROGRAM_CHANGE from program diff (when traces empty) ──
+        if cur.rowcount == 0:
+            cur.execute("""
+                INSERT INTO growth.yego_lima_v2_movement_fact
+                    (target_date, driver_id, movement_type, from_state, to_state,
+                     from_program, to_program, trigger_reason)
+                SELECT
+                    %(d)s::date,
+                    p2.driver_id,
+                    'PROGRAM_CHANGE' AS movement_type,
+                    NULL AS from_state,
+                    NULL AS to_state,
+                    COALESCE(p1.program_code, 'UNASSIGNED') AS from_program,
+                    p2.program_code AS to_program,
+                    'program_assignment' AS trigger_reason
+                FROM growth.yego_lima_v2_program_daily p2
+                LEFT JOIN growth.yego_lima_v2_program_daily p1
+                    ON p1.driver_id = p2.driver_id AND p1.target_date = %(prev)s
+                WHERE p2.target_date = %(d)s
+                  AND COALESCE(p1.program_code, 'UNASSIGNED') IS DISTINCT FROM p2.program_code
+                ON CONFLICT (target_date, driver_id, movement_type) DO NOTHING
+            """, {"d": target_date, "prev": prev_date})
+            inserted += cur.rowcount
 
         conn.commit()
 
