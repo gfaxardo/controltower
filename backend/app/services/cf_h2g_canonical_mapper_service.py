@@ -93,7 +93,7 @@ def get_metric_owner(metric_name: str) -> Optional[str]:
 # Yango Source Queries
 # ═══════════════════════════════════════════════════════════════════
 
-def _query_yango_orders(target_date: str) -> Dict[str, Any]:
+def _query_yango_orders(target_date: str, park_id: str = PARK_ID) -> Dict[str, Any]:
     with get_db() as conn:
         cur = conn.cursor()
         cur.execute("""
@@ -104,14 +104,14 @@ def _query_yango_orders(target_date: str) -> Dict[str, Any]:
             WHERE park_id = %(p)s
               AND order_status = 'complete'
               AND order_ended_at::date = %(d)s
-        """, {"p": PARK_ID, "d": target_date})
+        """, {"p": park_id, "d": target_date})
         row = cur.fetchone()
         if row:
             return {"completed_trips": int(row[0] or 0), "active_drivers": int(row[1] or 0)}
     return {"completed_trips": 0, "active_drivers": 0}
 
 
-def _query_yango_transactions(target_date: str) -> Dict[str, Any]:
+def _query_yango_transactions(target_date: str, park_id: str = PARK_ID) -> Dict[str, Any]:
     with get_db() as conn:
         cur = conn.cursor()
         cur.execute("""
@@ -128,7 +128,7 @@ def _query_yango_transactions(target_date: str) -> Dict[str, Any]:
             FROM raw_yango.transactions_raw
             WHERE park_id = %(p)s
               AND event_at::date = %(d)s
-        """, {"p": PARK_ID, "d": target_date})
+        """, {"p": park_id, "d": target_date})
         row = cur.fetchone()
         if row:
             return {
@@ -139,17 +139,17 @@ def _query_yango_transactions(target_date: str) -> Dict[str, Any]:
     return {"revenue_yego": 0, "gmv_total": 0, "service_fee": 0}
 
 
-def _query_yango_freshness() -> Dict[str, Any]:
+def _query_yango_freshness(park_id: str = PARK_ID) -> Dict[str, Any]:
     now = _now()
     with get_db() as conn:
         cur = conn.cursor()
         cur.execute("""
             SELECT
                 MAX(order_ended_at) AS last_order_at,
-                MAX(ingested_at) AS last_order_ingested
+                MAX(api_fetched_at) AS last_order_ingested
             FROM raw_yango.orders_raw
             WHERE park_id = %(p)s
-        """, {"p": PARK_ID})
+        """, {"p": park_id})
         row = cur.fetchone()
         last_order = row[0] if row else None
         last_ingested = row[1] if row else None
@@ -157,7 +157,7 @@ def _query_yango_freshness() -> Dict[str, Any]:
         cur.execute("""
             SELECT MAX(event_at) FROM raw_yango.transactions_raw
             WHERE park_id = %(p)s
-        """, {"p": PARK_ID})
+        """, {"p": park_id})
         tx_row = cur.fetchone()
         last_tx = tx_row[0] if tx_row else None
 
@@ -292,9 +292,9 @@ def generate_canonical_day_fact(
     target_date: str,
     park_id: str = PARK_ID,
 ) -> Dict[str, Any]:
-    yango_orders = _query_yango_orders(target_date)
-    yango_tx = _query_yango_transactions(target_date)
-    yango_freshness = _query_yango_freshness()
+    yango_orders = _query_yango_orders(target_date, park_id)
+    yango_tx = _query_yango_transactions(target_date, park_id)
+    yango_freshness = _query_yango_freshness(park_id)
     ct_fact = _query_ct_day_fact(target_date)
 
     yango_available = yango_orders.get("completed_trips", 0) > 0

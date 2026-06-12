@@ -65,6 +65,7 @@ const DriverSupervisorView = lazy(() => import('./components/driver/DriverSuperv
 const DriverStrategyView = lazy(() => import('./components/driver/DriverStrategyView.jsx'))
 const DriverAdminDataView = lazy(() => import('./components/driver/DriverAdminDataView.jsx'))
 const LimaGrowthDashboard = lazy(() => import('./pages/LimaGrowthDashboardV2.jsx'))
+const LimaGrowthIntelligenceDashboard = lazy(() => import('./pages/LimaGrowthDashboardUI1A.jsx'))
 const OmniviewV2MatrixSandbox = lazy(() => import('./pages/omniview-v2-shadow/OmniviewV2MatrixSandbox.jsx'))
 const OmniviewV2ShadowPage = lazy(() => import('./pages/omniview-v2-shadow/OmniviewV2ShadowPage.jsx'))
 
@@ -118,6 +119,10 @@ const SUBTABS_MAP = {
   [TAB_PLAN]: getSubtabsForTab(TAB_PLAN),
   [TAB_OPERACION]: getSubtabsForTab(TAB_OPERACION),
   [TAB_FLEET_PROJECT]: getSubtabsForTab(TAB_FLEET_PROJECT),
+  [TAB_LIMA_GROWTH]: [
+    { id: 'lima_growth_resumen', label: 'Operational' },
+    { id: 'lima_growth_intelligence', label: 'Intelligence' },
+  ],
 }
 
 const ROUTE_MAP = [
@@ -171,6 +176,7 @@ const ROUTE_MAP = [
   { path: '/fleet-project', tab: TAB_FLEET_PROJECT, sub: 'fleet_yegopro_profitability' },
   { path: '/fleet-project/yego-pro/profitability', tab: TAB_FLEET_PROJECT, sub: 'fleet_yegopro_profitability' },
   { path: '/lima-growth', tab: TAB_LIMA_GROWTH, sub: 'lima_growth_resumen' },
+  { path: '/lima-growth/intelligence', tab: TAB_LIMA_GROWTH, sub: 'lima_growth_intelligence' },
 ]
 
 const SUB_URL = {
@@ -193,6 +199,8 @@ const SUB_URL = {
   operacion_business_slice: '/operacion/business-slice',
   operacion_omniview: '/operacion/omniview',
   operacion_omniview_matrix: '/operacion/omniview-matrix',
+  operacion_omniview_v2: '/operacion/omniview-v2-shadow',
+  operacion_omniview_v2_shadow: '/operacion/omniview-v2-shadow',
   operacion_control_loop_pvr: '/operacion/control-loop-plan-vs-real',
   operacion_reportes: '/operacion/reportes',
   operacion_oportunidades: '/operacion/oportunidades',
@@ -202,6 +210,7 @@ const SUB_URL = {
   system_health: '/diagnosticos',
   fleet_yegopro_profitability: '/fleet-project/yego-pro/profitability',
   lima_growth_resumen: '/lima-growth',
+  lima_growth_intelligence: '/lima-growth/intelligence',
 }
 
 const TAB_DEFAULT_PATH = {
@@ -560,7 +569,11 @@ function ControlTowerApp () {
 
             {activeTab === TAB_LIMA_GROWTH && (
               <section aria-label="Lima Growth">
-                <LimaGrowthDashboard key={`lima-growth-${refreshKey}`} />
+                {limaGrowthSubTab === 'lima_growth_intelligence' ? (
+                  <LimaGrowthIntelligenceDashboard key={`lima-growth-intel-${refreshKey}`} />
+                ) : (
+                  <LimaGrowthDashboard key={`lima-growth-${refreshKey}`} />
+                )}
               </section>
             )}
 

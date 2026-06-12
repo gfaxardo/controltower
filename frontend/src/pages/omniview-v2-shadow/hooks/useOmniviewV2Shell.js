@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getOmniviewV2Shell } from '../../../services/api';
 
-export function useOmniviewV2Shell(sourceSystem = 'CT_TRIPS_2026', grain = 'day', dateFrom = null, dateTo = null) {
+export function useOmniviewV2Shell(sourceSystem = 'CT_TRIPS_2026', grain = 'day', dateFrom = null, dateTo = null, country = 'peru', city = 'lima', businessSlice = null, parkId = null) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -20,9 +20,11 @@ export function useOmniviewV2Shell(sourceSystem = 'CT_TRIPS_2026', grain = 'day'
     setError(null);
 
     try {
-      const params = { source_system: sourceSystem, grain };
+      const params = { source_system: sourceSystem, grain, country, city };
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
+      if (businessSlice) params.business_slice_name = businessSlice;
+      if (parkId) params.park_id = parkId;
 
       const result = await getOmniviewV2Shell(params, { signal: controller.signal });
 
@@ -36,7 +38,7 @@ export function useOmniviewV2Shell(sourceSystem = 'CT_TRIPS_2026', grain = 'day'
         setLoading(false);
       }
     }
-  }, [sourceSystem, grain, dateFrom, dateTo]);
+  }, [sourceSystem, grain, dateFrom, dateTo, country, city, businessSlice, parkId]);
 
   useEffect(() => {
     mountedRef.current = true;

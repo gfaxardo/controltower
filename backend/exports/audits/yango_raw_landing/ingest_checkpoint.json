@@ -1,18 +1,15 @@
 {
   "config": {
-    "run_id": "ingest_20260608_202109",
+    "run_id": "ingest_20260611_103659",
     "park_id_masked": "08e20910***",
-    "date_from": "2026-06-06",
-    "date_to": "2026-06-06",
+    "date_from": "2026-06-11",
+    "date_to": "2026-06-11",
     "days_count": 1,
     "endpoint_group": [
       "orders"
     ],
     "dry_run": false,
-    "max_pages": 100,
+    "max_pages": 20,
     "max_concurrency": 3
-  },
-  "completed_pages": {
-    "orders_2026-06-06_0": true
   }
 }

@@ -78,6 +78,7 @@ def get_ct_matrix_data(
     date_to: Optional[str] = None,
     country: str = CT_COUNTRY,
     city: str = CT_CITY,
+    filters: Optional[Dict[str, Any]] = None,
 ) -> Tuple[str, List[Dict[str, Any]]]:
     table, date_field = _grain_table(grain)
     if not table:
@@ -88,22 +89,38 @@ def get_ct_matrix_data(
     if not date_to:
         date_to = date.today().isoformat()
 
+    business_slice_filter = ""
+    extra_params = []
+    if filters and filters.get("business_slice_name"):
+        business_slice_filter = " AND LOWER(business_slice_name) = LOWER(%s)"
+        extra_params.append(filters["business_slice_name"])
+
+    park_filter = ""
+    driver_params = list(extra_params)
+    if filters and filters.get("park_id"):
+        park_filter = " AND park_id = %s"
+        driver_params.append(filters["park_id"])
+
     rows = _query(
         f"""
         SELECT
             {date_field} AS period_date,
             business_slice_name,
             COALESCE(SUM(trips_completed), 0)::bigint AS trips_completed,
-            COALESCE(SUM(revenue_yego_final), 0)::numeric AS revenue_yego_final
+            COALESCE(SUM(revenue_yego_final), 0)::numeric AS revenue_yego_final,
+            AVG(commission_pct)::numeric AS commission_pct,
+            COALESCE(AVG(avg_ticket), 0)::numeric AS avg_ticket,
+            COALESCE(AVG(trips_per_driver), 0)::numeric AS trips_per_driver
         FROM {table}
         WHERE LOWER(TRIM(country)) = %s
           AND LOWER(TRIM(city)) = %s
           AND {date_field} >= %s::date
           AND {date_field} <= %s::date
+          {business_slice_filter}
         GROUP BY {date_field}, business_slice_name
         ORDER BY {date_field}, business_slice_name
         """,
-        (country, city, date_from, date_to),
+        (country, city, date_from, date_to) + tuple(extra_params),
     )
 
     # Compute active_drivers from bridge (driver_day_slice_fact)
@@ -129,10 +146,11 @@ def get_ct_matrix_data(
           AND city = %s
           AND activity_date >= %s::date
           AND activity_date <= %s::date
+          {park_filter}
         GROUP BY {period_expr}, business_slice_name
         ORDER BY {period_expr}::date, business_slice_name
         """,
-        (country, city, date_from, date_to),
+        (country, city, date_from, date_to) + tuple(driver_params),
     )
 
     # Merge driver counts into rows by matching period_date + business_slice_name
@@ -235,7 +253,7 @@ def get_matrix_data(
     if source_system == "CT_TRIPS_2026":
         country = (filters or {}).get("country", CT_COUNTRY)
         city = (filters or {}).get("city", CT_CITY)
-        return get_ct_matrix_data(grain, date_from, date_to, country, city)
+        return get_ct_matrix_data(grain, date_from, date_to, country, city, filters)
 
     if source_system == "YANGO_API_RAW":
         park_id = (filters or {}).get("park_id", PARK_ID)

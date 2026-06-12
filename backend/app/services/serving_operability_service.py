@@ -32,6 +32,20 @@ STATUS_CRITICAL = "CRITICAL"
 
 _LIMA_TZ = timezone(timedelta(hours=-5))
 
+# ── LG-REL-1A: In-memory cache to reduce health endpoint latency ──
+_cache: Dict[str, Any] = {}
+_CACHE_TTL_SECONDS = 60
+
+
+def _cached(key: str, builder, ttl: int = _CACHE_TTL_SECONDS):
+    now = _now()
+    entry = _cache.get(key)
+    if entry and (now - entry["ts"]).total_seconds() < ttl:
+        return entry["data"]
+    data = builder()
+    _cache[key] = {"ts": now, "data": data}
+    return data
+
 DEPENDENCY_GRAPH: Dict[str, List[str]] = {
     "activity_daily": ["lifecycle_daily"],
     "lifecycle_daily": ["taxonomy_v2", "program_v2"],
@@ -54,6 +68,10 @@ def _now():
 
 
 def get_operability_status() -> Dict[str, Any]:
+    return _cached("operability", _build_operability_status)
+
+
+def _build_operability_status() -> Dict[str, Any]:
     now = _now()
 
     components: List[Dict[str, Any]] = []
@@ -253,6 +271,10 @@ def get_health() -> Dict[str, Any]:
 
 
 def get_freshness() -> Dict[str, Any]:
+    return _cached("freshness", _build_freshness)
+
+
+def _build_freshness() -> Dict[str, Any]:
     try:
         from app.services.serving_freshness_audit_service import (
             get_freshness_audit_status,

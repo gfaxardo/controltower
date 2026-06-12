@@ -1627,6 +1627,47 @@ export const getDriverDiagnosticTrace = async (driverId) => {
   return response.data
 }
 
+// ── Lima Growth — Explainability (LG-UI-1B) ──
+
+export const getDriverExplainability = async (driverId) => {
+  const response = await api.get(`/yego-lima-growth/explainability/${driverId}`, { timeout: 15000 })
+  return response.data
+}
+
+export const getDriverExplainabilityDomain = async (driverId, domain) => {
+  const response = await api.get(`/yego-lima-growth/explainability/${driverId}/${domain}`, { timeout: 15000 })
+  return response.data
+}
+
+// ── Lima Growth — Export (LG-EXP-1A) ──
+
+export const getExportOptions = async () => {
+  const response = await api.get('/yego-lima-growth/export/options', { timeout: 10000 })
+  return response.data
+}
+
+export const createExport = async (payload) => {
+  const response = await api.post('/yego-lima-growth/export', payload, { timeout: 60000 })
+  return response.data
+}
+
+export const getExportStatus = async (exportId) => {
+  const response = await api.get(`/yego-lima-growth/export/${exportId}`, { timeout: 10000 })
+  return response.data
+}
+
+// ── Lima Growth — Program Effectiveness (LG-IMP-1B) ──
+
+export const getEffectivenessSummary = async () => {
+  const response = await api.get('/yego-lima-growth/effectiveness/summary', { timeout: 30000 })
+  return response.data
+}
+
+export const getProgramEffectiveness = async (programCode) => {
+  const response = await api.get(`/yego-lima-growth/effectiveness/program/${programCode}`, { timeout: 30000 })
+  return response.data
+}
+
 export const getProgramTraceList = async (filters = {}) => {
   const response = await api.get('/yego-lima-growth/diagnostic-trace/program/list', { params: filters, timeout: 15000 })
   return response.data
@@ -1664,6 +1705,45 @@ export const buildLimaGrowthIntradaySignals = async (date) => {
   const params = {}
   if (date) params.date = date
   const response = await api.post('/yego-lima-growth/intraday-signals/build', null, { params, timeout: 60000 })
+  return response.data
+}
+
+// ── Lima Growth — UI-1A Growth Intelligence Dashboard ──
+
+export const getGrowthHealth = async () => {
+  const response = await api.get('/growth/health', { timeout: 30000 })
+  return response.data
+}
+
+export const getGrowthFreshness = async () => {
+  const response = await api.get('/growth/freshness', { timeout: 30000 })
+  return response.data
+}
+
+export const getGrowthOperability = async () => {
+  const response = await api.get('/growth/operability', { timeout: 30000 })
+  return response.data
+}
+
+export const getLimaGrowthTaxonomySummary = async (date) => {
+  const response = await api.get('/yego-lima-growth/taxonomy/summary', { params: { date }, timeout: 30000 })
+  return response.data
+}
+
+export const getLimaGrowthMovementDriver = async (driverId, date = null) => {
+  const params = {}
+  if (date) params.date = date
+  const response = await api.get(`/yego-lima-growth/movement/driver/${driverId}`, { params, timeout: 30000 })
+  return response.data
+}
+
+export const getDriverLifecycleDistribution = async (params = {}) => {
+  const response = await api.get('/drivers/lifecycle-distribution', { params, timeout: 15000 })
+  return response.data
+}
+
+export const getDriverActionableSummary = async (params = {}) => {
+  const response = await api.get('/drivers/actionable-summary', { params, timeout: 15000 })
   return response.data
 }
 

@@ -197,6 +197,7 @@ def build_cells(
         "active_drivers": ("active_drivers", "Active Drivers", "count", "active_drivers", _fmt_count),
         "avg_ticket": ("avg_ticket", "Average Ticket", "PEN", "avg_ticket", _fmt_pen),
         "trips_per_driver": ("trips_per_driver", "Trips per Driver", "ratio", "trips_per_driver", lambda v: f"{v:.2f}" if v is not None else "\u2014"),
+        "commission_pct": ("commission_pct", "Commission %", "pct", "commission_pct", lambda v: _fmt_pct(v) if v is not None else "N/A"),
     }
     yango_metric_map = {
         "orders": ("orders", "Orders Completed", "count", "orders_completed", _fmt_count),

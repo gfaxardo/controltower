@@ -5,7 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from app.settings import settings
 from app.startup_checks import run_startup_checks
 from app.startup_state import set_startup_report
-from app.routers import auth, plan, real, core, ops, health, ingestion, phase2b, phase2c, driver_lifecycle, driver_lifecycle_diagnostic, driver_behavior_benchmarking, controltower, observability, real_vs_projection, diagnostics, ops_refresh, fraud, behavioral_pattern_diagnosis, behavioral_mvp, operational_behavioral_intelligence, recoverability_intelligence, yango_loyalty, drivers, yego_pro_profitability, yego_lima_growth_lab, yego_lima_growth_control_loop, yego_lima_executive, yego_lima_pipeline, yego_lima_growth_state, yego_lima_pilot, yego_lima_universe, yego_lima_productivity, yego_lima_freshness, yego_lima_opportunity_policy, yego_lima_loopcontrol_export, yego_lima_capacity, yego_lima_priority_allocation, yego_lima_channel_allocation, yego_lima_opportunity_worklist, yego_lima_assignment_queue, yego_lima_queue_export, yego_lima_loopcontrol_result_sync, yego_lima_risk_panel, yego_lima_impact, yego_lima_impact_dashboard, yego_lima_movement, yego_lima_attribution, yego_lima_today_action_plan, yego_lima_allocation_trace, yego_lima_program_capacity_policy, yego_lima_daily_refresh, yego_lima_scheduler, yego_lima_operational_summary, yego_lima_freshness_health, yego_lima_intraday_signal, yego_lima_list_history, yego_lima_program_explainability, yego_lima_freshness_chain, yego_lima_operational_truth, yego_lima_program_status, yego_lima_queue_operational, yego_lima_todays_action_plan, yego_lima_result_sync, yego_lima_diagnostic_trace, yego_lima_driver_history, yego_lima_governance, yego_lima_movement_router, yego_lima_control_loop_router, omniview_v2, omniview_v2_shell, omniview_v2_shadow, yego_lima_v2_pipeline
+from app.routers import auth, plan, real, core, ops, health, ingestion, phase2b, phase2c, driver_lifecycle, driver_lifecycle_diagnostic, driver_behavior_benchmarking, controltower, observability, real_vs_projection, diagnostics, ops_refresh, fraud, behavioral_pattern_diagnosis, behavioral_mvp, operational_behavioral_intelligence, recoverability_intelligence, yango_loyalty, drivers, yego_pro_profitability, yego_lima_growth_lab, yego_lima_growth_control_loop, yego_lima_executive, yego_lima_pipeline, yego_lima_growth_state, yego_lima_pilot, yego_lima_universe, yego_lima_productivity, yego_lima_freshness, yego_lima_opportunity_policy, yego_lima_loopcontrol_export, yego_lima_capacity, yego_lima_priority_allocation, yego_lima_channel_allocation, yego_lima_opportunity_worklist, yego_lima_assignment_queue, yego_lima_queue_export, yego_lima_loopcontrol_result_sync, yego_lima_risk_panel, yego_lima_impact, yego_lima_impact_dashboard, yego_lima_movement, yego_lima_attribution, yego_lima_today_action_plan, yego_lima_allocation_trace, yego_lima_program_capacity_policy, yego_lima_daily_refresh, yego_lima_scheduler, yego_lima_operational_summary, yego_lima_freshness_health, yego_lima_intraday_signal, yego_lima_list_history, yego_lima_program_explainability, yego_lima_freshness_chain, yego_lima_operational_truth, yego_lima_program_status, yego_lima_queue_operational, yego_lima_todays_action_plan, yego_lima_result_sync, yego_lima_diagnostic_trace, yego_lima_driver_history, yego_lima_governance, yego_lima_movement_router, yego_lima_control_loop_router, omniview_v2, omniview_v2_shell, omniview_v2_shadow, yego_lima_v2_pipeline, yego_lima_taxonomy, yego_lima_lifecycle, yego_lima_explainability, yego_lima_export, yego_lima_effectiveness, yego_lima_movement_analytics, yego_lima_rna_priority, yego_lima_rna_pilot
 import logging
 import time
 import uuid
@@ -196,6 +196,22 @@ app.include_router(yego_lima_v2_pipeline.router)
 
 from app.routers import growth_health as growth_health_router
 app.include_router(growth_health_router.router)
+
+app.include_router(yego_lima_taxonomy.router)
+
+app.include_router(yego_lima_lifecycle.router)
+
+app.include_router(yego_lima_explainability.router)
+
+app.include_router(yego_lima_export.router)
+
+app.include_router(yego_lima_effectiveness.router)
+
+app.include_router(yego_lima_movement_analytics.router)
+
+app.include_router(yego_lima_rna_priority.router)
+
+app.include_router(yego_lima_rna_pilot.router)
 
 @app.on_event("startup")
 async def startup_event():

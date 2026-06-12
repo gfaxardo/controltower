@@ -14,7 +14,7 @@ function logFallback(reason) {
   });
 }
 
-export function useOmniviewV2Matrix(sourceSystem = 'CT_TRIPS_2026', grain = 'day', metricId = 'orders', dateFrom = null, dateTo = null, shellData = null) {
+export function useOmniviewV2Matrix(sourceSystem = 'CT_TRIPS_2026', grain = 'day', metricId = 'orders', dateFrom = null, dateTo = null, shellData = null, country = 'peru', city = 'lima') {
   const [matrixData, setMatrixData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -34,7 +34,7 @@ export function useOmniviewV2Matrix(sourceSystem = 'CT_TRIPS_2026', grain = 'day
     setUsingFallback(false);
 
     try {
-      const params = { source_system: sourceSystem, grain, metric_id: metricId };
+      const params = { source_system: sourceSystem, grain, metric_id: metricId, country, city };
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
 

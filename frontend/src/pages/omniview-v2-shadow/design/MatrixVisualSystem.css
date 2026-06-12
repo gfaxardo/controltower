@@ -132,6 +132,19 @@
   color: var(--ov2-text-muted);
 }
 
+/* ── Signal: Delta directions ────────────────────────── */
+.ov2-cell--delta-up {
+  border-left: 2px solid #16a34a;
+}
+
+.ov2-cell--delta-down {
+  border-left: 2px solid #dc2626;
+}
+
+.ov2-cell--delta-flat {
+  border-left: 2px solid #9ca3af;
+}
+
 .ov2-cell--future {
   background: var(--ov2-bg-disabled);
   color: var(--ov2-text-muted);
@@ -277,8 +290,22 @@
 
 /* ── Delta ─────────────────────────────────────────────── */
 .ov2-delta {
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 9px;
+  font-weight: 600;
+  font-family: var(--ov2-font-mono);
+  opacity: 0.85;
+}
+
+.ov2-delta--up {
+  color: #16a34a;
+}
+
+.ov2-delta--down {
+  color: #dc2626;
+}
+
+.ov2-delta--flat {
+  color: #6b7280;
 }
 
 .ov2-delta--match {

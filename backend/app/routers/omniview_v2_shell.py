@@ -34,6 +34,8 @@ def get_shell(
     date_to: str = Query(default=None),
     country: str = Query(default="peru"),
     city: str = Query(default="lima"),
+    business_slice_name: str = Query(default=None),
+    park_id: str = Query(default=None),
     allow_runtime: bool = Query(default=False),
 ):
     """Full product shell with all sections for a source/grain. Reads snapshot if available."""
@@ -54,8 +56,12 @@ def get_shell(
         }
 
     filters = {"country": country, "city": city}
+    if business_slice_name:
+        filters["business_slice_name"] = business_slice_name
+    if park_id:
+        filters["park_id"] = park_id
     if source_system == "YANGO_API_RAW":
-        filters = {"park_id": "08e20910d81d42658d4334d3f6d10ac0"}
+        filters = {"park_id": park_id or "08e20910d81d42658d4334d3f6d10ac0"}
 
     response = build_shell(
         source_system=source_system,

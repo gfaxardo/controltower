@@ -22,11 +22,17 @@ function OmniviewV2ShadowPage() {
   const [grain, setGrain] = useState('day');
   const [metricId, setMetricId] = useState('orders');
   const [viewMode, setViewMode] = useState('real');
-  const [dateFrom, setDateFrom] = useState('');  // Will be set by operating-date
+  const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [country, setCountry] = useState('peru');
+  const [city, setCity] = useState('lima');
+  const [businessSlice, setBusinessSlice] = useState('');
+  const [parkId, setParkId] = useState('');
   const [selectedCell, setSelectedCell] = useState(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [operatingDate, setOperatingDate] = useState(null);
+  const [statusBarOpen, setStatusBarOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // On mount: fetch operating date and set defaults
   useEffect(() => {
@@ -63,11 +69,11 @@ function OmniviewV2ShadowPage() {
   }, [grain, operatingDate]);
 
   const { data: shellData, loading: shellLoading, error: shellError, refetch: shellRefetch } = useOmniviewV2Shell(
-    sourceSystem, grain, dateFrom || null, dateTo || null
+    sourceSystem, grain, dateFrom || null, dateTo || null, country, city, businessSlice || null, parkId || null
   );
 
   const { matrixData: realMatrixData, usingFallback, error: matrixError, refetch: matrixRefetch } = useOmniviewV2Matrix(
-    sourceSystem, grain, metricId, dateFrom || null, dateTo || null, shellData
+    sourceSystem, grain, metricId, dateFrom || null, dateTo || null, shellData, country, city
   );
 
   const { planData, loading: planLoading } = useOmniviewV2PlanReal(
@@ -164,6 +170,15 @@ function OmniviewV2ShadowPage() {
 
   const freshness = shellData?.freshness?.last_refreshed_at || '';
 
+  // Keyboard: Escape exits fullscreen
+  useEffect(() => {
+    const handleKey = (e) => {
+      if (e.key === 'Escape' && isFullscreen) setIsFullscreen(false);
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [isFullscreen]);
+
   // Don't render until operating date is loaded and dates are set
   if (!dateFrom || !operatingDate) {
     return (
@@ -196,7 +211,15 @@ function OmniviewV2ShadowPage() {
   }
 
   return (
-    <div className="ov2-matrix-shell" style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: '#f9fafb' }}>
+    <div className="ov2-matrix-shell" style={{
+      height: isFullscreen ? '100vh' : '100vh',
+      width: isFullscreen ? '100vw' : undefined,
+      position: isFullscreen ? 'fixed' : undefined,
+      top: isFullscreen ? 0 : undefined,
+      left: isFullscreen ? 0 : undefined,
+      zIndex: isFullscreen ? 9999 : undefined,
+      display: 'flex', flexDirection: 'column', background: '#f9fafb'
+    }}>
       {/* Safety Banner */}
       {sourceSystem === 'YANGO_API_RAW' && (
         <div style={{
@@ -211,7 +234,7 @@ function OmniviewV2ShadowPage() {
         </div>
       )}
 
-      {/* Fallback Banner — temporary adapter active */}
+      {/* Fallback Banner */}
       {usingFallback && (
         <div style={{
           background: '#fef3c7',
@@ -225,6 +248,37 @@ function OmniviewV2ShadowPage() {
         </div>
       )}
 
+      {/* MVP Banner */}
+      <div style={{
+        background: '#eff6ff',
+        color: '#1d4ed8',
+        fontSize: 11,
+        textAlign: 'center',
+        padding: '2px 16px',
+        fontWeight: 500,
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 8,
+      }}>
+        <span>OV2 MVP — Shadow Mode | V1 remains default</span>
+        <button
+          onClick={() => setIsFullscreen(!isFullscreen)}
+          title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+          style={{
+            padding: '2px 8px',
+            fontSize: 10,
+            border: '1px solid #bfdbfe',
+            borderRadius: 3,
+            background: '#fff',
+            cursor: 'pointer',
+            color: '#1d4ed8',
+          }}
+        >
+          {isFullscreen ? '[Esc] Exit Fullscreen' : '[F] Fullscreen'}
+        </button>
+      </div>
+
       {/* Command Header */}
       <OmniviewV2CommandHeader
         sourceSystem={sourceSystem}
@@ -232,12 +286,20 @@ function OmniviewV2ShadowPage() {
         grain={grain}
         dateFrom={dateFrom}
         dateTo={dateTo}
+        country={country}
+        city={city}
+        businessSlice={businessSlice}
+        parkId={parkId}
         coveragePct={coverage.coverage_pct}
         freshness={freshness}
         onSourceChange={handleSourceChange}
         onGrainChange={setGrain}
         onDateFromChange={setDateFrom}
         onDateToChange={setDateTo}
+        onCountryChange={setCountry}
+        onCityChange={setCity}
+        onBusinessSliceChange={setBusinessSlice}
+        onParkIdChange={setParkId}
       />
 
       {/* Context Bar */}
@@ -250,51 +312,6 @@ function OmniviewV2ShadowPage() {
       />
 
       {/* Mode + KPI Selector */}
-      <div style={{ display: 'flex', gap: 8, padding: '6px 16px', background: '#fafafa', borderBottom: '1px solid var(--ov2-border-color)', fontSize: 12, alignItems: 'center' }}>
-        <span style={{ fontWeight: 600, color: '#6b7280', marginRight: 4 }}>Mode:</span>
-        <button onClick={() => setViewMode('real')} style={{
-          padding: '4px 12px', borderRadius: 4, border: viewMode === 'real' ? '2px solid #22c55e' : '1px solid #e5e7eb',
-          background: viewMode === 'real' ? '#f0fdf4' : '#fff', cursor: 'pointer', fontSize: 12, fontWeight: viewMode === 'real' ? 600 : 400,
-          color: viewMode === 'real' ? '#166534' : '#6b7280',
-        }}>Real Matrix</button>
-        <button onClick={() => { setViewMode('plan_real'); setGrain('month'); }} style={{
-          padding: '4px 12px', borderRadius: 4, border: viewMode === 'plan_real' ? '2px solid #6366f1' : '1px solid #e5e7eb',
-          background: viewMode === 'plan_real' ? '#eef2ff' : '#fff', cursor: 'pointer', fontSize: 12, fontWeight: viewMode === 'plan_real' ? 600 : 400,
-          color: viewMode === 'plan_real' ? '#3730a3' : '#6b7280',
-        }}>Plan vs Real (Monthly)</button>
-        <span style={{ color: '#d1d5db', margin: '0 4px' }}>|</span>
-        <span style={{ fontWeight: 600, color: '#6b7280', marginRight: 4 }}>KPI:</span>
-        {['orders','revenue','active_drivers','avg_ticket','trips_per_driver'].map((m) => (
-          <button key={m} onClick={() => setMetricId(m)} style={{
-            padding: '4px 10px', borderRadius: 4, border: metricId === m ? '2px solid #3b82f6' : '1px solid #e5e7eb',
-            background: metricId === m ? '#eff6ff' : '#fff', cursor: 'pointer', fontSize: 11, fontWeight: metricId === m ? 600 : 400,
-            color: metricId === m ? '#1d4ed8' : '#6b7280',
-          }}>
-            {m === 'orders' ? 'Trips' : m === 'revenue' ? 'Revenue' : m === 'active_drivers' ? 'Drivers' : m === 'avg_ticket' ? 'Ticket' : 'TPD'}
-          </button>
-        ))}
-      </div>
-      )}
-      <OmniviewV2ContextBar
-        sourceSystem={sourceSystem}
-        grain={grain}
-        dateFrom={dateFrom}
-        dateTo={dateTo}
-        selectedSection={null}
-      />
-
-      {/* KPI Selector Bar */}
-      <div style={{ display: 'flex', gap: 4, padding: '6px 16px', background: '#fafafa', borderBottom: '1px solid var(--ov2-border-color)', fontSize: 12 }}>
-        {['orders','revenue','active_drivers','avg_ticket','trips_per_driver'].map((m) => (
-          <button key={m} onClick={() => setMetricId(m)} style={{
-            padding: '4px 12px', borderRadius: 4, border: metricId === m ? '2px solid #3b82f6' : '1px solid #e5e7eb',
-            background: metricId === m ? '#eff6ff' : '#fff', cursor: 'pointer', fontSize: 12, fontWeight: metricId === m ? 600 : 400,
-            color: metricId === m ? '#1d4ed8' : '#6b7280',
-          }}>
-            {m === 'orders' ? 'Trips' : m === 'revenue' ? 'Revenue' : m === 'active_drivers' ? 'Drivers' : m === 'avg_ticket' ? 'Avg Ticket' : 'TPD'}
-          </button>
-        ))}
-      </div>
 
       {/* Alert Strip */}
       <OmniviewV2AlertStrip warnings={allWarnings} onAlertClick={handleAlertClick} />
@@ -327,6 +344,40 @@ function OmniviewV2ShadowPage() {
 
       {/* Section Shell */}
       <OmniviewV2SectionShell sections={filteredSections} />
+
+      {/* Operational Status Bar */}
+      <div style={{ borderBottom: '1px solid var(--ov2-border-color)' }}>
+        <button onClick={() => setStatusBarOpen(!statusBarOpen)} style={{
+          width: '100%', padding: '6px 16px', background: statusBarOpen ? '#f3f4f6' : '#fafafa',
+          border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#6b7280',
+          display: 'flex', alignItems: 'center', gap: 8
+        }}>
+          <span style={{ transform: statusBarOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform .2s', display: 'inline-block' }}>{'>'}</span>
+          Status{' '}
+          <span style={{ color: operatingDate?.freshness_status === 'FRESH' ? '#16a34a' : '#dc2626', fontWeight: 400 }}>
+            {operatingDate?.freshness_status || 'UNKNOWN'}
+          </span>
+          <span style={{ color: '#9ca3af' }}>|</span>
+          <span style={{ fontWeight: 400, color: '#6b7280' }}>Date: {operatingDate?.latest_closed_date || '—'}</span>
+          <span style={{ color: '#9ca3af' }}>|</span>
+          <span style={{ fontWeight: 400, color: '#6b7280' }}>Coverage: {coverage?.coverage_pct != null ? `${coverage.coverage_pct}%` : '—'}</span>
+          <span style={{ color: '#9ca3af' }}>|</span>
+          <span style={{ fontWeight: 400, color: '#6b7280' }}>Source: {shellData?.canonical_ready ? 'CANONICAL' : 'SHADOW'}</span>
+        </button>
+        {statusBarOpen && (
+          <div style={{ padding: '8px 16px', background: '#f9fafb', fontSize: 11, display: 'flex', flexWrap: 'wrap', gap: 16, borderTop: '1px solid var(--ov2-border-color)' }}>
+            <div><strong>Operating:</strong> {operatingDate?.latest_closed_date || '—'}</div>
+            <div><strong>Max Available:</strong> {operatingDate?.max_available_date || '—'}</div>
+            <div><strong>Has Today:</strong> {operatingDate?.has_today_data ? 'Yes' : 'No'}</div>
+            <div><strong>Freshness:</strong> <span style={{ color: operatingDate?.freshness_status === 'FRESH' ? '#16a34a' : '#dc2626' }}>{operatingDate?.freshness_status || '—'}</span></div>
+            <div><strong>Coverage:</strong> {coverage?.coverage_pct != null ? `${coverage.coverage_pct}%` : '—'}</div>
+            <div><strong>Canonical:</strong> {shellData?.canonical_ready ? 'Yes' : 'No'}</div>
+            <div><strong>Fallback:</strong> {usingFallback ? 'ACTIVE' : 'None'}</div>
+            <div><strong>Source:</strong> {sourceSystem}</div>
+            <div><strong>Grain:</strong> {grain}</div>
+          </div>
+        )}
+      </div>
 
       {/* Matrix Zone */}
       <div id="ov2-matrix-zone" style={{ flex: 1, overflow: 'hidden', margin: '0 16px 0', borderTop: '1px solid var(--ov2-border-color)' }}>

@@ -28,6 +28,7 @@ from app.services.omniview_v2_matrix_view_model_service import build_matrix_resp
 from app.services.omniview_v2_snapshot_service import get_served_payload
 from app.services.omniview_v2_plan_real_service import build_monthly_plan_real_matrix
 from app.repositories.omniview_v2_plan_real_repository import get_plan_versions
+from app.services.ov2_usage_metrics import get_usage_metrics, record_v2_session
 
 router = APIRouter(prefix="/ops/omniview-v2", tags=["omniview_v2"])
 
@@ -98,10 +99,13 @@ def get_matrix(
     date_to: str = Query(default=None),
     country: str = Query(default="peru"),
     city: str = Query(default="lima"),
+    business_slice_name: str = Query(default=None),
+    park_id: str = Query(default=None),
     allow_runtime: bool = Query(default=False),
     metric_id: str = Query(default="orders"),
 ):
     """Get MatrixResponse. Snapshot-first. No runtime without explicit flag."""
+    record_v2_session(grain=grain, source=source_system)
     # Single-day: try snapshot first
     if date_from and date_from == date_to:
         from app.services.omniview_v2_snapshot_service import get_served_payload
@@ -112,6 +116,10 @@ def get_matrix(
     # Multi-day ranges: allow runtime (matrix is fast ~750ms)
     if date_from and date_from != date_to:
         filters = {"country": country, "city": city}
+        if business_slice_name:
+            filters["business_slice_name"] = business_slice_name
+        if park_id:
+            filters["park_id"] = park_id
         if source_system == "YANGO_API_RAW":
             filters = {"park_id": "08e20910d81d42658d4334d3f6d10ac0"}
         response = build_matrix_response(
@@ -138,8 +146,12 @@ def get_matrix(
 
     # Single-day with allow_runtime=true: proceed but will be slow
     filters = {"country": country, "city": city}
+    if business_slice_name:
+        filters["business_slice_name"] = business_slice_name
+    if park_id:
+        filters["park_id"] = park_id
     if source_system == "YANGO_API_RAW":
-        filters = {"park_id": "08e20910d81d42658d4334d3f6d10ac0"}
+        filters = {"park_id": park_id or "08e20910d81d42658d4334d3f6d10ac0"}
     response = build_matrix_response(
         source_system=source_system, grain=grain,
         date_from=date_from, date_to=date_to,
@@ -232,6 +244,12 @@ def get_plan_real_monthly(
 def get_plan_real_versions():
     """List available plan versions."""
     return {"versions": get_plan_versions()}
+
+
+@router.get("/usage-metrics")
+def get_usage_metrics_endpoint():
+    """Operational trial usage metrics. No PII. Aggregated only."""
+    return get_usage_metrics()
 
 
 @router.get("/infra-health")

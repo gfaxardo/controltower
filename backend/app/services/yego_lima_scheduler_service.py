@@ -1,5 +1,5 @@
 """
-YEGO Lima Growth — Scheduler Service (LG-INFRA-R1.2 / LG-CF-HOTFIX-1B)
+YEGO Lima Growth — Scheduler Service (LG-INFRA-R1.2 / LG-CF-HOTFIX-1B / LG-REL-1A)
 
 Dual-mode scheduler:
 A) DAILY CLOSED PIPELINE — once per day, after data close, builds all operational layers
@@ -8,6 +8,7 @@ B) LIVE 5-MIN MONITORING — maintains API freshness, monitors results, NO rebui
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict
 
@@ -20,6 +21,8 @@ TABLE_TICK_LOG = "growth.yego_lima_scheduler_tick_log"
 SCHEDULER_NAME = "lima_growth_refresh"
 
 TICK_LOCK_ID = 9001
+MAX_DB_RETRIES = 3
+DB_RETRY_DELAY_SECONDS = 2
 
 
 def _now():
