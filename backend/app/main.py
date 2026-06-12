@@ -5,7 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from app.settings import settings
 from app.startup_checks import run_startup_checks
 from app.startup_state import set_startup_report
-from app.routers import auth, plan, real, core, ops, health, ingestion, phase2b, phase2c, driver_lifecycle, driver_lifecycle_diagnostic, driver_behavior_benchmarking, controltower, observability, real_vs_projection, diagnostics, ops_refresh, fraud, behavioral_pattern_diagnosis, behavioral_mvp, operational_behavioral_intelligence, recoverability_intelligence, yango_loyalty, drivers, yego_pro_profitability, yego_lima_growth_lab, yego_lima_growth_control_loop, yego_lima_executive, yego_lima_pipeline, yego_lima_growth_state, yego_lima_pilot, yego_lima_universe, yego_lima_productivity, yego_lima_freshness, yego_lima_opportunity_policy, yego_lima_loopcontrol_export, yego_lima_capacity, yego_lima_priority_allocation, yego_lima_channel_allocation, yego_lima_opportunity_worklist, yego_lima_assignment_queue, yego_lima_queue_export, yego_lima_loopcontrol_result_sync, yego_lima_risk_panel, yego_lima_impact, yego_lima_impact_dashboard, yego_lima_movement, yego_lima_attribution, yego_lima_today_action_plan, yego_lima_allocation_trace, yego_lima_program_capacity_policy, yego_lima_daily_refresh, yego_lima_scheduler, yego_lima_operational_summary, yego_lima_freshness_health, yego_lima_intraday_signal, yego_lima_list_history, yego_lima_program_explainability, yego_lima_freshness_chain, yego_lima_operational_truth, yego_lima_program_status, yego_lima_queue_operational, yego_lima_todays_action_plan, yego_lima_result_sync, yego_lima_diagnostic_trace, yego_lima_driver_history, yego_lima_governance, yego_lima_movement_router, yego_lima_control_loop_router, omniview_v2, omniview_v2_shell, omniview_v2_shadow
+from app.routers import auth, plan, real, core, ops, health, ingestion, phase2b, phase2c, driver_lifecycle, driver_lifecycle_diagnostic, driver_behavior_benchmarking, controltower, observability, real_vs_projection, diagnostics, ops_refresh, fraud, behavioral_pattern_diagnosis, behavioral_mvp, operational_behavioral_intelligence, recoverability_intelligence, yango_loyalty, drivers, yego_pro_profitability, yego_lima_growth_lab, yego_lima_growth_control_loop, yego_lima_executive, yego_lima_pipeline, yego_lima_growth_state, yego_lima_pilot, yego_lima_universe, yego_lima_productivity, yego_lima_freshness, yego_lima_opportunity_policy, yego_lima_loopcontrol_export, yego_lima_capacity, yego_lima_priority_allocation, yego_lima_channel_allocation, yego_lima_opportunity_worklist, yego_lima_assignment_queue, yego_lima_queue_export, yego_lima_loopcontrol_result_sync, yego_lima_risk_panel, yego_lima_impact, yego_lima_impact_dashboard, yego_lima_movement, yego_lima_attribution, yego_lima_today_action_plan, yego_lima_allocation_trace, yego_lima_program_capacity_policy, yego_lima_daily_refresh, yego_lima_scheduler, yego_lima_operational_summary, yego_lima_freshness_health, yego_lima_intraday_signal, yego_lima_list_history, yego_lima_program_explainability, yego_lima_freshness_chain, yego_lima_operational_truth, yego_lima_program_status, yego_lima_queue_operational, yego_lima_todays_action_plan, yego_lima_result_sync, yego_lima_diagnostic_trace, yego_lima_driver_history, yego_lima_governance, yego_lima_movement_router, yego_lima_control_loop_router, omniview_v2, omniview_v2_shell, omniview_v2_shadow, yego_lima_v2_pipeline
 import logging
 import time
 import uuid
@@ -192,6 +192,10 @@ app.include_router(yego_lima_control_loop_router.router)
 app.include_router(omniview_v2.router)
 app.include_router(omniview_v2_shell.router)
 app.include_router(omniview_v2_shadow.router)
+app.include_router(yego_lima_v2_pipeline.router)
+
+from app.routers import growth_health as growth_health_router
+app.include_router(growth_health_router.router)
 
 @app.on_event("startup")
 async def startup_event():
@@ -361,6 +365,46 @@ async def startup_event():
                     logger.info("Lima Growth autonomous scheduler programado: cada 5 min. (overlap-protected)")
                 except Exception as e:
                     logger.warning("No se pudo registrar Lima Growth autonomous scheduler: %s", e)
+
+                # LG-SCH-2A — Lima Growth V2 Daily Pipeline Shadow Scheduler (04:45 AM)
+                try:
+                    from app.services.yego_lima_v2_daily_pipeline_service import (
+                        run_lima_growth_v2_daily_pipeline,
+                    )
+                    from datetime import date as _date, timedelta as _timedelta
+
+                    def _v2_daily_pipeline_wrapper():
+                        yesterday = (_date.today() - _timedelta(days=1)).isoformat()
+                        logger.info("V2 daily pipeline shadow starting for %s", yesterday)
+                        result = run_lima_growth_v2_daily_pipeline(
+                            target_date=yesterday,
+                            triggered_by="scheduler",
+                        )
+                        logger.info(
+                            "V2 daily pipeline shadow done: status=%s steps=%d",
+                            result.get("overall_status"),
+                            len(result.get("steps", [])),
+                        )
+
+                    _omniview_real_refresh_scheduler.add_job(
+                        _v2_daily_pipeline_wrapper,
+                        "cron",
+                        hour=4,
+                        minute=45,
+                        id="lima_growth_v2_daily_pipeline",
+                        replace_existing=True,
+                        max_instances=1,
+                        coalesce=True,
+                        misfire_grace_time=1800,
+                    )
+                    jobs_registered.append("lima_growth_v2_daily_pipeline")
+                    logger.info(
+                        "Lima Growth V2 daily pipeline shadow programado: 04:45 AM diario."
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "No se pudo registrar Lima Growth V2 daily pipeline: %s", e
+                    )
 
                 _omniview_real_refresh_scheduler.start()
                 attach_omniview_scheduler(_omniview_real_refresh_scheduler)
