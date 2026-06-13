@@ -17,9 +17,12 @@ LIMA_TZ = timezone(timedelta(hours=-5))
 
 COMPONENTS = [
     ("raw_orders", "growth.yango_lima_orders_raw", "ended_at"),
+    ("driver_history_weekly", "growth.yango_lima_driver_history_weekly", "week_start_date"),
     ("driver_state", "growth.yango_lima_driver_state_snapshot", "snapshot_date"),
     ("eligibility", "growth.yango_lima_program_eligibility_daily", "eligibility_date"),
+    ("opportunity", "growth.yango_lima_daily_opportunity_list", "opportunity_date"),
     ("prioritized", "growth.yango_lima_prioritized_opportunity_daily", "opportunity_date"),
+    ("control_loop", "growth.yego_lima_control_loop_state", "created_at"),
     ("queue", "growth.yego_lima_assignment_queue", "assignment_date"),
     ("daily_registry", "growth.yego_lima_refresh_run_log", "operational_data_date"),
     ("snapshot_registry", "growth.yego_lima_freshness_registry", "last_refresh_at"),
@@ -50,13 +53,15 @@ def _refresh_freshness_registry(op_date: str = None):
                 latency = None
 
             cur.execute("""
-                UPDATE growth.yego_lima_freshness_registry
-                SET freshness_status = %(st)s,
-                    last_refresh_at = %(now)s,
-                    max_data_date = %(mdd)s::date,
-                    latency_minutes = %(lat)s,
-                    updated_at = %(now)s
-                WHERE component = %(c)s
+                INSERT INTO growth.yego_lima_freshness_registry
+                    (component, freshness_status, last_refresh_at, max_data_date, latency_minutes, updated_at)
+                VALUES (%(c)s, %(st)s, %(now)s, %(mdd)s::date, %(lat)s, %(now)s)
+                ON CONFLICT (component) DO UPDATE SET
+                    freshness_status = EXCLUDED.freshness_status,
+                    last_refresh_at = EXCLUDED.last_refresh_at,
+                    max_data_date = EXCLUDED.max_data_date,
+                    latency_minutes = EXCLUDED.latency_minutes,
+                    updated_at = EXCLUDED.updated_at
             """, {
                 "st": fstatus,
                 "now": now,

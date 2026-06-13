@@ -23,6 +23,9 @@ async def freshness_health():
         cur.execute("SELECT MAX(snapshot_date) FROM growth.yango_lima_driver_state_snapshot")
         driver_ts = cur.fetchone()[0]
 
+        cur.execute("SELECT MAX(week_start_date) FROM growth.yango_lima_driver_history_weekly")
+        hist_weekly_ts = cur.fetchone()[0]
+
         cur.execute("SELECT MAX(generated_at) FROM growth.yango_lima_prioritized_opportunity_daily")
         opp_ts = cur.fetchone()[0]
 
@@ -35,8 +38,15 @@ async def freshness_health():
         cur.execute("SELECT MAX(eligibility_date) FROM growth.yango_lima_program_eligibility_daily")
         prog_ts = cur.fetchone()[0]
 
+        cur.execute("SELECT MAX(opportunity_date) FROM growth.yango_lima_daily_opportunity_list")
+        opp_list_ts = cur.fetchone()[0]
+
+        cur.execute("SELECT MAX(created_at) FROM growth.yego_lima_control_loop_state")
+        cl_ts = cur.fetchone()[0]
+
     sources = [
         compute_freshness("driver_snapshot", driver_ts, "growth.yango_lima_driver_state_snapshot"),
+        compute_freshness("driver_history_weekly", hist_weekly_ts, "growth.yango_lima_driver_history_weekly"),
         compute_freshness("opportunity_engine", opp_ts, "growth.yango_lima_prioritized_opportunity_daily"),
         compute_freshness("assignment_queue", None, "growth.yango_lima_assignment_queue"),
         compute_freshness("exports", export_ts, "growth.yango_lima_loopcontrol_campaign_export"),
@@ -44,6 +54,8 @@ async def freshness_health():
         compute_freshness("capacity", None, "growth.yango_lima_capacity_config"),
         compute_freshness("program_eligibility", prog_ts, "growth.yango_lima_program_eligibility_daily"),
         compute_freshness("policy_config", policy_ts, "growth.yango_lima_opportunity_policy_config"),
+        compute_freshness("opportunity", opp_list_ts, "growth.yango_lima_daily_opportunity_list"),
+        compute_freshness("control_loop", cl_ts, "growth.yego_lima_control_loop_state"),
     ]
 
     return {

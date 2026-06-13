@@ -651,6 +651,20 @@ def autonomous_tick() -> Dict[str, Any]:
         if cascade_required:
             pipeline_steps = []
             pipeline_failed = False
+
+            # FH-1: Refresh weekly history before cascade (driver_state depends on it)
+            try:
+                from app.services.yego_lima_growth_history_service import refresh_weekly_history
+                wh_result = refresh_weekly_history()
+                result["weekly_history"] = wh_result
+                if wh_result.get("refreshed"):
+                    pipeline_steps.append({"step": "weekly_history", "status": "SUCCESS",
+                                           "weekly_rows": wh_result.get("weekly_rows"),
+                                           "unique_drivers": wh_result.get("unique_drivers")})
+            except Exception as e:
+                result["weekly_history"] = {"error": str(e)[:200]}
+                logger.warning("Weekly history refresh failed: %s", e)
+
             for target_date in target_dates:
                 if pipeline_failed:
                     break

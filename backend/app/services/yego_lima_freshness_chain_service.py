@@ -20,6 +20,7 @@ LINEAGE_SOURCE = {
     "prioritized": "opportunity",
     "queue": "prioritized",
     "serving": "queue",
+    "control_loop": "queue",
 }
 
 
@@ -40,6 +41,7 @@ def get_freshness_chain_status() -> Dict[str, Any]:
             ("prioritized", "growth", "yango_lima_prioritized_opportunity_daily", "opportunity_date"),
             ("queue", "growth", "yego_lima_assignment_queue", "assignment_date"),
             ("serving", "growth", "yego_lima_serving_fact", "fact_date"),
+            ("control_loop", "growth", "yego_lima_control_loop_state", "created_at"),
         ]
 
         for label, schema, table, col in queries:

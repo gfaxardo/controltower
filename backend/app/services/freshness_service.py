@@ -22,6 +22,9 @@ THRESHOLDS: Dict[str, int] = {
     "capacity": 10080,             # 7d
     "program_eligibility": 1440,   # 24h
     "policy_config": 10080,        # 7d
+    "driver_history_weekly": 10080,       # 7d (weekly grain)
+    "opportunity": 1440,                  # 24h
+    "control_loop": 480,                  # 8h
 }
 
 DOMAIN_LABELS: Dict[str, str] = {
@@ -33,6 +36,9 @@ DOMAIN_LABELS: Dict[str, str] = {
     "capacity": "Capacity Config",
     "program_eligibility": "Program Eligibility",
     "policy_config": "Policy Config",
+    "driver_history_weekly": "Driver History Weekly",
+    "opportunity": "Daily Opportunity List",
+    "control_loop": "Control Loop State",
 }
 
 

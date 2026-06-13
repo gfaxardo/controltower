@@ -434,6 +434,44 @@ def _estimate_backfill(from_date: date, to_date: date) -> Dict[str, Any]:
         conn.close()
 
 
+def refresh_weekly_history() -> Dict[str, Any]:
+    """
+    FH-1: Governed weekly history refresh for autonomous tick.
+    Checks if weekly table is behind daily table and runs _build_weekly_sql_bulk() if needed.
+    Idempotent UPSERT — safe to call multiple times.
+    """
+    params = _get_connection_params()
+    params["options"] = "-c statement_timeout=30000"
+    conn = psycopg2.connect(**params)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT MAX(week_start_date) FROM growth.yango_lima_driver_history_weekly")
+        max_week = cur.fetchone()[0]
+        cur.execute("SELECT MAX(date) FROM growth.yango_lima_driver_history_daily")
+        max_daily = cur.fetchone()[0]
+        cur.close()
+    finally:
+        conn.close()
+
+    if not max_daily:
+        return {"refreshed": False, "status": "NOOP", "reason": "No daily data available"}
+
+    if max_week:
+        latest_complete_monday = date.today() - timedelta(days=date.today().weekday())
+        if isinstance(max_week, datetime):
+            max_week_d = max_week.date()
+        elif isinstance(max_week, str):
+            max_week_d = date.fromisoformat(max_week[:10])
+        else:
+            max_week_d = max_week
+
+        if max_week_d >= latest_complete_monday - timedelta(days=7):
+            return {"refreshed": False, "status": "NOOP", "reason": f"Weekly up to date (latest: {max_week_d})"}
+
+    result = _build_weekly_sql_bulk()
+    return {"refreshed": True, "status": "REFRESHED", **result}
+
+
 def continuity_check() -> Dict[str, Any]:
     park_id = (settings.YANGO_LIMA_PARK_ID or "").strip()
     cutover = settings.LIMA_GROWTH_API_CUTOVER_DATE
