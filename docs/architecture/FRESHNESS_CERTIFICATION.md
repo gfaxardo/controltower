@@ -562,6 +562,72 @@ All conditions met:
 - Scheduler guard prevents unnecessary weekly rebuilds
 - One full week cycle observation recommended before declaring CLOSED
 
+---
+
+### FH-1B Freshness Semantics & SLA Calibration
+
+**Date:** 2026-06-13
+**FH-1 commit base:** eb3a3ce806e055b7f9395cd7211dc18e37f56d04
+
+#### Problem Detected
+
+Post-FH-1A serving freshness fact showed two false-positive DEGRADED statuses:
+
+| Asset | Status | Age | SLA | Root Cause |
+|-------|--------|-----|-----|------------|
+| `driver_history_weekly` | DEGRADED | 301.60h | 168h | SLA too tight for weekly grain. Latest `week_start_date` is 06-01 (last completed week). Raw age is 12.5d but the table IS current — the week of 06-08 hasn't ended yet. |
+| `daily_opportunity_list` | DEGRADED | 13.60h | 8h | SLA too tight for daily grain. Today's list exists (28,128 rows, generated at 06:23). The audit measures from midnight (`opportunity_date`), not generation time. An 8h SLA fires by 08:00 even though the list is valid all day. |
+
+#### DB Evidence (Read-Only)
+
+```
+driver_history_weekly:
+  max_week = 2026-06-01
+  last_completed_week_start = 2026-06-01
+  is max_week >= last_completed? TRUE → table is current
+
+daily_opportunity_list:
+  today = 2026-06-13
+  rows_for_today = 28,128
+  is today's list present? YES → table is current
+```
+
+#### SLA Calibration
+
+| Asset | Before SLA | After SLA | Justification |
+|-------|-----------|-----------|---------------|
+| `driver_history_weekly` | 168h (7d) | 336h (14d) | Weekly grain: `week_start_date` is Monday of the last completed week. During the current week (Mon-Sun), the age is 7-13 days. 14d SLA = one full week buffer. Table is HEALTHY as long as it has the last completed week. |
+| `daily_opportunity_list` | 8h | 24h | Daily grain: list is generated once per day (morning ~06:23). Valid for the entire calendar day. 24h SLA allows the list to be HEALTHY until the next day's generation. The audit measures from `opportunity_date` (midnight), so 24h correctly represents "today's list must exist." |
+| `control_loop_state` | 8h (unchanged) | 8h | Already HEALTHY. Correct SLA for event-driven state table refreshed every 5 min. |
+
+Freshness service thresholds also calibrated:
+- `driver_history_weekly`: 10080 → 20160 min (matches 336h SLA)
+
+#### Files Changed
+
+| File | Change |
+|------|--------|
+| `serving_freshness_audit_service.py` | `driver_history_weekly` SLA 168 → 336; `daily_opportunity_list` SLA 8 → 24 |
+| `freshness_service.py` | `driver_history_weekly` threshold 10080 → 20160 min |
+
+#### Post-Calibration Result
+
+| Asset | Before | After | Age | SLA | Status |
+|-------|--------|-------|-----|-----|--------|
+| `driver_history_weekly` | DEGRADED | **HEALTHY** | 301.95h | 336h | Correct: table has last completed week |
+| `daily_opportunity_list` | DEGRADED | **HEALTHY** | 13.95h | 24h | Correct: today's list exists |
+| `control_loop_state` | HEALTHY | **HEALTHY** | 2.51h | 8h | Correct: unchanged |
+
+#### FH-1B Decision: **GO**
+
+Both false-positive DEGRADED statuses resolved by calibrating SLAs to match the actual data grain. No business logic changed. No data changed.
+
+#### Growth Machine Closure Status Update
+
+- All 5 tables have governed freshness with HEALTHY serving_freshness_fact status
+- Growth Machine is **Closure Candidate**
+- Recommended: observe one full week cycle before declaring CLOSED
+
 ### What Has Changed (FH-1 Remediation)
 
 - 7 backend service/routers modified (+111 lines total).

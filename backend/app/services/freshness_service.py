@@ -22,7 +22,7 @@ THRESHOLDS: Dict[str, int] = {
     "capacity": 10080,             # 7d
     "program_eligibility": 1440,   # 24h
     "policy_config": 10080,        # 7d
-    "driver_history_weekly": 10080,       # 7d (weekly grain)
+    "driver_history_weekly": 20160,       # 14d (weekly grain — complete week + buffer)
     "opportunity": 1440,                  # 24h
     "control_loop": 480,                  # 8h
 }

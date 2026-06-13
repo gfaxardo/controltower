@@ -194,7 +194,7 @@ SERVING_ASSETS: List[Dict[str, Any]] = [
         "source": "growth.yango_lima_program_eligibility_daily + growth.yango_lima_driver_state_snapshot",
         "scheduler": "lima_growth_autonomous_tick (every 5min)",
         "refresh_method": "build_daily_opportunity_lists per date",
-        "expected_sla_hours": 8,
+        "expected_sla_hours": 24,
         "criticality": STATUS_CRITICAL,
     },
     {
@@ -218,7 +218,7 @@ SERVING_ASSETS: List[Dict[str, Any]] = [
         "source": "growth.yango_lima_driver_history_daily",
         "scheduler": "lima_growth_autonomous_tick (every 5min, conditional)",
         "refresh_method": "refresh_weekly_history per tick (idempotent UPSERT)",
-        "expected_sla_hours": 168,
+        "expected_sla_hours": 336,
         "criticality": STATUS_CRITICAL,
     },
 ]
