@@ -35,8 +35,11 @@ def build_rna_priority() -> Dict[str, Any]:
     with get_db() as conn:
         cur = conn.cursor()
         cur.execute(f"""
-            SELECT ds.driver_profile_id, ds.contactability, ds.cancelled_signal,
-                   ds.is_rna, lc.lifecycle_status, lc.completed_trips_7d,
+            SELECT ds.driver_profile_id,
+                   true AS contactable,
+                   false AS cancelled_signal,
+                   (ds.new_driver_flag = true OR ds.reactivated_flag = true) AS is_rna,
+                   lc.lifecycle_status, lc.completed_trips_7d,
                    lc.completed_trips_30d, lc.days_since_last_completed_trip,
                    tx.elite_tier, tx.loyalty_tier, 0 AS movement_score,
                    pr.program_code
@@ -45,7 +48,8 @@ def build_rna_priority() -> Dict[str, Any]:
             LEFT JOIN {TABLE_TAX} tx ON ds.driver_profile_id = tx.driver_id
             LEFT JOIN {TABLE_MOV} mv ON ds.driver_profile_id = mv.driver_id
             LEFT JOIN {TABLE_PR} pr ON ds.driver_profile_id = pr.driver_profile_id
-            WHERE ds.is_rna = true
+            WHERE ds.snapshot_date = (SELECT MAX(snapshot_date) FROM {TABLE_DS})
+              AND (ds.new_driver_flag = true OR ds.reactivated_flag = true OR ds.declining_flag = true)
         """)
         rows = cur.fetchall()
 

@@ -19,16 +19,16 @@ export default function OverviewTab({ data, loading, errors, onRetry }) {
   }
 
   const totalDrivers = driverState?.total_drivers ?? overview?.universe_total ?? truth?.total_drivers ?? 0
-  const driversWithProgram = overview?.drivers_with_program ?? truth?.drivers_with_program ?? 0
-  const driversWithoutProgram = overview?.drivers_without_program ?? 0
-  const activePrograms = overview?.active_programs ?? truth?.active_programs?.length ?? 0
+  const driversWithProgram = overview?.eligible_total ?? 0
+  const driversWithoutProgram = totalDrivers - driversWithProgram
+  const activePrograms = overview?.by_program?.length ?? truth?.active_programs?.length ?? 0
   const queueReady = overview?.queue_ready ?? 0
   const queueHeld = overview?.queue_held ?? 0
   const movementEntries = movementSummary?.entries ?? movementSummary?.total_entries ?? 0
   const movementExits = movementSummary?.exits ?? movementSummary?.total_exits ?? 0
   const rnaDrivers = data.loyaltySummary?.total_rna ?? 0
 
-  const programDistribution = overview?.program_distribution || truth?.program_distribution || []
+  const programDistribution = overview?.by_program || truth?.program_distribution || []
   const channelUtilization = overview?.channel_utilization || []
 
   return (
@@ -58,10 +58,10 @@ export default function OverviewTab({ data, loading, errors, onRetry }) {
             {programDistribution.map((p) => {
               const pct = totalDrivers > 0 ? (p.count / totalDrivers) * 100 : 0
               return (
-                <div key={p.program || p.code}>
+                <div key={p.program_code || p.code}>
                   <div className="flex justify-between text-xs text-gray-600 mb-0.5">
-                    <span>{p.program || p.code}</span>
-                    <span>{formatNum(p.count)} ({pct.toFixed(1)}%)</span>
+                    <span>{p.program_code || p.program || p.code}</span>
+                    <span>{formatNum(p.prioritized || p.count)} ({pct.toFixed(1)}%)</span>
                   </div>
                   <div className="w-full bg-gray-100 rounded-full h-2">
                     <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${Math.min(pct, 100)}%` }} />

@@ -55,11 +55,11 @@ export default function ProgramsTab({ data, loading, errors, onRetry, onDrilldow
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         {programList.map((program) => {
           const code = program.program_code || program.program || program.code
-          const label = PROGRAM_LABELS[code] || code?.replace('PROGRAM_', '') || 'Program'
+          const label = PROGRAM_LABELS[code] || program.program_name || code?.replace('PROGRAM_', '') || 'Program'
           const color = PROGRAM_COLORS[code] || 'blue'
-          const eligible = program.eligible_drivers ?? program.drivers ?? program.count ?? 0
-          const prioritized = program.prioritized ?? program.prioritized_count ?? 0
-          const queueCount = program.queue_count ?? program.queued ?? 0
+          const eligible = program.eligible_total ?? program.eligible_drivers ?? program.total ?? 0
+          const prioritized = program.prioritized_total ?? program.prioritized ?? 0
+          const queueCount = program.queued_total ?? program.queue_count ?? program.queued ?? 0
           const priority = program.priority ?? program.effective_priority ?? '—'
           const pct = totalDrivers > 0 ? ((eligible / totalDrivers) * 100).toFixed(1) : '—'
 

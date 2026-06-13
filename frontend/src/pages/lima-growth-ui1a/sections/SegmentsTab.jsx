@@ -35,10 +35,27 @@ export default function SegmentsTab({ data, loading, errors, onRetry, onDrilldow
     return <LoadingSpinner text="Cargando segmentos..." />
   }
 
-  const lifecycleDistribution = taxonomy?.lifecycle_distribution || taxonomy?.distribution || []
-  const segments = taxonomy?.segments || []
-  const valueTiers = taxonomy?.value_tiers || []
-  const momentum = taxonomy?.momentum || taxonomy?.trends || []
+  const dist = taxonomy?.distributions
+  const lifecycleDistribution = (dist?.operational_status || []).map(item => ({
+    lifecycle: item.operational_status,
+    status: item.operational_status,
+    count: item.cnt || item.count || 0,
+  }))
+  const segments = (dist?.operational_segment || []).map(item => ({
+    segment: item.operational_segment,
+    label: item.operational_segment,
+    count: item.cnt || item.count || 0,
+  }))
+  const valueTiers = (dist?.value_overlay || []).map(item => ({
+    tier: item.value_overlay,
+    label: item.value_overlay,
+    count: item.cnt || item.count || 0,
+  }))
+  const momentum = (dist?.momentum || []).map(item => ({
+    direction: item.momentum_state,
+    label: item.momentum_state,
+    count: item.cnt || item.count || 0,
+  }))
   const total = lifecycleDistribution.reduce((acc, s) => acc + (s.count || s.drivers || 0), 0)
 
   return (

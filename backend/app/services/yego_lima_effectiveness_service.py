@@ -22,10 +22,9 @@ def get_effectiveness_summary() -> Dict[str, Any]:
         cur.execute(f"""
             SELECT program_code, report_date, assigned_drivers,
                    positive_moves, negative_moves, neutral_moves,
-                   improvement_rate, decline_rate, net_effect,
-                   movement_score_delta, outcome_coverage_pct
+                   effectiveness_score
             FROM {TABLE_EFF}
-            ORDER BY report_date DESC, net_effect DESC
+            ORDER BY report_date DESC, effectiveness_score DESC
         """)
         rows = cur.fetchall()
         if not rows:
@@ -33,18 +32,21 @@ def get_effectiveness_summary() -> Dict[str, Any]:
 
         programs = []
         for r in rows:
+            pos = r[3] or 0
+            neg = r[4] or 0
+            assigned = r[2] or 0
             programs.append({
                 "program_code": r[0],
                 "report_date": str(r[1]) if r[1] else None,
-                "assigned_drivers": r[2] or 0,
-                "positive_moves": r[3] or 0,
-                "negative_moves": r[4] or 0,
+                "assigned_drivers": assigned,
+                "positive_moves": pos,
+                "negative_moves": neg,
                 "neutral_moves": r[5] or 0,
-                "improvement_rate": float(r[6]) if r[6] is not None else 0,
-                "decline_rate": float(r[7]) if r[7] is not None else 0,
-                "net_effect": float(r[8]) if r[8] is not None else 0,
-                "movement_score_delta": float(r[9]) if r[9] is not None else 0,
-                "outcome_coverage_pct": float(r[10]) if r[10] is not None else 0,
+                "improvement_rate": round(pos / assigned * 100, 2) if assigned else 0,
+                "decline_rate": round(neg / assigned * 100, 2) if assigned else 0,
+                "net_effect": float(r[6]) if r[6] is not None else 0.0,
+                "movement_score_delta": 0.0,
+                "outcome_coverage_pct": 0.0,
             })
 
         latest_date = max(p["report_date"] for p in programs if p["report_date"])
