@@ -331,7 +331,7 @@ def _check_multiple_writers() -> list[dict[str, Any]]:
         "week_fact": [
             "business_slice_incremental_load._RESOLVE_AND_AGG_WEEK_FROM_TEMP",
             "rebuild_week_from_day_and_bridge.py",
-            "rebuild_week_fact_from_day_fact.py (BROKEN for drivers)",
+            "rebuild_week_fact_from_day_fact.py.legacy.broken (BLOCKED — BROKEN SUM of daily distincts)",
             "refresh_business_slice_mvs.py (legacy)",
         ],
         "month_fact": [
@@ -349,7 +349,7 @@ def _check_multiple_writers() -> list[dict[str, Any]]:
                 "affected_asset": f"ops.real_business_slice_{fact}",
                 "observed_value": f"{len(paths)} write paths: {', '.join(paths)}",
                 "expected_value": "1 canonical writer",
-                "remediation": "Estandarizar un solo writer canónico (bridge cascade). Deprecar legacy paths documentados: refresh_business_slice_mvs.py, rebuild_week_fact_from_day_fact.py.",
+                "remediation": "Estandarizar un solo writer canónico (bridge cascade). Deprecar legacy paths documentados: refresh_business_slice_mvs.py, rebuild_week_fact_from_day_fact.py (ya renombrado a .legacy.broken).",
                 "blocking": False,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             })
@@ -385,14 +385,14 @@ def _check_driver_aggregation() -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
 
     # Primary paths are EXACT: COUNT(DISTINCT driver_id) at correct grain
-    # But broken path exists: rebuild_week_fact_from_day_fact.py uses SUM(daily distincts) = BROKEN
+    # But broken path exists: rebuild_week_fact_from_day_fact.py.legacy.broken (renamed — uses SUM(daily distincts) = BROKEN)
     results.append({
         "code": "DRIVER_AGGREGATION_AMBIGUOUS",
         "severity": "WARN",
         "affected_asset": "week_fact active_drivers (multiple writer paths)",
-        "observed_value": "2 exact paths (inline DISTINCT, bridge) + 1 BROKEN path (rebuild_week_fact_from_day_fact.py: SUM of daily distincts) not blocked",
+        "observed_value": "2 exact paths (inline DISTINCT, bridge) + 1 BROKEN path (rebuild_week_fact_from_day_fact.py.legacy.broken: SUM of daily distincts) RENAMED/BLOCKED",
         "expected_value": "Single canonical path with BROKEN paths blocked by guard",
-        "remediation": "Agregar safety guard a rebuild_week_fact_from_day_fact.py (como refresh_omniview_real_slice.py). Semanal debe usar COUNT(DISTINCT via bridge).",
+        "remediation": "Safety guard aplicado: rebuild_week_fact_from_day_fact.py renombrado a .legacy.broken (Phase B.1). Semanal debe usar COUNT(DISTINCT via bridge).",
         "blocking": False,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     })

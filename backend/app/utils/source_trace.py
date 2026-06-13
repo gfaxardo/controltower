@@ -300,6 +300,7 @@ def check_source_freshness(conn, table_name: str, date_column: str = "loaded_at"
 
 
 _FACT_TABLES_TO_CHECK = [
+    ("ops.driver_day_slice_fact", "loaded_at"),
     ("ops.real_business_slice_month_fact", "loaded_at"),
     ("ops.real_business_slice_week_fact", "loaded_at"),
     ("ops.real_business_slice_day_fact", "loaded_at"),

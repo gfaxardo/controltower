@@ -32,6 +32,14 @@ logger = logging.getLogger(__name__)
 CASCADE_REFRESH_NAME = "omniview_cascade"
 CASCADE_PIPELINE_NAME = "omniview_cascade_pipeline"
 
+# OV2-D.2A: Serving registry keys for freshness governance integration
+SERVING_KEY_MAP = {
+    "driver_bridge": "omniview_v2_driver_bridge",
+    "day_fact": "omniview_v2_real_business_slice_day_fact",
+    "week_fact": "omniview_v2_real_business_slice_week_fact",
+    "month_fact": "omniview_v2_real_business_slice_month_fact",
+}
+
 
 def _get_python() -> str:
     """Return the Python interpreter path."""
@@ -238,6 +246,63 @@ def run_cascade(
                 "CASCADE layer=%s FAILED (continuing to next layer). output=%s",
                 layer["name"], step.get("output", "")[:200],
             )
+
+    # OV2-D.2A: Post-cascade registry update for all Omniview V2 layers
+    # OV2-D.2B: Also write serving_refresh_log for traceability
+    if not dry_run:
+        try:
+            import uuid as _uuid
+            with get_db() as conn:
+                cur = conn.cursor()
+                for r in results:
+                    serving_key = SERVING_KEY_MAP.get(r["layer"])
+                    if not serving_key:
+                        continue
+                    ok = r["ok"]
+                    rows = r.get("rows_after", 0) or 0
+                    refresh_id = _uuid.uuid4().hex[:12]
+                    duration_ms = r.get("ms", 0)
+
+                    if ok and rows > 0:
+                        cur.execute("""
+                            UPDATE ops.serving_registry SET
+                                refresh_status = 'success',
+                                freshness_status = 'fresh',
+                                row_count = %s,
+                                generated_at = NOW(),
+                                last_success_at = NOW(),
+                                updated_at = NOW()
+                            WHERE serving_key = %s
+                        """, (rows, serving_key))
+                        cur.execute("""
+                            INSERT INTO ops.serving_refresh_log
+                                (refresh_id, serving_key, started_at, finished_at,
+                                 duration_ms, rows_generated, success, triggered_by)
+                            VALUES (%s, %s, NOW(), NOW(), %s, %s, TRUE, 'cascade')
+                        """, (refresh_id, serving_key, duration_ms, rows))
+                    else:
+                        error_msg = "cascade layer returned ok=False or zero rows" if not ok else "zero rows after refresh"
+                        cur.execute("""
+                            UPDATE ops.serving_registry SET
+                                refresh_status = 'failed',
+                                freshness_status = 'stale',
+                                row_count = %s,
+                                last_failure_at = NOW(),
+                                last_failure_reason = %s,
+                                updated_at = NOW()
+                            WHERE serving_key = %s
+                        """, (rows, error_msg, serving_key))
+                        cur.execute("""
+                            INSERT INTO ops.serving_refresh_log
+                                (refresh_id, serving_key, started_at, finished_at,
+                                 duration_ms, rows_generated, success, error_message, triggered_by)
+                            VALUES (%s, %s, NOW(), NOW(), %s, %s, FALSE, %s, 'cascade')
+                        """, (refresh_id, serving_key, duration_ms, rows, error_msg))
+                conn.commit()
+                cur.close()
+                logger.info("CASCADE D.2B registry+log updated for %s layers", len([r for r in results if SERVING_KEY_MAP.get(r['layer'])]))
+        except Exception as e:
+            logger.warning("CASCADE D.2B registry+log batch failed: %s", e)
 
     total = len(results)
     overall = "ok" if advanced_count > 0 else ("dry_run" if dry_run else "no_advancement")

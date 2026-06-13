@@ -1,5 +1,7 @@
 """
-Watchdog: lag upstream vs agregado, logs de alerta, auto-recuperación acotada, webhook opcional.
+Watchdog: lag upstream vs agregado, logs de alerta, webhook opcional.
+OV2-C.1: Legacy auto-recovery via business_slice_real_refresh_job DISABLED.
+Remediation for stale aggregated data: check omniview_cascade_refresh status.
 """
 from __future__ import annotations
 
@@ -8,7 +10,6 @@ import logging
 from typing import Any, Dict
 
 from app.services.business_slice_real_freshness_service import build_omniview_real_freshness_payload
-from app.services.business_slice_real_refresh_job import run_business_slice_real_refresh_job
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -27,9 +28,9 @@ def _post_webhook(payload: Dict[str, Any]) -> None:
 
 
 def run_real_data_watchdog() -> Dict[str, Any]:
-    """
-    Evalúa freshness; si lag agregado > 2 días loguea error; si upstream fresh y agregado stale/critical, intenta refresh (cooldown en el job).
-    """
+    """Evalua freshness; si lag agregado > 2 dias loguea error.
+    OV2-C.1: Legacy auto-recovery DISABLED. Stale aggregated data now triggers alert, not auto-refresh.
+    Remediation: check omniview_cascade_refresh scheduler status."""
     out: Dict[str, Any] = {"ok": True, "alerts": [], "recovery_triggered": False}
     try:
         payload = build_omniview_real_freshness_payload()
@@ -61,14 +62,15 @@ def run_real_data_watchdog() -> Dict[str, Any]:
     agg_st = aggregated.get("status")
 
     if up_st == "fresh" and agg_st in ("stale", "critical"):
-        logger.info(
-            "REAL_WATCHDOG auto-recovery: upstream=%s aggregated=%s — triggering refresh (cooldown applies)",
+        logger.warning(
+            "REAL_WATCHDOG upstream=%s aggregated=%s — CASCADE may need investigation. "
+            "Legacy auto-recovery DISABLED per OV2-C.1 ownership hardening. "
+            "Do NOT run business_slice_real_refresh_job. Check omniview_cascade_refresh status.",
             up_st,
             agg_st,
         )
-        recovery = run_business_slice_real_refresh_job(force=False)
-        out["recovery_triggered"] = not recovery.get("skipped")
-        out["recovery_result"] = recovery
+        out["alerts"].append("aggregated_stale_despite_fresh_upstream")
+        out["recovery_triggered"] = False
 
     logger.info(
         "REAL_WATCHDOG tick status=%s lag_days=%s upstream=%s aggregated=%s",

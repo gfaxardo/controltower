@@ -22,6 +22,14 @@ try:
     GIT_HASH = sp.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=BACKEND, stderr=sp.DEVNULL, text=True).strip()
 except: pass
 
+# OV2-D.2A/D.2B: Serving registry + log mapping (same as omniview_cascade_service.py)
+SERVING_KEY_MAP = {
+    "driver_bridge": "omniview_v2_driver_bridge",
+    "day_fact": "omniview_v2_real_business_slice_day_fact",
+    "week_fact": "omniview_v2_real_business_slice_week_fact",
+    "month_fact": "omniview_v2_real_business_slice_month_fact",
+}
+
 LAYERS = [
     {"name": "driver_bridge", "pipeline": "bridge_update", "table": "ops.driver_day_slice_fact", "col": "activity_date", "filter": "WHERE country='peru' AND city='lima'"},
     {"name": "day_fact", "pipeline": "day_rebuild", "table": "ops.real_business_slice_day_fact", "col": "trip_date", "filter": "WHERE LOWER(TRIM(country))='peru' AND LOWER(TRIM(city))='lima'"},
@@ -135,6 +143,55 @@ def main():
                 results.append({"layer": layer['name'], "status": "FAIL", "error": str(e)[:200]})
             finally:
                 cur.close()
+
+    # OV2-D.2B: Post-cascade registry + log update for Omniview V2 layers
+    if not args.dry_run:
+        try:
+            import uuid as _uuid
+            with get_db() as conn:
+                cur = conn.cursor()
+                for r in results:
+                    serving_key = SERVING_KEY_MAP.get(r.get("layer", ""))
+                    if not serving_key:
+                        continue
+                    status = r.get("status", "FAIL")
+                    ok = status in ("SUCCESS_NO_CHANGE", "SUCCESS_WITH_ADVANCEMENT")
+                    rows = r.get("rows_after", 0) or 0
+                    refresh_id = _uuid.uuid4().hex[:12]
+
+                    if ok and rows > 0:
+                        cur.execute("""
+                            UPDATE ops.serving_registry SET
+                                refresh_status = 'success', freshness_status = 'fresh',
+                                row_count = %s, generated_at = NOW(),
+                                last_success_at = NOW(), updated_at = NOW()
+                            WHERE serving_key = %s
+                        """, (rows, serving_key))
+                        cur.execute("""
+                            INSERT INTO ops.serving_refresh_log
+                                (refresh_id, serving_key, started_at, finished_at,
+                                 rows_generated, success, triggered_by)
+                            VALUES (%s, %s, NOW(), NOW(), %s, TRUE, 'cascade')
+                        """, (refresh_id, serving_key, rows))
+                    else:
+                        error_msg = str(r.get("error", "layer failed"))[:1000]
+                        cur.execute("""
+                            UPDATE ops.serving_registry SET
+                                refresh_status = 'failed', freshness_status = 'stale',
+                                row_count = %s, last_failure_at = NOW(),
+                                last_failure_reason = %s, updated_at = NOW()
+                            WHERE serving_key = %s
+                        """, (rows, error_msg, serving_key))
+                        cur.execute("""
+                            INSERT INTO ops.serving_refresh_log
+                                (refresh_id, serving_key, started_at, finished_at,
+                                 rows_generated, success, error_message, triggered_by)
+                            VALUES (%s, %s, NOW(), NOW(), %s, FALSE, %s, 'cascade')
+                        """, (refresh_id, serving_key, rows, error_msg))
+                conn.commit()
+                cur.close()
+        except Exception as e:
+            print(f"  WARNING: D.2B registry update failed: {e}")
 
     advanced = sum(1 for r in results if r.get("status") == "SUCCESS_WITH_ADVANCEMENT")
     total = len(results)

@@ -226,87 +226,21 @@ def _is_python_omniview_facts(marker: str) -> bool:
 
 def _execute_omniview_facts_refresh(dataset_name: str) -> Dict[str, Any]:
     """
-    Misma lógica que POST /ops/business-slice/real-refresh-omniview.
-    Siempre force=True para el job por lotes (sin cooldown artificial).
+    OV2-C.2: Legacy omniview facts refresh DISABLED by ownership governance.
+    Returns blocked status. Use canonical cascade refresh path.
     """
-    from app.services.business_slice_real_refresh_job import run_business_slice_real_refresh_job
-
-    start_time = time.perf_counter()
-    attempts: List[Dict[str, Any]] = []
-    final_status = "failed"
-    final_error: Optional[str] = None
-
-    for attempt in range(1, MAX_RETRIES + 1):
-        attempt_start = time.perf_counter()
-        attempt_error: Optional[str] = None
-        attempt_status = "failed"
-        try:
-            out = run_business_slice_real_refresh_job(force=True)
-            elapsed = round(time.perf_counter() - attempt_start, 2)
-
-            if out.get("skipped"):
-                reason = str(out.get("reason") or "skipped")
-                attempt_status = "skipped"
-                final_status = "skipped"
-                final_error = reason
-                attempts.append({
-                    "attempt": attempt,
-                    "status": attempt_status,
-                    "error": reason,
-                    "duration_seconds": elapsed,
-                })
-                # skip sin reintentar (sin upstream, etc.)
-                break
-
-            errors_list = list(out.get("errors") or [])
-            if bool(out.get("ok")) and not errors_list:
-                attempt_status = "success"
-                final_status = "success"
-                final_error = None
-                attempts.append({
-                    "attempt": attempt,
-                    "status": attempt_status,
-                    "error": None,
-                    "duration_seconds": elapsed,
-                })
-                break
-
-            attempt_error = str(errors_list[:5]) if errors_list else "real_refresh_ok_false"
-            attempt_status = "failed"
-            final_error = attempt_error
-            attempts.append({
-                "attempt": attempt,
-                "status": attempt_status,
-                "error": attempt_error,
-                "duration_seconds": elapsed,
-            })
-
-        except Exception as e:
-            elapsed = round(time.perf_counter() - attempt_start, 2)
-            attempt_error = str(e)
-            final_error = attempt_error
-            attempts.append({
-                "attempt": attempt,
-                "status": "failed",
-                "error": attempt_error,
-                "duration_seconds": elapsed,
-            })
-
-        if attempt_status in ("success", "skipped"):
-            break
-        if attempt < MAX_RETRIES:
-            logger.info("Waiting %d seconds before omniview_facts retry %d...", RETRY_DELAY_SECONDS, attempt + 1)
-            time.sleep(RETRY_DELAY_SECONDS)
-
-    total_duration = time.perf_counter() - start_time
+    logger.warning(
+        "refresh_service._execute_omniview_facts_refresh BLOCKED: legacy path disabled by OV2-C.2. "
+        "Use omniview_cascade_refresh scheduler or run_ov2_refresh_cascade.py."
+    )
     return {
-        "dataset_name": dataset_name,
-        "function": PYTHON_OMNIVIEW_FACTS_MARKER,
-        "status": final_status,
-        "error": final_error,
-        "duration_seconds": round(total_duration, 2),
-        "attempts": attempts,
-        "timestamp": datetime.utcnow().isoformat(),
+        "ok": False,
+        "skipped": True,
+        "status": "blocked",
+        "reason": "legacy_omniview_facts_refresh_disabled_by_ownership_governance",
+        "legacy_writer": "business_slice_real_refresh_job",
+        "remediation": "Use canonical cascade refresh: omniview_cascade_refresh scheduler.",
+        "phase": "OV2-C.2",
     }
 
 

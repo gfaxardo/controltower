@@ -1,39 +1,33 @@
 #!/usr/bin/env python3
-"""
-Carga incremental BUSINESS_SLICE (ops.real_business_slice_month_fact y opcional hour_fact).
-
-Ya no ejecuta REFRESH MATERIALIZED VIEW (la “MV” mensual es vista sobre la tabla fact).
-
-Requisito: migraciones 116_business_slice_incremental_facts y 117_business_slice_resolved_subset_fn:
-  cd backend && alembic upgrade head
-
-En PowerShell, escriba el comando en **una sola línea**; si aparece el prompt ``>>``, está en continuación
-de línea (Ctrl+C y reintente).
-
-Si aparece "No space left on device" en base/pgsql_tmp: liberar disco en el **host donde corre PostgreSQL**
-(no en la carpeta del proyecto). Opcional: más RAM para sorts en sesión, p. ej.
-  $env:BUSINESS_SLICE_LOAD_WORK_MEM='512MB'   # PowerShell
-  export BUSINESS_SLICE_LOAD_WORK_MEM=512MB  # bash
-(0 u off desactiva el ajuste.)
-
-  Temporales en disco grande (tras crear TABLESPACE en p. ej. /mnt/HC_Volume_...):
-  $env:BUSINESS_SLICE_LOAD_TEMP_TABLESPACES='pg_big_tmp'
-  Opcional: $env:BUSINESS_SLICE_LOAD_JIT_OFF='1'
-
-Uso:
-  cd backend && python -m scripts.refresh_business_slice_mvs
-  python -m scripts.refresh_business_slice_mvs --month 2025-03
-  python -m scripts.refresh_business_slice_mvs --month 2025-03-15
-  python -m scripts.refresh_business_slice_mvs --month 2026-03 --chunk-grain city
-  python -m scripts.refresh_business_slice_mvs --month 2026-03 --chunk-grain city_week
-  python -m scripts.refresh_business_slice_mvs --month 2026-03 --chunk-grain city_day
-  python -m scripts.refresh_business_slice_mvs --backfill-from 2023-01 --backfill-to 2025-12
-  python -m scripts.refresh_business_slice_mvs --hour-from "2025-03-01 00:00:00" --hour-to "2025-03-08 00:00:00"
-
-Requiere migraciones 116 (tablas fact) y 117 (función SQL para auditorías).
-La carga mensual usa estrategia "materializar enriched una vez, resolver+agregar N veces".
-"""
 from __future__ import annotations
+
+r"""
+
+    OV2-E: DEPRECATED - DO NOT USE FOR OMNIVIEW V2 FACT TABLES.
+
+    This script uses legacy business_slice_incremental_load.py loader functions
+    that have been DEPRECATED. Omniview V2 facts (day_fact, week_fact, month_fact)
+    are now refreshed exclusively by the canonical bridge cascade.
+
+    REPLACEMENT:
+      python -m scripts.run_ov2_refresh_cascade --confirm
+
+    DOCUMENTATION:
+      See docs/architecture/OWNERSHIP_CERTIFICATION.md
+      See docs/architecture/OMNIVIEW_V2_CANONICAL.md Section 7
+
+    This script may still be used for non-Omniview V2 backfill scenarios.
+    It must NOT be used as the primary refresh mechanism for Omniview V2 facts.
+
+---
+"""
+
+# --- Original documentation retained below ---
+# Ya no ejecuta REFRESH MATERIALIZED VIEW (la "MV" mensual es vista sobre la tabla fact).
+# Requisito: migraciones 116_business_slice_incremental_facts y 117
+# Uso: cd backend && python -m scripts.refresh_business_slice_mvs --month YYYY-MM
+# --- End original documentation ---
+
 
 import argparse
 import os

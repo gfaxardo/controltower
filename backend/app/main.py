@@ -5,7 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from app.settings import settings
 from app.startup_checks import run_startup_checks
 from app.startup_state import set_startup_report
-from app.routers import auth, plan, real, core, ops, health, ingestion, phase2b, phase2c, driver_lifecycle, driver_lifecycle_diagnostic, driver_behavior_benchmarking, controltower, observability, real_vs_projection, diagnostics, ops_refresh, fraud, behavioral_pattern_diagnosis, behavioral_mvp, operational_behavioral_intelligence, recoverability_intelligence, yango_loyalty, drivers, yego_pro_profitability, yego_lima_growth_lab, yego_lima_growth_control_loop, yego_lima_executive, yego_lima_pipeline, yego_lima_growth_state, yego_lima_pilot, yego_lima_universe, yego_lima_productivity, yego_lima_freshness, yego_lima_opportunity_policy, yego_lima_loopcontrol_export, yego_lima_capacity, yego_lima_priority_allocation, yego_lima_channel_allocation, yego_lima_opportunity_worklist, yego_lima_assignment_queue, yego_lima_queue_export, yego_lima_loopcontrol_result_sync, yego_lima_risk_panel, yego_lima_impact, yego_lima_impact_dashboard, yego_lima_movement, yego_lima_attribution, yego_lima_today_action_plan, yego_lima_allocation_trace, yego_lima_program_capacity_policy, yego_lima_daily_refresh, yego_lima_scheduler, yego_lima_operational_summary, yego_lima_freshness_health, yego_lima_intraday_signal, yego_lima_list_history, yego_lima_program_explainability, yego_lima_freshness_chain, yego_lima_operational_truth, yego_lima_program_status, yego_lima_queue_operational, yego_lima_todays_action_plan, yego_lima_result_sync, yego_lima_diagnostic_trace, yego_lima_driver_history, yego_lima_governance, yego_lima_movement_router, yego_lima_control_loop_router, omniview_v2, omniview_v2_shell, omniview_v2_shadow, yego_lima_v2_pipeline, yego_lima_taxonomy, yego_lima_lifecycle, yego_lima_explainability, yego_lima_export, yego_lima_effectiveness, yego_lima_movement_analytics, yego_lima_rna_priority, yego_lima_rna_pilot
+from app.routers import auth, plan, real, core, ops, health, ingestion, phase2b, phase2c, driver_lifecycle, driver_lifecycle_diagnostic, driver_behavior_benchmarking, controltower, observability, real_vs_projection, diagnostics, ops_refresh, fraud, behavioral_pattern_diagnosis, behavioral_mvp, operational_behavioral_intelligence, recoverability_intelligence, yango_loyalty, drivers, yego_pro_profitability, yego_lima_growth_lab, yego_lima_growth_control_loop, yego_lima_executive, yego_lima_pipeline, yego_lima_growth_state, yego_lima_pilot, yego_lima_universe, yego_lima_productivity, yego_lima_freshness, yego_lima_opportunity_policy, yego_lima_loopcontrol_export, yego_lima_capacity, yego_lima_priority_allocation, yego_lima_channel_allocation, yego_lima_opportunity_worklist, yego_lima_assignment_queue, yego_lima_queue_export, yego_lima_loopcontrol_result_sync, yego_lima_risk_panel, yego_lima_impact, yego_lima_impact_dashboard, yego_lima_movement, yego_lima_attribution, yego_lima_today_action_plan, yego_lima_allocation_trace, yego_lima_program_capacity_policy, yego_lima_daily_refresh, yego_lima_scheduler, yego_lima_operational_summary, yego_lima_freshness_health, yego_lima_intraday_signal, yego_lima_list_history, yego_lima_program_explainability, yego_lima_freshness_chain, yego_lima_operational_truth, yego_lima_program_status, yego_lima_queue_operational, yego_lima_todays_action_plan, yego_lima_result_sync, yego_lima_diagnostic_trace, yego_lima_driver_history, yego_lima_governance, yego_lima_movement_router, yego_lima_control_loop_router, omniview_v2, omniview_v2_shell, omniview_v2_shadow, yego_lima_v2_pipeline, yego_lima_taxonomy, yego_lima_lifecycle, yego_lima_explainability, yego_lima_export, yego_lima_effectiveness, yego_lima_movement_analytics, yego_lima_rna_priority, yego_lima_rna_pilot, yego_lima_driver_explorer
 import logging
 import time
 import uuid
@@ -213,6 +213,8 @@ app.include_router(yego_lima_rna_priority.router)
 
 app.include_router(yego_lima_rna_pilot.router)
 
+app.include_router(yego_lima_driver_explorer.router)
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("Iniciando YEGO Control Tower API...")
@@ -271,9 +273,6 @@ async def startup_event():
                 from apscheduler.schedulers.background import BackgroundScheduler
 
                 from app.omniview_real_scheduler_info import attach_omniview_scheduler
-                from app.services.business_slice_real_refresh_job import (
-                    run_business_slice_real_refresh_job_safe,
-                )
                 from app.services.real_data_watchdog_service import run_real_data_watchdog
 
                 _omniview_real_refresh_scheduler = BackgroundScheduler(daemon=True)
@@ -326,22 +325,17 @@ async def startup_event():
                             settings.OMNIVIEW_REAL_REFRESH_MINUTE,
                         )
                     except Exception as e:
-                        logger.warning("No se pudo registrar cascade refresh: %s — usando fallback legacy", e)
-                        # Fallback: keep old vacated job for compatibility
-                        _omniview_real_refresh_scheduler.add_job(
-                            run_business_slice_real_refresh_job_safe,
-                            "cron",
-                            hour=settings.OMNIVIEW_REAL_REFRESH_HOUR,
-                            minute=settings.OMNIVIEW_REAL_REFRESH_MINUTE,
-                            id="omniview_business_slice_real_refresh",
-                            replace_existing=True,
-                            max_instances=1,
-                            coalesce=True,
-                            misfire_grace_time=600,
+                        logger.error(
+                            "CRITICAL: Cascade refresh registration FAILED — omniview_cascade_refresh NOT registered. "
+                            "Legacy auto-fallback DISABLED per OV2-C.1 ownership hardening. "
+                            "Remediation: verify cascade imports, DB connectivity, and canonical scripts. "
+                            "Error: %s",
+                            e,
                         )
-                        jobs_registered.append("omniview_business_slice_real_refresh")
+                        jobs_registered.append("omniview_cascade_refresh_FAILED")
                         logger.info(
-                            "Omniview LEGACY refresh programado: %02d:%02d (vacated — no-op).",
+                            "Omniview CASCADE refresh FAILED to register at %02d:%02d. "
+                            "No legacy fallback. Manual intervention required.",
                             settings.OMNIVIEW_REAL_REFRESH_HOUR,
                             settings.OMNIVIEW_REAL_REFRESH_MINUTE,
                         )

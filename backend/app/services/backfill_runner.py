@@ -81,6 +81,27 @@ def cancel():
 # ── Runner ───────────────────────────────────────────────────────────────────
 
 def _run_backfill(months: list[date], with_week: bool, chunk_grain: str | None):
+    # OV2-C.2: Acquire cascade advisory lock before writing Omniview V2 facts.
+    # Prevents concurrent writes with omniview_cascade_refresh.
+    from app.services.refresh_control_service import refresh_guard
+
+    with refresh_guard(
+        refresh_name="omniview_cascade",
+        pipeline_name="omniview_cascade_pipeline",
+        trigger_source="api_backfill",
+        grain="daily",
+        period_status="mixed",
+    ) as guard:
+        if guard.skipped:
+            _upd(phase="blocked", running=False, error="lock_held_by_cascade",
+                 ended_at=datetime.now(timezone.utc).isoformat())
+            logger.warning("backfill_runner BLOCKED: cascade lock held by another process")
+            return
+
+        return _run_backfill_inner(months, with_week, chunk_grain)
+
+
+def _run_backfill_inner(months: list[date], with_week: bool, chunk_grain: str | None):
     _upd(
         running=True, cancelled=False, phase=None,
         total_months=len(months), done_months=0,

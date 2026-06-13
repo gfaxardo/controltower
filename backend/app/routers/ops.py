@@ -48,7 +48,6 @@ from app.services.omniview_freshness_governance_service import (
 from app.services.business_slice_real_freshness_service import (
     get_omniview_business_slice_real_freshness,
 )
-from app.services.business_slice_real_refresh_job import run_business_slice_real_refresh_job
 from app.services.omniview_momentum_drill_service import get_omniview_momentum_drill
 from app.services.ownership_serving_service import get_ownership_serving_monthly
 from app.utils.json_sanitizer import sanitize_for_json
@@ -697,46 +696,27 @@ async def omniview_weekly_serving_guardrails_endpoint(
 
 @router.post("/omniview/refresh")
 async def omniview_refresh_remediation_endpoint(
-    force: bool = Query(True, description="Si True, ignora cooldown entre corridas. Default True para remediación manual."),
+    force: bool = Query(True, description="Si True, ignora cooldown entre corridas. Default True para remediacion manual."),
 ):
     """
-    Refresh Remediation Control: ejecuta recarga operacional completa
-    (day_fact + week_fact + month_fact) para mes actual y anterior.
-
-    Usado desde UI cuando Freshness Governance está en BLOCKED.
-    Devuelve status, started_at, finished_at, duration, rows_affected, errors.
+    OV2-C.2: Legacy Omniview refresh DISABLED by ownership governance.
+    Use canonical cascade refresh path: omniview_cascade_refresh scheduler
+    or run_ov2_refresh_cascade.py for manual execution.
+    Remediation: check cascade scheduler status in logs.
     """
-    import datetime as _dt
-    started_at = _dt.datetime.utcnow().isoformat() + "Z"
-    try:
-        result = await _run_sync(run_business_slice_real_refresh_job, force)
-        finished_at = _dt.datetime.utcnow().isoformat() + "Z"
-        freshness_after = result.get("freshness_after", {}) if isinstance(result, dict) else {}
-        day_fact = freshness_after.get("day_fact", {}) if isinstance(freshness_after, dict) else {}
-        rows_affected = day_fact.get("row_count") if isinstance(day_fact, dict) else None
-        return sanitize_for_json({
-            "status": "ok" if result.get("ok") else "failed",
-            "started_at": started_at,
-            "finished_at": finished_at,
-            "duration_seconds": result.get("duration_seconds"),
-            "rows_affected": rows_affected,
-            "errors": result.get("errors", []),
-            "log": result.get("log", []),
-            "freshness_after": freshness_after,
-            "upstream_preflight": result.get("upstream_preflight"),
-            "before_max_trip_date": result.get("before_max_trip_date"),
-        })
-    except Exception as e:
-        logger.exception("omniview/refresh")
-        finished_at = _dt.datetime.utcnow().isoformat() + "Z"
-        return sanitize_for_json({
-            "status": "error",
-            "started_at": started_at,
-            "finished_at": finished_at,
-            "duration_seconds": None,
-            "rows_affected": None,
-            "errors": [{"error": str(e)}],
-        })
+    raise HTTPException(
+        status_code=423,
+        detail={
+            "status": "blocked",
+            "reason": "legacy_omniview_refresh_disabled_by_ownership_governance",
+            "affected_path": "POST /ops/omniview/refresh",
+            "legacy_writer": "business_slice_real_refresh_job",
+            "remediation": "Use canonical cascade refresh path. Check omniview_cascade_refresh scheduler status. "
+                          "For manual execution use run_ov2_refresh_cascade.py.",
+            "canonical_scheduler": "omniview_cascade_refresh",
+            "phase": "OV2-C.2",
+        },
+    )
 
 
 @router.post("/business-slice/real-refresh-omniview")
@@ -744,15 +724,21 @@ async def business_slice_real_refresh_omniview_endpoint(
     force: bool = Query(False, description="Si True, ignora cooldown entre corridas."),
 ):
     """
-    Ejecuta recarga operacional de day_fact + week_fact (mes actual y anterior).
-    Puede tardar minutos; usar desde cron, Task Scheduler o admin.
+    OV2-C.2: Legacy business slice refresh DISABLED by ownership governance.
+    Use canonical cascade refresh path: omniview_cascade_refresh scheduler.
     """
-    try:
-        result = await _run_sync(run_business_slice_real_refresh_job, force)
-        return sanitize_for_json(result)
-    except Exception as e:
-        logger.exception("business-slice/real-refresh-omniview")
-        raise HTTPException(status_code=500, detail=str(e))
+    raise HTTPException(
+        status_code=423,
+        detail={
+            "status": "blocked",
+            "reason": "legacy_business_slice_refresh_disabled_by_ownership_governance",
+            "affected_path": "POST /ops/business-slice/real-refresh-omniview",
+            "legacy_writer": "business_slice_real_refresh_job",
+            "remediation": "Use canonical cascade refresh path. Check omniview_cascade_refresh scheduler status.",
+            "canonical_scheduler": "omniview_cascade_refresh",
+            "phase": "OV2-C.2",
+        },
+    )
 
 
 @router.get("/business-slice/omniview-momentum-drill")
@@ -3780,21 +3766,47 @@ async def business_slice_backfill_progress():
 
 @router.post("/business-slice/backfill")
 async def business_slice_backfill_start(payload: dict = Body(...)):
-    """Dispara un backfill de day_fact + week_fact para un rango de meses.
-    Body: { from_date: "2025-01", to_date: "2025-06", with_week: true }
+    """OV2-C.2: Legacy business slice backfill DISABLED by default.
+    Writes to ops.real_business_slice_day_fact, week_fact, month_fact.
+    Requires explicit override: payload.allow_legacy_backfill=true AND
+    env ENABLE_LEGACY_OMNIVIEW_BACKFILL=true.
+    Body: { from_date: "2025-01", to_date: "2025-06", with_week: true, allow_legacy_backfill: true }
     """
+    import os as _os
+
+    allow_legacy = payload.get("allow_legacy_backfill", False) is True
+    env_override = _os.environ.get("ENABLE_LEGACY_OMNIVIEW_BACKFILL", "").lower() == "true"
+
+    if not (allow_legacy and env_override):
+        raise HTTPException(
+            status_code=423,
+            detail={
+                "status": "blocked",
+                "reason": "legacy_business_slice_backfill_disabled_for_omniview_v2",
+                "affected_tables": [
+                    "ops.real_business_slice_day_fact",
+                    "ops.real_business_slice_week_fact",
+                    "ops.real_business_slice_month_fact",
+                ],
+                "remediation": "Use canonical cascade/runbook. Legacy API backfill requires "
+                              "payload.allow_legacy_backfill=true AND "
+                              "ENABLE_LEGACY_OMNIVIEW_BACKFILL=true.",
+                "phase": "OV2-C.2",
+            },
+        )
+
     from app.services.backfill_runner import start_backfill, is_running
     from datetime import date as date_type
 
     if is_running():
-        raise HTTPException(status_code=409, detail="Ya hay un backfill corriendo. Esperá a que termine.")
+        raise HTTPException(status_code=409, detail="Ya hay un backfill corriendo. Espera a que termine.")
 
     def _parse_ym(s: str) -> date_type:
         s = str(s).strip()
         if len(s) == 7 and s[4] == "-":
             y, m = int(s[:4]), int(s[5:7])
             return date_type(y, m, 1)
-        raise ValueError(f"Formato inválido: {s!r}. Usar YYYY-MM")
+        raise ValueError(f"Formato invalido: {s!r}. Usar YYYY-MM")
 
     try:
         from_date = _parse_ym(payload.get("from_date", ""))
@@ -3806,7 +3818,7 @@ async def business_slice_backfill_start(payload: dict = Body(...)):
     started = start_backfill(from_date, to_date, with_week=with_week)
     if not started:
         raise HTTPException(status_code=409, detail="No se pudo iniciar el backfill.")
-    return {"ok": True, "from_date": str(from_date)[:7], "to_date": str(to_date)[:7], "with_week": with_week}
+    return {"ok": True, "from_date": str(from_date)[:7], "to_date": str(to_date)[:7], "with_week": with_week, "legacy_override": True}
 
 
 @router.post("/business-slice/backfill-cancel")
