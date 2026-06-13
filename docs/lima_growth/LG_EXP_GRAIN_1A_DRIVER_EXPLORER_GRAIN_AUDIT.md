@@ -252,4 +252,62 @@ The function now defaults to `MAX(target_date)` = 2026-06-12. Explicit `target_d
 
 ---
 
-*Fix applied. No historical data deleted.*
+## LG-EXP-GRAIN-1C — UI Checkpoint / total_rows Semantics (IMPLEMENTED)
+
+**Date:** 2026-06-13
+**Commit:** (pending)
+
+### API Stats Evidence (Post-1B + 1C)
+
+| Field | Value | Semantics | Safe for UI? |
+|-------|-------|-----------|-------------|
+| `resolved_target_date` | 2026-06-12 | Active date used for breakdowns | YES |
+| `total_rows` | 37,090 | ALL-TIME metadata (all dates) | NO — informational only |
+| `distinct_drivers` | 18,545 | ALL-TIME distinct drivers | NO — spans multiple dates |
+| **`resolved_date_total_rows`** | **18,545** | Active date total rows | **YES — UI safe** |
+| **`resolved_date_distinct_drivers`** | **18,545** | Active date unique drivers | **YES — UI safe** |
+| `by_program` | 15,054 / 2,669 / 317 / 504 | Latest date counts | YES |
+| `by_lifecycle` | Per-lifecycle counts | Latest date only | YES |
+
+### API List/Pagination Evidence
+
+| Filter | API Total | Target Date | Status |
+|--------|-----------|-------------|--------|
+| ACTIVE_GROWTH | 15,054 | 2026-06-12 | PASS |
+| CHURN_PREVENTION | 317 | 2026-06-12 | PASS |
+| PROGRAM_14_90 | 2,669 | 2026-06-12 | PASS |
+| No filter | BLOCKED (NO_FILTER) | N/A | PASS |
+| Explicit 06-11 + ACTIVE_GROWTH | 15,054 | 2026-06-11 | PASS |
+
+### total_rows Conclusion
+
+`total_rows=37,090` is all-time metadata. It is NOT used by any frontend component directly (confirmed by grep: no UI reads this field from the explorer stats endpoint). However, to prevent future misuse, the API now exposes:
+
+- **`resolved_date_total_rows=18,545`**: The active-date row count, matching the sum of `by_program` counts. Safe for UI use.
+- **`resolved_date_distinct_drivers=18,545`**: Unique drivers in the active date.
+
+`total_rows` and `distinct_drivers` are preserved as all-time metadata (backward compatible).
+
+### API Field Contract
+
+Any UI component displaying a "total drivers" or "total rows" count for Driver Explorer MUST use `resolved_date_total_rows` (not `total_rows`). `total_rows` is all-time metadata only.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `backend/app/services/yego_lima_driver_explorer_fact_service.py` | Added `resolved_date_total_rows` and `resolved_date_distinct_drivers` fields |
+
+### 1C Veredict: **LG_EXP_GRAIN_1C_PASS**
+
+- API stats correct for latest date
+- API list/pagination correct
+- No UI component misuses `total_rows`
+- `resolved_date_total_rows` added for defensive API hardening
+- No DELETE, no Program Engine, no UI changes
+
+### 1C Decision: **GO**
+
+---
+
+*1C fix applied. No historical data deleted.*

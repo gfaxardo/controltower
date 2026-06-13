@@ -401,10 +401,12 @@ def build_driver_explorer_fact(target_date: str) -> Dict[str, Any]:
 
 
 def get_explorer_fact_stats(target_date: Optional[str] = None) -> Dict[str, Any]:
-    stats = {
+    stats: Dict[str, Any] = {
         "table": TABLE_FACT,
         "total_rows": 0,
         "distinct_drivers": 0,
+        "resolved_date_total_rows": 0,
+        "resolved_date_distinct_drivers": 0,
         "min_date": None,
         "max_date": None,
         "resolved_target_date": None,
@@ -434,6 +436,18 @@ def get_explorer_fact_stats(target_date: Optional[str] = None) -> Dict[str, Any]
             stats["distinct_drivers"] = row["d"] or 0
             stats["min_date"] = str(row["mn"]) if row["mn"] else None
             stats["max_date"] = str(row["mx"]) if row["mx"] else None
+
+        # Add resolved-date totals (safe for UI use)
+        if target_date:
+            cur.execute(
+                f"SELECT COUNT(*) AS c, COUNT(DISTINCT driver_profile_id) AS d "
+                f"FROM {TABLE_FACT} WHERE target_date = %(d)s",
+                {"d": target_date},
+            )
+            row = cur.fetchone()
+            if row:
+                stats["resolved_date_total_rows"] = row["c"] or 0
+                stats["resolved_date_distinct_drivers"] = row["d"] or 0
 
         date_filter = "WHERE target_date = %(d)s" if target_date else ""
         params = {"d": target_date} if target_date else {}
