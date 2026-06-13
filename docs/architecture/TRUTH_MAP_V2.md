@@ -7,6 +7,7 @@
 **Entry point:** For any AI session, start at [AI_START_HERE.md](AI_START_HERE.md)
 **Scope governance:** Before any implementation planning, read [ACTIVE_SCOPE_CONTRACT.md](ACTIVE_SCOPE_CONTRACT.md). This contract defines current in-scope work, out-of-scope engines/features, deferred backlog, and implementation gates. All implementation prompts must pass the Scope Escalation Test.
 **Production status:** Lima Growth Machine is **Closure Candidate Operable** with an active **Production Cutover Exception** for Exclusive Program Assignment V1. See `docs/lima_growth/LG_PROD_SCOPE_1A_PRODUCTION_CUTOVER_SCOPE_OVERRIDE.md`. Growth Machine is NOT CLOSED — weekly cycle evidence pending.
+**North Star:** Lima Growth Machine North Star is defined in `docs/lima_growth/LG_NORTH_STAR_EXCLUSIVE_LISTS_CONTRACT.md`. Future Growth Machine work must prioritize exclusive dynamic operational lists, Control Loop export, action tracking, and impact measurement.
 
 ---
 

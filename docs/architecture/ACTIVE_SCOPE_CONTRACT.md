@@ -257,4 +257,26 @@ This exception does NOT declare Growth Machine CLOSED. CLOSED still requires wee
 
 ---
 
+## 16. Lima Growth North Star
+
+**Reference:** `docs/lima_growth/LG_NORTH_STAR_EXCLUSIVE_LISTS_CONTRACT.md`
+
+The active north star for Lima Growth Machine is the creation of **daily refreshed mutually exclusive operational driver lists**, exportable to Control Loop and measurable by action impact.
+
+Dashboards, health banners, explanations, and visualizations are **secondary** unless they directly support: list generation, Control Loop export, action tracking, or impact measurement.
+
+### North Star Test
+
+All future Growth Machine prompts must answer:
+
+1. Does this improve exclusive dynamic lists?
+2. Does this improve daily refresh correctness?
+3. Does this improve Control Loop export?
+4. Does this improve action tracking?
+5. Does this improve daily/weekly impact measurement?
+
+**If NO to all → document/backlog. Do NOT implement.**
+
+---
+
 *This contract is mandatory reading before any implementation planning in YEGO Control Tower. Referenced by TRUTH_MAP_V2.md. Violations are NO-GO.*
