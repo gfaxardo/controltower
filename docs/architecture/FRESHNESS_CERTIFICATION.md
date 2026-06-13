@@ -628,6 +628,94 @@ Both false-positive DEGRADED statuses resolved by calibrating SLAs to match the 
 - Growth Machine is **Closure Candidate**
 - Recommended: observe one full week cycle before declaring CLOSED
 
+---
+
+### FH-1C Weekly Cycle Observation / Closure Certification
+
+**Date:** 2026-06-13 (Saturday)
+**Commits:** eb3a3ce (FH-1A) → 9f834eb (FH-1B)
+
+#### Weekly Cycle Status
+
+Current date is 2026-06-13 (Saturday). The current week (Monday 06-08 to Sunday 06-14) is NOT yet closed. The last completed week is 06-01 (week ending Sunday 06-07). The next weekly refresh for week 06-08 is expected on Monday 06-15.
+
+| Metric | Value |
+|--------|-------|
+| Current Monday | 2026-06-08 |
+| Last completed week start | 2026-06-01 |
+| Max week_start_date in DB | 2026-06-01 |
+| Is max >= last completed? | TRUE |
+| Last calculated at | 2026-06-08 09:02 (before FH-1) |
+| SLA (weekly grain) | 336h (14d) |
+| Current age | 302h |
+| Status | HEALTHY |
+
+#### Daily Tables Evidence
+
+| Table | Rows | Latest Data | Freshness |
+|-------|------|-------------|-----------|
+| `driver_state_snapshot` | 185,257 | 2026-06-13 | FRESH |
+| `program_eligibility_daily` | 282,688 | 2026-06-13 | FRESH |
+| `daily_opportunity_list` | 282,688 | 2026-06-13 (28,128 today) | FRESH |
+| `control_loop_state` | 770 | 2026-06-13 06:26 | FRESH |
+
+#### Registry Evidence (10/10)
+
+All 10 components present and reporting:
+
+| Component | Status | Latest | Latency |
+|-----------|--------|--------|---------|
+| `driver_history_weekly` | FRESH | 2026-06-01 | 18,129 min |
+| `opportunity` | FRESH | 2026-06-13 | 849 min |
+| `control_loop` | FRESH | 2026-06-13 | 163 min |
+| `driver_state` | FRESH | 2026-06-13 | 849 min |
+| `eligibility` | FRESH | 2026-06-13 | 849 min |
+
+#### Serving Freshness Fact Evidence (16/16)
+
+| Asset | Status | Age | SLA |
+|-------|--------|-----|-----|
+| `driver_history_weekly` | HEALTHY | 302h | 336h |
+| `daily_opportunity_list` | HEALTHY | 14.2h | 24h |
+| `control_loop_state` | HEALTHY | 2.8h | 8h |
+
+#### Manual Bootstrap Check
+
+| Check | Result |
+|-------|--------|
+| `bootstrap_history()` executed manually | NO (last_calculated_at is 06-08, before FH-1) |
+| `ctrl_bridge_sync.py` executable | NO (renamed to .legacy.disabled) |
+| `rebuild_queue.py` executed | NO evidence |
+| `obs_1b_rebuild.py` executed | NO evidence |
+| `refresh_weekly_history()` via canonical tick | NOOP (guard: weekly up to date) |
+
+#### FH-1C Decision: **CONDITIONAL GO**
+
+Growth Machine is **Closure Candidate PASSED.** All 5 tables have governed freshness with verifiable evidence. The system is ready for production operation.
+
+**Cannot declare CLOSED yet** because the full weekly cycle for week 06-08 hasn't been observed. The `driver_history_weekly` table will naturally update on Monday 06-15 when:
+1. The week 06-08 closes (Sunday 06-14)
+2. The scheduler detects new daily data
+3. `refresh_weekly_history()` executes the UPSERT rebuild
+4. `week_start_date` 2026-06-08 appears in the table
+
+Once this is observed (any time after Monday 06-15), Growth Machine can be declared CLOSED.
+
+#### Growth Machine Final Status
+
+| Check | Result |
+|-------|--------|
+| 5 tables governed | PASS |
+| Registry complete (10/10) | PASS |
+| Serving fact complete (16/16) | PASS |
+| Health endpoints working | PASS |
+| Weekly refresh governed | PASS |
+| Legacy writers blocked | PASS |
+| No manual bootstrap required | PASS |
+| Full weekly cycle observed | PENDING (expected Mon 06-15) |
+| **Closure Candidate** | **PASSED** |
+| **CLOSED** | **PENDING weekly cycle** |
+
 ### What Has Changed (FH-1 Remediation)
 
 - 7 backend service/routers modified (+111 lines total).
