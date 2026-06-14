@@ -1,6 +1,6 @@
 /**
- * Omniview V2 — Professional Page
- * OV2-UI-R4: Professional matrix with color semantics + Plan vs Real.
+ * Omniview V2 — Executive Visual Cockpit
+ * OV2-VC1: Visual-first cockpit architecture. Matrix secondary.
  */
 import { useState, useEffect, useMemo } from 'react';
 import useOmniviewV2Shell from './hooks/useOmniviewV2Shell';
@@ -12,39 +12,34 @@ import { getMetricById } from './omniviewV2Metrics';
 import { getPresetRange, PERIOD_PRESETS } from './omniviewV2PeriodPresets';
 import { sortMatrixRows, SORT_MODES } from './omniviewV2Sort';
 import OMNIVIEW_V2_METRICS from './omniviewV2Metrics';
-import { getCellToneClass } from './omniviewV2ColorSemantics';
-import { getPlanRealDisplay } from './omniviewV2PlanReal';
 import { RouteStatusBadge } from './RouteStatusBadge';
 
-function ProfessionalPage() {
+function ExecutiveCockpit() {
   const today = new Date().toISOString().slice(0, 10);
-  const [sourceSystem] = useState('CT_TRIPS_2026');
   const [grain, setGrain] = useState('day');
   const [metricId, setMetricId] = useState('orders');
   const [viewMode, setViewMode] = useState('real');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [country] = useState('peru');
-  const [city] = useState('lima');
-  const [businessSlice] = useState('');
   const [sortMode, setSortMode] = useState('default');
   const [activePreset, setActivePreset] = useState('');
   const [operatingDate, setOperatingDate] = useState(null);
+  const [showMatrix, setShowMatrix] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
 
-  const { data: shellData, loading: shellLoading } = useOmniviewV2Shell(sourceSystem, grain, dateFrom, dateTo, country, city);
-  const { matrixData: realMatrixData, loading: matrixLoading } = useOmniviewV2Matrix(sourceSystem, grain, metricId, dateFrom, dateTo, shellData, country, city);
+  const { data: shellData, loading: shellLoading } = useOmniviewV2Shell('CT_TRIPS_2026', grain, dateFrom, dateTo, 'peru', 'lima');
+  const { matrixData: realMatrixData, loading: matrixLoading } = useOmniviewV2Matrix('CT_TRIPS_2026', grain, metricId, dateFrom, dateTo, shellData, 'peru', 'lima');
   const { planData } = useOmniviewV2PlanReal(viewMode === 'plan_real' ? { metric_id: metricId, date_from: dateFrom || today, date_to: dateTo || today } : null);
 
   useEffect(() => {
-    let cancelled = false;
-    getOmniviewV2OperatingDate({ source_system: sourceSystem }).then((data) => {
-      if (!cancelled && data?.default_date) { setOperatingDate(data); if (!dateFrom) { setDateFrom(data.default_date); setDateTo(data.default_date); } }
+    let c = false;
+    getOmniviewV2OperatingDate({ source_system: 'CT_TRIPS_2026' }).then(d => {
+      if (!c && d?.default_date) { setOperatingDate(d); if (!dateFrom) { setDateFrom(d.default_date); setDateTo(d.default_date); } }
     }).catch(() => {});
-    return () => { cancelled = true; };
+    return () => { c = true; };
   }, []);
 
-  const activeMatrixData = viewMode === 'plan_real' ? planData : realMatrixData;
-  const matrixData = activeMatrixData;
+  const matrixData = viewMode === 'plan_real' ? planData : realMatrixData;
   const sortedData = useMemo(() => {
     if (!matrixData?.rows || sortMode === 'default') return matrixData;
     return { ...matrixData, rows: sortMatrixRows(matrixData.rows, matrixData.cells, sortMode, metricId) };
@@ -55,110 +50,166 @@ function ProfessionalPage() {
   const canonicalReady = shellData?.canonical_ready ?? false;
   const loading = shellLoading || matrixLoading;
   const hasData = (matrixData?.cells?.length || 0) > 0;
+  const metric = getMetricById(metricId);
   const freshnessStatus = operatingDate?.freshness_status;
   const isStale = freshnessStatus && freshnessStatus !== 'FRESH';
   const statusLabel = !canonicalReady ? 'Shadow mode' : isStale ? 'Data warning' : loading ? 'Loading...' : hasData ? 'Operational' : 'No data';
   const statusColor = !canonicalReady ? '#9ca3af' : isStale ? '#f59e0b' : hasData ? '#16a34a' : '#6b7280';
-  const [showDebug, setShowDebug] = useState(false);
-  const isPlanReal = viewMode === 'plan_real';
-  const metric = getMetricById(metricId);
+
+  // Temporal delta label per grain
+  const deltaLabel = grain === 'day' ? 'DoD' : grain === 'week' ? 'WoW' : 'MoM';
+
+  // ── KPI cards from shell data ──────────────────────────────────
+  const kpiSection = shellData?.sections?.find(s => s.section_id === 'kpi_strip');
+  const kpis = (kpiSection?.kpis || []).slice(0, 4);
+  const primaryKpis = ['orders', 'revenue', 'active_drivers', 'cancel_rate_pct'];
+
+  // ── Slice breakdown from matrix cells ──────────────────────────
+  const sliceBreakdown = useMemo(() => {
+    if (!matrixData?.cells || matrixData.cells.length === 0 || !matrixData.rows) return [];
+    const sliceTotals = {};
+    for (const c of matrixData.cells) {
+      if (c.value == null || c.metric_id !== metricId) continue;
+      const row = matrixData.rows.find(r => r.id === c.row_id);
+      const label = row?.label || c.row_id;
+      sliceTotals[label] = (sliceTotals[label] || 0) + c.value;
+    }
+    const entries = Object.entries(sliceTotals).sort((a, b) => b[1] - a[1]);
+    const total = entries.reduce((s, [, v]) => s + v, 0);
+    return entries.slice(0, 6).map(([label, val]) => ({ label, value: val, pct: total > 0 ? Math.round(val / total * 100) : 0 }));
+  }, [matrixData, metricId]);
 
   const handlePreset = (pid) => { const r = getPresetRange(pid); if (r) { setDateFrom(r.from); setDateTo(r.to); setActivePreset(pid); } };
   const handleExport = () => {
-    try { exportOmniviewV2Csv({ matrixData: sortedData, metric, grain, filters: { country, city, businessSlice, dateFrom, dateTo }, viewMode, canonicalReady, freshness, operatingDate, coverage, activePreset }); }
+    try { exportOmniviewV2Csv({ matrixData: sortedData, metric, grain, filters: { country: 'peru', city: 'lima', dateFrom, dateTo }, viewMode, canonicalReady, freshness, operatingDate, coverage, activePreset }); }
     catch (e) { console.error('Export failed:', e); }
   };
 
+  if (loading && !hasData) return <div style={{ padding: 60, textAlign: 'center', color: '#374151', fontFamily: 'system-ui, sans-serif' }}><div style={{ fontSize: 16, fontWeight: 600 }}>Loading cockpit...</div></div>;
+  if (!hasData && !loading) return <div style={{ padding: 60, textAlign: 'center', color: '#374151', fontFamily: 'system-ui, sans-serif' }}><div style={{ fontSize: 18, fontWeight: 600 }}>No operational data</div><div style={{ fontSize: 13, color: '#6b7280' }}>No data for {grain} / {metric?.label || 'Trips'}.</div></div>;
+
+  const panelStyle = { background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', padding: 16, display: 'flex', flexDirection: 'column', overflow: 'hidden' };
+  const kpiCardStyle = { ...panelStyle, alignItems: 'center', justifyContent: 'center', minWidth: 140, flex: 1 };
   const ss = { padding: '6px 8px', borderRadius: 4, border: '1px solid #d1d5db', fontSize: 13, background: '#fff', color: '#374151' };
-  const tdStyle = { padding: '6px 10px', textAlign: 'right', borderBottom: '1px solid #e5e7eb', fontSize: 13, minWidth: 110 };
-  const toneMap = { positive: '#16a34a', negative: '#dc2626', neutral: '#9ca3af', warning: '#f59e0b', blocked: '#ef4444', 'not-comparable': '#9ca3af', future: '#d1d5db', disabled: '#d1d5db', muted: '#d1d5db' };
-
-  if (loading && !hasData) return <div style={{ padding: 60, textAlign: 'center', color: '#374151', fontFamily: 'system-ui, sans-serif' }}><div style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>Loading operational data...</div></div>;
-  if (!hasData && !loading) return <div style={{ padding: 60, textAlign: 'center', color: '#374151', fontFamily: 'system-ui, sans-serif' }}><div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>No operational data</div><div style={{ fontSize: 13, color: '#6b7280' }}>No data for {grain} / {country} / {city} / {metric?.label || 'Trips'}.</div></div>;
-
-  const cols = sortedData?.columns || [];
-  const rows = sortedData?.rows || [];
-  const cells = sortedData?.cells || [];
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', fontFamily: 'system-ui, -apple-system, sans-serif', background: '#f9fafb' }}>
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', fontFamily: 'system-ui, -apple-system, sans-serif', background: '#f9fafb', overflow: 'auto' }}>
+      {/* Header */}
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 24px', background: '#fff', borderBottom: '1px solid #e5e7eb', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontWeight: 700, fontSize: 16, color: '#111827' }}>Omniview V2</span>
-          <RouteStatusBadge status="DEFAULT_CERTIFIED" style={{ marginLeft: 4 }} />
-          <span style={{ fontSize: 11, color: canonicalReady ? '#16a34a' : '#9ca3af', background: canonicalReady ? '#f0fdf4' : '#f3f4f6', padding: '2px 8px', borderRadius: 3 }}>{canonicalReady ? 'CANONICAL' : 'SHADOW'}</span>
+          <RouteStatusBadge status="DEFAULT_CERTIFIED" />
+          <span style={{ fontSize: 11, color: statusColor, fontWeight: 500 }}>● {statusLabel}</span>
           <span style={{ fontSize: 12, color: '#6b7280' }}>{grain === 'day' ? 'Daily' : grain === 'week' ? 'Weekly' : 'Monthly'} · {metric?.label || 'Trips'} · {dateFrom || '—'} → {dateTo || '—'}</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 12, color: '#6b7280' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500, color: statusColor }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor, display: 'inline-block' }} />{statusLabel}
-          </span>
-          {freshness && <span>Updated {freshness}</span>}
-          <span>Coverage {coverage.coverage_pct ?? '-'}%</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 12, color: '#6b7280' }}>Coverage {coverage.coverage_pct ?? '-'}%</span>
+          <button onClick={() => setShowDebug(!showDebug)} style={{ padding: '2px 6px', borderRadius: 3, border: '1px solid #d1d5db', fontSize: 10, background: '#fff', color: '#9ca3af', cursor: 'pointer' }}>D</button>
         </div>
       </header>
-      {operatingDate && (
-        <div style={{ display: 'flex', gap: 16, padding: '4px 24px', background: '#f3f4f6', borderBottom: '1px solid #e5e7eb', fontSize: 11, color: '#6b7280', flexShrink: 0 }}>
-          <span>Latest closed: <strong>{operatingDate.latest_closed_date || '—'}</strong></span>
-          <span>Default date: <strong>{operatingDate.default_date || '—'}</strong></span>
-          <span>Freshness: <strong style={{ color: operatingDate.freshness_status === 'FRESH' ? '#16a34a' : '#dc2626' }}>{operatingDate.freshness_status || '—'}</strong></span>
-          <span>Lag: <strong>{operatingDate.lag_days != null ? `${operatingDate.lag_days}d` : '—'}</strong></span>
-        </div>
-      )}
+
+      {/* Toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 24px', background: '#fff', borderBottom: '1px solid #e5e7eb', flexWrap: 'wrap', flexShrink: 0 }}>
         <select value={grain} onChange={e => setGrain(e.target.value)} style={ss}><option value="day">Daily</option><option value="week">Weekly</option><option value="month">Monthly</option></select>
-        <select value={metricId} onChange={e => setMetricId(e.target.value)} style={{ ...ss, fontWeight: 600 }}>{OMNIVIEW_V2_METRICS.map(m => <option key={m.id} value={m.id} disabled={!m.available}>{m.label}{!m.available ? ' (N/A)' : ''}</option>)}</select>
-        {PERIOD_PRESETS.map(p => <button key={p.id} onClick={() => handlePreset(p.id)} style={{ padding: '4px 10px', borderRadius: 4, fontSize: 11, cursor: 'pointer', fontWeight: activePreset === p.id ? 600 : 400, border: `1px solid ${activePreset === p.id ? '#3b82f6' : '#d1d5db'}`, background: activePreset === p.id ? '#eff6ff' : '#fff', color: activePreset === p.id ? '#3b82f6' : '#6b7280' }}>{p.label}</button>)}
-        <span style={{ color: '#d1d5db', margin: '0 4px' }}>|</span>
+        <select value={metricId} onChange={e => setMetricId(e.target.value)} style={{ ...ss, fontWeight: 600 }}>{OMNIVIEW_V2_METRICS.map(m => <option key={m.id} value={m.id} disabled={!m.available}>{m.label}</option>)}</select>
+        {PERIOD_PRESETS.slice(0, 4).map(p => <button key={p.id} onClick={() => handlePreset(p.id)} style={{ padding: '4px 10px', borderRadius: 4, fontSize: 11, cursor: 'pointer', fontWeight: activePreset === p.id ? 600 : 400, border: `1px solid ${activePreset === p.id ? '#3b82f6' : '#d1d5db'}`, background: activePreset === p.id ? '#eff6ff' : '#fff', color: activePreset === p.id ? '#3b82f6' : '#6b7280' }}>{p.label}</button>)}
+        <span style={{ color: '#d1d5db' }}>|</span>
         <select value={viewMode} onChange={e => setViewMode(e.target.value)} style={ss}><option value="real">Real</option><option value="plan_real">Plan vs Real</option></select>
         <select value={sortMode} onChange={e => setSortMode(e.target.value)} style={ss}>{SORT_MODES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select>
         <span style={{ flex: 1 }} />
         <button onClick={handleExport} disabled={!hasData} style={{ padding: '6px 14px', borderRadius: 4, border: 'none', fontSize: 12, fontWeight: 500, cursor: hasData ? 'pointer' : 'not-allowed', background: hasData ? '#3b82f6' : '#e5e7eb', color: hasData ? '#fff' : '#9ca3af' }}>Export CSV</button>
-        <button onClick={() => setShowDebug(!showDebug)} style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #d1d5db', fontSize: 10, background: '#fff', color: '#9ca3af', cursor: 'pointer' }}>D</button>
+        <button onClick={() => setShowMatrix(!showMatrix)} style={{ padding: '6px 14px', borderRadius: 4, border: '1px solid #d1d5db', fontSize: 12, background: '#fff', color: '#374151', cursor: 'pointer', fontWeight: showMatrix ? 600 : 400 }}>{showMatrix ? 'Hide Detail' : 'Matrix Detail'}</button>
       </div>
-      <div style={{ flex: 1, overflow: 'auto' }}>
-        <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13, fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-          <thead>
-            <tr style={{ background: '#f3f4f6', position: 'sticky', top: 0, zIndex: 10 }}>
-              <th style={{ padding: '8px 14px', textAlign: 'left', borderBottom: '2px solid #d1d5db', minWidth: 160, fontWeight: 600, color: '#374151', position: 'sticky', left: 0, background: '#f3f4f6', zIndex: 11 }}>Business Slice</th>
-              {cols.map(c => <th key={c.id} style={{ padding: '8px 14px', textAlign: 'right', borderBottom: '2px solid #d1d5db', minWidth: 110, fontWeight: 600, color: '#374151', fontSize: 12 }}>{c.period ? c.period.slice(c.period.length > 7 ? 5 : 0, 10) : c.label}{c.period_status === 'PARTIAL' && <span style={{ fontSize: 9, color: '#f59e0b', marginLeft: 4 }}>PAR</span>}{c.period_status === 'FUTURE' && <span style={{ fontSize: 9, color: '#9ca3af', marginLeft: 4 }}>FUT</span>}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, ri) => {
-              const rowCells = cells.filter(c => c.row_id === row.id);
-              const bg = ri % 2 === 0 ? '#fff' : '#f9fafb';
-              return (
-                <tr key={row.id} style={{ background: bg }}>
-                  <td style={{ padding: '8px 14px', borderBottom: '1px solid #e5e7eb', fontWeight: 500, color: '#111827', position: 'sticky', left: 0, background: bg, zIndex: 5 }}>{row.label}</td>
-                  {cols.map(col => {
-                    const cell = rowCells.find(c => c.column_id === col.id);
-                    if (!cell || cell.value == null) return <td key={col.id} style={{ ...tdStyle, color: '#9ca3af' }}>—</td>;
-                    const isFuture = col.period_status === 'FUTURE';
-                    const tone = getCellToneClass(cell, metricId, isFuture);
-                    const bc = toneMap[tone] || '#d1d5db';
-                    if (isPlanReal) {
-                      const pvr = getPlanRealDisplay(cell, metricId);
-                      return <td key={col.id} style={{ ...tdStyle, borderLeft: `3px solid ${bc}` }}><div style={{ fontWeight: 600, color: '#111827' }}>{cell.formatted_value || String(cell.value)}</div>{pvr.attainmentPct != null && <div style={{ fontSize: 10, color: tone === 'negative' ? '#dc2626' : tone === 'positive' ? '#16a34a' : '#6b7280', marginTop: 1 }}>{pvr.attainmentFormatted} · {tone === 'negative' ? 'Behind' : tone === 'positive' ? 'Ahead' : 'OK'}</div>}</td>;
-                    }
-                    return <td key={col.id} style={{ ...tdStyle, borderLeft: `3px solid ${bc}`, color: '#111827', fontWeight: 500 }}>{cell.formatted_value || String(cell.value)}</td>;
+
+      {/* Main cockpit area */}
+      <div style={{ flex: 1, overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* KPI Cards Row */}
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          {primaryKpis.map(kid => {
+            const kpiMetric = getMetricById(kid);
+            const kpiCells = (matrixData?.cells || []).filter(c => c.metric_id === kid && c.value != null);
+            const total = kpiCells.reduce((s, c) => s + c.value, 0);
+            return (
+              <div key={kid} style={kpiCardStyle}>
+                <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{kpiMetric?.label || kid}</div>
+                <div style={{ fontSize: 28, fontWeight: 700, color: '#111827', margin: '4px 0' }}>{kpiMetric?.format ? kpiMetric.format(total) : total.toLocaleString()}</div>
+                <div style={{ fontSize: 11, color: '#9ca3af' }}>{deltaLabel}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Visual Panels Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          {/* Trend Panel Shell */}
+          <div style={panelStyle}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Trend · {deltaLabel}</div>
+            <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 8 }}>{grain === 'day' ? 'Day over day' : grain === 'week' ? 'Week over week' : 'Month over month'} evolution</div>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 160, color: '#d1d5db', fontSize: 13, border: '1px dashed #e5e7eb', borderRadius: 6, background: '#f9fafb' }}>
+              Chart layer coming in VC2
+            </div>
+          </div>
+
+          {/* Plan vs Real Panel Shell */}
+          <div style={panelStyle}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Plan vs Real</div>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 160, color: '#d1d5db', fontSize: 13, border: '1px dashed #e5e7eb', borderRadius: 6, background: '#f9fafb' }}>
+              Attainment bars coming in VC3
+            </div>
+          </div>
+        </div>
+
+        {/* Slice Breakdown */}
+        {sliceBreakdown.length > 0 && (
+          <div style={panelStyle}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 12 }}>Slice Breakdown</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {sliceBreakdown.map(s => (
+                <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 12, color: '#374151', width: 120, textAlign: 'right', flexShrink: 0 }}>{s.label}</span>
+                  <div style={{ flex: 1, height: 20, background: '#f3f4f6', borderRadius: 4, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${s.pct}%`, background: '#3b82f6', borderRadius: 4, transition: 'width 0.3s' }} />
+                  </div>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#111827', width: 100 }}>{metric?.format ? metric.format(s.value) : s.value.toLocaleString()}</span>
+                  <span style={{ fontSize: 11, color: '#6b7280', width: 36 }}>{s.pct}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Matrix Detail (secondary) */}
+        {showMatrix && sortedData?.rows && (
+          <div style={panelStyle}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Matrix Detail</div>
+            <div style={{ overflow: 'auto', maxHeight: 400 }}>
+              <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: '#f3f4f6' }}>
+                    <th style={{ padding: '6px 12px', textAlign: 'left', borderBottom: '2px solid #d1d5db', minWidth: 140, fontWeight: 600, color: '#374151', position: 'sticky', left: 0, background: '#f3f4f6' }}>Slice</th>
+                    {(sortedData.columns || []).map(c => <th key={c.id} style={{ padding: '6px 12px', textAlign: 'right', borderBottom: '2px solid #d1d5db', minWidth: 90, fontWeight: 600, color: '#374151', fontSize: 11 }}>{c.period ? c.period.slice(5, 10) : c.label}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(sortedData.rows || []).map((row, ri) => {
+                    const rc = (sortedData.cells || []).filter(c => c.row_id === row.id);
+                    return <tr key={row.id} style={{ background: ri % 2 === 0 ? '#fff' : '#f9fafb' }}><td style={{ padding: '6px 12px', borderBottom: '1px solid #e5e7eb', fontWeight: 500, color: '#111827' }}>{row.label}</td>{(sortedData.columns || []).map(col => { const cell = rc.find(c => c.column_id === col.id); const v = cell?.formatted_value || (cell?.value != null ? String(cell.value) : '—'); return <td key={col.id} style={{ padding: '6px 12px', textAlign: 'right', borderBottom: '1px solid #e5e7eb', color: cell?.value == null ? '#9ca3af' : '#111827' }}>{v}</td>; })}</tr>;
                   })}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Debug panel */}
       {showDebug && (
-        <div style={{ padding: '8px 24px', background: '#1f2937', color: '#9ca3af', fontSize: 10, fontFamily: 'monospace', flexShrink: 0, maxHeight: 120, overflow: 'auto', borderTop: '1px solid #374151' }}>
-          <div><strong style={{ color: '#e5e7eb' }}>Debug</strong> · grain={grain} metric={metricId} view={viewMode} sort={sortMode} preset={activePreset || 'none'}</div>
-          <div>freshness={freshnessStatus || 'unknown'} canonical={String(canonicalReady)} coverage={coverage.coverage_pct} lag={operatingDate?.lag_days ?? '—'}d</div>
-          <div>rows={sortedData?.rows?.length || 0} cols={sortedData?.columns?.length || 0} cells={sortedData?.cells?.length || 0} loading={String(loading)} hasData={String(hasData)}</div>
-          <div>shell={shellData ? 'ok' : 'null'} matrix={matrixData ? 'ok' : 'null'} plan={planData ? 'ok' : 'null'} opDate={operatingDate ? 'ok' : 'null'}</div>
+        <div style={{ padding: '8px 24px', background: '#1f2937', color: '#9ca3af', fontSize: 10, fontFamily: 'monospace', flexShrink: 0, borderTop: '1px solid #374151' }}>
+          grain={grain} metric={metricId} view={viewMode} sort={sortMode} rows={sortedData?.rows?.length || 0} cells={sortedData?.cells?.length || 0} freshness={freshnessStatus || 'unknown'}
         </div>
       )}
     </div>
   );
 }
 
-export default ProfessionalPage;
+export default ExecutiveCockpit;
