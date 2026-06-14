@@ -22,6 +22,7 @@ COMPONENTS = [
     ("eligibility", "growth.yango_lima_program_eligibility_daily", "eligibility_date"),
     ("opportunity", "growth.yango_lima_daily_opportunity_list", "opportunity_date"),
     ("exclusive_worklist", "growth.yango_lima_exclusive_driver_worklist_daily", "generated_date"),
+    ("exclusive_worklist_transition", "growth.yango_lima_exclusive_worklist_transition_daily", "generated_date"),
     ("prioritized", "growth.yango_lima_prioritized_opportunity_daily", "opportunity_date"),
     ("control_loop", "growth.yego_lima_control_loop_state", "created_at"),
     ("queue", "growth.yego_lima_assignment_queue", "assignment_date"),

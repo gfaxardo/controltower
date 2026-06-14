@@ -584,8 +584,7 @@ def autonomous_tick() -> Dict[str, Any]:
         if not row or not row[0]:
             result["status"] = "SKIPPED"
             result["reason"] = "Scheduler not enabled"
-            _release_tick_lock(conn)
-            _write_tick_log_always(now, _now(), 0, result)
+            _finalize_tick_and_log(conn, now, refresh_run_id, result)
             return result
 
         from app.services.yego_lima_daily_refresh_service import detect_latest_closed_data_date
@@ -717,6 +716,9 @@ def autonomous_tick() -> Dict[str, Any]:
 
                 from app.services.yego_lima_exclusive_worklist_service import refresh_exclusive_driver_worklist_daily
                 _run_step("exclusive_worklist", lambda d=target_date: refresh_exclusive_driver_worklist_daily(d))
+
+                from app.services.yego_lima_exclusive_worklist_transition_service import refresh_exclusive_worklist_transition_daily
+                _run_step("exclusive_worklist_transition", lambda d=target_date: refresh_exclusive_worklist_transition_daily(generated_date=d))
 
                 from app.services.yego_lima_program_eligibility_service import build_program_eligibility
                 _run_step("eligibility", lambda d=target_date: build_program_eligibility(d))
