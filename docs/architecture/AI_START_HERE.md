@@ -29,6 +29,38 @@ Before analyzing, designing, or implementing any change, read these documents in
 | Yango API / Loyalty | `docs/architecture/YANGO_API_CANONICAL.md` |
 | System overview | `docs/architecture/SYSTEM_MAP.md` |
 
+### 3. REQUIRED — Lima Growth Machine North Star Check
+
+Before any Growth Machine work, read:
+
+| # | Document | Why |
+|---|----------|-----|
+| 1 | `docs/lima_growth/LG_NORTH_STAR_EXCLUSIVE_LISTS_CONTRACT.md` | North Star contract: exclusive dynamic lists, daily refresh, Control Loop export, action tracking, impact measurement |
+| 2 | `docs/lima_growth/LG_NORTH_1A_EXCLUSIVE_LISTS_GOVERNANCE_CERTIFICATION.md` | Governance certification of the North Star |
+| 3 | `docs/lima_growth/LG_PROD_SCOPE_1A_PRODUCTION_CUTOVER_SCOPE_OVERRIDE.md` | Production cutover exception: authorized scope |
+| 4 | `docs/lima_growth/LG_NORTH_PRECHECK_1B_MVP_GAP_SCAN.md` | Latest MVP gap scan and phasing |
+
+**North Star:**
+
+The final product of Lima Growth Machine is not the dashboard. The final product is **daily refreshed mutually exclusive operational driver lists**, exportable to Control Loop and measurable by daily/weekly action impact.
+
+**North Star Test:**
+
+Every Growth Machine task must answer:
+
+| # | Question |
+|---|----------|
+| 1 | Does this improve exclusive dynamic lists? |
+| 2 | Does this improve daily refresh correctness? |
+| 3 | Does this improve Control Loop export? |
+| 4 | Does this improve action tracking? |
+| 5 | Does this improve daily/weekly impact measurement? |
+| 6 | If NO to all, why is this being done now? |
+
+**Rule:** If the answer is NO to all → document/backlog. Do NOT implement.
+
+Do NOT open Diagnostic Engine, Forecast, Suggestion, Decision, Action, AI Copilot, or Learning until Growth Machine MVP cutover is complete and certified.
+
 ---
 
 ## PRECEDENCE
