@@ -274,8 +274,12 @@ All future Growth Machine prompts must answer:
 3. Does this improve Control Loop export?
 4. Does this improve action tracking?
 5. Does this improve daily/weekly impact measurement?
+6. Does this improve assignment explainability?
+7. Does this improve movement traceability between exclusive lists?
 
 **If NO to all → document/backlog. Do NOT implement.**
+
+**Rule:** If a Growth Machine task changes assignment/list logic but does not preserve reason/evidence/transition traceability, it cannot be certified.
 
 ---
 

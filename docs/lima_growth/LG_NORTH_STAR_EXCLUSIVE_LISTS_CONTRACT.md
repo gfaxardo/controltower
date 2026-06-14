@@ -207,4 +207,56 @@ Maintain deferred and blocked:
 
 ---
 
+## 14. Assignment Explainability Requirement (LG-NORTH-TRACE-1A)
+
+Every daily worklist assignment must be explainable. Each row must be able to answer:
+
+| # | Question | Example |
+|---|----------|---------|
+| 1 | Why is this driver in this list today? | "Driver is on day 7 since first activity, has 18 trips in window, and has not reached 50 trips." |
+| 2 | What rule placed the driver here? | NEW_REACTIVATED_0_14_TO_50: age <= 14d AND trips < 50. |
+| 3 | What metric is below or above target? | weekly_trips = 18, target = 50. |
+| 4 | What is the target? | 50_trips_activation_window. |
+| 5 | What is the current value? | activation_window_trips = 18. |
+| 6 | What is the gap? | gap = 32 trips. |
+| 7 | What must happen for the driver to exit this list? | Reach 50 trips OR age > 14 days. |
+| 8 | What happens if the driver achieves the goal? | Moves to PROTECTED_ALREADY_MEETING_GOAL. |
+| 9 | What happens if the driver becomes inactive? | Moves to RECOVERY (7-60d inactive) or CEMETERY (>60d). |
+| 10 | What is the recommended operational treatment? | ONBOARDING_PUSH: activation push, onboarding, first habit formation. |
+
+The `reason_code`, `objective`, `target_metric`, `baseline_metric`, and `productivity_band` columns in `growth.yango_lima_exclusive_driver_worklist_daily` satisfy this requirement for V1. A `reason_text` human-readable field is recommended for future phases.
+
+## 15. Movement Traceability Requirement (LG-NORTH-TRACE-1A)
+
+The system must track how drivers move between lists over time. Each movement must answer:
+
+| # | Question | Data Source |
+|---|----------|-------------|
+| 1 | What list was the driver in yesterday? | Previous day's `assigned_universe_v1`. |
+| 2 | What list is the driver in today? | Current day's `assigned_universe_v1`. |
+| 3 | Did the driver stay, enter, exit, improve, decline, recover, or churn? | Transition type (see below). |
+| 4 | What metric changed? | delta in `weekly_trips`, `inactivity_days`, `operational_age_days`. |
+| 5 | What objective was achieved or missed? | `target_metric` vs `baseline_metric` delta. |
+| 6 | On what date did the movement happen? | `transition_date`. |
+| 7 | What action history existed before movement? | Control Loop `action_registry` / `action_ledger` (future). |
+
+**Transition types V1:**
+
+| Code | Description |
+|------|-------------|
+| ENTERED_LIST | Driver newly assigned to a universe. |
+| STAYED_IN_LIST | Same universe as previous day. |
+| MOVED_UP_BAND | Productivity band increased within the same universe. |
+| MOVED_DOWN_BAND | Productivity band decreased within the same universe. |
+| EXITED_GOAL_MET | Driver achieved target → moved to PROTECTED. |
+| MOVED_TO_RECOVERY | Driver became inactive → RECOVERY. |
+| MOVED_TO_CEMETERY | Driver inactive > 60d → CEMETERY. |
+| RECOVERED_TO_ACTIVE | Driver reactivated → active lifecycle universe. |
+| PROTECTED_GOAL_MET | Driver meeting target persistently. |
+| NO_DATA | Insufficient data to determine movement. |
+
+**Implementation note:** This is NOT the full Lifecycle State Machine. It is V1 operational traceability required for Control Loop accountability. A `growth.yango_lima_exclusive_worklist_transition_daily` table is recommended for future phases.
+
+---
+
 *The North Star is exclusive dynamic operational lists. The dashboard is navigation, not the destination.*

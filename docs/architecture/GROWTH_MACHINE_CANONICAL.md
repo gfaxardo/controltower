@@ -369,6 +369,14 @@ Future Growth Machine work must pass the North Star Test: does it improve exclus
 - Cemetery is NOT exported to daily Control Loop (`export_to_control_loop = false`)
 - 9 universes, deterministic priority order, 1 driver = 1 universe per day
 
+### Exclusive Lists Explainability and Traceability (LG-NORTH-TRACE-1A)
+
+- Each `assigned_universe_v1` must have `reason_code` and human-readable evidence used for assignment.
+- Evidence includes: `operational_age_days`, `weekly_trips`, `activation_window_trips`, `inactivity_days`, `productivity_band`, `value_tier`, target, current value and gap.
+- Movement between universes must be tracked daily in a transition fact (`growth.yango_lima_exclusive_worklist_transition_daily` recommended).
+- 10 transition types defined: ENTERED_LIST, STAYED_IN_LIST, MOVED_UP_BAND, MOVED_DOWN_BAND, EXITED_GOAL_MET, MOVED_TO_RECOVERY, MOVED_TO_CEMETERY, RECOVERED_TO_ACTIVE, PROTECTED_GOAL_MET, NO_DATA.
+- This is V1 operational traceability for Control Loop accountability — NOT the full Lifecycle State Machine V3.
+
 ---
 
 *Generated from live repo audit. Evidence sources: `backend/app/routers/yego_lima_growth_control_loop.py`, `backend/app/routers/yego_lima_universe.py`, `backend/app/routers/yego_lima_control_loop_router.py`, `backend/app/services/yego_lima_*.py` (50+ files), `docs/lima_growth/*.md` (100+ docs), `frontend/src/pages/lima-growth-*/`.*

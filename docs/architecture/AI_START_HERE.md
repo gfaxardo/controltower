@@ -55,9 +55,12 @@ Every Growth Machine task must answer:
 | 3 | Does this improve Control Loop export? |
 | 4 | Does this improve action tracking? |
 | 5 | Does this improve daily/weekly impact measurement? |
-| 6 | If NO to all, why is this being done now? |
+| 6 | Does this improve assignment explainability? |
+| 7 | Does this improve movement traceability between exclusive lists? |
+| 8 | If NO to all, why is this being done now? |
 
 **Rule:** If the answer is NO to all → document/backlog. Do NOT implement.
+**Rule:** If assignment/list logic changes without preserving reason/evidence/transition traceability → cannot be certified.
 
 Do NOT open Diagnostic Engine, Forecast, Suggestion, Decision, Action, AI Copilot, or Learning until Growth Machine MVP cutover is complete and certified.
 
