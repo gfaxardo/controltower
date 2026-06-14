@@ -443,7 +443,7 @@ Create `growth.yango_lima_exclusive_driver_worklist_daily` table + canonical wri
 
 ## 14. Verdict
 
-### LG_PROG_EXCL_1A_CONDITIONAL
+### LG_PROG_EXCL_1A_PASS
 
 **Evidence:**
 
@@ -459,12 +459,79 @@ Create `growth.yango_lima_exclusive_driver_worklist_daily` table + canonical wri
 | Control Loop export contract defined | **PASS** |
 | No DB writes, no code changes | **PASS** |
 | No legacy activation | **PASS** |
-| Operator decisions documented (Section 12.2) | **PASS** |
+| Operator decisions approved (LG-PROG-EXCL-1A.1) | **PASS** |
 
-**Conditions to upgrade to PASS:**
-1. Operator approves thresholds (Section 12.2, decisions 1-5)
-2. `first_active_date` canonical source confirmed
+All conditions resolved:
+1. Operator approved all 5 thresholds (see Section 15)
+2. `first_active_date` proxy (`driver_history_daily.MIN(date)`) accepted for V1
+3. Active Growth productivity bands corrected to use `weekly_trips` (not `best_week_12w`)
 
 ---
 
-*Dry-run executed at 2026-06-13 ~20:30 UTC-5. 18,545 drivers processed. 9 universes. 0 collisions. 0 DB writes. 0 code modifications.*
+## 15. Operator Decisions Approved — LG-PROG-EXCL-1A.1
+
+**Date:** 2026-06-13
+**Phase:** LG-PROG-EXCL-1A.1 — Contract Patch
+**Reference:** `LG_PROG_EXCL_1A1_OPERATOR_DECISIONS_CONTRACT_PATCH.md`
+
+### 15.1 Final V1 Decisions
+
+| Decision | Before (1A) | Approved V1 (1A.1) |
+|----------|------------|---------------------|
+| Cemetery threshold | inactivity_days > 45 | **inactivity_days > 60** |
+| Recovery threshold | 7 ≤ inactivity ≤ 45 | **7 ≤ inactivity ≤ 60** |
+| Protection target | weekly_trips ≥ 100 | **weekly_trips ≥ 100** (unchanged) |
+| first_active_date source | Proxy (history_daily) | **driver_history_daily.MIN(date)** — canonical V1 proxy |
+| Cemetery Control Loop export | Undefined | **false by default.** No daily export. |
+| Active Growth band source | best_week_12w (historical) | **weekly_trips** (current). best_week_12w reserved for value_tier. |
+
+### 15.2 Recalculated Dry-Run Counts (with approved thresholds)
+
+| Universe | 1A Count (45d) | 1A.1 Count (60d) | Delta |
+|----------|---------------|-----------------|-------|
+| CEMETERY_LONG_CHURNED | 13,292 (71.7%) | **12,403** (66.9%) | -889 |
+| RECOVERY_HIGH_VALUE | 706 (3.8%) | **877** (4.7%) | +171 |
+| RECOVERY_LOW_VALUE | 2,271 (12.2%) | **2,989** (16.1%) | +718 |
+| NEW_REACTIVATED_0_14 | 54 (0.3%) | **54** (0.3%) | 0 |
+| RAMP_UP_15_45 | 210 (1.1%) | **210** (1.1%) | 0 |
+| CONSOLIDATION_46_90 | 341 (1.8%) | **341** (1.8%) | 0 |
+| ACTIVE_GROWTH_90_PLUS | 1,638 (8.8%) | **1,638** (8.8%) | 0 |
+| PROTECTED | 33 (0.2%) | **33** (0.2%) | 0 |
+| NO_DATA | 0 (0.0%) | **0** (0.0%) | 0 |
+| **TOTAL** | 18,545 | 18,545 | — |
+
+Exclusivity: 18,545 distinct / 18,545 total — **0 duplicates. PASS.**
+
+### 15.3 Active Growth Bands by weekly_trips (1A.1 corrected)
+
+| Band | Drivers (best_week_12w) | Drivers (weekly_trips) | Change |
+|------|------------------------|----------------------|--------|
+| 100+ | 542 | **0** (no driver has ≥100 current weekly trips in AG) | -542 |
+| 76-99 | 213 | **37** | -176 |
+| 51-75 | 264 | **148** | -116 |
+| 41-50 | 87 | **95** | +8 |
+| 31-40 | 110 | **147** | +37 |
+| 21-30 | 136 | **152** | +16 |
+| 11-20 | 163 | **269** | +106 |
+| 1-10 | 123 | **790** | +667 |
+| 0 | 0 | **0** | 0 |
+
+**Key insight:** Using `weekly_trips` instead of `best_week_12w` shifts bands significantly downward. Most AG drivers are in 1-10 and 11-20 bands. This is correct — the historical `best_week_12w` overstates current performance for declining drivers.
+
+### 15.4 Updated Universe Contract V1 (Final)
+
+| Priority | Universe | Entry Condition | Weekly Trips | Exit |
+|----------|----------|-----------------|-------------|------|
+| 1 | CEMETERY | inactivity > 60 | N/A | inactivity ≤ 60 |
+| 2 | RECOVERY_HIGH | 7 ≤ inactivity ≤ 60 AND value_high | N/A | inactivity < 7 |
+| 3 | RECOVERY_LOW | 7 ≤ inactivity ≤ 60 AND NOT value_high | N/A | inactivity < 7 |
+| 4 | NEW_REACTIVATED | age 0-14 AND trips_since_act < 50 AND active < 7d | 50 in window | trips ≥ 50 OR age > 14 |
+| 5 | RAMP_UP | age 15-45 AND weekly_trips < 100 AND active < 7d | 100/wk | trips ≥ 100 OR age > 45 |
+| 6 | CONSOLIDATION | age 46-90 AND weekly_trips < 100 AND active < 7d | 100/wk | trips ≥ 100 OR age > 90 |
+| 7 | ACTIVE_GROWTH | age > 90 AND 1 ≤ weekly < 100 AND active < 7d | Move band up | trips ≥ 100 OR band moved |
+| 8 | PROTECTED | weekly ≥ 100 OR (age ≤ 14 AND trips ≥ 50) | N/A | drops below target |
+| 9 | NO_DATA | Insufficient data | N/A | data available |
+
+---
+
+*Dry-run executed at 2026-06-13. 18,545 drivers. 9 universes. 0 collisions. Operator decisions applied. Contract frozen for LG-PROG-EXCL-1B.*

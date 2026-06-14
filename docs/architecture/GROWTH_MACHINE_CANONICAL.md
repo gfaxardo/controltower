@@ -350,6 +350,25 @@ The final product of Lima Growth Machine is a daily refreshed system of mutually
 ### Governance
 Future Growth Machine work must pass the North Star Test: does it improve exclusive lists, daily refresh, Control Loop export, action tracking, or impact measurement? If not, document/backlog.
 
+### Exclusive Dynamic Lists V1 Contract (LG-PROG-EXCL-1A.1 — FROZEN)
+
+| Universe | Condition | Threshold |
+|----------|-----------|-----------|
+| CEMETERY_LONG_CHURNED | Inactive drivers | `inactivity_days > 60` |
+| RECOVERY_HIGH_VALUE | Inactive, high historical value | `7 ≤ inactivity ≤ 60` |
+| RECOVERY_LOW_VALUE | Inactive, low historical value | `7 ≤ inactivity ≤ 60` |
+| NEW_REACTIVATED_0_14 | Recent activation | `age ≤ 14d, trips < 50` |
+| RAMP_UP_15_45 | Early lifecycle, below target | `age 15-45d, weekly < 100` |
+| CONSOLIDATION_46_90 | Mid lifecycle, below target | `age 46-90d, weekly < 100` |
+| ACTIVE_GROWTH_90_PLUS | Mature drivers, below target | `age > 90d, 1 ≤ weekly < 100` |
+| PROTECTED | Meeting goal | `weekly ≥ 100 OR (age ≤ 14 AND trips ≥ 50)` |
+
+**Key rules:**
+- Productivity bands use **current `weekly_trips`**, not historical `best_week_12w`
+- `first_active_date` proxy: `driver_history_daily.MIN(date)` (temporary, until `first_trip_at` is populated)
+- Cemetery is NOT exported to daily Control Loop (`export_to_control_loop = false`)
+- 9 universes, deterministic priority order, 1 driver = 1 universe per day
+
 ---
 
 *Generated from live repo audit. Evidence sources: `backend/app/routers/yego_lima_growth_control_loop.py`, `backend/app/routers/yego_lima_universe.py`, `backend/app/routers/yego_lima_control_loop_router.py`, `backend/app/services/yego_lima_*.py` (50+ files), `docs/lima_growth/*.md` (100+ docs), `frontend/src/pages/lima-growth-*/`.*

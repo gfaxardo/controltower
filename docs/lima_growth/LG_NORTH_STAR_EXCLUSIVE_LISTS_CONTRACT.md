@@ -77,6 +77,7 @@ The Minimum Viable Product for production cutover:
 | Goal | Move drivers at least one productivity band upward |
 | Entry | Active driver; not in 0-14/15-45/46-90 windows; not recovery; not cemetery; below desired productivity band |
 | Productivity Bands | 1-10, 11-20, 21-30, 31-40, 41-50, 51-75, 76-99, 100+ trips/week |
+| Band Source | **Current weekly_trips** (not historical best_week_12w). `best_week_12w` reserved for value tier and recovery value classification. |
 | Exit | Moves up target band OR reaches 100+ trips/week OR becomes recovery |
 | Treatment | Targeted growth per band |
 
