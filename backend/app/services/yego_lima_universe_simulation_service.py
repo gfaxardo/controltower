@@ -30,7 +30,7 @@ TABLE_SIM_RESULT = "growth.universe_simulation_result"
 SIM_LOCK_ID = 9030
 
 OPERATORS = {"=", "!=", ">", ">=", "<", "<=", "BETWEEN", "IN", "NOT_IN", "IS_NULL", "IS_NOT_NULL"}
-ALLOWED_FIELDS = {"age_days", "anchor_age_days", "weekly_trips", "trips_since_anchor", "inactivity_days", "value_tier", "best_week_12w", "productivity_band", "has_reactivation_anchor", "export_to_control_loop"}
+ALLOWED_FIELDS = {"age_days", "anchor_age_days", "weekly_trips", "trips_since_anchor", "inactivity_days", "value_tier", "best_week_12w", "productivity_band", "has_reactivation_anchor", "export_to_control_loop", "anchor_type", "reactivation_anchor_age_days", "trips_since_lifecycle_anchor", "days_remaining_to_14", "trips_remaining_to_50"}
 
 
 def _acquire_lock(conn) -> bool:
@@ -143,11 +143,40 @@ def run_universe_config_simulation(
         if not worklist:
             return {"ok": False, "error": f"No worklist data for {src_d}"}
 
-        # Get anchor dates (first_active from history_daily)
-        cur.execute(f"SELECT driver_profile_id, MIN(date) AS anchor, MAX(date) AS last_date FROM {TABLE_HISTORY_DAILY} GROUP BY 1")
+        # Get anchor dates with simple gap detection (performance-optimized)
+        cur.execute(f"""
+            SELECT driver_profile_id, MIN(date) AS first_date, MAX(date) AS last_date,
+                   COUNT(*) AS active_days,
+                   CASE WHEN COUNT(*) = 1 THEN 1 ELSE 0 END as has_single_day
+            FROM {TABLE_HISTORY_DAILY} GROUP BY driver_profile_id
+        """)
         anchors = {}
         for r in cur.fetchall():
-            anchors[r["driver_profile_id"]] = {"anchor": r["anchor"], "last_date": r["last_date"]}
+            anchors[r["driver_profile_id"]] = {
+                "first_date": r["first_date"],
+                "last_date": r["last_date"],
+                "active_days": r["active_days"],
+                "has_single_day": r["has_single_day"] == 1,
+                "reactivation_date": None,
+            }
+
+        # Detect reactivation in a separate pass (for drivers with gaps)
+        cur.execute(f"""
+            WITH ordered AS (
+                SELECT driver_profile_id, date,
+                       LAG(date) OVER (PARTITION BY driver_profile_id ORDER BY date) as prev_date
+                FROM {TABLE_HISTORY_DAILY}
+                WHERE driver_profile_id IN (SELECT driver_profile_id FROM {TABLE_HISTORY_DAILY} GROUP BY 1 HAVING COUNT(*) > 1)
+            )
+            SELECT driver_profile_id, date as reactivation_date
+            FROM ordered
+            WHERE (date - prev_date) >= 45
+            ORDER BY date
+        """)
+        for r in cur.fetchall():
+            did = r["driver_profile_id"]
+            if did in anchors:
+                anchors[did]["reactivation_date"] = r["reactivation_date"]
 
         cur.close()
         c.close()
@@ -164,9 +193,43 @@ def run_universe_config_simulation(
             current_counts[cur_uni] = current_counts.get(cur_uni, 0) + 1
 
             anc = anchors.get(did)
+            # Derive anchor type and lifecycle features
+            anchor_type = "UNKNOWN"
+            lifecycle_anchor_date = None
+            reactivation_anchor_date = None
+            has_reactivation = "false"
+            trips_since_lifecycle = wl.get("activation_window_trips") if wl.get("activation_window_trips") is not None else 0
+            reactivation_anchor_age = None
+
+            if anc:
+                lifecycle_anchor_date = anc["first_date"]
+                anchor_age = (src_d - anc["first_date"]).days if anc["first_date"] else None
+                reactivation_anchor_date = anc.get("reactivation_date")
+
+                # Determine anchor_type
+                is_single_day = anc.get("has_single_day", False)
+                has_gap_reactivation = reactivation_anchor_date is not None
+                
+                if has_gap_reactivation and reactivation_anchor_date:
+                    anchor_type = "REACTIVATED"
+                    has_reactivation = "true"
+                    reactivation_anchor_age = (src_d - reactivation_anchor_date).days
+                elif anchor_age is not None and anchor_age <= 14 and is_single_day:
+                    anchor_type = "NEW"
+                elif anchor_age is not None:
+                    anchor_type = "EXISTING"
+            else:
+                anchor_age = None
+
             features = {
                 "age_days": wl.get("operational_age_days"),
-                "anchor_age_days": (src_d - anc["anchor"]).days if anc and anc["anchor"] else None,
+                "anchor_age_days": anchor_age,
+                "anchor_type": anchor_type,
+                "has_reactivation_anchor": has_reactivation,
+                "reactivation_anchor_age_days": reactivation_anchor_age,
+                "trips_since_lifecycle_anchor": trips_since_lifecycle,
+                "days_remaining_to_14": max(0, 14 - anchor_age) if anchor_age is not None and anchor_age <= 14 else None,
+                "trips_remaining_to_50": max(0, 50 - trips_since_lifecycle) if trips_since_lifecycle < 50 else 0,
                 "weekly_trips": wl.get("weekly_trips") if wl.get("weekly_trips") is not None else 0,
                 "trips_since_anchor": wl.get("activation_window_trips") if wl.get("activation_window_trips") is not None else 0,
                 "inactivity_days": wl.get("inactivity_days") if wl.get("inactivity_days") is not None else 9999,
