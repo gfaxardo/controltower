@@ -142,12 +142,26 @@ def _compute_value_tier(snapshot: Optional[Dict], explorer: Optional[Dict]) -> s
 def refresh_exclusive_driver_worklist_daily(target_date: Optional[str] = None, config_version_code: Optional[str] = None) -> Dict[str, Any]:
     """
     Builds exclusive worklist daily.
-    If config_version_code is provided, uses Universe Config V2 rules.
-    Otherwise uses hardcoded V1 rules (backward compatible).
+    If config_version_code is not provided, looks up ACTIVE config for Lima scope.
+    Falls back to V1 hardcoded rules if no ACTIVE config exists.
     """
     if target_date is None:
         target_date = date.today().isoformat()
     target_d = date.fromisoformat(target_date[:10])
+
+    # LG-UNIVERSE-ACTIVE-DEFAULT-1J.2: Auto-detect ACTIVE config
+    if config_version_code is None:
+        try:
+            c = psycopg2.connect(**_get_connection_params())
+            cur = c.cursor()
+            cur.execute("SELECT version_code FROM growth.universe_config_version WHERE status='ACTIVE' AND scope='lima' LIMIT 1")
+            row = cur.fetchone()
+            cur.close(); c.close()
+            if row:
+                config_version_code = row[0]
+                logger.info("Using ACTIVE config: %s", config_version_code)
+        except Exception as e:
+            logger.warning("Could not detect ACTIVE config, falling back to V1: %s", e)
 
     params = _get_connection_params()
     params["options"] = "-c statement_timeout=300000"
