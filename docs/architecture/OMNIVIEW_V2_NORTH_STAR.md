@@ -368,3 +368,17 @@ Every future prompt must answer:
 5. Can the operator understand it at a glance?
 6. Is the matrix still accessible as detail?
 7. Does it preserve freshness/coverage visibility?
+8. Does it follow the Rendering/Charting/Zoom Contract? (`OMNIVIEW_UI_RENDERING_CHARTING_CONTRACT.md`)
+
+---
+
+## 17. Rendering / Charting / Zoom Governance
+
+The Visual Cockpit cannot be implemented with loose charts. Every visual must:
+- Answer one operational question
+- Use certified V2 data only
+- Respect zoom/focus/responsive as product requirements, not optional polish
+- Keep matrix secondary accessible for detail/export
+- Follow performance, freshness, and visual semantics rules
+
+Reference: `OMNIVIEW_UI_RENDERING_CHARTING_CONTRACT.md`
