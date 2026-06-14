@@ -15,6 +15,7 @@ import OMNIVIEW_V2_METRICS from './omniviewV2Metrics';
 import { RouteStatusBadge } from './RouteStatusBadge';
 import { buildTrendSeries, getComparableLabel } from './omniviewV2TrendSeries';
 import TrendLayerPanel from './TrendLayerPanel';
+import PlanRealVisualPanel from './PlanRealVisualPanel';
 
 function ExecutiveCockpit() {
   const today = new Date().toISOString().slice(0, 10);
@@ -153,13 +154,8 @@ function ExecutiveCockpit() {
           {/* Trend Panel — VC2 real chart */}
           <TrendLayerPanel trendData={trendData} metricId={metricId} grain={grain} />
 
-          {/* Plan vs Real Panel Shell */}
-          <div style={panelStyle}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Plan vs Real</div>
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 160, color: '#d1d5db', fontSize: 13, border: '1px dashed #e5e7eb', borderRadius: 6, background: '#f9fafb' }}>
-              Attainment bars coming in VC3
-            </div>
-          </div>
+          {/* Plan vs Real Panel — VC3 real attainment bars */}
+          <PlanRealVisualPanel planData={planData} metricId={metricId} grain={grain} isActive={viewMode === 'plan_real'} />
         </div>
 
         {/* Slice Breakdown */}
