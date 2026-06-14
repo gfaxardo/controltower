@@ -14,6 +14,7 @@ import { sortMatrixRows, SORT_MODES } from './omniviewV2Sort';
 import OMNIVIEW_V2_METRICS from './omniviewV2Metrics';
 import { getCellToneClass } from './omniviewV2ColorSemantics';
 import { getPlanRealDisplay } from './omniviewV2PlanReal';
+import { RouteStatusBadge } from './RouteStatusBadge';
 
 function ProfessionalPage() {
   const today = new Date().toISOString().slice(0, 10);
@@ -83,6 +84,7 @@ function ProfessionalPage() {
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 24px', background: '#fff', borderBottom: '1px solid #e5e7eb', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ fontWeight: 700, fontSize: 16, color: '#111827' }}>Omniview V2</span>
+          <RouteStatusBadge status="DEFAULT_CERTIFIED" style={{ marginLeft: 4 }} />
           <span style={{ fontSize: 11, color: canonicalReady ? '#16a34a' : '#9ca3af', background: canonicalReady ? '#f0fdf4' : '#f3f4f6', padding: '2px 8px', borderRadius: 3 }}>{canonicalReady ? 'CANONICAL' : 'SHADOW'}</span>
           <span style={{ fontSize: 12, color: '#6b7280' }}>{grain === 'day' ? 'Daily' : grain === 'week' ? 'Weekly' : 'Monthly'} · {metric?.label || 'Trips'} · {dateFrom || '—'} → {dateTo || '—'}</span>
         </div>
