@@ -156,15 +156,15 @@ def upgrade():
     # Use the inserted or existing version_id
     # Seed 10 universes
     universes = [
-        (1, 'NEW_0_14_TO_50', 'Nuevos', True, True, 'Agent/Call', 'ONBOARDING_PUSH', '50_trips_activation_window', 50),
-        (2, 'REACTIVATED_TO_50', 'Reactivados', True, True, 'Agent/Call', 'ONBOARDING_PUSH', '50_trips_reactivation', 50),
-        (3, 'RAMP_15_45_TO_100W', 'Ramp Up', True, True, 'Call/WhatsApp', 'PRODUCTIVITY_RAMP', '100_trips_weekly', 100),
-        (4, 'CONSOLIDATION_46_90', 'Consolidation', True, True, 'Call/Follow-up', 'CONSOLIDATION_PUSH', '100_trips_weekly', 100),
-        (5, 'ACTIVE_GROWTH_BAND_UP', 'Active Growth', True, True, 'WhatsApp/Call', 'BAND_GROWTH', 'band_up', None),
-        (6, 'PROTECTED_TOP', 'Protected', False, False, 'Monitor', 'DO_NOT_EXPORT', None, None),
-        (7, 'RECOVERY_HIGH_VALUE', 'Recovery High', True, True, 'Agent', 'HIGH_VALUE_RECOVERY', 'reactivation', 1),
-        (8, 'RECOVERY_LOW_VALUE', 'Recovery Low', True, True, 'SMS/WhatsApp', 'LOW_VALUE_RECOVERY', 'reactivation', 1),
-        (9, 'CEMETERY_LONG_CHURNED', 'Cemetery', False, False, 'Campaigns', 'DO_NOT_EXPORT', None, None),
+        (1, 'CEMETERY_LONG_CHURNED', 'Cemetery', False, False, 'Campaigns', 'DO_NOT_EXPORT', None, None),
+        (2, 'RECOVERY_HIGH_VALUE', 'Recovery High', True, True, 'Agent', 'HIGH_VALUE_RECOVERY', 'reactivation', 1),
+        (3, 'RECOVERY_LOW_VALUE', 'Recovery Low', True, True, 'SMS/WhatsApp', 'LOW_VALUE_RECOVERY', 'reactivation', 1),
+        (4, 'NEW_0_14_TO_50', 'Nuevos', True, True, 'Agent/Call', 'ONBOARDING_PUSH', '50_trips_activation_window', 50),
+        (5, 'REACTIVATED_TO_50', 'Reactivados', True, True, 'Agent/Call', 'ONBOARDING_PUSH', '50_trips_reactivation', 50),
+        (6, 'RAMP_15_45_TO_100W', 'Ramp Up', True, True, 'Call/WhatsApp', 'PRODUCTIVITY_RAMP', '100_trips_weekly', 100),
+        (7, 'CONSOLIDATION_46_90', 'Consolidation', True, True, 'Call/Follow-up', 'CONSOLIDATION_PUSH', '100_trips_weekly', 100),
+        (8, 'ACTIVE_GROWTH_BAND_UP', 'Active Growth', True, True, 'WhatsApp/Call', 'BAND_GROWTH', 'band_up', None),
+        (9, 'PROTECTED_TOP', 'Protected', False, False, 'Monitor', 'DO_NOT_EXPORT', None, None),
         (10, 'NO_DATA', 'No Data', False, False, None, 'DO_NOT_EXPORT', None, None),
     ]
     for p, code, label, act, exp, ch, cat, tgt, tval in universes:
