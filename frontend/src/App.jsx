@@ -252,7 +252,7 @@ function ControlTowerApp () {
   const performanceSubTab = activeTab === TAB_PERFORMANCE ? (routeSub || 'performance_resumen') : 'performance_resumen'
   const driversSubTab = activeTab === TAB_DRIVERS ? (routeSub || 'drivers_supply') : 'drivers_supply'
   const riskSubTab = activeTab === TAB_RISK ? (routeSub || 'riesgo_driver_behavior') : 'riesgo_driver_behavior'
-  const operacionSubTab = activeTab === TAB_OPERACION ? (routeSub || 'operacion_omniview_matrix') : 'operacion_omniview_matrix'
+  const operacionSubTab = activeTab === TAB_OPERACION ? (routeSub || 'operacion_omniview_v2_professional') : 'operacion_omniview_v2_professional'
   const planSubTab = activeTab === TAB_PLAN ? (routeSub || 'plan_acciones') : 'plan_acciones'
   const fleetProjectSubTab = activeTab === TAB_FLEET_PROJECT ? (routeSub || 'fleet_yegopro_profitability') : 'fleet_yegopro_profitability'
   const limaGrowthSubTab = activeTab === TAB_LIMA_GROWTH ? (routeSub || 'lima_growth_resumen') : 'lima_growth_resumen'
@@ -537,6 +537,7 @@ function ControlTowerApp () {
                 {operacionSubTab === 'operacion_business_slice' && <BusinessSliceView key={`business-slice-${refreshKey}`} />}
                 {operacionSubTab === 'operacion_omniview' && <BusinessSliceOmniview key={`business-slice-omniview-${refreshKey}`} />}
                 {operacionSubTab === 'operacion_omniview_matrix' && <OmniviewErrorBoundary key={`bs-omniview-matrix-${refreshKey}`}><div style={{ background: '#fef3c7', color: '#92400e', padding: '6px 24px', fontSize: 12, fontWeight: 500, borderBottom: '2px solid #f59e0b' }}>Legacy V1 view. Omniview V2 Professional is the default experience. This view is preserved as fallback.</div><BusinessSliceOmniviewMatrix /></OmniviewErrorBoundary>}
+                {operacionSubTab === 'operacion_omniview_v2' && <OmniviewErrorBoundary key={`ov2-pro-${refreshKey}`}><OmniviewV2ProfessionalPage /></OmniviewErrorBoundary>}
                 {operacionSubTab === 'operacion_omniview_v2_sandbox' && <OmniviewErrorBoundary key={`ov2-sandbox-${refreshKey}`}><OmniviewV2MatrixSandbox /></OmniviewErrorBoundary>}
                 {operacionSubTab === 'operacion_omniview_v2_shadow' && <OmniviewErrorBoundary key={`ov2-shadow-${refreshKey}`}><OmniviewV2ShadowPage /></OmniviewErrorBoundary>}
                 {operacionSubTab === 'operacion_omniview_v2_professional' && <OmniviewErrorBoundary key={`ov2-pro-${refreshKey}`}><OmniviewV2ProfessionalPage /></OmniviewErrorBoundary>}
