@@ -196,6 +196,8 @@ function OmniviewV2ShadowPage() {
     }
   }, [allSections]);
 
+  const freshness = shellData?.freshness?.last_refreshed_at || '';
+
   // CSV Export (OV2-UI-P1C)
   const handleExportCsv = useCallback(() => {
     try {
@@ -216,7 +218,6 @@ function OmniviewV2ShadowPage() {
     }
   }, [matrixData, metricId, grain, country, city, businessSlice, parkId, dateFrom, dateTo, viewMode, shellData, freshness, operatingDate, coverage]);
 
-  const freshness = shellData?.freshness?.last_refreshed_at || '';
 
   // Keyboard: Escape exits fullscreen
   useEffect(() => {

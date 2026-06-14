@@ -1,8 +1,8 @@
-# OMNIVIEW V2 — PRODUCT NORTH STAR
+# OMNIVIEW V2 — PROFESSIONAL OPERATIONAL UI NORTH STAR
 
-**Version:** 1.0.0
+**Version:** 2.0.0
 **Date:** 2026-06-13
-**Status:** DEFINITIVE — Product Definition for Omniview V2 UI
+**Status:** UPDATED — V1 parity achieved, now targeting professional operational quality
 **Scope:** Functional and visual target for Omniview V2
 **Preceded by:** Ownership/Freshness/Traceability Certification (Phase B.1 → E)
 
@@ -203,3 +203,69 @@ And must answer:
 ---
 
 *Defines the product vision for Omniview V2. All UI work must reference this document.*
+
+---
+
+## 11. V1 Parity Milestone Reached (v1.0.0)
+
+P0 parity with Omniview V1 is implemented:
+- 7/7 KPIs available via selector
+- CSV export functional
+- Color semantics consistent per metric polarity
+- Sort controls (alpha, volume, impact, critical)
+- Period presets (Today, Last 7d, This Week, This Month)
+- Plan vs Real visualization
+- Freshness visibility
+
+Backend governance (ownership, freshness, traceability) is certified. Endpoint smoke: 7/7 HTTP 200. Build passes.
+
+---
+
+## 12. New North: Professional Operational UI (v2.0.0)
+
+Omniview V2 must now become a **professional operational control UI**:
+
+- Reliable on open — no runtime crashes, no stack traces
+- Visually clean — clear hierarchy, no noise
+- Executive — operator can scan and understand in seconds
+- Fast — no heavy recalculation, no double scroll
+- Freshness-visible — data age always known
+- Certified-only — no legacy, no ungoverned data
+- Empty-state honest — no misleading zeros
+- Error-state actionable — tells operator what to do
+
+**What "professional" means:**
+1. No runtime crashes. No visible stack traces to end user (except debug mode).
+2. Layout balanced. Header clean. Status/freshness visible but not invasive.
+3. Matrix legible. KPIs clear. Controls grouped.
+4. No UI contradicting certified backend.
+5. No features from blocked engines (Diagnostic, Forecast, etc.)
+
+---
+
+## 13. Professionalization Phase Plan
+
+After V1 parity and runtime fix:
+
+- **OV2-UI-R0**: Runtime Reliability Smoke — verify no crashes on open
+- **OV2-UI-R1**: Professional Layout Audit — clean up header, status bar, spacing
+- **OV2-UI-R2**: Header/Controls Polish — group controls, reduce clutter
+- **OV2-UI-R3**: Matrix Readability Polish — font sizes, column widths, density
+- **OV2-UI-R4**: Empty/Error/Freshness States — fix all visual edge cases
+- **OV2-UI-R5**: Final Professional UI Smoke — verify operational quality
+
+---
+
+## 14. Updated Prompt Precheck
+
+Every future Omniview V2 UI prompt must answer:
+1. Does it improve runtime stability?
+2. Does it improve professional clarity?
+3. Does it respect certified data?
+4. Does it reduce cognitive load?
+5. Does it avoid legacy?
+6. Does it avoid blocked engines?
+7. Does it keep freshness visible?
+8. Does it have a rollback?
+9. Was it smoke-tested in browser?
+10. Would an operator understand it without seeing a stack trace?
