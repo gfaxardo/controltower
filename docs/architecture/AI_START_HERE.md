@@ -57,10 +57,12 @@ Every Growth Machine task must answer:
 | 5 | Does this improve daily/weekly impact measurement? |
 | 6 | Does this improve assignment explainability? |
 | 7 | Does this improve movement traceability between exclusive lists? |
-| 8 | If NO to all, why is this being done now? |
+| 8 | Does this preserve automatic movement when drivers achieve measurable goals? |
+| 9 | If NO to all, why is this being done now? |
 
 **Rule:** If the answer is NO to all → document/backlog. Do NOT implement.
 **Rule:** If assignment/list logic changes without preserving reason/evidence/transition traceability → cannot be certified.
+**Rule:** Drivers who achieve measurable list objectives must be removed from the list on the next available refresh. Weekly refresh is historical intelligence, not a blocker for daily goal-attainment movement.
 
 Do NOT open Diagnostic Engine, Forecast, Suggestion, Decision, Action, AI Copilot, or Learning until Growth Machine MVP cutover is complete and certified.
 

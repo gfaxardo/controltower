@@ -276,10 +276,13 @@ All future Growth Machine prompts must answer:
 5. Does this improve daily/weekly impact measurement?
 6. Does this improve assignment explainability?
 7. Does this improve movement traceability between exclusive lists?
+8. Does this preserve automatic movement when drivers achieve the measurable goal of their current list?
 
 **If NO to all → document/backlog. Do NOT implement.**
 
 **Rule:** If a Growth Machine task changes assignment/list logic but does not preserve reason/evidence/transition traceability, it cannot be certified.
+
+**Rule:** Any Growth Machine implementation that keeps drivers in a worklist after the measurable goal is achieved cannot be certified, unless the metric required to detect achievement is unavailable and the limitation is documented.
 
 ---
 

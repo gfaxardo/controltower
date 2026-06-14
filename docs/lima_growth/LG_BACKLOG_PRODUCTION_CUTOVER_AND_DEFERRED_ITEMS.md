@@ -52,6 +52,7 @@ These items are **explicitly deferred** and NOT authorized by the Production Cut
 | 19 | Commission Measurement Layer | Commission tracking and measurement | NO | Post-closure Growth |
 | 20 | Movement Scoring | Segment movement scoring | NO | Post-closure Growth |
 | 21 | RNA Scoring Hardening | RNA priority scoring improvements | NO | Post-closure Growth |
+| 22 | Goal Attainment + Movement Transition Fact (LG-TRACE-1B) | Compare consecutive daily worklists, record 10 transition types, track goal-attainment exits | NO | Post-Monday P1 |
 
 ---
 

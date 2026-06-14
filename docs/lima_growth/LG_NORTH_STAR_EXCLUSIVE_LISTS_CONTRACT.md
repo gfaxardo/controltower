@@ -260,3 +260,41 @@ The system must track how drivers move between lists over time. Each movement mu
 ---
 
 *The North Star is exclusive dynamic operational lists. The dashboard is navigation, not the destination.*
+
+---
+
+## 16. Goal Attainment and Automatic Movement Rule (LG-NORTH-GOAL-1A)
+
+The exclusive worklist system must not keep a driver in an operational list after the driver has achieved the measurable objective of that list.
+
+When a measurable goal is achieved, the next available worklist refresh must:
+1. Remove the driver from the previous list.
+2. Assign the driver to the correct next state (Protected or appropriate active universe).
+3. Preserve the evidence of goal achievement.
+4. Expose the transition in movement history when transition tracking is available.
+
+### Goal Attainment Examples
+
+| Universe | Goal | Evidence | Next State |
+|----------|------|----------|------------|
+| NEW_REACTIVATED_0_14 | 50 trips in activation window | `activation_window_trips >= 50` | PROTECTED |
+| RAMP_UP_15_45 | 100 trips/week | `weekly_trips >= 100` | PROTECTED |
+| CONSOLIDATION_46_90 | 100 trips/week | `weekly_trips >= 100` | PROTECTED |
+| ACTIVE_GROWTH_90+ | Move up one band or reach 100+ | `productivity_band` changed | PROTECTED if 100+, else updated AG |
+| RECOVERY | Return to activity | `inactivity_days < 7` | Active lifecycle universe |
+| CEMETERY | Return after long inactivity | `inactivity_days < 7` | RECOVERED_TO_ACTIVE |
+
+## 17. Daily Movement vs Weekly History Refresh (LG-NORTH-GOAL-1A)
+
+**Daily worklist refresh:**
+- Decides the current operational list.
+- Removes drivers from lists when daily-measurable goals are achieved.
+- Updates reason_text, gap_to_target, movement_hint.
+- Drives Control Loop operations.
+
+**Weekly history refresh:**
+- Updates historical performance context (avg_4w, best_week_12w, value tier, trend).
+- Improves classification quality for recovery and long-term measurement.
+- Does NOT block daily goal-attainment exits if the required metric is already available daily.
+
+**Rule:** Weekly refresh improves intelligence. Daily refresh governs operational movement.

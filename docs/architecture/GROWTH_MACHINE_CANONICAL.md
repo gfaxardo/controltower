@@ -377,6 +377,14 @@ Future Growth Machine work must pass the North Star Test: does it improve exclus
 - 10 transition types defined: ENTERED_LIST, STAYED_IN_LIST, MOVED_UP_BAND, MOVED_DOWN_BAND, EXITED_GOAL_MET, MOVED_TO_RECOVERY, MOVED_TO_CEMETERY, RECOVERED_TO_ACTIVE, PROTECTED_GOAL_MET, NO_DATA.
 - This is V1 operational traceability for Control Loop accountability — NOT the full Lifecycle State Machine V3.
 
+### Goal Attainment Transitions (LG-NORTH-GOAL-1A)
+
+- Drivers must exit operational lists once they achieve the measurable goal of that list.
+- Goal achievement must be detected at the next available worklist refresh.
+- Weekly refresh is not required to move a driver out of a list if the daily worklist source already shows the target achieved.
+- Goal attainment must be traceable with transition_type, evidence_json and previous/current list once transition fact is implemented.
+- This is V1 movement traceability, not full Lifecycle State Machine.
+
 ---
 
 *Generated from live repo audit. Evidence sources: `backend/app/routers/yego_lima_growth_control_loop.py`, `backend/app/routers/yego_lima_universe.py`, `backend/app/routers/yego_lima_control_loop_router.py`, `backend/app/services/yego_lima_*.py` (50+ files), `docs/lima_growth/*.md` (100+ docs), `frontend/src/pages/lima-growth-*/`.*
