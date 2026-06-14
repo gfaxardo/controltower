@@ -282,6 +282,7 @@ These DANGEROUS scripts lack `refresh_guard()` context manager:
 | GM: `driver_history_daily` stale (MAX=2026-06-04) — suspected raw orders ingestion gap | OPEN | `docs/architecture/GROWTH_MACHINE_FRESHNESS_PREFLIGHT.md:G1` |
 | GM: `freshness_registry` false positive for `driver_history_weekly` (labels 12-day-old data as "FRESH") | OPEN | `docs/architecture/GROWTH_MACHINE_FRESHNESS_PREFLIGHT.md:G3` |
 | GM: `program_eligibility` + `opportunity_list` DELETE without transaction wrapping | OPEN | `docs/architecture/GROWTH_MACHINE_FRESHNESS_PREFLIGHT.md:G4` |
+| GM: Backend Core is CLOSED, but UI Operational Closure is pending. Intelligence tab, driver explorer, movement dashboard, and Control Loop readback not certified. Diagnostic Engine blocked until UI closure. | OPEN | `docs/lima_growth/LG_UI_NORTH_1A_GROWTH_MACHINE_UI_OPERATIONAL_NORTH_STAR.md` |
 
 ---
 

@@ -102,13 +102,14 @@ Context from previous conversations
 |--------|-------|-------|
 | Control Foundation | OMNI-P0 Recovery | Vs Proy canonicalization, Revenue serving, cell contract, CLOSED/PARTIAL visibility, real semantic certification |
 | Omniview V2 | Closure | Stabilize bridge cascade, eliminate multi-writers, create serving views for day/week, activate scheduler, connect UI |
-| Growth Machine | Closure | Resolve `driver_history_weekly` bootstrap gap, protect DELETEs with transactions, complete freshness coverage |
+| Growth Machine | Backend Core: CLOSED. UI Operationalization: ACTIVE | Exclusive lists, explainability, CSV/API, Control Loop sync, transition fact, freshness. UI validation pending: worklist explorer, driver drilldown, movement dashboard. |
+| Growth Machine UI | ACTIVE | Audit UI rendering, certify worklist explorer, driver drilldown, movement dashboard, Control Loop readback, alerts. See `docs/lima_growth/LG_UI_NORTH_1A_GROWTH_MACHINE_UI_OPERATIONAL_NORTH_STAR.md`. |
 
 ### READY NEXT (prepare, do not activate yet)
 
 | Engine | Pre-requisite |
 |--------|---------------|
-| Diagnostic Engine 2A.3 | OMNI-P0 closed with real GO |
+| Diagnostic Engine 2A.3 | OMNI-P0 closed with real GO + Growth Machine UI operational closure |
 
 ### BLOCKED (do not implement)
 

@@ -350,6 +350,22 @@ The final product of Lima Growth Machine is a daily refreshed system of mutually
 ### Governance
 Future Growth Machine work must pass the North Star Test: does it improve exclusive lists, daily refresh, Control Loop export, action tracking, or impact measurement? If not, document/backlog.
 
+### UI Operational Closure Requirement (LG-UI-NORTH-1A)
+
+Growth Machine cannot be considered product-complete until:
+1. UI renders successfully.
+2. Intelligence/Growth tab shows current worklist.
+3. UI uses serving/API facts, not heavy runtime calculation.
+4. UI shows freshness and generated_date.
+5. UI shows Control Loop batch status.
+6. UI exposes reason_text and evidence.
+7. UI exposes movement transitions.
+8. UI supports driver drilldown.
+9. UI shows alerts for stale/no-change/goal violations.
+10. UI has screenshot/render evidence.
+
+Backend closure alone does not unlock Diagnostic Engine. UI operational closure is required before higher engines can be activated.
+
 ### Exclusive Dynamic Lists V1 Contract (LG-PROG-EXCL-1A.1 — FROZEN)
 
 | Universe | Condition | Threshold |
