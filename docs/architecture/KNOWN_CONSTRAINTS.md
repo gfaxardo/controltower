@@ -283,6 +283,7 @@ These DANGEROUS scripts lack `refresh_guard()` context manager:
 | GM: `freshness_registry` false positive for `driver_history_weekly` (labels 12-day-old data as "FRESH") | OPEN | `docs/architecture/GROWTH_MACHINE_FRESHNESS_PREFLIGHT.md:G3` |
 | GM: `program_eligibility` + `opportunity_list` DELETE without transaction wrapping | OPEN | `docs/architecture/GROWTH_MACHINE_FRESHNESS_PREFLIGHT.md:G4` |
 | GM: Backend Core is CLOSED, but UI Operational Closure is pending. Intelligence tab, driver explorer, movement dashboard, and Control Loop readback not certified. Diagnostic Engine blocked until UI closure. | OPEN | `docs/lima_growth/LG_UI_NORTH_1A_GROWTH_MACHINE_UI_OPERATIONAL_NORTH_STAR.md` |
+| GM: Universe Config V2 simulation-ready but NOT activation-ready. Recovery High=5,113 requires capacity review. Protected=0 requires threshold review. Activation blocked until LG-UNIVERSE-REVIEW-1I PASS. | OPEN | `docs/lima_growth/LG_ANCHOR_1H_DRIVER_LIFECYCLE_ANCHOR_FOUNDATION.md` |
 
 ---
 

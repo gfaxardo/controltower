@@ -66,6 +66,24 @@ NOT building:
 
 ---
 
+## GROWTH MACHINE PARALLEL TRACK
+
+Motor: **Growth Machine / Control Foundation**
+Phase: **UI Operationalization + Universe Config V2 Review**
+Status: **ACTIVE** (parallel to OMNI-P0)
+
+Goal:
+- UI: Comando Diario + Listas de Trabajo operational (LG-UI-LISTS-1C/1D PASS)
+- Universe Config V2: simulation engine operational, anchor foundation repaired
+- Simulation improved from 100% to 33% changed drivers
+- Activation blocked pending operator review (LG-UNIVERSE-REVIEW-1I)
+
+Blocked:
+- LG-UNIVERSE-ACTIVATE-1J until Review PASS
+- Diagnostic Engine (blocked until GM UI closure + OMNI-P0 closure)
+
+---
+
 # CURRENT PRIORITY
 
 Operational focus:
