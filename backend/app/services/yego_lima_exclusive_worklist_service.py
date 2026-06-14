@@ -38,6 +38,37 @@ UNIVERSE_ACTIVE_GROWTH = "ACTIVE_GROWTH_90_PLUS_BAND_UP"
 UNIVERSE_PROTECTED = "PROTECTED_ALREADY_MEETING_GOAL"
 UNIVERSE_NO_DATA = "NO_DATA_OR_NO_ACTION"
 
+RECOMMENDED_ACTION_CATEGORY = {
+    "NEW_REACTIVATED_0_14_TO_50": "ONBOARDING_PUSH",
+    "RAMP_UP_15_45_TO_100W": "PRODUCTIVITY_RAMP",
+    "CONSOLIDATION_46_90_TO_100W": "CONSOLIDATION_PUSH",
+    "ACTIVE_GROWTH_90_PLUS_BAND_UP": "BAND_GROWTH",
+    "RECOVERY_RECENT_INACTIVE_HIGH_VALUE": "HIGH_VALUE_RECOVERY",
+    "RECOVERY_RECENT_INACTIVE_LOW_VALUE": "LOW_VALUE_RECOVERY",
+    "CEMETERY_LONG_CHURNED": "DO_NOT_EXPORT",
+    "PROTECTED_ALREADY_MEETING_GOAL": "DO_NOT_EXPORT",
+    "NO_DATA_OR_NO_ACTION": "DO_NOT_EXPORT",
+}
+
+BAND_ORDER = ["0", "1-10", "11-20", "21-30", "31-40", "41-50", "51-75", "76-99", "100+"]
+
+
+def _compute_next_band(current_band: str) -> str:
+    try:
+        idx = BAND_ORDER.index(current_band)
+        if idx < len(BAND_ORDER) - 1:
+            return BAND_ORDER[idx + 1]
+    except ValueError:
+        pass
+    return "100+"
+
+
+def _band_min_trips(band: str) -> int:
+    if band.endswith("+"):
+        return int(band.replace("+", ""))
+    parts = band.split("-")
+    return int(parts[0]) if parts else 0
+
 
 def _acquire_worklist_lock(conn) -> bool:
     cur = conn.cursor()
@@ -269,6 +300,115 @@ def refresh_exclusive_driver_worklist_daily(target_date: Optional[str] = None) -
 
             # 9. NO_DATA (default already set)
 
+            # ── LG-PROG-EXCL-1E: Explainability Fields ──
+            RECOVERED_THRESHOLD_DAYS = 45
+            reason_text = ""
+            gap_value = None
+            exit_cond = ""
+            move_hint = ""
+            rec_action = RECOMMENDED_ACTION_CATEGORY.get(assigned_universe, "UNKNOWN")
+
+            if assigned_universe == UNIVERSE_NEW:
+                gap_value = max(0, 50 - int(activation_window_trips))
+                reason_text = (
+                    f"Driver on day {operational_age_days or '?'} since first activity. "
+                    f"Has {activation_window_trips} trips in the activation window and has not reached the 50-trip target."
+                )
+                exit_cond = "Reaches 50 trips OR exceeds 14 days since activation."
+                move_hint = f"If reaches 50 trips moves to Protected. If exceeds 14 days without reaching target moves to Ramp-Up. Gap: {gap_value} trips."
+
+            elif assigned_universe == UNIVERSE_RAMP_UP:
+                gap_value = max(0, 100 - int(weekly_trips))
+                reason_text = (
+                    f"Driver on day {operational_age_days or '?'}. "
+                    f"Has {weekly_trips} weekly trips and is below the 100 trips/week objective."
+                )
+                exit_cond = "Reaches 100 trips/week OR exceeds 45 days OR becomes inactive."
+                move_hint = f"If reaches 100 trips/week moves to Protected. If exceeds 45 days without reaching target moves to Consolidation. Gap: {gap_value} trips/week."
+
+            elif assigned_universe == UNIVERSE_CONSOLIDATION:
+                gap_value = max(0, 100 - int(weekly_trips))
+                reason_text = (
+                    f"Driver on day {operational_age_days or '?'}. "
+                    f"Has {weekly_trips} weekly trips and is below the 100 trips/week objective during consolidation."
+                )
+                exit_cond = "Reaches 100 trips/week OR exceeds 90 days OR becomes inactive."
+                move_hint = f"If exceeds 90 days active and below 100 trips/week moves to Active Growth. Gap: {gap_value} trips/week."
+
+            elif assigned_universe == UNIVERSE_ACTIVE_GROWTH:
+                next_band = _compute_next_band(productivity_band) if productivity_band != "100+" else None
+                if next_band and productivity_band != "100+":
+                    gap_value = max(0, _band_min_trips(next_band) - int(weekly_trips))
+                else:
+                    gap_value = 0
+                reason_text = (
+                    f"Driver active 90+ days. "
+                    f"Has {weekly_trips} weekly trips, in band {productivity_band}. "
+                    f"Target: move to band {next_band or 'higher'}."
+                )
+                exit_cond = f"Moves up a band OR reaches 100+ trips/week OR becomes inactive."
+                move_hint = f"Target next band: {next_band}. Delta required: {gap_value} trips/week to reach minimum of next band."
+
+            elif assigned_universe == UNIVERSE_RECOVERY_HIGH:
+                gap_value = 1
+                reason_text = (
+                    f"High-value driver with {inactivity_days} days without trips. "
+                    f"Value tier: HIGH (best_week_12w >= 50 or high historical band). Must be recovered."
+                )
+                exit_cond = "Returns to active driving OR exceeds 60 days inactive (Cemetery)."
+                move_hint = f"If reactivates after {RECOVERED_THRESHOLD_DAYS}+ days inactive, register as recovered."
+
+            elif assigned_universe == UNIVERSE_RECOVERY_LOW:
+                gap_value = 1
+                reason_text = (
+                    f"Driver with {inactivity_days} days without trips. "
+                    f"Value tier: {value_tier}. Recovery treatment at low/default intensity."
+                )
+                exit_cond = "Returns to active driving OR exceeds 60 days inactive (Cemetery)."
+                move_hint = f"If reactivates after {RECOVERED_THRESHOLD_DAYS}+ days inactive, register as recovered."
+
+            elif assigned_universe == UNIVERSE_CEMETERY:
+                gap_value = None
+                reason_text = (
+                    f"Driver with {inactivity_days} days without trips. "
+                    f"Outside daily operations. Not exported to Control Loop by default."
+                )
+                exit_cond = "Returns to active driving."
+                move_hint = f"If returns to active after {RECOVERED_THRESHOLD_DAYS}+ days inactive, register as recovered and reclassify."
+
+            elif assigned_universe == UNIVERSE_PROTECTED:
+                gap_value = 0
+                reason_text = (
+                    f"Driver already meeting operational target. "
+                    f"Has {weekly_trips} weekly trips or reached the activation goal."
+                )
+                exit_cond = "Drops below target OR becomes inactive."
+                move_hint = "No daily action required. Monitor for decline."
+
+            else:
+                gap_value = None
+                reason_text = "Insufficient data to classify. No daily action."
+                exit_cond = "Data becomes available."
+                move_hint = "Awaiting classification data."
+
+            evidence_json = {
+                "generated_date": str(target_d),
+                "assigned_universe_v1": assigned_universe,
+                "operational_age_days": operational_age_days,
+                "weekly_trips": weekly_trips,
+                "activation_window_trips": activation_window_trips,
+                "inactivity_days": inactivity_days,
+                "value_tier": value_tier,
+                "productivity_band": productivity_band,
+                "target_metric": target_metric,
+                "baseline_metric": baseline_metric,
+                "gap_to_target": gap_value,
+                "export_to_control_loop": export_to_cl,
+                "first_active_date_source": "driver_history_daily.MIN(date)",
+                "recovered_threshold_days": RECOVERED_THRESHOLD_DAYS,
+                "classification_version": SOURCE_VERSION,
+            }
+
             row = {
                 "generated_date": target_d,
                 "driver_profile_id": did,
@@ -292,12 +432,19 @@ def refresh_exclusive_driver_worklist_daily(target_date: Optional[str] = None) -
                 "source_snapshot_date": max_snap_date,
                 "source_explorer_target_date": max_expl_date,
                 "source_version": SOURCE_VERSION,
+                "reason_text": reason_text,
+                "evidence_json": evidence_json,
+                "gap_to_target": gap_value,
+                "exit_condition": exit_cond,
+                "movement_hint": move_hint,
+                "recommended_action_category": rec_action,
             }
             rows.append(row)
             universe_counts[assigned_universe] = universe_counts.get(assigned_universe, 0) + 1
 
         # ── UPSERT all rows in bulk ──
         from psycopg2.extras import execute_values
+        import json as _json
 
         cur2 = conn.cursor()
         columns = [
@@ -306,6 +453,7 @@ def refresh_exclusive_driver_worklist_daily(target_date: Optional[str] = None) -
             "activation_window_trips", "inactivity_days", "value_tier", "productivity_band", "trend",
             "target_metric", "baseline_metric", "export_to_control_loop",
             "source_snapshot_date", "source_explorer_target_date", "source_version",
+            "reason_text", "evidence_json", "gap_to_target", "exit_condition", "movement_hint", "recommended_action_category",
         ]
         values = [
             (
@@ -314,6 +462,8 @@ def refresh_exclusive_driver_worklist_daily(target_date: Optional[str] = None) -
                 r["activation_window_trips"], r["inactivity_days"], r["value_tier"], r["productivity_band"], r["trend"],
                 r["target_metric"], r["baseline_metric"], r["export_to_control_loop"],
                 r["source_snapshot_date"], r["source_explorer_target_date"], r["source_version"],
+                r.get("reason_text"), _json.dumps(r.get("evidence_json", {})),
+                r.get("gap_to_target"), r.get("exit_condition"), r.get("movement_hint"), r.get("recommended_action_category"),
             )
             for r in rows
         ]
