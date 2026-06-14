@@ -434,11 +434,239 @@ def _estimate_backfill(from_date: date, to_date: date) -> Dict[str, Any]:
         conn.close()
 
 
+WEEKLY_HISTORY_LOCK_ID = 9002
+DAILY_HISTORY_LOCK_ID = 9003
+DAILY_SOURCE_TABLE = "public.trips_2026"
+
+def _acquire_weekly_history_lock(conn) -> bool:
+    cur = conn.cursor()
+    cur.execute("SELECT pg_try_advisory_lock(%(id)s)", {"id": WEEKLY_HISTORY_LOCK_ID})
+    return cur.fetchone()[0]
+
+def _release_weekly_history_lock(conn):
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT pg_advisory_unlock(%(id)s)", {"id": WEEKLY_HISTORY_LOCK_ID})
+    except Exception:
+        pass
+
+
+def check_driver_history_weekly_freshness() -> Dict[str, Any]:
+    now = date.today()
+    current_week_start = now - timedelta(days=now.weekday())
+    params = _get_connection_params()
+    params["options"] = "-c statement_timeout=30000"
+    conn = psycopg2.connect(**params)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*), MAX(week_start_date) FROM growth.yango_lima_driver_history_weekly")
+        row = cur.fetchone()
+        row_count = int(row[0]) if row[0] else 0
+        max_week = row[1]
+        cur.close()
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return {
+            "table": "growth.yango_lima_driver_history_weekly",
+            "status": "error",
+            "max_week_start_date": None,
+            "current_week_start": str(current_week_start),
+            "lag_days": None,
+            "row_count": 0,
+            "blocking": True,
+            "reason": f"Query error: {str(e)[:200]}",
+        }
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    if row_count == 0:
+        return {
+            "table": "growth.yango_lima_driver_history_weekly",
+            "status": "missing",
+            "max_week_start_date": None,
+            "current_week_start": str(current_week_start),
+            "lag_days": None,
+            "row_count": 0,
+            "blocking": True,
+            "reason": "Table is empty. Run bootstrap_history() to populate.",
+        }
+
+    if max_week is None:
+        return {
+            "table": "growth.yango_lima_driver_history_weekly",
+            "status": "missing",
+            "max_week_start_date": None,
+            "current_week_start": str(current_week_start),
+            "lag_days": None,
+            "row_count": row_count,
+            "blocking": True,
+            "reason": "No week_start_date values found.",
+        }
+
+    if isinstance(max_week, datetime):
+        max_week_d = max_week.date()
+    elif isinstance(max_week, str):
+        max_week_d = date.fromisoformat(max_week[:10])
+    else:
+        max_week_d = max_week
+
+    lag_days = (current_week_start - max_week_d).days
+
+    if max_week_d >= current_week_start:
+        return {
+            "table": "growth.yango_lima_driver_history_weekly",
+            "status": "fresh",
+            "max_week_start_date": str(max_week_d),
+            "current_week_start": str(current_week_start),
+            "lag_days": 0,
+            "row_count": row_count,
+            "blocking": False,
+            "reason": f"Weekly history covers current week (latest: {max_week_d}).",
+        }
+
+    if lag_days <= 7:
+        return {
+            "table": "growth.yango_lima_driver_history_weekly",
+            "status": "fresh",
+            "max_week_start_date": str(max_week_d),
+            "current_week_start": str(current_week_start),
+            "lag_days": lag_days,
+            "row_count": row_count,
+            "blocking": False,
+            "reason": f"Weekly history within acceptable lag (latest: {max_week_d}, lag: {lag_days} days).",
+        }
+
+    if lag_days <= 14:
+        return {
+            "table": "growth.yango_lima_driver_history_weekly",
+            "status": "stale",
+            "max_week_start_date": str(max_week_d),
+            "current_week_start": str(current_week_start),
+            "lag_days": lag_days,
+            "row_count": row_count,
+            "blocking": True,
+            "reason": f"Weekly history is stale: latest {max_week_d}, current week starts {current_week_start} (lag: {lag_days} days).",
+        }
+
+    return {
+        "table": "growth.yango_lima_driver_history_weekly",
+        "status": "stale",
+        "max_week_start_date": str(max_week_d),
+        "current_week_start": str(current_week_start),
+        "lag_days": lag_days,
+        "row_count": row_count,
+        "blocking": True,
+        "reason": f"Weekly history is critically stale: latest {max_week_d}, current week starts {current_week_start} (lag: {lag_days} days). Refresh required.",
+    }
+
+
+def refresh_driver_history_daily_from_canonical_source(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    dry_run: bool = False,
+    force: bool = False,
+) -> Dict[str, Any]:
+    """
+    LG-RAW-INGEST-1C: Canonical daily history builder from public.trips_2026.
+    Incremental UPSERT by date range. Idempotent. Advisory lock protected.
+    """
+    park_id = (settings.YANGO_LIMA_PARK_ID or "").strip()
+    if not park_id:
+        return {"ok": False, "error": "YANGO_LIMA_PARK_ID not configured"}
+
+    params = _get_connection_params()
+    params["options"] = "-c statement_timeout=300000"
+
+    if date_to is None:
+        c = psycopg2.connect(**params)
+        cur = c.cursor()
+        cur.execute("SELECT MAX(fecha_inicio_viaje)::date FROM public.trips_2026 WHERE park_id = %s AND LOWER(condicion) = 'completado'", (park_id,))
+        r = cur.fetchone()
+        date_to = str(r[0]) if r and r[0] else None
+        cur.close(); c.close()
+        if not date_to:
+            return {"ok": False, "error": "No source data available"}
+
+    if date_from is None:
+        c = psycopg2.connect(**params)
+        cur = c.cursor()
+        cur.execute("SELECT MAX(date) FROM growth.yango_lima_driver_history_daily")
+        r = cur.fetchone()
+        max_existing = r[0]
+        date_from = str(max_existing + timedelta(days=1)) if max_existing else "2025-01-01"
+        cur.close(); c.close()
+
+    from_d = date.fromisoformat(date_from[:10])
+    to_d = date.fromisoformat(date_to[:10])
+    if from_d > to_d:
+        return {"dry_run": dry_run, "status": "NOOP", "reason": f"date_from {date_from} > date_to {date_to}"}
+
+    # Count source rows
+    src_conn = psycopg2.connect(**params)
+    cur = src_conn.cursor()
+    cur.execute(
+        "SELECT COUNT(*) FROM public.trips_2026 WHERE park_id = %s AND LOWER(condicion) = 'completado' AND fecha_inicio_viaje::date BETWEEN %s AND %s AND conductor_id IS NOT NULL",
+        (park_id, from_d, to_d),
+    )
+    source_rows = cur.fetchone()[0]
+    cur.close(); src_conn.close()
+
+    if source_rows == 0 and not force:
+        return {"dry_run": dry_run, "status": "NOOP", "reason": "No source trips in date range", "source_rows": 0}
+
+    if dry_run:
+        return {"dry_run": True, "source_table": DAILY_SOURCE_TABLE, "date_from": str(from_d), "date_to": str(to_d), "source_rows": source_rows, "status": "DRY_RUN_OK"}
+
+    # Write
+    build_conn = psycopg2.connect(**params)
+    build_conn.autocommit = False
+    if not _acquire_weekly_history_lock(build_conn):
+        build_conn.close()
+        return {"ok": False, "status": "SKIPPED_LOCKED", "reason": "Daily history builder locked"}
+
+    try:
+        cur2 = build_conn.cursor()
+        cur2.execute(
+            """INSERT INTO growth.yango_lima_driver_history_daily (date, driver_profile_id, completed_orders, gross_revenue, source, last_calculated_at)
+            SELECT fecha_inicio_viaje::date, conductor_id, COUNT(*), SUM(COALESCE(precio_yango_pro, 0)), 'trips_2026_incremental', now()
+            FROM public.trips_2026
+            WHERE park_id = %s AND LOWER(condicion) = 'completado' AND fecha_inicio_viaje::date BETWEEN %s AND %s AND conductor_id IS NOT NULL
+            GROUP BY 1, 2
+            ON CONFLICT (date, driver_profile_id) DO UPDATE SET completed_orders = EXCLUDED.completed_orders, gross_revenue = EXCLUDED.gross_revenue, source = EXCLUDED.source, last_calculated_at = now()""",
+            (park_id, from_d, to_d),
+        )
+        inserted = cur2.rowcount
+        build_conn.commit()
+        cur2.close()
+
+        cur3 = build_conn.cursor()
+        cur3.execute("SELECT MAX(date) FROM growth.yango_lima_driver_history_daily")
+        max_after = str(cur3.fetchone()[0])
+        cur3.close()
+
+        return {"ok": True, "status": "SUCCESS", "source_table": DAILY_SOURCE_TABLE, "date_from": str(from_d), "date_to": str(to_d), "source_rows": source_rows, "upserted_rows": inserted, "max_date_after": max_after}
+    except Exception as e:
+        build_conn.rollback()
+        logger.error("Daily history build failed: %s", e)
+        return {"ok": False, "status": "FAILED", "error": str(e)[:500]}
+    finally:
+        _release_weekly_history_lock(build_conn)
+        try: build_conn.close()
+        except: pass
+
+
 def refresh_weekly_history() -> Dict[str, Any]:
     """
     FH-1: Governed weekly history refresh for autonomous tick.
     Checks if weekly table is behind daily table and runs _build_weekly_sql_bulk() if needed.
     Idempotent UPSERT — safe to call multiple times.
+    Advisory lock prevents concurrent rebuilds.
     """
     params = _get_connection_params()
     params["options"] = "-c statement_timeout=30000"
@@ -465,11 +693,24 @@ def refresh_weekly_history() -> Dict[str, Any]:
         else:
             max_week_d = max_week
 
-        if max_week_d >= latest_complete_monday - timedelta(days=7):
+        if max_week_d >= latest_complete_monday:
             return {"refreshed": False, "status": "NOOP", "reason": f"Weekly up to date (latest: {max_week_d})"}
 
-    result = _build_weekly_sql_bulk()
-    return {"refreshed": True, "status": "REFRESHED", **result}
+    build_conn = psycopg2.connect(**params)
+    build_conn.autocommit = False
+    if not _acquire_weekly_history_lock(build_conn):
+        build_conn.close()
+        return {"refreshed": False, "status": "SKIPPED_LOCKED", "reason": "Another weekly history refresh is in progress"}
+
+    try:
+        result = _build_weekly_sql_bulk()
+        return {"refreshed": True, "status": "REFRESHED", **result}
+    finally:
+        _release_weekly_history_lock(build_conn)
+        try:
+            build_conn.close()
+        except Exception:
+            pass
 
 
 def continuity_check() -> Dict[str, Any]:

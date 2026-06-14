@@ -613,7 +613,16 @@ def autonomous_tick() -> Dict[str, Any]:
         history_blocked = False
         pipeline_steps = []
         try:
-            from app.services.yego_lima_growth_history_service import refresh_weekly_history, check_driver_history_weekly_freshness
+            from app.services.yego_lima_growth_history_service import refresh_weekly_history, check_driver_history_weekly_freshness, refresh_driver_history_daily_from_canonical_source
+
+            # LG-RAW-INGEST-1C: Build daily history before weekly
+            dh_result = refresh_driver_history_daily_from_canonical_source()
+            result["daily_history"] = dh_result
+            if dh_result.get("status") == "SUCCESS":
+                pipeline_steps.append({"step": "daily_history", "status": "SUCCESS",
+                                       "date_from": dh_result.get("date_from"),
+                                       "date_to": dh_result.get("date_to"),
+                                       "upserted_rows": dh_result.get("upserted_rows")})
 
             wh_result = refresh_weekly_history()
             result["weekly_history"] = wh_result
