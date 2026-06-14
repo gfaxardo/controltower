@@ -332,11 +332,11 @@ These DANGEROUS scripts lack `refresh_guard()` context manager:
 
 **Status:** DOCUMENTED CONSTRAINT. Not a serving or refresh gap.
 
-### 4.10 Park Attribution Monthly (OV2-VC4A)
+### 4.10 Park Attribution Monthly (OV2-VC5A)
 
-**Description:** `ops.real_business_slice_month_fact` does not expose `park_id` column directly. Park-level drill requires validation via bridge or day fact. Slice-level breakdown is correct. Park certification deferred to VC5 drill layer.
+**Description:** `ops.real_business_slice_month_fact` does not expose `park_id` directly. Park attribution is available via `ops.driver_day_slice_fact` bridge with `country='peru' AND city='lima'` filter. Reconciled within 0.4% of canonical monthly total. All named slices match exactly.
 
-**Status:** KNOWN GAP. P1 for park drill. Not a blocker for slice breakdown.
+**Status:** RESOLVED (OV2-VC5A). Park attribution certified via bridge with city filter.
 
 ---
 
