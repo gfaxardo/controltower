@@ -1382,6 +1382,23 @@ Reference: `docs/architecture/OMNIVIEW_V2_FINAL_UI_PARITY_SMOKE_REPORT.md`
 
 ---
 
-*Ownership Certification Complete — Technical Governance + UI P0 Parity.*
+## 34. Professional UI Cutover
+
+**Date:** 2026-06-13
+**Status:** Professional UI is now the default Omniview V2 experience.
+
+- Default route: `/operacion/omniview-v2-professional`
+- Shadow fallback: `/operacion/omniview-v2-shadow` (preserved)
+- Technical governance: CERTIFIED
+- UI P0 parity: CERTIFIED (7/7)
+- Professional rebuild (R1-R6): COMPLETE
+- Diagnostic/Forecast engines: BLOCKED
+- V1 deprecation: NOT executed
+
+Reference: `docs/architecture/OMNIVIEW_V2_UI_R6_CUTOVER_SMOKE_REPORT.md`
+
+---
+
+*Ownership Certification Complete — Technical Governance + UI P0 Parity + Professional UI Cutover.*
 
 *Phase D.2 completed. Cascade validated. Facts fresh. Registry integration gap documented for D.2A.*
