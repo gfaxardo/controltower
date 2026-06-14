@@ -1,6 +1,6 @@
 # CURRENT ACTIVE PHASE — YEGO CONTROL TOWER
 
-Last Updated: 2026-06-14 (Omniview V2 Certified — OMNI-P0 Closed)
+Last Updated: 2026-06-14 (Omniview V2 Operator Signoff + Diagnostic Readiness Gate)
 
 ---
 
@@ -140,7 +140,7 @@ Phase:
 2A.3 — Behavioral Pattern Diagnosis
 
 Status:
-**READY NEXT** — OMNI-P0 closed (2026-06-14). Gated by operator confirmation.
+**READY FOR SCOPE/CONTRACT DESIGN** — OMNI-P0 closed, UI accepted, operator signoff obtained (2026-06-14). Next: Diagnostic Engine scope/contract definition. NOT active implementation.
 
 Motor:
 Revenue Detail Certification (CF-H2)

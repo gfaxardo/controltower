@@ -241,7 +241,9 @@
 | Diagnostic Engine | READY NEXT | Gated by OMNI-P0 closure confirmation |
 | Forecast/Suggestion/Decision/Action/AI | BLOCKED | Requires upstream engine stability |
 
-Reference: `docs/architecture/OMNIVIEW_V2_OMNI_P0_CLOSURE_REPORT.md`
+**Operator Signoff:** ACCEPTED WITH NON-BLOCKING POLISH (OV2-OPERATOR-SIGNOFF-1, commit `8509fe5`). 0 P0/P1 defects. UI Real Acceptance passed.
+
+Reference: `docs/architecture/OMNIVIEW_V2_OPERATOR_SIGNOFF_AND_DIAGNOSTIC_READINESS_REPORT.md`
 
 ---
 
