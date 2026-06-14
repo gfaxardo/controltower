@@ -146,10 +146,10 @@ export default function LimaGrowthDashboardUI1A() {
         {/* Freshness bar */}
         <div className={`border-b px-4 py-2 text-xs font-medium ${bannerColor}`}>
           {bannerStatus === 'loading' ? 'Verificando datos...' :
-           bannerStatus === 'HEALTHY' ? '● Worklist data is current' :
-           bannerStatus === 'WARNING' ? '● Worklist date may be behind' :
-           bannerStatus === 'UNKNOWN' ? '● Freshness unknown — data may be stale' :
-           '● Backend unreachable — check connectivity'}
+           bannerStatus === 'HEALTHY' ? '● Lista actualizada para hoy. Los datos están frescos.' :
+           bannerStatus === 'WARNING' ? '● Advertencia: la lista visible puede no corresponder a la fecha de hoy. Revisar autonomous_tick antes de operar.' :
+           bannerStatus === 'UNKNOWN' ? '● No se pudo validar frescura de la lista. Revisar conectividad con backend Growth.' :
+           '● Backend inaccesible. Verificar conectividad.'}
         </div>
 
         <div className="p-6">
