@@ -112,4 +112,44 @@ This is NOT the Action Engine. It is visibility of actions already taken.
 
 ---
 
+## 4. No Phantom Tabs Principle (LG-UI-IA-1B.1)
+
+Every visible tab, section, card, button, or metric must pass this test:
+
+| # | Question |
+|---|----------|
+| 1 | What is this for? |
+| 2 | What decision does it help the operator make? |
+| 3 | What operational action does it enable? |
+| 4 | What source of truth does it use? |
+| 5 | What does red/green/stale mean here? |
+| 6 | What is the operator's next step? |
+
+If it does not pass → remove, hide, merge, or backlog. Do NOT keep as a phantom tab.
+
+## 5. Canonical UI Information Architecture
+
+Lima Growth Machine UI is organized around operator workflow, not internal technical modules. The canonical tab structure is:
+
+| # | Tab | Purpose |
+|---|-----|---------|
+| 1 | **Comando Diario** | Daily health: generated_date, freshness, batch, alerts, day-over-day changes |
+| 2 | **Listas de Trabajo** | Who to work today: 6 actionable universes, driver table with reason_text, gap, priority |
+| 3 | **Explorador de Conductores** | Driver drilldown: profile, evidence, target, gap, exit, transition history, actions |
+| 4 | **Movimientos** | What changed: stayed/moved/exited/recovered/goal met transitions |
+| 5 | **Control Loop** | Execution: batch, READY/ASSIGNED/CONTACTED/DONE, coverage by universe/agent |
+| 6 | **Resultados** | Did it work: actions vs outcomes, improvement/degradation, goal attainment |
+
+**Current tab mapping (Intelligence UI):**
+
+| Current Tab | Action |
+|-------------|--------|
+| Overview | Fuse into Comando Diario |
+| Programs | Deprecate or fuse into Listas de Trabajo |
+| Segments | Fuse into Comando Diario / Listas de Trabajo |
+| Movement | Keep only if consuming transition fact |
+| RNA | Hide/deprecate unless operational definition exists |
+| Driver Explorer | Keep as Explorador de Conductores |
+| Effectiveness | Rename to Resultados only if action evidence exists |
+
 *UI is not optional. The product is not complete until the operator can see it.*

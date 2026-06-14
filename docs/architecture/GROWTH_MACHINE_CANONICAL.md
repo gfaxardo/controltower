@@ -366,6 +366,18 @@ Growth Machine cannot be considered product-complete until:
 
 Backend closure alone does not unlock Diagnostic Engine. UI operational closure is required before higher engines can be activated.
 
+### UI Product Architecture (LG-UI-IA-1B.1)
+
+Growth Machine UI is organized around operator workflow, not internal technical modules:
+1. **Comando Diario** — daily health, freshness, batch, alerts
+2. **Listas de Trabajo** — 6 actionable universes, driver table with reason_text/gap
+3. **Explorador de Conductores** — driver drilldown with evidence, target, exit, transitions
+4. **Movimientos** — transition fact: stayed/goal_met/recovered/moved
+5. **Control Loop** — batch, READY/ASSIGNED/CONTACTED/DONE, coverage
+6. **Resultados** — actions vs outcomes, impact measurement
+
+No phantom tabs. Every tab must have real source, real endpoint, operational purpose, and controlled empty/error states.
+
 ### Exclusive Dynamic Lists V1 Contract (LG-PROG-EXCL-1A.1 — FROZEN)
 
 | Universe | Condition | Threshold |
