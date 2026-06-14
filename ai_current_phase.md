@@ -1,6 +1,6 @@
 # CURRENT ACTIVE PHASE — YEGO CONTROL TOWER
 
-Last Updated: 2026-06-03 (OMNI-P0 Reset)
+Last Updated: 2026-06-14 (Omniview V2 Visual Cockpit Certified)
 
 ---
 
