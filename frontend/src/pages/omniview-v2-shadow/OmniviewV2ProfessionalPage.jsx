@@ -13,6 +13,8 @@ import { getPresetRange, PERIOD_PRESETS } from './omniviewV2PeriodPresets';
 import { sortMatrixRows, SORT_MODES } from './omniviewV2Sort';
 import OMNIVIEW_V2_METRICS from './omniviewV2Metrics';
 import { RouteStatusBadge } from './RouteStatusBadge';
+import { buildTrendSeries, getComparableLabel } from './omniviewV2TrendSeries';
+import TrendLayerPanel from './TrendLayerPanel';
 
 function ExecutiveCockpit() {
   const today = new Date().toISOString().slice(0, 10);
@@ -56,8 +58,9 @@ function ExecutiveCockpit() {
   const statusLabel = !canonicalReady ? 'Shadow mode' : isStale ? 'Data warning' : loading ? 'Loading...' : hasData ? 'Operational' : 'No data';
   const statusColor = !canonicalReady ? '#9ca3af' : isStale ? '#f59e0b' : hasData ? '#16a34a' : '#6b7280';
 
-  // Temporal delta label per grain
-  const deltaLabel = grain === 'day' ? 'DoD' : grain === 'week' ? 'WoW' : 'MoM';
+  // ── Trend series (VC2) ────────────────────────────────────────
+  const trendData = useMemo(() => buildTrendSeries(matrixData, metricId, grain, operatingDate), [matrixData, metricId, grain, operatingDate]);
+  const deltaLabel = getComparableLabel(grain);
 
   // ── KPI cards from shell data ──────────────────────────────────
   const kpiSection = shellData?.sections?.find(s => s.section_id === 'kpi_strip');
@@ -133,7 +136,13 @@ function ExecutiveCockpit() {
               <div key={kid} style={kpiCardStyle}>
                 <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{kpiMetric?.label || kid}</div>
                 <div style={{ fontSize: 28, fontWeight: 700, color: '#111827', margin: '4px 0' }}>{kpiMetric?.format ? kpiMetric.format(total) : total.toLocaleString()}</div>
-                <div style={{ fontSize: 11, color: '#9ca3af' }}>{deltaLabel}</div>
+                {kid === metricId && trendData?.currentDeltaPct != null ? (
+                  <div style={{ fontSize: 11, fontWeight: 600, color: trendData.currentDeltaPct >= 0 ? (kpiMetric?.higherIsBetter === false ? '#dc2626' : '#16a34a') : (kpiMetric?.higherIsBetter === false ? '#16a34a' : '#dc2626') }}>
+                    {trendData.currentDeltaPct > 0 ? '▲' : '▼'} {Math.abs(trendData.currentDeltaPct)}% {deltaLabel}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 11, color: '#9ca3af' }}>{deltaLabel}</div>
+                )}
               </div>
             );
           })}
@@ -141,14 +150,8 @@ function ExecutiveCockpit() {
 
         {/* Visual Panels Grid */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          {/* Trend Panel Shell */}
-          <div style={panelStyle}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Trend · {deltaLabel}</div>
-            <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 8 }}>{grain === 'day' ? 'Day over day' : grain === 'week' ? 'Week over week' : 'Month over month'} evolution</div>
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 160, color: '#d1d5db', fontSize: 13, border: '1px dashed #e5e7eb', borderRadius: 6, background: '#f9fafb' }}>
-              Chart layer coming in VC2
-            </div>
-          </div>
+          {/* Trend Panel — VC2 real chart */}
+          <TrendLayerPanel trendData={trendData} metricId={metricId} grain={grain} />
 
           {/* Plan vs Real Panel Shell */}
           <div style={panelStyle}>
