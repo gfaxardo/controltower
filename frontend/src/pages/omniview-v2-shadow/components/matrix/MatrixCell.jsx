@@ -2,6 +2,8 @@ import { memo, useCallback, useMemo } from 'react';
 import CellBadge from './CellBadge';
 import CellDelta from './CellDelta';
 import { formatValue } from '../base/MetricValue';
+import { getCellToneClass } from '../../omniviewV2ColorSemantics';
+import { getPlanRealDisplay } from '../../omniviewV2PlanReal';
 
 function _badgeForSource(sourceSystem, canonicalReady) {
   if (!canonicalReady) return 'SHADOW';
@@ -10,24 +12,9 @@ function _badgeForSource(sourceSystem, canonicalReady) {
   return null;
 }
 
-function _badgeForFallback(fallbackUsed, canonicalReady) {
+function _badgeForFallback(fallbackUsed) {
   if (fallbackUsed) return 'FALLBACK';
   return null;
-}
-
-function _signalColor(value, cellStatus, canonicalReady) {
-  if (cellStatus === 'BLOCKED' || value == null) return 'ov2-cell--blocked';
-  if (cellStatus === 'WARNING' || !canonicalReady) return 'ov2-cell--warning';
-  if (cellStatus === 'NOT_COMPARABLE') return 'ov2-cell--not-comparable';
-  return 'ov2-cell--ok';
-}
-
-function _deltaDirection(deltaValue, deltaPct) {
-  const v = deltaValue != null ? deltaValue : deltaPct;
-  if (v == null) return null;
-  if (v > 0) return 'ov2-cell--delta-up';
-  if (v < 0) return 'ov2-cell--delta-down';
-  return 'ov2-cell--delta-flat';
 }
 
 const MatrixCell = memo(function MatrixCell({
@@ -35,6 +22,8 @@ const MatrixCell = memo(function MatrixCell({
   rowId,
   columnId,
   grain = 'day',
+  metricId = 'orders',
+  viewMode = 'real',
   columnPeriodStatus,
   isSelected,
   onClick,
@@ -60,26 +49,23 @@ const MatrixCell = memo(function MatrixCell({
   const fallbackUsed = cell.fallback_used || false;
   const valueNull = cell.value == null;
 
-  let cellClass = 'ov2-cell';
-
-  if (isFuture) {
-    cellClass += ' ov2-cell--future';
-  } else if (valueNull) {
-    cellClass += ' ov2-cell--blocked';
-  } else {
-    cellClass += ' ' + _signalColor(cell.value, cellStatus, canonicalReady);
-    const deltaDir = _deltaDirection(cell.delta_value, cell.delta_pct);
-    if (deltaDir) cellClass += ' ' + deltaDir;
-  }
+  const tone = getCellToneClass(cell, metricId, isFuture);
+  let cellClass = `ov2-cell ov2-cell--${tone}`;
 
   if (isSelected) cellClass += ' ov2-cell--selected';
 
   const sourceBadge = _badgeForSource(cell.source_system, canonicalReady);
-  const fallbackBadge = _badgeForFallback(fallbackUsed, canonicalReady);
+  const fallbackBadge = _badgeForFallback(fallbackUsed);
   const showEstimated = cell.is_estimated;
   const showDelta = cell.comparison_status != null || cell.delta_value != null || cell.delta_pct != null;
   const showPeriodBadge = columnPeriodStatus === 'PARTIAL';
   const showMissing = valueNull || cell.formatted_value === 'N/A';
+  const isPlanRealMode = viewMode === 'plan_real';
+
+  // Plan vs Real display (OV2-UI-P1F)
+  const pvr = isPlanRealMode && !isFuture && !valueNull
+    ? getPlanRealDisplay(cell, metricId)
+    : null;
 
   return (
     <div
@@ -94,6 +80,16 @@ const MatrixCell = memo(function MatrixCell({
       <span style={{ fontWeight: 600 }}>
         {showMissing ? <span style={{ color: 'var(--ov2-text-muted)' }}>N/A</span> : (cell.formatted_value || formatValue(cell.value, cell.unit))}
       </span>
+
+      {/* Plan vs Real subtitle (OV2-UI-P1F) */}
+      {pvr && pvr.attainmentPct != null && (
+        <span style={{ fontSize: 9, color: 'var(--ov2-text-secondary)', display: 'block', lineHeight: 1.2 }}>
+          {pvr.attainmentFormatted} · {pvr.tone === 'negative' ? 'Behind' : pvr.tone === 'positive' ? 'Ahead' : 'OK'}
+        </span>
+      )}
+      {pvr && pvr.status === 'missing' && (
+        <span style={{ fontSize: 9, color: 'var(--ov2-text-muted)', display: 'block' }}>NO DATA</span>
+      )}
 
       {showEstimated && <CellBadge type="ESTIMATED" />}
       {showPeriodBadge && <CellBadge type="PARTIAL" />}

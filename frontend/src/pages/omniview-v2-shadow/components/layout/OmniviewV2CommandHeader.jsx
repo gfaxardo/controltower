@@ -1,11 +1,16 @@
 import SourceBadge from '../base/SourceBadge';
 import CoverageBadge from '../base/CoverageBadge';
 import FreshnessBadge from '../base/FreshnessBadge';
+import OMNIVIEW_V2_METRICS from '../../omniviewV2Metrics';
+import { TONE_LEGEND } from '../../omniviewV2ColorSemantics';
+import { SORT_MODES } from '../../omniviewV2Sort';
+import { PERIOD_PRESETS } from '../../omniviewV2PeriodPresets';
 
 function OmniviewV2CommandHeader({
   sourceSystem = 'CT_TRIPS_2026',
   canonicalReady = true,
   grain = 'day',
+  metricId = 'orders',
   dateFrom = '',
   dateTo = '',
   country = 'peru',
@@ -14,14 +19,21 @@ function OmniviewV2CommandHeader({
   parkId = '',
   coveragePct = 100,
   freshness = '',
+  hasData = true,
+  sortMode = 'default',
+  activePreset = '',
   onSourceChange,
   onGrainChange,
+  onMetricChange,
+  onSortChange,
+  onPresetSelect,
   onDateFromChange,
   onDateToChange,
   onCountryChange,
   onCityChange,
   onBusinessSliceChange,
   onParkIdChange,
+  onExportCsv,
 }) {
   const sources = [
     { value: 'CT_TRIPS_2026', label: 'CT Trips 2026' },
@@ -83,11 +95,53 @@ function OmniviewV2CommandHeader({
         {grains.map((g) => (<option key={g.value} value={g.value}>{g.label}</option>))}
       </select>
 
+      {/* OV2-UI-P1A: Multi-metric selector */}
+      <select value={metricId} onChange={(e) => onMetricChange?.(e.target.value)}
+        style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid var(--ov2-border-color)', fontSize: 12, background: '#fff', fontWeight: 600 }}>
+        {OMNIVIEW_V2_METRICS.map((m) => (
+          <option key={m.id} value={m.id} disabled={!m.available}
+            title={!m.available ? m.disabledReason : m.description}>
+            {m.label}{!m.available ? ' (N/A)' : ''}
+          </option>
+        ))}
+      </select>
+
+      {/* OV2-UI-P1D: Sort controls */}
+      <select value={sortMode} onChange={(e) => onSortChange?.(e.target.value)}
+        style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid var(--ov2-border-color)', fontSize: 12, background: '#fff' }}>
+        {SORT_MODES.map((s) => (
+          <option key={s.id} value={s.id}>{s.label}</option>
+        ))}
+      </select>
+
       <input type="date" value={dateFrom} onChange={(e) => onDateFromChange?.(e.target.value)}
         style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid var(--ov2-border-color)', fontSize: 12, background: '#fff' }} />
       <span style={{ fontSize: 12, color: 'var(--ov2-text-secondary)' }}>to</span>
       <input type="date" value={dateTo} onChange={(e) => onDateToChange?.(e.target.value)}
         style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid var(--ov2-border-color)', fontSize: 12, background: '#fff' }} />
+
+      {/* OV2-UI-P1E: Period presets */}
+      <span style={{ display: 'flex', gap: 3, marginLeft: 4 }}>
+        {PERIOD_PRESETS.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => onPresetSelect?.(p.id)}
+            style={{
+              padding: '3px 7px',
+              borderRadius: 3,
+              border: `1px solid ${activePreset === p.id ? 'var(--ov2-status-selected, #3b82f6)' : 'var(--ov2-border-color)'}`,
+              fontSize: 11,
+              background: activePreset === p.id ? '#eff6ff' : '#fff',
+              color: activePreset === p.id ? 'var(--ov2-status-selected, #3b82f6)' : 'var(--ov2-text-secondary)',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              fontWeight: activePreset === p.id ? 600 : 400,
+            }}
+          >
+            {p.label}
+          </button>
+        ))}
+      </span>
 
       <span style={{ color: 'var(--ov2-border-color)', margin: '0 2px' }}>|</span>
 
@@ -113,8 +167,37 @@ function OmniviewV2CommandHeader({
 
       <span style={{ flex: 1 }} />
 
+      {/* Color semantics legend (OV2-UI-P1B) */}
+      <span style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 10, color: 'var(--ov2-text-secondary)' }}>
+        {TONE_LEGEND.map((t) => (
+          <span key={t.tone} style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+            <span style={{ width: 10, height: 10, borderRadius: 2, background: t.color, display: 'inline-block' }} />
+            {t.label}
+          </span>
+        ))}
+      </span>
+
       <CoverageBadge pct={coveragePct} />
       <FreshnessBadge lastRefreshedAt={freshness} />
+
+      {/* OV2-UI-P1C: CSV Export */}
+      <button
+        onClick={onExportCsv}
+        disabled={!hasData}
+        title={!hasData ? 'No data available to export' : 'Export current view as CSV'}
+        style={{
+          padding: '4px 12px',
+          borderRadius: 4,
+          border: '1px solid var(--ov2-border-color)',
+          fontSize: 12,
+          background: hasData ? 'var(--ov2-status-selected, #3b82f6)' : 'var(--ov2-bg-disabled, #e5e7eb)',
+          color: hasData ? '#fff' : 'var(--ov2-text-muted)',
+          cursor: hasData ? 'pointer' : 'not-allowed',
+          fontWeight: 500,
+        }}
+      >
+        Export CSV
+      </button>
     </div>
   );
 }

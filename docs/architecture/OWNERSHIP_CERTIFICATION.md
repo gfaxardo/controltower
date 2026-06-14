@@ -1340,6 +1340,48 @@ Omniview V2 ownership/freshness/traceability governance is CERTIFIED and OPERATI
 
 ---
 
-*Omniview V2 Ownership Hardening — ALL PHASES COMPLETE (B.1 → C.1 → C.2 → D.0 → D.1 → D.2 → D.2A → D.2B → E → Final Smoke).*
+## 32. Product North Star Handoff
+
+**Date:** 2026-06-13
+**Status:** Ownership/Freshness/Traceability CERTIFIED. UI parity NOT certified.
+
+This technical certification covers data governance only:
+- Ownership: 1 canonical writer per table (4 facts)
+- Freshness: `ops.serving_registry` + `ops.serving_refresh_log` (4 entries)
+- Traceability: Cascade log writes verified
+- Legacy writers: 13 blocked/guarded, 4 canonical
+
+**NOT certified by this document:**
+- Omniview V2 UI/UX parity with V1
+- V2 production readiness (`productionReady: false` in navigation registry)
+- Diagnostic/Forecast/Suggestion/Decision/Action/AI engines
+
+**Next front: UI/Product parity.**
+- North Star: `docs/architecture/OMNIVIEW_V2_NORTH_STAR.md`
+- Gap Report: `docs/architecture/OMNIVIEW_V2_UI_PARITY_GAP_REPORT.md`
+- P0 gaps: multi-metric, colors, export, sort, Plan vs Real visualization, period presets
+- DO NOT PORT: insight engine, alerting engine, root cause engine, evolution view, legacy endpoints
+
+Reference these documents before any Omniview V2 UI prompt.
+
+---
+
+## 33. UI Parity Handoff
+
+**Date:** 2026-06-13
+**Status:** UI P0 parity CERTIFIED — 7/7 P0 gaps closed
+
+- **Technical governance:** CERTIFIED (ownership, freshness, traceability)
+- **UI P0 parity:** CERTIFIED (multi-metric, colors, export, sort, period presets, Plan vs Real, freshness visibility)
+- **Endpoint smoke:** 7/7 endpoints HTTP 200
+- **Build:** PASS (frontend + backend)
+
+**NOT certified:** Diagnostic Engine, Forecast/Suggestion/Decision/Action/AI engines, Growth Machine freshness.
+
+Reference: `docs/architecture/OMNIVIEW_V2_FINAL_UI_PARITY_SMOKE_REPORT.md`
+
+---
+
+*Ownership Certification Complete — Technical Governance + UI P0 Parity.*
 
 *Phase D.2 completed. Cascade validated. Facts fresh. Registry integration gap documented for D.2A.*

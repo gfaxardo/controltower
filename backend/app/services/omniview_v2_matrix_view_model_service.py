@@ -198,6 +198,7 @@ def build_cells(
         "avg_ticket": ("avg_ticket", "Average Ticket", "PEN", "avg_ticket", _fmt_pen),
         "trips_per_driver": ("trips_per_driver", "Trips per Driver", "ratio", "trips_per_driver", lambda v: f"{v:.2f}" if v is not None else "\u2014"),
         "commission_pct": ("commission_pct", "Commission %", "pct", "commission_pct", lambda v: _fmt_pct(v) if v is not None else "N/A"),
+        "cancel_rate_pct": ("cancel_rate_pct", "Cancel Rate %", "pct", "cancel_rate_pct", lambda v: _fmt_pct(v) if v is not None else "N/A"),
     }
     yango_metric_map = {
         "orders": ("orders", "Orders Completed", "count", "orders_completed", _fmt_count),
@@ -243,6 +244,18 @@ def build_cells(
                             raw_val = float(raw_val)
                     except (ValueError, TypeError):
                         raw_val = None
+
+                # Derive cancel_rate_pct if direct column is NULL
+                # but trips_cancelled and trips_completed are available (week_fact, month_fact)
+                if metric_id == "cancel_rate_pct" and raw_val is None and raw_row:
+                    cancelled = raw_row.get("trips_cancelled")
+                    completed = raw_row.get("trips_completed")
+                    if cancelled is not None and completed is not None:
+                        total = (completed or 0) + (cancelled or 0)
+                        if total > 0:
+                            raw_val = round((cancelled or 0) / total * 100, 2)
+                    elif cancelled is not None and (cancelled or 0) > 0:
+                        raw_val = 100.0
 
             cells.append(OmniviewV2MatrixCell(
                 row_id=row.id,

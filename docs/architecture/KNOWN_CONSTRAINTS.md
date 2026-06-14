@@ -278,6 +278,10 @@ These DANGEROUS scripts lack `refresh_guard()` context manager:
 | Supply MVs potentially stale | OPEN | `OMNIVIEW_CANONICAL_REGISTRY.md:G7` |
 | Scheduler disabled in production | OPEN | `OMNIVIEW_CANONICAL_REGISTRY.md:G8` |
 | Alerting engine not activated | CONDITIONAL GO | `OMNIVIEW_CANONICAL_REGISTRY.md:G12` |
+| GM: FH-1 threshold bug — `refresh_weekly_history()` NOOPs when stale (12-day lag tolerated) | OPEN | `docs/architecture/GROWTH_MACHINE_FRESHNESS_PREFLIGHT.md:G2` |
+| GM: `driver_history_daily` stale (MAX=2026-06-04) — suspected raw orders ingestion gap | OPEN | `docs/architecture/GROWTH_MACHINE_FRESHNESS_PREFLIGHT.md:G1` |
+| GM: `freshness_registry` false positive for `driver_history_weekly` (labels 12-day-old data as "FRESH") | OPEN | `docs/architecture/GROWTH_MACHINE_FRESHNESS_PREFLIGHT.md:G3` |
+| GM: `program_eligibility` + `opportunity_list` DELETE without transaction wrapping | OPEN | `docs/architecture/GROWTH_MACHINE_FRESHNESS_PREFLIGHT.md:G4` |
 
 ---
 
@@ -307,6 +311,7 @@ These DANGEROUS scripts lack `refresh_guard()` context manager:
 - [ARCHITECTURE_CANONICAL_ROADMAP.md](ARCHITECTURE_CANONICAL_ROADMAP.md) — Engine roadmap
 - [ai_current_phase.md](../../ai_current_phase.md) — Current phase status
 - [ai_operating_system.md](../../ai_operating_system.md) — AI governance
+- [GROWTH_MACHINE_FRESHNESS_PREFLIGHT.md](GROWTH_MACHINE_FRESHNESS_PREFLIGHT.md) — Growth Machine freshness preflight audit
 
 ---
 

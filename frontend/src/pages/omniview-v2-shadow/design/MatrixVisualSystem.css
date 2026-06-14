@@ -132,7 +132,25 @@
   color: var(--ov2-text-muted);
 }
 
-/* ── Signal: Delta directions ────────────────────────── */
+/* -- Signal: Semantic delta tones (OV2-UI-P1B) -- */
+.ov2-cell--positive {
+  border-left: 2px solid var(--ov2-tone-positive, #16a34a);
+}
+
+.ov2-cell--negative {
+  border-left: 2px solid var(--ov2-tone-negative, #dc2626);
+}
+
+.ov2-cell--neutral {
+  border-left: 2px solid var(--ov2-tone-neutral, #9ca3af);
+}
+
+.ov2-cell--disabled {
+  background: var(--ov2-bg-muted);
+  color: var(--ov2-text-muted);
+}
+
+/* -- Deprecated directional classes (kept for backwards compatibility in old code) -- */
 .ov2-cell--delta-up {
   border-left: 2px solid #16a34a;
 }

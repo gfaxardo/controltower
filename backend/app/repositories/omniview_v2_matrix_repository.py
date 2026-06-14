@@ -107,6 +107,7 @@ def get_ct_matrix_data(
             {date_field} AS period_date,
             business_slice_name,
             COALESCE(SUM(trips_completed), 0)::bigint AS trips_completed,
+            COALESCE(SUM(trips_cancelled), 0)::bigint AS trips_cancelled,
             COALESCE(SUM(revenue_yego_final), 0)::numeric AS revenue_yego_final,
             AVG(commission_pct)::numeric AS commission_pct,
             COALESCE(AVG(avg_ticket), 0)::numeric AS avg_ticket,

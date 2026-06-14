@@ -7,6 +7,8 @@ import MatrixSkeleton from './MatrixSkeleton';
 function MatrixShell({
   matrixData,
   loading = false,
+  metricId = 'orders',
+  viewMode = 'real',
   selectedCell,
   onCellClick,
   density = 'comfortable',
@@ -55,6 +57,8 @@ function MatrixShell({
                 columns={columns}
                 cells={rowCells}
                 grain={grain}
+                metricId={metricId}
+                viewMode={viewMode}
                 isSelected={isSelected}
                 selectedColumnId={selectedCell?.columnId}
                 onCellClick={onCellClick}

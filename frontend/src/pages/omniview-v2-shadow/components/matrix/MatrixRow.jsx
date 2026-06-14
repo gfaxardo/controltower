@@ -10,6 +10,8 @@ const MatrixRow = memo(function MatrixRow({
   columns,
   cells,
   grain,
+  metricId = 'orders',
+  viewMode = 'real',
   isSelected,
   selectedColumnId,
   onCellClick,
@@ -34,17 +36,19 @@ const MatrixRow = memo(function MatrixRow({
         const cell = getCellByColumnId(cells, col.id);
         const isSelectedCell = isSelected && col.id === selectedColumnId;
         return (
-          <MatrixCell
-            key={`${row.id}_${col.id}`}
-            cell={cell}
-            rowId={row.id}
-            columnId={col.id}
-            grain={grain}
-            columnPeriodStatus={col.period_status}
-            isSelected={isSelectedCell}
-            onClick={onCellClick}
-            density={density}
-          />
+            <MatrixCell
+              key={`${row.id}_${col.id}`}
+              cell={cell}
+              rowId={row.id}
+              columnId={col.id}
+              grain={grain}
+              metricId={metricId}
+              viewMode={viewMode}
+              columnPeriodStatus={col.period_status}
+              isSelected={isSelectedCell}
+              onClick={onCellClick}
+              density={density}
+            />
         );
       })}
     </div>

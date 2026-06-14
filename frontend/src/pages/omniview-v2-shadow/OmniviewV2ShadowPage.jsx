@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import useOmniviewV2Shell from './hooks/useOmniviewV2Shell';
 import useOmniviewV2Matrix from './hooks/useOmniviewV2Matrix';
 import { useOmniviewV2PlanReal } from './hooks/useOmniviewV2PlanReal';
@@ -13,6 +13,10 @@ import MatrixShell from './components/matrix/MatrixShell';
 import CellInspector from './components/matrix/CellInspector';
 import MatrixSkeleton from './components/matrix/MatrixSkeleton';
 import OmniviewV2GlobalEmptyState from './components/OmniviewV2GlobalEmptyState';
+import { exportOmniviewV2Csv } from './omniviewV2Export';
+import { getMetricById } from './omniviewV2Metrics';
+import { sortMatrixRows } from './omniviewV2Sort';
+import { getPresetRange } from './omniviewV2PeriodPresets';
 import './design/MatrixVisualSystem.css';
 
 const today = new Date().toISOString().slice(0, 10);
@@ -33,6 +37,22 @@ function OmniviewV2ShadowPage() {
   const [operatingDate, setOperatingDate] = useState(null);
   const [statusBarOpen, setStatusBarOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [sortMode, setSortMode] = useState('default');
+  const [activePreset, setActivePreset] = useState('');
+
+  // Period preset handler (OV2-UI-P1E)
+  const handlePresetSelect = useCallback((presetId) => {
+    const range = getPresetRange(presetId);
+    if (range) {
+      setDateFrom(range.from);
+      setDateTo(range.to);
+      setActivePreset(presetId);
+    }
+  }, []);
+
+  // Custom date change clears active preset
+  const handleDateFromChange = useCallback((v) => { setDateFrom(v); setActivePreset(''); }, []);
+  const handleDateToChange = useCallback((v) => { setDateTo(v); setActivePreset(''); }, []);
 
   // On mount: fetch operating date and set defaults
   useEffect(() => {
@@ -85,8 +105,16 @@ function OmniviewV2ShadowPage() {
     inspectorOpen ? selectedCell : null, grain
   );
 
+  // Sort rows client-side (OV2-UI-P1D)
+  const sortedRealData = useMemo(() => {
+    if (!realMatrixData || !realMatrixData.rows || !realMatrixData.cells) return realMatrixData;
+    if (sortMode === 'default') return realMatrixData;
+    const sortedRows = sortMatrixRows(realMatrixData.rows, realMatrixData.cells, sortMode, metricId);
+    return { ...realMatrixData, rows: sortedRows };
+  }, [realMatrixData, sortMode, metricId]);
+
   // Select active matrix data based on view mode
-  const activeMatrixData = viewMode === 'plan_real' ? planData : realMatrixData;
+  const activeMatrixData = viewMode === 'plan_real' ? planData : sortedRealData;
   const matrixData = activeMatrixData;
   const loading = shellLoading;
   const matrixLoading = !matrixData && !matrixError && !shellLoading;
@@ -167,6 +195,26 @@ function OmniviewV2ShadowPage() {
       el?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [allSections]);
+
+  // CSV Export (OV2-UI-P1C)
+  const handleExportCsv = useCallback(() => {
+    try {
+      exportOmniviewV2Csv({
+        matrixData,
+        metric: getMetricById(metricId),
+        grain,
+        filters: { country, city, businessSlice, parkId, dateFrom, dateTo },
+        viewMode,
+        canonicalReady: shellData?.canonical_ready ?? false,
+        freshness,
+        operatingDate,
+        coverage: coverage.coverage_pct,
+        activePreset,
+      });
+    } catch (e) {
+      console.error('OV2 CSV export failed:', e);
+    }
+  }, [matrixData, metricId, grain, country, city, businessSlice, parkId, dateFrom, dateTo, viewMode, shellData, freshness, operatingDate, coverage]);
 
   const freshness = shellData?.freshness?.last_refreshed_at || '';
 
@@ -284,6 +332,7 @@ function OmniviewV2ShadowPage() {
         sourceSystem={sourceSystem}
         canonicalReady={shellData?.canonical_ready ?? false}
         grain={grain}
+        metricId={metricId}
         dateFrom={dateFrom}
         dateTo={dateTo}
         country={country}
@@ -294,12 +343,19 @@ function OmniviewV2ShadowPage() {
         freshness={freshness}
         onSourceChange={handleSourceChange}
         onGrainChange={setGrain}
-        onDateFromChange={setDateFrom}
-        onDateToChange={setDateTo}
+        onMetricChange={setMetricId}
+        sortMode={sortMode}
+        onSortChange={setSortMode}
+        activePreset={activePreset}
+        onPresetSelect={handlePresetSelect}
+        onDateFromChange={handleDateFromChange}
+        onDateToChange={handleDateToChange}
         onCountryChange={setCountry}
         onCityChange={setCity}
         onBusinessSliceChange={setBusinessSlice}
         onParkIdChange={setParkId}
+        hasData={hasData}
+        onExportCsv={handleExportCsv}
       />
 
       {/* Context Bar */}
@@ -403,6 +459,8 @@ function OmniviewV2ShadowPage() {
         ) : (
           <MatrixShell
             matrixData={matrixData}
+            metricId={metricId}
+            viewMode={viewMode}
             selectedCell={selectedCell ? { rowId: selectedCell.row_id, columnId: selectedCell.column_id } : null}
             onCellClick={handleCellClick}
           />

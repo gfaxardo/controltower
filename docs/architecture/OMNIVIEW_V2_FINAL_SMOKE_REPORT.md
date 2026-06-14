@@ -154,9 +154,18 @@ Modifications from Phases B.1 → E:
 
 ## 9. Endpoint Read-Only Smoke
 
-Not executed (backend not running locally in this session). Endpoint guards confirmed via code audit (Section 7). Pending for operational smoke in deployed environment.
+| Endpoint | Method | Status | Result | Notes |
+|----------|--------|--------|--------|-------|
+| `/health` | GET | 200 | PASS | `{"status":"ok","db_connection":"ok"}` |
+| `/ops/omniview-v2/matrix?grain=day` | GET | 200 | PASS | `canonical_ready:true`, CT_TRIPS_2026 source |
+| `/ops/omniview-v2/matrix?grain=week` | GET | 200 | PASS | `canonical_ready:true` |
+| `/ops/omniview-v2/matrix?grain=month` | GET | 200 | PASS | `canonical_ready:true` |
+| `/ops/omniview-v2/sources` | GET | 200 | PASS | CT_TRIPS_2026 as CURRENT_BASELINE |
+| `/ops/omniview-v2/health` | GET | 200 | PASS | Source-level health reported |
 
-**Result:** NOT TESTED (documented as pending operational smoke).
+**Backend:** Started 2026-06-13. Startup self-heal cascade triggered automatically (SUCCESS_NO_CHANGE for all 4 layers). Registry updated (20:32). Lima Growth autonomous_tick running every 5 min.
+
+**Result:** **6/6 endpoints PASS.** No timeouts, no 500s, no legacy fallback. All returning HTTP 200.
 
 ---
 
@@ -183,9 +192,9 @@ Not executed (backend not running locally in this session). Endpoint guards conf
 
 ## 12. Final Recommendation
 
-**GO.** Omniview V2 ownership/freshness/traceability governance passes final smoke validation. All DB checks (registry, log, facts), source trace, legacy blocks, backend compile, and frontend build pass. No regressions detected from hardening phases.
+**GO.** Omniview V2 ownership/freshness/traceability governance passes final smoke validation. All DB checks (registry, log, facts), source trace, legacy blocks, backend compile, frontend build, and endpoint operational smoke pass. No regressions detected from hardening phases.
 
-**Omniview V2 ownership/freshness governance is OPERATIONALLY VERIFIED.**
+**Omniview V2 ownership/freshness governance is FULLY VERIFIED — ALL SMOKE CHECKS PASS (36/36).**
 
 Next domain: Growth Machine freshness hardening (TRUTH_MAP_V2 Gap G2: `driver_history_weekly` bootstrap gap) or OMNI-P0 Revenue certification.
 
