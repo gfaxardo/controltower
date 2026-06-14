@@ -6,7 +6,7 @@ import { useMemo } from 'react';
 import { buildSliceBreakdown } from './omniviewV2SliceBreakdown';
 import { getMetricById } from './omniviewV2Metrics';
 
-function SliceBreakdownVisualPanel({ matrixData, metricId, grain }) {
+function SliceBreakdownVisualPanel({ matrixData, metricId, grain, onSliceClick }) {
   const metric = getMetricById(metricId);
   const breakdown = useMemo(() => buildSliceBreakdown(matrixData, metricId, grain), [matrixData, metricId, grain]);
 
@@ -46,7 +46,7 @@ function SliceBreakdownVisualPanel({ matrixData, metricId, grain }) {
         const barWidth = !isInvalid && !isMissing && maxVal > 0 ? Math.round((r.value || 0) / maxVal * 100) : 0;
 
         return (
-          <div key={r.label} style={{ marginBottom: 6 }}>
+          <div key={r.label} style={{ marginBottom: 6, cursor: onSliceClick && !isInvalid && !isMissing ? 'pointer' : 'default' }} onClick={() => { if (onSliceClick && !isInvalid && !isMissing) onSliceClick({ label: r.label, value: r.value }); }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 11, color: '#9ca3af', width: 18, textAlign: 'right' }}>{i + 1}</span>
               <span style={{ fontSize: 12, color: '#374151', width: 110, textAlign: 'right', flexShrink: 0, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</span>

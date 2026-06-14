@@ -30,6 +30,7 @@ function ExecutiveCockpit() {
   const [operatingDate, setOperatingDate] = useState(null);
   const [showMatrix, setShowMatrix] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
+  const [drillSlice, setDrillSlice] = useState(null);
 
   const { data: shellData, loading: shellLoading } = useOmniviewV2Shell('CT_TRIPS_2026', grain, dateFrom, dateTo, 'peru', 'lima');
   const { matrixData: realMatrixData, loading: matrixLoading } = useOmniviewV2Matrix('CT_TRIPS_2026', grain, metricId, dateFrom, dateTo, shellData, 'peru', 'lima');
@@ -159,13 +160,16 @@ function ExecutiveCockpit() {
           <PlanRealVisualPanel planData={planData} metricId={metricId} grain={grain} isActive={viewMode === 'plan_real'} />
         </div>
 
-        {/* Slice Breakdown — VC4 enhanced */}
-        <SliceBreakdownVisualPanel matrixData={matrixData} metricId={metricId} grain={grain} />
+        {/* Slice Breakdown — VC4 enhanced with VC5 drill */}
+        <SliceBreakdownVisualPanel matrixData={matrixData} metricId={metricId} grain={grain} onSliceClick={(slice) => { setDrillSlice(slice); setShowMatrix(true); }} />
 
         {/* Matrix Detail (secondary) */}
         {showMatrix && sortedData?.rows && (
           <div style={panelStyle}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Matrix Detail</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 8 }}>
+              Matrix Detail
+              {drillSlice && <span style={{ fontSize: 11, color: '#3b82f6', marginLeft: 8, fontWeight: 500 }}>Drill: {drillSlice.label}</span>}
+            </div>
             <div style={{ overflow: 'auto', maxHeight: 400 }}>
               <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>
                 <thead>
