@@ -1,4 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import api from '../services/api.js'
+import { getExclusiveWorklistSummary, getExclusiveWorklistControlLoopPreview } from '../services/api.js'
 import FreshnessBanner from './lima-growth-ui1a/components/FreshnessBanner.jsx'
 import ComandoDiarioSection from './lima-growth-ui1a/sections/ComandoDiarioSection.jsx'
 import ListasTrabajoSection from './lima-growth-ui1a/sections/ListasTrabajoSection.jsx'
@@ -6,7 +8,7 @@ import ListasTrabajoSection from './lima-growth-ui1a/sections/ListasTrabajoSecti
 const TABS = [
   { id: 'comando', label: 'Comando Diario', enabled: true },
   { id: 'listas', label: 'Listas de Trabajo', enabled: true },
-  { id: 'explorer', label: 'Explorador', enabled: true },
+  { id: 'explorer', label: 'Explorador', enabled: false },
   { id: 'movement', label: 'Movimientos', enabled: false },
   { id: 'control', label: 'Control Loop', enabled: false },
   { id: 'resultados', label: 'Resultados', enabled: false },
@@ -29,50 +31,46 @@ export default function LimaGrowthDashboardUI1A() {
   const [dateLoading, setDateLoading] = useState(true)
   const [dateError, setDateError] = useState(null)
   const [activeTab, setActiveTab] = useState('comando')
-  const [bannerFreshness, setBannerFreshness] = useState(null)
+  const [bannerStatus, setBannerStatus] = useState('loading')
 
+  // Fetch operational date
   useEffect(() => {
     let cancelled = false
-    import('../services/api.js').then((m) =>
-      m.default.get('/yego-lima-growth/refresh/operational-date')
-    ).then((resp) => {
-      if (cancelled) return
-      const d = resp.data
-      if (d?.operational_data_date) {
-        setOperationalDate(d.operational_data_date)
-        setDateLoading(false)
-      } else {
-        setDateError('No operational data found.')
-        setDateLoading(false)
-      }
-    }).catch(() => {
-      if (cancelled) return
-      setDateLoading(false)
-      setDateError('Backend unreachable.')
-    })
+    api.get('/yego-lima-growth/refresh/operational-date')
+      .then((resp) => {
+        if (cancelled) return
+        const d = resp.data
+        if (d?.operational_data_date) {
+          setOperationalDate(d.operational_data_date)
+        } else {
+          setDateError('No operational data found.')
+        }
+      })
+      .catch(() => {
+        if (cancelled) return
+        setDateError('Backend unreachable.')
+      })
+      .finally(() => {
+        if (!cancelled) setDateLoading(false)
+      })
     return () => { cancelled = true }
   }, [])
 
-  // ── LG-UI-LISTS-1C.1: Freshness Banner from exclusive-worklist summary ──
+  // Fetch freshness from exclusive-worklist summary
   useEffect(() => {
     let cancelled = false
-    import('../services/api.js').then((m) =>
-      m.getExclusiveWorklistSummary()
-    ).then((result) => {
-      if (cancelled) return
-      const today = new Date().toISOString().substring(0, 10)
-      const resolved = result?.resolved_generated_date
-      const isFresh = resolved === today || resolved === operationalDate
-      setBannerFreshness({
-        system_status: result ? (isFresh ? 'HEALTHY' : 'WARNING') : 'CRITICAL',
-        components_healthy: result ? 1 : 0,
-        components_degraded: result && !isFresh ? 1 : 0,
-        components_critical: result ? 0 : 1,
-        stale_assets: result && !isFresh ? [{ name: `Worklist date: ${resolved}` }] : [],
-        scheduler_status: isFresh ? 'RUNNING' : 'STALE',
-        remediation: !result ? 'Exclusive worklist endpoint unreachable.' : (!isFresh ? `Worklist date ${resolved} may be stale.` : null),
+    getExclusiveWorklistSummary()
+      .then((result) => {
+        if (cancelled) return
+        const today = new Date().toISOString().substring(0, 10)
+        const resolved = result?.resolved_generated_date
+        const isFresh = resolved === today || resolved === operationalDate
+        setBannerStatus(isFresh ? 'HEALTHY' : (resolved ? 'WARNING' : 'UNKNOWN'))
       })
-    }).catch(() => setBannerFreshness({ system_status: 'CRITICAL', remediation: 'Exclusive worklist endpoint unreachable.' }))
+      .catch(() => {
+        if (cancelled) return
+        setBannerStatus('CRITICAL')
+      })
     return () => { cancelled = true }
   }, [operationalDate])
 
@@ -99,6 +97,14 @@ export default function LimaGrowthDashboardUI1A() {
     )
   }
 
+  // Simple freshness banner
+  const bannerColor = 
+    bannerStatus === 'loading' ? 'bg-gray-50 border-gray-200 text-gray-500' :
+    bannerStatus === 'HEALTHY' ? 'bg-green-50 border-green-200 text-green-700' :
+    bannerStatus === 'WARNING' ? 'bg-yellow-50 border-yellow-200 text-yellow-700' :
+    bannerStatus === 'UNKNOWN' ? 'bg-gray-50 border-gray-200 text-gray-600' :
+    'bg-red-50 border-red-200 text-red-700'
+
   return (
     <div className="flex h-full min-h-screen bg-[#f6f8fb]">
       {/* Sidebar */}
@@ -110,7 +116,7 @@ export default function LimaGrowthDashboardUI1A() {
             </svg>
             <span className="text-white font-semibold text-sm">Lima Growth</span>
           </div>
-          <p className="text-xs text-white/40 mt-1">Intelligence View · LG-UI-LISTS-1C</p>
+          <p className="text-xs text-white/40 mt-1">Intelligence View · LG-UI-LISTS-1C.3</p>
         </div>
         <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
           {TABS.map((tab) => (
@@ -137,11 +143,18 @@ export default function LimaGrowthDashboardUI1A() {
 
       {/* Main */}
       <main className="flex-1 overflow-y-auto">
-        <FreshnessBanner health={bannerFreshness} freshness={null} operability={null} loading={!bannerFreshness} />
+        {/* Freshness bar */}
+        <div className={`border-b px-4 py-2 text-xs font-medium ${bannerColor}`}>
+          {bannerStatus === 'loading' ? 'Verificando datos...' :
+           bannerStatus === 'HEALTHY' ? '● Worklist data is current' :
+           bannerStatus === 'WARNING' ? '● Worklist date may be behind' :
+           bannerStatus === 'UNKNOWN' ? '● Freshness unknown — data may be stale' :
+           '● Backend unreachable — check connectivity'}
+        </div>
 
         <div className="p-6">
-          {activeTab === 'comando' && <ComandoDiarioSection />}
-          {activeTab === 'listas' && <ListasTrabajoSection />}
+          {activeTab === 'comando' && <ErrorBoundary><ComandoDiarioSection /></ErrorBoundary>}
+          {activeTab === 'listas' && <ErrorBoundary><ListasTrabajoSection /></ErrorBoundary>}
           {activeTab === 'explorer' && <PlaceholderTab label="Explorador de Conductores" phase="LG-UI-DRILLDOWN-1D" />}
           {activeTab === 'movement' && <PlaceholderTab label="Movimientos" phase="LG-UI-MOVEMENT-1F" />}
           {activeTab === 'control' && <PlaceholderTab label="Control Loop" phase="LG-UI-CONTROL-1E" />}
@@ -151,3 +164,27 @@ export default function LimaGrowthDashboardUI1A() {
     </div>
   )
 }
+
+// Minimal error boundary to prevent white screen
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error }
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+          <p className="text-sm font-bold text-red-800">Component Error</p>
+          <p className="text-xs text-red-600 mt-1 font-mono">{this.state.error?.message || 'Unknown error'}</p>
+          <button onClick={() => this.setState({ hasError: false })} className="mt-3 px-3 py-1 bg-red-600 text-white rounded text-xs">Retry</button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+import React from 'react'
