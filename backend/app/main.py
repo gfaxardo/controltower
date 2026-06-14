@@ -215,6 +215,10 @@ app.include_router(yego_lima_rna_pilot.router)
 
 app.include_router(yego_lima_driver_explorer.router)
 
+# LG-PROG-EXCL-1D — Exclusive Worklist Export
+from app.routers import yego_lima_exclusive_worklist
+app.include_router(yego_lima_exclusive_worklist.router)
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("Iniciando YEGO Control Tower API...")
