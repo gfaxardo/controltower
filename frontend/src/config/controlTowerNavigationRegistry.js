@@ -400,7 +400,7 @@ export const CONTROL_TOWER_NAVIGATION_REGISTRY = [
     route: '/operacion/omniview-matrix',
     engine: ENGINE.CONTROL_FOUNDATION,
     phaseStatus: PHASE_STATUS.ACTIVE,
-    visibility: VISIBILITY.KEEP_VISIBLE,
+    visibility: VISIBILITY.KEEP_HIDDEN,
     productionReady: true,
     requiresValidation: false,
     reason: 'Core Control Foundation: vista canónica de verdad operacional. No debe romperse.',
