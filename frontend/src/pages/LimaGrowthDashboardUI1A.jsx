@@ -1,32 +1,36 @@
 import { useState, useEffect, useCallback } from 'react'
-import useGrowthIntelligence from './lima-growth-ui1a/hooks/useGrowthIntelligence.js'
 import FreshnessBanner from './lima-growth-ui1a/components/FreshnessBanner.jsx'
-import OverviewTab from './lima-growth-ui1a/sections/OverviewTab.jsx'
-import ProgramsTab from './lima-growth-ui1a/sections/ProgramsTab.jsx'
-import SegmentsTab from './lima-growth-ui1a/sections/SegmentsTab.jsx'
-import MovementTab from './lima-growth-ui1a/sections/MovementTab.jsx'
-import RNATab from './lima-growth-ui1a/sections/RNATab.jsx'
+import ComandoDiarioSection from './lima-growth-ui1a/sections/ComandoDiarioSection.jsx'
+import ListasTrabajoSection from './lima-growth-ui1a/sections/ListasTrabajoSection.jsx'
 import DriverExplorerTab from './lima-growth-ui1a/sections/DriverExplorerTab.jsx'
-import EffectivenessTab from './lima-growth-ui1a/sections/EffectivenessTab.jsx'
+import MovementTab from './lima-growth-ui1a/sections/MovementTab.jsx'
 
 const TABS = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'programs', label: 'Programs' },
-  { id: 'segments', label: 'Segments' },
-  { id: 'movement', label: 'Movement' },
-  { id: 'rna', label: 'RNA' },
-  { id: 'explorer', label: 'Driver Explorer' },
-  { id: 'effectiveness', label: 'Effectiveness' },
+  { id: 'comando', label: 'Comando Diario', enabled: true },
+  { id: 'listas', label: 'Listas de Trabajo', enabled: true },
+  { id: 'explorer', label: 'Explorador', enabled: true },
+  { id: 'movement', label: 'Movimientos', enabled: false },
+  { id: 'control', label: 'Control Loop', enabled: false },
+  { id: 'resultados', label: 'Resultados', enabled: false },
 ]
+
+function PlaceholderTab({ label, phase }) {
+  return (
+    <div className="flex items-center justify-center py-20">
+      <div className="text-center bg-gray-50 border border-gray-200 rounded-lg p-8 max-w-md">
+        <span className="text-3xl block mb-2">🚧</span>
+        <p className="text-sm font-bold text-gray-600">{label}</p>
+        <p className="text-xs text-gray-400 mt-1">Próxima fase: {phase}</p>
+      </div>
+    </div>
+  )
+}
 
 export default function LimaGrowthDashboardUI1A() {
   const [operationalDate, setOperationalDate] = useState(null)
   const [dateLoading, setDateLoading] = useState(true)
   const [dateError, setDateError] = useState(null)
-  const [activeTab, setActiveTab] = useState('overview')
-  const [drilldownFilter, setDrilldownFilter] = useState(null)
-
-  const { data, loading, errors, fetchSection, retryAll } = useGrowthIntelligence(operationalDate)
+  const [activeTab, setActiveTab] = useState('comando')
 
   useEffect(() => {
     let cancelled = false
@@ -50,26 +54,12 @@ export default function LimaGrowthDashboardUI1A() {
     return () => { cancelled = true }
   }, [])
 
-  const handleDrilldown = useCallback((filter) => {
-    setDrilldownFilter(filter)
-    setActiveTab('explorer')
-  }, [])
-
-  const clearDrilldown = useCallback(() => {
-    setDrilldownFilter(null)
-  }, [])
-
-  const health = data.health
-  const freshness = data.freshness
-  const operability = data.operability
-  const bannerLoading = loading.health && loading.freshness && loading.operability
-
   if (dateLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto mb-4" />
-          <p className="text-sm text-gray-500">Inicializando Growth Intelligence Dashboard...</p>
+          <p className="text-sm text-gray-500">Loading Growth Intelligence...</p>
         </div>
       </div>
     )
@@ -81,7 +71,7 @@ export default function LimaGrowthDashboardUI1A() {
         <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md text-center">
           <p className="text-sm font-bold text-red-800">ERROR</p>
           <p className="text-xs text-red-600 mt-2">{dateError}</p>
-          <p className="text-xs text-red-400 mt-1">Verifica conectividad con el backend.</p>
+          <p className="text-xs text-red-400 mt-1">Check backend connectivity.</p>
         </div>
       </div>
     )
@@ -98,20 +88,21 @@ export default function LimaGrowthDashboardUI1A() {
             </svg>
             <span className="text-white font-semibold text-sm">Lima Growth</span>
           </div>
-          <p className="text-xs text-white/40 mt-1">Intelligence View</p>
+          <p className="text-xs text-white/40 mt-1">Intelligence View · LG-UI-LISTS-1C</p>
         </div>
         <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
           {TABS.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => { setActiveTab(tab.id); clearDrilldown() }}
+              onClick={() => { if (tab.enabled) setActiveTab(tab.id) }}
+              disabled={!tab.enabled}
               className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all flex items-center gap-2 ${
-                activeTab === tab.id
-                  ? 'bg-white/15 text-white font-medium'
-                  : 'text-white/60 hover:text-white hover:bg-white/5'
+                !tab.enabled ? 'text-white/20 cursor-not-allowed' :
+                activeTab === tab.id ? 'bg-white/15 text-white font-medium' : 'text-white/60 hover:text-white hover:bg-white/5'
               }`}
             >
               {tab.label}
+              {!tab.enabled && <span className="text-[10px] ml-auto opacity-40">soon</span>}
             </button>
           ))}
         </nav>
@@ -124,56 +115,15 @@ export default function LimaGrowthDashboardUI1A() {
 
       {/* Main */}
       <main className="flex-1 overflow-y-auto">
-        {/* Freshness Banner */}
-        <FreshnessBanner
-          health={health}
-          freshness={freshness}
-          operability={operability}
-          loading={bannerLoading}
-        />
-
-        {/* Drilldown filter context */}
-        {drilldownFilter && activeTab === 'explorer' && (
-          <div className="bg-blue-50 border-b border-blue-100 px-6 py-2 flex items-center gap-2 text-xs">
-            <span className="text-blue-600 font-medium">Filter active:</span>
-            {drilldownFilter.program && <span className="text-blue-500">Program: {drilldownFilter.program}</span>}
-            {drilldownFilter.lifecycle && <span className="text-blue-500">Lifecycle: {drilldownFilter.lifecycle}</span>}
-            {drilldownFilter.segment && <span className="text-blue-500">Segment: {drilldownFilter.segment}</span>}
-            {drilldownFilter.driverId && <span className="text-blue-500">Driver: {drilldownFilter.driverId}</span>}
-            <span className="flex-1" />
-            <button onClick={clearDrilldown} className="text-blue-400 hover:text-blue-600 underline">Clear</button>
-          </div>
-        )}
-
-        {/* Degraded state banner */}
-        {health?.system_status === 'DEGRADED' || health?.system_status === 'CRITICAL' ? (
-          <div className={`px-6 py-2 text-xs font-medium ${health.system_status === 'CRITICAL' ? 'bg-red-50 text-red-700' : 'bg-orange-50 text-orange-700'}`}>
-            System {health.system_status}: Some data may be incomplete. UI remains operational.
-          </div>
-        ) : null}
+        <FreshnessBanner health={null} freshness={null} operability={null} loading={false} />
 
         <div className="p-6">
-          {activeTab === 'overview' && (
-            <OverviewTab data={data} loading={loading} errors={errors} onRetry={retryAll} />
-          )}
-          {activeTab === 'programs' && (
-            <ProgramsTab data={data} loading={loading} errors={errors} onRetry={retryAll} onDrilldown={(program) => handleDrilldown({ program })} />
-          )}
-          {activeTab === 'segments' && (
-            <SegmentsTab data={data} loading={loading} errors={errors} onRetry={retryAll} onDrilldown={(f) => handleDrilldown(f)} />
-          )}
-          {activeTab === 'movement' && (
-            <MovementTab data={data} loading={loading} errors={errors} onRetry={retryAll} onDrilldown={(f) => handleDrilldown(f)} />
-          )}
-          {activeTab === 'rna' && (
-            <RNATab data={data} loading={loading} errors={errors} onRetry={retryAll} onDrilldown={(f) => handleDrilldown(f)} />
-          )}
-          {activeTab === 'explorer' && (
-            <DriverExplorerTab data={data} loading={loading} errors={errors} onRetry={retryAll} initialFilter={drilldownFilter} />
-          )}
-          {activeTab === 'effectiveness' && (
-            <EffectivenessTab />
-          )}
+          {activeTab === 'comando' && <ComandoDiarioSection />}
+          {activeTab === 'listas' && <ListasTrabajoSection />}
+          {activeTab === 'explorer' && <PlaceholderTab label="Explorador de Conductores" phase="LG-UI-DRILLDOWN-1D" />}
+          {activeTab === 'movement' && <PlaceholderTab label="Movimientos" phase="LG-UI-MOVEMENT-1F" />}
+          {activeTab === 'control' && <PlaceholderTab label="Control Loop" phase="LG-UI-CONTROL-1E" />}
+          {activeTab === 'resultados' && <PlaceholderTab label="Resultados" phase="LG-UI-ACTIONS-1G" />}
         </div>
       </main>
     </div>

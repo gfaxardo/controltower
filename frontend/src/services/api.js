@@ -1730,10 +1730,34 @@ export const getLimaGrowthTaxonomySummary = async (date) => {
   return response.data
 }
 
+export const getLimaGrowthDriverExplorer = async (params = {}) => {
+  const response = await api.get('/yego-lima-growth/driver-explorer', { params, timeout: 15000 })
+  return response.data
+}
+
 export const getLimaGrowthMovementDriver = async (driverId, date = null) => {
   const params = {}
   if (date) params.date = date
   const response = await api.get(`/yego-lima-growth/movement/driver/${driverId}`, { params, timeout: 30000 })
+  return response.data
+}
+
+// ═══════════════════════════════════════════════════════════════
+// LG-UI-LISTS-1C — Exclusive Worklist Endpoints
+// ═══════════════════════════════════════════════════════════════
+
+export const getExclusiveWorklistSummary = async (params = {}) => {
+  const response = await api.get('/yego-lima-growth/exclusive-worklist/summary', { params, timeout: 15000 })
+  return response.data
+}
+
+export const getExclusiveWorklistRows = async (params = {}) => {
+  const response = await api.get('/yego-lima-growth/exclusive-worklist/rows', { params, timeout: 15000 })
+  return response.data
+}
+
+export const getExclusiveWorklistControlLoopPreview = async (params = {}) => {
+  const response = await api.get('/yego-lima-growth/exclusive-worklist/control-loop-preview', { params, timeout: 15000 })
   return response.data
 }
 
