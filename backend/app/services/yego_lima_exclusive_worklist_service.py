@@ -139,7 +139,12 @@ def _compute_value_tier(snapshot: Optional[Dict], explorer: Optional[Dict]) -> s
     return "DEFAULT"
 
 
-def refresh_exclusive_driver_worklist_daily(target_date: Optional[str] = None) -> Dict[str, Any]:
+def refresh_exclusive_driver_worklist_daily(target_date: Optional[str] = None, config_version_code: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Builds exclusive worklist daily.
+    If config_version_code is provided, uses Universe Config V2 rules.
+    Otherwise uses hardcoded V1 rules (backward compatible).
+    """
     if target_date is None:
         target_date = date.today().isoformat()
     target_d = date.fromisoformat(target_date[:10])
@@ -189,7 +194,11 @@ def refresh_exclusive_driver_worklist_daily(target_date: Optional[str] = None) -
 
         cur.close()
 
-        # ── Build worklist rows ──
+        # ── LG-UNIVERSE-ACTIVATE-1J.1: V2 Config classification ──
+        if config_version_code:
+            return _build_worklist_v2(snapshot_rows, explorer_rows, first_active, target_d, max_snap_date, max_expl_date, config_version_code)
+
+        # ── Build worklist rows V1 ──
         all_driver_ids = set(snapshot_rows.keys()) | set(explorer_rows.keys())
         rows: List[Dict[str, Any]] = []
         universe_counts: Dict[str, int] = {}
@@ -593,3 +602,172 @@ def get_exclusive_worklist_rows(
             rows.append(d)
 
         return {"ok": True, "rows": rows, "total": total}
+
+
+def _build_worklist_v2(snapshot_rows, explorer_rows, first_active, target_d, max_snap_date, max_expl_date, config_version_code):
+    """LG-UNIVERSE-WRITER-INTEGRATION-1J.1: Build worklist using Universe Config V2 rules."""
+    from app.services.yego_lima_universe_simulation_service import _eval_rule
+    from psycopg2.extras import execute_values
+    import json as _json
+
+    params = _get_connection_params()
+    params["options"] = "-c statement_timeout=300000"
+    conn = psycopg2.connect(**params)
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    try:
+        # Lookup config version
+        cur.execute("SELECT * FROM growth.universe_config_version WHERE version_code = %s", (config_version_code,))
+        ver = cur.fetchone()
+        if not ver:
+            return {"ok": False, "error": f"Config version '{config_version_code}' not found"}
+        if ver["status"] not in ("DRAFT", "SIMULATED", "APPROVED", "ACTIVE"):
+            return {"ok": False, "error": f"Config status is {ver['status']}"}
+        version_id = ver["version_id"]
+
+        cur.execute("SELECT * FROM growth.universe_definition_config WHERE version_id = %s AND active_flag = true ORDER BY priority_order", (version_id,))
+        defs = {r["universe_code"]: dict(r) for r in cur.fetchall()}
+
+        cur.execute("SELECT * FROM growth.universe_rule_config WHERE version_id = %s ORDER BY universe_code, priority", (version_id,))
+        rules_by_universe = {}
+        for r in cur.fetchall():
+            uni = r["universe_code"]
+            rules_by_universe.setdefault(uni, []).append(dict(r))
+        cur.close()
+
+        # Derive anchors
+        cur2 = conn.cursor(cursor_factory=RealDictCursor)
+        cur2.execute("SELECT driver_profile_id, MIN(date) AS first_date, MAX(date) AS last_date FROM growth.yango_lima_driver_history_daily GROUP BY 1")
+        anchors = {r["driver_profile_id"]: {"first_date": r["first_date"], "last_date": r["last_date"]} for r in cur2.fetchall()}
+        cur2.close()
+
+        rows = []
+        counts = {}
+        src_d = target_d
+        all_dids = set(snapshot_rows.keys()) | set(explorer_rows.keys())
+
+        for did in sorted(all_dids):
+            snap = snapshot_rows.get(did, {})
+            expl = explorer_rows.get(did, {})
+            anc = anchors.get(did)
+
+            # Build features (simulation-compatible)
+            anchor_age = (src_d - anc["first_date"]).days if anc and anc["first_date"] else None
+            features = {
+                "anchor_age_days": anchor_age,
+                "anchor_type": "EXISTING",
+                "weekly_trips": max(snap.get("completed_orders_week") or 0, expl.get("trips_7d") or 0),
+                "trips_since_lifecycle_anchor": expl.get("trips_30d") or 0,
+                "inactivity_days": expl.get("days_since_last_trip", 9999),
+                "value_tier": _compute_value_tier(snap, expl),
+                "reactivation_anchor_age_days": None,
+                "has_reactivation_anchor": "false",
+            }
+            if anchor_age is not None and anchor_age <= 14:
+                features["anchor_type"] = "NEW"
+
+            # Evaluate rules in priority order
+            sim_uni = "NO_DATA"
+            sim_export = False
+            sim_reason = "Fallback: no rules matched"
+
+            for uni in [d["universe_code"] for d in sorted(defs.values(), key=lambda x: x["priority_order"])]:
+                rules = rules_by_universe.get(uni, [])
+                if not rules: continue
+                groups = {}
+                for r in rules:
+                    groups.setdefault(r["rule_group"], []).append(r)
+                matched = False
+                for grp, grp_rules in groups.items():
+                    grp_match = True
+                    for rule in grp_rules:
+                        fv = features.get(rule["field_name"])
+                        ok2, _ = _eval_rule(fv, rule["operator"], rule["value"], rule["value_type"], rule["null_behavior"])
+                        if not ok2:
+                            grp_match = False
+                            break
+                    if grp_match:
+                        matched = True
+                        break
+                if matched:
+                    defn = defs.get(uni, {})
+                    sim_uni = uni
+                    sim_export = defn.get("export_to_control_loop", False)
+                    sim_reason = f"V2 config: {list(groups.keys())}"
+                    break
+
+            counts[sim_uni] = counts.get(sim_uni, 0) + 1
+            wt = features["weekly_trips"]
+            pb = _compute_productivity_band(wt)
+
+            row = {
+                "generated_date": src_d,
+                "driver_profile_id": did,
+                "driver_id": expl.get("driver_name") or did,
+                "assigned_universe_v1": sim_uni,
+                "assigned_program_v1": sim_uni,
+                "reason_code": sim_reason[:50],
+                "reason_text": sim_reason,
+                "objective": defs.get(sim_uni, {}).get("universe_label", sim_uni),
+                "priority_rank": defs.get(sim_uni, {}).get("priority_order", 999),
+                "operational_age_days": features["anchor_age_days"],
+                "weekly_trips": wt,
+                "activation_window_trips": features["trips_since_lifecycle_anchor"],
+                "inactivity_days": features["inactivity_days"],
+                "value_tier": features["value_tier"],
+                "productivity_band": pb,
+                "trend": expl.get("activity_trend") or "UNKNOWN",
+                "target_metric": defs.get(sim_uni, {}).get("target_metric"),
+                "baseline_metric": str(wt),
+                "export_to_control_loop": sim_export,
+                "gap_to_target": None,
+                "exit_condition": None,
+                "movement_hint": None,
+                "recommended_action_category": defs.get(sim_uni, {}).get("recommended_action_category", "UNKNOWN"),
+                "subsegment": None,
+                "evidence_json": _json.dumps(features),
+                "source_snapshot_date": max_snap_date,
+                "source_explorer_target_date": max_expl_date,
+                "source_version": f"universe_config_v2_{config_version_code}",
+            }
+            rows.append(row)
+
+        # UPSERT
+        from psycopg2.extras import execute_values
+        cur3 = conn.cursor()
+        cols = [
+            "generated_date", "driver_profile_id", "driver_id", "assigned_universe_v1", "assigned_program_v1",
+            "subsegment", "objective", "reason_code", "priority_rank", "operational_age_days", "weekly_trips",
+            "activation_window_trips", "inactivity_days", "value_tier", "productivity_band", "trend",
+            "target_metric", "baseline_metric", "export_to_control_loop",
+            "source_snapshot_date", "source_explorer_target_date", "source_version",
+            "reason_text", "evidence_json", "gap_to_target", "exit_condition", "movement_hint", "recommended_action_category",
+        ]
+        vals = [
+            (r["generated_date"], r["driver_profile_id"], r["driver_id"], r["assigned_universe_v1"], r["assigned_program_v1"],
+             r["subsegment"], r["objective"], r["reason_code"], r["priority_rank"], r["operational_age_days"], r["weekly_trips"],
+             r["activation_window_trips"], r["inactivity_days"], r["value_tier"], r["productivity_band"], r["trend"],
+             r["target_metric"], r["baseline_metric"], r["export_to_control_loop"],
+             r["source_snapshot_date"], r["source_explorer_target_date"], r["source_version"],
+             r["reason_text"], r["evidence_json"], r["gap_to_target"], r["exit_condition"], r["movement_hint"], r["recommended_action_category"])
+            for r in rows
+        ]
+        col_list = ", ".join(cols)
+        set_clause = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols if c not in ("generated_date", "driver_profile_id")) + ", updated_at = now()"
+        execute_values(cur3, f"INSERT INTO {TABLE_OUT} ({col_list}) VALUES %s ON CONFLICT (generated_date, driver_profile_id) DO UPDATE SET {set_clause}", vals, page_size=5000)
+        cur3.close()
+        conn.commit()
+
+        exportable = sum(1 for r in rows if r["export_to_control_loop"])
+        return {
+            "ok": True, "status": "SUCCESS", "generated_date": str(src_d),
+            "total_drivers": len(rows), "exportable_drivers": exportable,
+            "universe_counts": counts, "config_version_code": config_version_code,
+        }
+    except Exception as e:
+        conn.rollback()
+        logger.error("V2 worklist failed: %s", e)
+        return {"ok": False, "status": "FAILED", "error": str(e)[:500]}
+    finally:
+        try: conn.close()
+        except: pass
