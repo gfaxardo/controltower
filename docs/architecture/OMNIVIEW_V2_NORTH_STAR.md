@@ -267,5 +267,20 @@ Every future Omniview V2 UI prompt must answer:
 6. Does it avoid blocked engines?
 7. Does it keep freshness visible?
 8. Does it have a rollback?
-9. Was it smoke-tested in browser?
+ 9. Was it smoke-tested in browser?
 10. Would an operator understand it without seeing a stack trace?
+
+---
+
+## 15. Navigation Clarity North Star
+
+Omniview V2 is not operationally validated just by rendering. It must also:
+- Orient the operator — which view is the official one?
+- Avoid version ambiguity — V1 vs V2 must be unmistakable
+- Distinguish default vs legacy vs fallback vs dev
+- Use consistent labels and colors per the status taxonomy
+- Never expose dev/sandbox routes as operational
+- Keep fallback routes accessible but never default
+- Avoid duplicate or near-duplicate tab names
+
+Reference: `OMNIVIEW_UI_NAVIGATION_STATUS_TAXONOMY.md`

@@ -313,6 +313,17 @@ These DANGEROUS scripts lack `refresh_guard()` context manager:
 - [ai_current_phase.md](../../ai_current_phase.md) — Current phase status
 - [ai_operating_system.md](../../ai_operating_system.md) — AI governance
 - [GROWTH_MACHINE_FRESHNESS_PREFLIGHT.md](GROWTH_MACHINE_FRESHNESS_PREFLIGHT.md) — Growth Machine freshness preflight audit
+- [OMNIVIEW_UI_NAVIGATION_STATUS_TAXONOMY.md](OMNIVIEW_UI_NAVIGATION_STATUS_TAXONOMY.md) — UI navigation status taxonomy and precheck
+
+---
+
+### 4.8 UI Navigation Ambiguity (OV2-UI-V0)
+
+**Description:** Coexistence of V1, V2 Professional, Shadow, and Sandbox routes creates operator confusion risk if routes lack explicit visual/textual status.
+
+**Status:** ACTIVE GOVERNANCE RULE
+
+**Remediation:** Apply UI Route Status Taxonomy. Normalize naming. Hide legacy from menu. Validate in browser.
 
 ---
 
