@@ -2,8 +2,6 @@ import { useState, useEffect, useCallback } from 'react'
 import FreshnessBanner from './lima-growth-ui1a/components/FreshnessBanner.jsx'
 import ComandoDiarioSection from './lima-growth-ui1a/sections/ComandoDiarioSection.jsx'
 import ListasTrabajoSection from './lima-growth-ui1a/sections/ListasTrabajoSection.jsx'
-import DriverExplorerTab from './lima-growth-ui1a/sections/DriverExplorerTab.jsx'
-import MovementTab from './lima-growth-ui1a/sections/MovementTab.jsx'
 
 const TABS = [
   { id: 'comando', label: 'Comando Diario', enabled: true },
@@ -31,6 +29,7 @@ export default function LimaGrowthDashboardUI1A() {
   const [dateLoading, setDateLoading] = useState(true)
   const [dateError, setDateError] = useState(null)
   const [activeTab, setActiveTab] = useState('comando')
+  const [bannerFreshness, setBannerFreshness] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -53,6 +52,29 @@ export default function LimaGrowthDashboardUI1A() {
     })
     return () => { cancelled = true }
   }, [])
+
+  // ── LG-UI-LISTS-1C.1: Freshness Banner from exclusive-worklist summary ──
+  useEffect(() => {
+    let cancelled = false
+    import('../services/api.js').then((m) =>
+      m.getExclusiveWorklistSummary()
+    ).then((result) => {
+      if (cancelled) return
+      const today = new Date().toISOString().substring(0, 10)
+      const resolved = result?.resolved_generated_date
+      const isFresh = resolved === today || resolved === operationalDate
+      setBannerFreshness({
+        system_status: result ? (isFresh ? 'HEALTHY' : 'WARNING') : 'CRITICAL',
+        components_healthy: result ? 1 : 0,
+        components_degraded: result && !isFresh ? 1 : 0,
+        components_critical: result ? 0 : 1,
+        stale_assets: result && !isFresh ? [{ name: `Worklist date: ${resolved}` }] : [],
+        scheduler_status: isFresh ? 'RUNNING' : 'STALE',
+        remediation: !result ? 'Exclusive worklist endpoint unreachable.' : (!isFresh ? `Worklist date ${resolved} may be stale.` : null),
+      })
+    }).catch(() => setBannerFreshness({ system_status: 'CRITICAL', remediation: 'Exclusive worklist endpoint unreachable.' }))
+    return () => { cancelled = true }
+  }, [operationalDate])
 
   if (dateLoading) {
     return (
@@ -115,7 +137,7 @@ export default function LimaGrowthDashboardUI1A() {
 
       {/* Main */}
       <main className="flex-1 overflow-y-auto">
-        <FreshnessBanner health={null} freshness={null} operability={null} loading={false} />
+        <FreshnessBanner health={bannerFreshness} freshness={null} operability={null} loading={!bannerFreshness} />
 
         <div className="p-6">
           {activeTab === 'comando' && <ComandoDiarioSection />}
