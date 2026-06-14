@@ -294,3 +294,43 @@ The cockpit must separate:
 17. Browser smoke done?
 18. Rollback exists?
 19. Documented in North Star / contract?
+
+---
+
+## 12. Freshness Evidence Contract (OV2-GOV-FR1)
+
+Every Omniview phase that touches UI, charts, matrix, KPI cards, or visual cockpit must include real freshness evidence.
+
+**Rules:**
+1. No theoretical freshness accepted. No "endpoint 200" only. No "health OK" only.
+2. Every report must include a `Freshness Evidence Snapshot`.
+3. If data is stale → `TECHNICAL GO` but NOT `OPERATIONAL GO`.
+4. If freshness is unknown → phase cannot be marked certified.
+5. If a visualization uses multiple endpoints, each endpoint needs evidence.
+6. If freshness is unverifiable for a source, declare it explicitly.
+7. Do NOT execute refresh/backfill to "force" PASS unless explicitly instructed.
+
+**Freshness Evidence Snapshot (required fields):**
+
+| Field | Required |
+|-------|----------|
+| endpoint | YES |
+| source table / serving fact | YES if known |
+| operating_date | YES |
+| max_data_date / max_period | YES |
+| row_count / period_count | YES if available |
+| freshness_status | YES |
+| stale_age | YES if calculable |
+| freshness_threshold | YES if defined |
+| last_refresh_at | YES if available |
+| validation_timestamp | YES |
+| pass_fail | YES |
+| UI impact | YES |
+
+**Decision Classification:**
+- Technical GO: build + browser pass
+- Browser GO: UI renders correctly
+- Freshness GO: data is fresh per threshold
+- Operational GO: Technical + Browser + Freshness all pass
+
+If Freshness is WARN/FAIL → Operational GO is CONDITIONAL.
