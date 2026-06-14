@@ -66,6 +66,7 @@ const DriverStrategyView = lazy(() => import('./components/driver/DriverStrategy
 const DriverAdminDataView = lazy(() => import('./components/driver/DriverAdminDataView.jsx'))
 const LimaGrowthDashboard = lazy(() => import('./pages/LimaGrowthDashboardV2.jsx'))
 const LimaGrowthIntelligenceDashboard = lazy(() => import('./pages/LimaGrowthDashboardUI1A.jsx'))
+const LimaGrowthExecutiveDashboard = lazy(() => import('./pages/lima-growth-executive/ExecutiveGrowthDashboard.jsx'))
 const OmniviewV2MatrixSandbox = lazy(() => import('./pages/omniview-v2-shadow/OmniviewV2MatrixSandbox.jsx'))
 const OmniviewV2ShadowPage = lazy(() => import('./pages/omniview-v2-shadow/OmniviewV2ShadowPage.jsx'))
 const OmniviewV2ProfessionalPage = lazy(() => import('./pages/omniview-v2-shadow/OmniviewV2ProfessionalPage.jsx'))
@@ -123,6 +124,7 @@ const SUBTABS_MAP = {
   [TAB_LIMA_GROWTH]: [
     { id: 'lima_growth_resumen', label: 'Operational' },
     { id: 'lima_growth_intelligence', label: 'Intelligence' },
+    { id: 'lima_growth_executive', label: 'Executive' },
   ],
 }
 
@@ -179,6 +181,7 @@ const ROUTE_MAP = [
   { path: '/fleet-project/yego-pro/profitability', tab: TAB_FLEET_PROJECT, sub: 'fleet_yegopro_profitability' },
   { path: '/lima-growth', tab: TAB_LIMA_GROWTH, sub: 'lima_growth_resumen' },
   { path: '/lima-growth/intelligence', tab: TAB_LIMA_GROWTH, sub: 'lima_growth_intelligence' },
+  { path: '/lima-growth/executive', tab: TAB_LIMA_GROWTH, sub: 'lima_growth_executive' },
 ]
 
 const SUB_URL = {
@@ -213,6 +216,7 @@ const SUB_URL = {
   fleet_yegopro_profitability: '/fleet-project/yego-pro/profitability',
   lima_growth_resumen: '/lima-growth',
   lima_growth_intelligence: '/lima-growth/intelligence',
+  lima_growth_executive: '/lima-growth/executive',
 }
 
 const TAB_DEFAULT_PATH = {
@@ -575,6 +579,8 @@ function ControlTowerApp () {
               <section aria-label="Lima Growth">
                 {limaGrowthSubTab === 'lima_growth_intelligence' ? (
                   <LimaGrowthIntelligenceDashboard key={`lima-growth-intel-${refreshKey}`} />
+                ) : limaGrowthSubTab === 'lima_growth_executive' ? (
+                  <LimaGrowthExecutiveDashboard key={`lima-growth-exec-${refreshKey}`} />
                 ) : (
                   <LimaGrowthDashboard key={`lima-growth-${refreshKey}`} />
                 )}
