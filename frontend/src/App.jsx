@@ -127,7 +127,7 @@ const SUBTABS_MAP = {
 }
 
 const ROUTE_MAP = [
-  { path: '/', tab: TAB_OPERACION, sub: 'operacion_omniview_matrix' },
+  { path: '/', tab: TAB_OPERACION, sub: 'operacion_omniview_v2' },
   { path: '/performance', tab: TAB_PERFORMANCE, sub: 'performance_resumen' },
   { path: '/performance/resumen', tab: TAB_PERFORMANCE, sub: 'performance_resumen' },
   { path: '/performance/plan-vs-real', tab: TAB_PERFORMANCE, sub: 'performance_plan_vs_real' },
@@ -159,7 +159,7 @@ const ROUTE_MAP = [
   { path: '/drivers/capability-governance', tab: TAB_DRIVERS, sub: 'drivers_capability_governance' },
   { path: '/riesgo', tab: TAB_RISK, sub: 'riesgo_driver_behavior' },
   { path: '/riesgo/driver-behavior', tab: TAB_RISK, sub: 'riesgo_driver_behavior' },
-  { path: '/operacion', tab: TAB_OPERACION, sub: 'operacion_omniview_matrix' },
+  { path: '/operacion', tab: TAB_OPERACION, sub: 'operacion_omniview_v2' },
   { path: '/operacion/lob-drill', tab: TAB_OPERACION, sub: 'operacion_lob_drill' },
   { path: '/operacion/business-slice', tab: TAB_OPERACION, sub: 'operacion_business_slice' },
   { path: '/operacion/omniview', tab: TAB_OPERACION, sub: 'operacion_omniview' },
@@ -219,7 +219,7 @@ const TAB_DEFAULT_PATH = {
   [TAB_PERFORMANCE]: '/performance/resumen',
   [TAB_DRIVERS]: '/drivers/supply',
   [TAB_RISK]: '/riesgo/driver-behavior',
-  [TAB_OPERACION]: '/operacion/omniview-matrix',
+  [TAB_OPERACION]: '/operacion/omniview-v2-professional',
   [TAB_PLAN]: '/plan/acciones',
   [TAB_SYSTEM_HEALTH]: '/diagnosticos',
   [TAB_FLEET_PROJECT]: '/fleet-project/yego-pro/profitability',
@@ -536,7 +536,7 @@ function ControlTowerApp () {
                 {operacionSubTab === 'operacion_lob_drill' && <RealLOBDrillView key={`real-lob-drill-${refreshKey}`} />}
                 {operacionSubTab === 'operacion_business_slice' && <BusinessSliceView key={`business-slice-${refreshKey}`} />}
                 {operacionSubTab === 'operacion_omniview' && <BusinessSliceOmniview key={`business-slice-omniview-${refreshKey}`} />}
-                {operacionSubTab === 'operacion_omniview_matrix' && <OmniviewErrorBoundary key={`bs-omniview-matrix-${refreshKey}`}><BusinessSliceOmniviewMatrix /></OmniviewErrorBoundary>}
+                {operacionSubTab === 'operacion_omniview_matrix' && <OmniviewErrorBoundary key={`bs-omniview-matrix-${refreshKey}`}><div style={{ background: '#fef3c7', color: '#92400e', padding: '6px 24px', fontSize: 12, fontWeight: 500, borderBottom: '2px solid #f59e0b' }}>Legacy V1 view. Omniview V2 Professional is the default experience. This view is preserved as fallback.</div><BusinessSliceOmniviewMatrix /></OmniviewErrorBoundary>}
                 {operacionSubTab === 'operacion_omniview_v2_sandbox' && <OmniviewErrorBoundary key={`ov2-sandbox-${refreshKey}`}><OmniviewV2MatrixSandbox /></OmniviewErrorBoundary>}
                 {operacionSubTab === 'operacion_omniview_v2_shadow' && <OmniviewErrorBoundary key={`ov2-shadow-${refreshKey}`}><OmniviewV2ShadowPage /></OmniviewErrorBoundary>}
                 {operacionSubTab === 'operacion_omniview_v2_professional' && <OmniviewErrorBoundary key={`ov2-pro-${refreshKey}`}><OmniviewV2ProfessionalPage /></OmniviewErrorBoundary>}
