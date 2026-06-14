@@ -278,4 +278,28 @@ Projection refresh (`serving.omniview_projection_daily_fact`) is a separate pipe
 
 ---
 
+## 12. OPERATIONAL CERTIFICATION STATUS (OV2-VC6A)
+
+**Certified:** 2026-06-14 | **Commit:** `3b03e35` | **Decision:** OPERATIONAL GO
+
+| Area | Status |
+|------|--------|
+| Visual Cockpit | CERTIFIED |
+| KPI Cards (4 KPIs + deltas) | CERTIFIED |
+| Trend Layer (ECharts + comparable periods) | CERTIFIED |
+| Plan vs Real (attainment bars, guarded) | CERTIFIED WITH SAFEGUARDS |
+| Slice Breakdown (ranking + contribution) | CERTIFIED |
+| Matrix Detail / Drill | CERTIFIED |
+| Monthly Real Data | CERTIFIED |
+| Park Attribution | CERTIFIED |
+| Export CSV | CERTIFIED |
+| V1 Fallback | PRESERVED |
+| Shadow Fallback | PRESERVED |
+| Diagnostic Engine | READY NEXT (gated) |
+| Forecast/Suggestion/Decision/Action/AI | BLOCKED |
+
+Reference: `docs/architecture/OMNIVIEW_V2_OMNI_P0_CLOSURE_REPORT.md`
+
+---
+
 *Generated from live repo audit. Evidence sources: `OMNIVIEW_CANONICAL_REGISTRY.md`, `business_slice_service.py`, `business_slice_omniview_service.py`, `projection_expected_progress_service.py`, `CONTROL_FOUNDATION_LIVING_ARCHITECTURE.md`, `backend/app/routers/ops.py`, `frontend/src/components/BusinessSliceOmniview*.jsx`.*

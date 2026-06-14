@@ -1,10 +1,10 @@
 # CURRENT ACTIVE PHASE — YEGO CONTROL TOWER
 
-Last Updated: 2026-06-14 (Omniview V2 Visual Cockpit Certified)
+Last Updated: 2026-06-14 (Omniview V2 Certified — OMNI-P0 Closed)
 
 ---
 
-# CONTROL FOUNDATION — REOPENED
+# CONTROL FOUNDATION — CERTIFIED
 
 Motor:
 Control Foundation
@@ -13,7 +13,15 @@ Phase:
 Omniview P0 Recovery
 
 Status:
-**REOPENED / P0** (2026-06-03 — False GO detected by user validation)
+**CLOSED — Omniview V2 Visual Cockpit Operationally Certified (VC6, commit 3b03e35)**
+
+Omniview V2 is certified:
+- Visual Cockpit: 6 layers operational (KPI, Trend, Plan vs Real, Slice Breakdown, Matrix Detail, Export).
+- Data governance: ownership, freshness, traceability certified.
+- Monthly real data: 455,910 trips May 2026 Lima.
+- Park attribution: certified via bridge (0.4% delta).
+- Matrix secondary. V1 fallback preserved. Shadow fallback preserved.
+- 7/7 endpoints HTTP 200. Build PASS 8.15s.
 
 Previous closure (2026-06-03):
 - OMNI-GOV-001 Visual Certification Framework created
@@ -38,19 +46,13 @@ Motor:
 **Omniview P0 Recovery**
 
 Phase:
-**OMNI-P0 — False GO Recovery & Vs Proy Canonicalization**
+**OMNI-P0 — CERTIFIED / CLOSED**
 
 Status:
-**ACTIVE** (reopened 2026-06-03 by OMNI-P0 directive)
+**CLOSED** (2026-06-14, VC6 commit 3b03e35)
 
-Goal:
-- Deprecar Evolution como vista operativa
-- Canonizar Vs Proy como única vista operacional válida
-- Definir contrato canónico de grid (uniforme cross-métrica)
-- Resolver Revenue vacío/incompleto
-- Clarificar CLOSED/PARTIAL/CURRENT/FUTURE en cada celda
-- Auditar y resolver alerts/rollup/mismatch
-- Certificar Vs Proy con validación semántica real (no DOM tokens)
+Omniview V2 Visual Cockpit is operationally certified. All OMNI-P0 goals achieved.
+See: `docs/architecture/OMNIVIEW_V2_OMNI_P0_CLOSURE_REPORT.md`
 
 NOT building:
 - Diagnostic Engine 2A.3 (PAUSED)
@@ -138,7 +140,7 @@ Phase:
 2A.3 — Behavioral Pattern Diagnosis
 
 Status:
-**PAUSED** (hasta que OMNI-P0 cierre con GO real)
+**READY NEXT** — OMNI-P0 closed (2026-06-14). Gated by operator confirmation.
 
 Motor:
 Revenue Detail Certification (CF-H2)

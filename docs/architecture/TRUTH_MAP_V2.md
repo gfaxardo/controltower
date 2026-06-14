@@ -222,4 +222,29 @@
 
 ---
 
+## OMNIVIEW V2 CERTIFICATION STATUS (OV2-VC6A)
+
+**Certified:** 2026-06-14
+**Commit:** `3b03e35`
+**Decision:** OPERATIONAL GO — OMNI-P0 CLOSED
+
+| Area | Status | Evidence |
+|------|--------|----------|
+| Visual Cockpit | CERTIFIED | 6 layers operational (KPI, Trend, PvR, Breakdown, Matrix, Export) |
+| Freshness | CERTIFIED | 7/7 endpoints HTTP 200, all data fresh |
+| Monthly Real | CERTIFIED | May 2026: 455,910 trips Lima, 7 slices |
+| Park Attribution | CERTIFIED | Bridge Lima 457,906, delta 0.4%, coverage 99.6% |
+| Data Governance | CERTIFIED | 4 facts single-writer, registry + log, cascade-only |
+| Matrix Secondary | CERTIFIED | Collapsible detail, not landing experience |
+| V1 Fallback | PRESERVED | URL-only with legacy banner |
+| Shadow Fallback | PRESERVED | URL-only dev fallback |
+| Diagnostic Engine | READY NEXT | Gated by OMNI-P0 closure confirmation |
+| Forecast/Suggestion/Decision/Action/AI | BLOCKED | Requires upstream engine stability |
+
+Reference: `docs/architecture/OMNIVIEW_V2_OMNI_P0_CLOSURE_REPORT.md`
+
+---
+
+*Generated from exhaustive audit across Phases B.1 through VC6A.*
+
 *Generated from exhaustive live code audit. Evidence for each cell comes from actual file + line number traces across `backend/app/`, `backend/scripts/`, `backend/app/repositories/`, `backend/app/routers/`, and `backend/alembic/versions/`.*

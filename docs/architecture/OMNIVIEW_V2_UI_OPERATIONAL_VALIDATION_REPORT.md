@@ -150,3 +150,24 @@ OV2-UI-V1: Fix P2 polish defects (month date format, debug icon, partial badge).
 ---
 
 *Operational validation complete. No P0/P1 defects.*
+
+---
+
+## VC6 Final Certification (OV2-VC6A)
+
+**Date:** 2026-06-14 | **Commit:** `3b03e35`
+
+| Check | Result |
+|-------|--------|
+| Routes (6/6) | PASS |
+| Controls (metric, grain, presets, sort, view, export, matrix toggle, slice drill) | PASS |
+| Freshness (7/7 endpoints HTTP 200) | PASS |
+| Monthly real (May 2026: 455,910 trips) | PASS |
+| Park attribution (bridge Lima, 0.4% delta) | PASS |
+| Matrix secondary (collapsible, not landing) | PASS |
+| Export CSV | PASS |
+| Build (`npm run build` 8.15s) | PASS |
+
+**Omniview V2 Visual Cockpit operationally certified. OMNI-P0 closed.**
+
+Reference: `docs/architecture/OMNIVIEW_V2_OMNI_P0_CLOSURE_REPORT.md`
