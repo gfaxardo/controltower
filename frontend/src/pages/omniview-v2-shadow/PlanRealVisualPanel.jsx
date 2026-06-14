@@ -56,8 +56,11 @@ function PlanRealVisualPanel({ planData, metricId, grain, isActive }) {
       </div>
 
       {rows.map(r => {
-        const attainmentColor = r.attainmentPct == null ? '#9ca3af' : r.attainmentPct >= 100 ? '#16a34a' : r.attainmentPct >= 80 ? '#f59e0b' : '#dc2626';
-        const barWidth = r.attainmentPct != null ? Math.min(Math.abs(r.attainmentPct), 150) : 0;
+        const hasReal = r.realValue != null && r.status !== 'no_real' && r.status !== 'missing';
+        const hasPlan = r.planValue != null && r.status !== 'no_plan';
+        const isComparable = hasReal && hasPlan && r.attainmentPct != null && r.attainmentPct >= 0;
+        const attainmentColor = !isComparable ? '#9ca3af' : r.attainmentPct >= 100 ? '#16a34a' : r.attainmentPct >= 80 ? '#f59e0b' : '#dc2626';
+        const barWidth = isComparable ? Math.min(r.attainmentPct, 150) : 0;
         const isOverflow = r.attainmentPct != null && r.attainmentPct > 150;
 
         return (
