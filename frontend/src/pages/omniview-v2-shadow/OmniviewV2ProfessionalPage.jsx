@@ -16,6 +16,7 @@ import { RouteStatusBadge } from './RouteStatusBadge';
 import { buildTrendSeries, getComparableLabel } from './omniviewV2TrendSeries';
 import TrendLayerPanel from './TrendLayerPanel';
 import PlanRealVisualPanel from './PlanRealVisualPanel';
+import SliceBreakdownVisualPanel from './SliceBreakdownVisualPanel';
 
 function ExecutiveCockpit() {
   const today = new Date().toISOString().slice(0, 10);
@@ -158,24 +159,8 @@ function ExecutiveCockpit() {
           <PlanRealVisualPanel planData={planData} metricId={metricId} grain={grain} isActive={viewMode === 'plan_real'} />
         </div>
 
-        {/* Slice Breakdown */}
-        {sliceBreakdown.length > 0 && (
-          <div style={panelStyle}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 12 }}>Slice Breakdown</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {sliceBreakdown.map(s => (
-                <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 12, color: '#374151', width: 120, textAlign: 'right', flexShrink: 0 }}>{s.label}</span>
-                  <div style={{ flex: 1, height: 20, background: '#f3f4f6', borderRadius: 4, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${s.pct}%`, background: '#3b82f6', borderRadius: 4, transition: 'width 0.3s' }} />
-                  </div>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#111827', width: 100 }}>{metric?.format ? metric.format(s.value) : s.value.toLocaleString()}</span>
-                  <span style={{ fontSize: 11, color: '#6b7280', width: 36 }}>{s.pct}%</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Slice Breakdown — VC4 enhanced */}
+        <SliceBreakdownVisualPanel matrixData={matrixData} metricId={metricId} grain={grain} />
 
         {/* Matrix Detail (secondary) */}
         {showMatrix && sortedData?.rows && (
