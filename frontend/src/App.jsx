@@ -68,6 +68,7 @@ const LimaGrowthDashboard = lazy(() => import('./pages/LimaGrowthDashboardV2.jsx
 const LimaGrowthIntelligenceDashboard = lazy(() => import('./pages/LimaGrowthDashboardUI1A.jsx'))
 const OmniviewV2MatrixSandbox = lazy(() => import('./pages/omniview-v2-shadow/OmniviewV2MatrixSandbox.jsx'))
 const OmniviewV2ShadowPage = lazy(() => import('./pages/omniview-v2-shadow/OmniviewV2ShadowPage.jsx'))
+const OmniviewV2ProfessionalPage = lazy(() => import('./pages/omniview-v2-shadow/OmniviewV2ProfessionalPage.jsx'))
 
 const DRIVER_CAPABILITY_GROUPS = [
   {
@@ -165,6 +166,7 @@ const ROUTE_MAP = [
   { path: '/operacion/omniview-matrix', tab: TAB_OPERACION, sub: 'operacion_omniview_matrix' },
   { path: '/operacion/omniview-v2-matrix-sandbox', tab: TAB_OPERACION, sub: 'operacion_omniview_v2_sandbox' },
   { path: '/operacion/omniview-v2-shadow', tab: TAB_OPERACION, sub: 'operacion_omniview_v2_shadow' },
+  { path: '/operacion/omniview-v2-professional', tab: TAB_OPERACION, sub: 'operacion_omniview_v2_professional' },
   { path: '/operacion/control-loop-plan-vs-real', tab: TAB_OPERACION, sub: 'operacion_control_loop_pvr' },
   { path: '/operacion/reportes', tab: TAB_OPERACION, sub: 'operacion_reportes' },
   { path: '/operacion/oportunidades', tab: TAB_OPERACION, sub: 'operacion_oportunidades' },
@@ -199,7 +201,7 @@ const SUB_URL = {
   operacion_business_slice: '/operacion/business-slice',
   operacion_omniview: '/operacion/omniview',
   operacion_omniview_matrix: '/operacion/omniview-matrix',
-  operacion_omniview_v2: '/operacion/omniview-v2-shadow',
+  operacion_omniview_v2: '/operacion/omniview-v2-professional',
   operacion_omniview_v2_shadow: '/operacion/omniview-v2-shadow',
   operacion_control_loop_pvr: '/operacion/control-loop-plan-vs-real',
   operacion_reportes: '/operacion/reportes',
@@ -537,6 +539,7 @@ function ControlTowerApp () {
                 {operacionSubTab === 'operacion_omniview_matrix' && <OmniviewErrorBoundary key={`bs-omniview-matrix-${refreshKey}`}><BusinessSliceOmniviewMatrix /></OmniviewErrorBoundary>}
                 {operacionSubTab === 'operacion_omniview_v2_sandbox' && <OmniviewErrorBoundary key={`ov2-sandbox-${refreshKey}`}><OmniviewV2MatrixSandbox /></OmniviewErrorBoundary>}
                 {operacionSubTab === 'operacion_omniview_v2_shadow' && <OmniviewErrorBoundary key={`ov2-shadow-${refreshKey}`}><OmniviewV2ShadowPage /></OmniviewErrorBoundary>}
+                {operacionSubTab === 'operacion_omniview_v2_professional' && <OmniviewErrorBoundary key={`ov2-pro-${refreshKey}`}><OmniviewV2ProfessionalPage /></OmniviewErrorBoundary>}
                 {operacionSubTab === 'operacion_control_loop_pvr' && <ControlLoopPlanVsRealView key={`control-loop-pvr-${refreshKey}`} />}
                 {operacionSubTab === 'operacion_reportes' && <BusinessSliceOmniviewReports key={`bs-omniview-reports-${refreshKey}`} />}
                 {operacionSubTab === 'operacion_oportunidades' && <OperationalOpportunitiesView key={`oportunidades-${refreshKey}`} />}
