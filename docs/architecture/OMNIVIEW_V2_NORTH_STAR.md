@@ -381,4 +381,30 @@ The Visual Cockpit cannot be implemented with loose charts. Every visual must:
 - Keep matrix secondary accessible for detail/export
 - Follow performance, freshness, and visual semantics rules
 
+---
+
+## 18. Comparable Period Intelligence
+
+Omniview V2 must show not just current values, but evolution against operationally comparable periods:
+- Hour comparable (same hour, same weekday)
+- Day comparable (same weekday)
+- Week over week (ISO)
+- Month over month
+- Peak of last 4 closed comparable periods
+- Moving average of recent closed comparable periods
+
+This is NOT Forecast. NOT Diagnostic. NOT root cause. It is visual control / operational understanding.
+
+**Baselines:**
+- `Peak last 4` — best value in last 4 closed comparable periods. Closed only. <4 = limited history.
+- `Avg last 4` / `Avg last 3` — rolling average of last N closed periods. Insufficient = limited history.
+
+**Rules:** Never mix with Plan vs Real. Never present as forecast. Never present deviation as root cause.
+
+Reference: `OMNIVIEW_UI_RENDERING_CHARTING_CONTRACT.md` Section 10.
+
+---
+
+*North Star v3.0. Visual Decision Cockpit. Matrix secondary. Certified data only.*
+
 Reference: `OMNIVIEW_UI_RENDERING_CHARTING_CONTRACT.md`
