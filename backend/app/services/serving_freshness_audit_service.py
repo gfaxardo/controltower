@@ -221,6 +221,18 @@ SERVING_ASSETS: List[Dict[str, Any]] = [
         "expected_sla_hours": 336,
         "criticality": STATUS_CRITICAL,
     },
+    {
+        "asset_name": "exclusive_driver_worklist_daily",
+        "schema": "growth",
+        "table": "yango_lima_exclusive_driver_worklist_daily",
+        "date_col": "generated_date",
+        "owner": "Autonomous Tick Scheduler",
+        "source": "growth.yango_lima_driver_state_snapshot + growth.yego_lima_driver_explorer_fact",
+        "scheduler": "lima_growth_autonomous_tick (every 5min, cascade step)",
+        "refresh_method": "refresh_exclusive_driver_worklist_daily (UPSERT idempotent)",
+        "expected_sla_hours": 24,
+        "criticality": STATUS_CRITICAL,
+    },
 ]
 
 

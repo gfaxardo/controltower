@@ -609,6 +609,37 @@ def autonomous_tick() -> Dict[str, Any]:
             result["raw_ingest"] = {"attempted": True, "error": str(e)[:200]}
             logger.warning("Autonomous tick: raw ingestion failed — %s", e)
 
+        # ── GM-F1A: Refresh weekly history ALWAYS (before cascade check) ──
+        weekly_history_freshness = None
+        history_blocked = False
+        pipeline_steps = []
+        try:
+            from app.services.yego_lima_growth_history_service import refresh_weekly_history, check_driver_history_weekly_freshness
+
+            wh_result = refresh_weekly_history()
+            result["weekly_history"] = wh_result
+            if wh_result.get("refreshed"):
+                pipeline_steps.append({"step": "weekly_history", "status": "SUCCESS",
+                                       "weekly_rows": wh_result.get("weekly_rows"),
+                                       "unique_drivers": wh_result.get("unique_drivers")})
+
+            weekly_history_freshness = check_driver_history_weekly_freshness()
+            result["weekly_history_freshness"] = weekly_history_freshness
+
+            if weekly_history_freshness.get("blocking"):
+                history_blocked = True
+                result["status"] = "blocked_by_stale_driver_history_weekly"
+                result["blocking_reason"] = weekly_history_freshness.get("reason", "Unknown")
+                result["blocking_freshness"] = weekly_history_freshness
+                logger.warning("Autonomous tick BLOCKED: %s", weekly_history_freshness.get("reason"))
+        except Exception as e:
+            result["weekly_history"] = {"error": str(e)[:200]}
+            result["weekly_history_freshness"] = {"status": "error", "reason": str(e)[:200], "blocking": True}
+            history_blocked = True
+            result["status"] = "blocked_by_stale_driver_history_weekly"
+            result["blocking_reason"] = f"Weekly history freshness check failed: {str(e)[:200]}"
+            logger.warning("Autonomous tick blocked by weekly history check failure: %s", e)
+
         date_info = detect_latest_closed_data_date()
         op_date = date_info.get("operational_data_date")
         result["operational_date"] = op_date
@@ -648,22 +679,8 @@ def autonomous_tick() -> Dict[str, Any]:
                         max_raw_date, max_snapshot_date, target_dates)
 
         run_refresh = False
-        if cascade_required:
-            pipeline_steps = []
+        if cascade_required and not history_blocked:
             pipeline_failed = False
-
-            # FH-1: Refresh weekly history before cascade (driver_state depends on it)
-            try:
-                from app.services.yego_lima_growth_history_service import refresh_weekly_history
-                wh_result = refresh_weekly_history()
-                result["weekly_history"] = wh_result
-                if wh_result.get("refreshed"):
-                    pipeline_steps.append({"step": "weekly_history", "status": "SUCCESS",
-                                           "weekly_rows": wh_result.get("weekly_rows"),
-                                           "unique_drivers": wh_result.get("unique_drivers")})
-            except Exception as e:
-                result["weekly_history"] = {"error": str(e)[:200]}
-                logger.warning("Weekly history refresh failed: %s", e)
 
             for target_date in target_dates:
                 if pipeline_failed:
@@ -697,6 +714,9 @@ def autonomous_tick() -> Dict[str, Any]:
 
                 from app.services.yego_lima_driver_state_service import build_driver_state_snapshot
                 _run_step("driver_state", lambda d=target_date: build_driver_state_snapshot(d))
+
+                from app.services.yego_lima_exclusive_worklist_service import refresh_exclusive_driver_worklist_daily
+                _run_step("exclusive_worklist", lambda d=target_date: refresh_exclusive_driver_worklist_daily(d))
 
                 from app.services.yego_lima_program_eligibility_service import build_program_eligibility
                 _run_step("eligibility", lambda d=target_date: build_program_eligibility(d))
@@ -744,6 +764,15 @@ def autonomous_tick() -> Dict[str, Any]:
             except Exception:
                 pass
 
+        elif cascade_required and history_blocked:
+            result["cascade_executed"] = False
+            result["cascade_blocked_by_stale_history"] = True
+            result["refresh_success"] = False
+            refresh_status = "BLOCKED_STALE_HISTORY"
+            refresh_run_id = None
+            result["pipeline_steps"] = pipeline_steps
+            logger.warning("Autonomous tick: cascade blocked by stale driver_history_weekly")
+
         cur = conn.cursor()
         cur.execute(
             "SELECT MAX(operational_data_date) FROM growth.yego_lima_refresh_run_log "
@@ -761,7 +790,7 @@ def autonomous_tick() -> Dict[str, Any]:
             _write_tick_log_always(now, _now(), 0, result)
             return result
 
-        if not cascade_required and last_processed_str != op_date:
+        if not cascade_required and not history_blocked and last_processed_str != op_date:
             result["catch_up_needed"] = True
             result["last_processed"] = last_processed_str
             result["latest_available"] = op_date
@@ -771,7 +800,7 @@ def autonomous_tick() -> Dict[str, Any]:
             refresh_status = "NOOP_CAUGHT_UP"
             refresh_run_id = None
 
-        if run_refresh and not cascade_required:
+        if run_refresh and not cascade_required and not history_blocked:
             try:
                 from app.services.yego_lima_daily_refresh_service import run_daily_refresh
                 refresh = run_daily_refresh(target_date=op_date, triggered_by="autonomous_tick")
@@ -789,19 +818,28 @@ def autonomous_tick() -> Dict[str, Any]:
                 refresh_status = "FAILED"
                 refresh_run_id = None
                 logger.error("Autonomous tick: daily refresh failed — %s", e)
+        elif run_refresh and history_blocked:
+            result["daily_refresh_blocked_by_stale_history"] = True
+            refresh_status = "BLOCKED_STALE_HISTORY"
+            refresh_run_id = None
+            logger.warning("Autonomous tick: daily refresh blocked by stale driver_history_weekly")
         else:
             refresh_status = "NOOP_CAUGHT_UP"
             refresh_run_id = None
 
-        try:
-            from app.services.yego_lima_control_loop_sync_service import sync_assignment_queue_to_control_loop
-            cl_sync = sync_assignment_queue_to_control_loop(op_date)
-            result["control_loop_synced"] = True
-            result["control_loop_inserted"] = cl_sync.get("inserted", 0)
-            result["control_loop_skipped"] = cl_sync.get("skipped", 0)
-        except Exception as e:
-            result["control_loop_error"] = str(e)[:100]
-            logger.warning("Autonomous tick: control_loop sync failed — %s", e)
+        if not history_blocked:
+            try:
+                from app.services.yego_lima_control_loop_sync_service import sync_assignment_queue_to_control_loop
+                cl_sync = sync_assignment_queue_to_control_loop(op_date)
+                result["control_loop_synced"] = True
+                result["control_loop_inserted"] = cl_sync.get("inserted", 0)
+                result["control_loop_skipped"] = cl_sync.get("skipped", 0)
+            except Exception as e:
+                result["control_loop_error"] = str(e)[:100]
+                logger.warning("Autonomous tick: control_loop sync failed — %s", e)
+        else:
+            result["control_loop_synced"] = False
+            result["control_loop_blocked_by_stale_history"] = True
 
         try:
             from app.services.yego_lima_serving_facts_service import generate_all_serving_facts
