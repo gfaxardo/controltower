@@ -326,6 +326,18 @@ These DANGEROUS scripts lack `refresh_guard()` context manager:
 
 **Remediation:** Apply UI Route Status Taxonomy. Normalize naming. Hide legacy from menu. Validate in browser.
 
+### 4.9 Monthly Matrix Endpoint Format (OV2-VC4A)
+
+**Description:** `/ops/omniview-v2/matrix?grain=month` returns 0 cells when `date_from`/`date_to` use `YYYY-MM` format. Requires `YYYY-MM-DD` format. Frontend uses correct format. Tests and audits must use `YYYY-MM-DD`.
+
+**Status:** DOCUMENTED CONSTRAINT. Not a serving or refresh gap.
+
+### 4.10 Park Attribution Monthly (OV2-VC4A)
+
+**Description:** `ops.real_business_slice_month_fact` does not expose `park_id` column directly. Park-level drill requires validation via bridge or day fact. Slice-level breakdown is correct. Park certification deferred to VC5 drill layer.
+
+**Status:** KNOWN GAP. P1 for park drill. Not a blocker for slice breakdown.
+
 ---
 
 *Generated from live repo audit. Evidence sources: `ai_operating_system.md`, `ai_current_phase.md`, `OMNIVIEW_CANONICAL_REGISTRY.md`, `ENGINE_BOUNDARIES.md`, `ROADMAP_GOVERNANCE_RULES.md`, `CONTROL_FOUNDATION_LIVING_ARCHITECTURE.md`, `backend/app/routers/ops.py`, `backend/app/services/`, `backend/sql/`.*
