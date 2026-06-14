@@ -167,9 +167,9 @@ def run_universe_config_simulation(
             features = {
                 "age_days": wl.get("operational_age_days"),
                 "anchor_age_days": (src_d - anc["anchor"]).days if anc and anc["anchor"] else None,
-                "weekly_trips": wl.get("weekly_trips") or 0,
-                "trips_since_anchor": wl.get("activation_window_trips") or 0,
-                "inactivity_days": wl.get("inactivity_days") or 9999,
+                "weekly_trips": wl.get("weekly_trips") if wl.get("weekly_trips") is not None else 0,
+                "trips_since_anchor": wl.get("activation_window_trips") if wl.get("activation_window_trips") is not None else 0,
+                "inactivity_days": wl.get("inactivity_days") if wl.get("inactivity_days") is not None else 9999,
                 "value_tier": wl.get("value_tier") or "DEFAULT",
                 "best_week_12w": wl.get("best_week_12w"),
                 "productivity_band": wl.get("productivity_band"),
