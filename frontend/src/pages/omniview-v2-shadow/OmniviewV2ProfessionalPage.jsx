@@ -61,6 +61,7 @@ function ProfessionalPage() {
   const statusColor = !canonicalReady ? '#9ca3af' : isStale ? '#f59e0b' : hasData ? '#16a34a' : '#6b7280';
   const [showDebug, setShowDebug] = useState(false);
   const isPlanReal = viewMode === 'plan_real';
+  const metric = getMetricById(metricId);
 
   const handlePreset = (pid) => { const r = getPresetRange(pid); if (r) { setDateFrom(r.from); setDateTo(r.to); setActivePreset(pid); } };
   const handleExport = () => {
