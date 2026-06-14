@@ -1,8 +1,9 @@
-# OMNIVIEW V2 — PROFESSIONAL OPERATIONAL UI NORTH STAR
+# OMNIVIEW V2 — VISUAL DECISION COCKPIT NORTH STAR v3.0
 
-**Version:** 2.0.0
+**Version:** 3.0.0
 **Date:** 2026-06-13
-**Status:** UPDATED — V1 parity achieved, now targeting professional operational quality
+**Status:** REDEFINED — Matrix-secondary, visual-first executive cockpit
+**Preceded by:** v2.0.0 (Professional Operational UI) — achieved; v1.0.0 (V1 Parity) — achieved
 **Scope:** Functional and visual target for Omniview V2
 **Preceded by:** Ownership/Freshness/Traceability Certification (Phase B.1 → E)
 
@@ -284,3 +285,86 @@ Omniview V2 is not operationally validated just by rendering. It must also:
 - Avoid duplicate or near-duplicate tab names
 
 Reference: `OMNIVIEW_UI_NAVIGATION_STATUS_TAXONOMY.md`
+
+---
+
+## 16. North Star v3.0: Executive Visual Decision Cockpit
+
+### What Changed
+
+v2.0 was about matching V1 parity with a professional shell. That is achieved. v3.0 shifts the primary experience from matrix-first to visual-first. The matrix becomes a secondary detail/audit view. The primary view becomes an executive cockpit optimized for at-a-glance operational decisions.
+
+### The New Primary Experience
+
+The operator should see, in one screen:
+1. **KPI Summary** — 3-5 key metrics with delta vs previous period
+2. **Trend Layer** — DoD/WoW/MoM visualization by grain
+3. **Plan vs Real** — attainment bars with gap
+4. **Slice Breakdown** — ranking by contribution/performance
+5. **Freshness & Coverage** — always visible, never invasive
+
+### The Matrix's New Role
+
+The matrix is NOT removed. It becomes:
+- **Detail view** — drill into any visual element to see matrix
+- **Export source** — CSV export from matrix data
+- **Audit tool** — verify specific cells
+- **Secondary tab** — accessible but not the landing experience
+
+### Design Principles
+
+- **At-a-glance**: Operator understands state in seconds
+- **Visual hierarchy**: KPI → Trend → Plan vs Real → Breakdown
+- **Progressive disclosure**: Executive first, detail on demand
+- **Low cognitive load**: Charts > tables for comprehension
+- **No speculation**: Only deterministic, certified data. No predictions.
+
+### What NOT to Build
+
+- No Diagnostic Engine disguised as charts
+- No forecast curves or projections
+- No AI insights or recommendations
+- No runtime-heavy chart engines
+- No legacy V1 chart libraries without audit
+
+### Visual Cockpit Architecture
+
+```
+┌─────────────────────────────────────────────┐
+│ HEADER: Omniview V2 · Freshness · Coverage   │
+├──────────┬──────────┬───────────────────────┤
+│ KPI 1    │ KPI 2    │ KPI 3    │ KPI 4     │
+│ Trips    │ Revenue  │ Drivers  │ Cancel %  │
+│ 12,341 ▲ │ S/ 45K ▲ │ 1,234 ▲  │ 2.1% ▼   │
+├──────────┴──────────┴──────────┴────────────┤
+│ TREND: Daily/Weekly/Monthly line chart       │
+│ ▓▓▓▓▓▓▓░░░░░░░░  ▓▓▓▓▓▓▓▓▓▓░░░░           │
+├──────────────────────┬──────────────────────┤
+│ PLAN VS REAL         │ SLICE BREAKDOWN      │
+│ Auto: ████████ 82%   │ Auto     ████████ 62%│
+│ Delivery: ████ 95%   │ Delivery ███ 12%     │
+│ PRO: ██████ 78%      │ PRO      ██ 10%      │
+├──────────────────────┴──────────────────────┤
+│ [Matrix Detail] [Export CSV] [Audit]        │
+└─────────────────────────────────────────────┘
+```
+
+### Phase Roadmap
+
+- **OV2-VC1**: Executive cockpit architecture + layout shell
+- **OV2-VC2**: KPI summary + trend charts (DoD/WoW/MoM)
+- **OV2-VC3**: Plan vs Real visual layer (attainment bars, gap)
+- **OV2-VC4**: Slice breakdown + composition charts
+- **OV2-VC5**: Matrix as secondary detail/audit view
+- **OV2-VC6**: Final visual polish + acceptance
+
+### Precheck for Visual Cockpit Prompts
+
+Every future prompt must answer:
+1. Is this visual-first or matrix-first?
+2. Does it reduce cognitive load?
+3. Does it use only certified data?
+4. Does it avoid Diagnostic/Forecast engines?
+5. Can the operator understand it at a glance?
+6. Is the matrix still accessible as detail?
+7. Does it preserve freshness/coverage visibility?
