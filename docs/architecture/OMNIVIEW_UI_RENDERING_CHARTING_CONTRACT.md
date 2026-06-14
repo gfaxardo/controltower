@@ -176,7 +176,104 @@ For any chart or KPI visual, add these 15 questions:
 
 ---
 
-## 10. Precheck (Visual Prompts)
+## 10. Comparable Period / Baseline Contract (OV2-VC)
+
+### 10.1 Comparable Period Principle
+
+Omniview V2 must compare against operationally comparable periods, not just the immediately preceding calendar period.
+
+| Grain | Comparable Period | Label |
+|-------|------------------|-------|
+| hour | same hour + same weekday of previous comparable period | HoH comparable |
+| day | same weekday of previous comparable period | DoD comparable |
+| week | current ISO week vs previous ISO week | WoW |
+| month | current month vs previous month | MoM |
+
+**Rules:**
+1. Hour is not simply the previous hour. Compare Monday 7:00 vs previous Monday 7:00.
+2. Day comparison must consider day-of-week for mobility operations.
+3. Week uses ISO week (Monday).
+4. Month uses calendar month.
+5. If comparable period doesn't exist → `Not comparable`. Never zero.
+6. Never mix temporal comparison with Plan vs Real.
+
+### 10.2 Closed Period Rule
+
+| Period Type | Rule |
+|-------------|------|
+| closed | compare against full closed comparable periods |
+| open/current | mark as partial; compare against equivalent elapsed window |
+| future | not comparable |
+
+1. Open period must not be compared against full closed period without `partial` label.
+2. Example: Monday 10:00 vs previous Monday up to 10:00.
+3. If no equivalent window, show `Partial / not comparable`.
+4. Never infer period closure without evidence.
+
+### 10.3 Peak of Last 4 Closed Comparable Periods
+
+Baseline: `Peak last 4`
+- Best value observed in last 4 closed comparable periods.
+- Grain-aware: hour → last 4 comparable hours, day → last 4 comparable days, week → last 4 closed weeks, month → last 4 closed months.
+- Answers: "Are we near the best recent performance?"
+- Not forecast. Not target. Not Plan.
+- If < 4 periods → `limited history`.
+- Closed periods only.
+
+### 10.4 Moving Average Baseline
+
+Baseline: `Rolling average`
+- Rolling average of last N closed comparable periods.
+- Defaults: hour→4, day→4, week→4, month→3/4.
+- Answers: "Are we above or below recent trend?"
+- Not forecast. Not target.
+- Label: `Avg last 4` or `Avg last 3`.
+- If insufficient history → `limited history`.
+- Never invent missing values.
+
+### 10.5 Visual Separation Rules
+
+The cockpit must separate:
+
+| Concept | Meaning |
+|---------|---------|
+| Temporal delta | actual vs comparable period |
+| Peak last 4 | actual vs best recent period |
+| Rolling average | actual vs recent average |
+| Plan delta | actual vs plan |
+
+**Rules:**
+1. Never mix labels.
+2. Never use same color without explaining concept.
+3. Never present peak or moving average as forecast.
+4. Never present deviation as root cause.
+
+### 10.6 Precheck Additions
+
+1. Is the comparison temporal, peak, rolling average, or Plan vs Real?
+2. What is the active grain?
+3. What is the current period — closed or partial?
+4. What is the comparable period?
+5. Does the comparable respect same-day/hour when applicable?
+6. Is comparison against full closed period or equivalent window?
+7. What is the peak last 4 baseline?
+8. What is the rolling average used?
+9. Is there sufficient history?
+10. What is shown if history is missing?
+11. Is the metric higher-is-better or lower-is-better?
+12. Does color represent better/worse?
+13. Is it separated from Plan vs Real?
+14. Is forecast/diagnosis avoided?
+15. Is freshness validated for both current and comparable periods?
+16. Does UI show `Not comparable` instead of false zero?
+17. Can the user understand the comparator without tooltip?
+18. Is the logic lightweight in frontend?
+19. Is there a rollback?
+20. Is it documented in the contract?
+
+---
+
+## 11. Precheck (Visual Prompts)
 
 1. What operational question does this chart answer?
 2. Which certified endpoint feeds it?
