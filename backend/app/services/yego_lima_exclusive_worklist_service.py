@@ -296,46 +296,39 @@ def refresh_exclusive_driver_worklist_daily(target_date: Optional[str] = None) -
             rows.append(row)
             universe_counts[assigned_universe] = universe_counts.get(assigned_universe, 0) + 1
 
-        # ── UPSERT all rows ──
+        # ── UPSERT all rows in bulk ──
+        from psycopg2.extras import execute_values
+
         cur2 = conn.cursor()
-        for row in rows:
-            cur2.execute(
-                f"INSERT INTO {TABLE_OUT} ("
-                f"generated_date, driver_profile_id, driver_id, assigned_universe_v1, assigned_program_v1, "
-                f"subsegment, objective, reason_code, priority_rank, operational_age_days, weekly_trips, "
-                f"activation_window_trips, inactivity_days, value_tier, productivity_band, trend, "
-                f"target_metric, baseline_metric, export_to_control_loop, "
-                f"source_snapshot_date, source_explorer_target_date, source_version, updated_at"
-                f") VALUES ("
-                f"%(generated_date)s, %(driver_profile_id)s, %(driver_id)s, %(assigned_universe_v1)s, %(assigned_program_v1)s, "
-                f"%(subsegment)s, %(objective)s, %(reason_code)s, %(priority_rank)s, %(operational_age_days)s, %(weekly_trips)s, "
-                f"%(activation_window_trips)s, %(inactivity_days)s, %(value_tier)s, %(productivity_band)s, %(trend)s, "
-                f"%(target_metric)s, %(baseline_metric)s, %(export_to_control_loop)s, "
-                f"%(source_snapshot_date)s, %(source_explorer_target_date)s, %(source_version)s, now()"
-                f") ON CONFLICT (generated_date, driver_profile_id) DO UPDATE SET "
-                f"driver_id = EXCLUDED.driver_id, "
-                f"assigned_universe_v1 = EXCLUDED.assigned_universe_v1, "
-                f"assigned_program_v1 = EXCLUDED.assigned_program_v1, "
-                f"subsegment = EXCLUDED.subsegment, "
-                f"objective = EXCLUDED.objective, "
-                f"reason_code = EXCLUDED.reason_code, "
-                f"priority_rank = EXCLUDED.priority_rank, "
-                f"operational_age_days = EXCLUDED.operational_age_days, "
-                f"weekly_trips = EXCLUDED.weekly_trips, "
-                f"activation_window_trips = EXCLUDED.activation_window_trips, "
-                f"inactivity_days = EXCLUDED.inactivity_days, "
-                f"value_tier = EXCLUDED.value_tier, "
-                f"productivity_band = EXCLUDED.productivity_band, "
-                f"trend = EXCLUDED.trend, "
-                f"target_metric = EXCLUDED.target_metric, "
-                f"baseline_metric = EXCLUDED.baseline_metric, "
-                f"export_to_control_loop = EXCLUDED.export_to_control_loop, "
-                f"source_snapshot_date = EXCLUDED.source_snapshot_date, "
-                f"source_explorer_target_date = EXCLUDED.source_explorer_target_date, "
-                f"source_version = EXCLUDED.source_version, "
-                f"updated_at = now()",
-                row,
+        columns = [
+            "generated_date", "driver_profile_id", "driver_id", "assigned_universe_v1", "assigned_program_v1",
+            "subsegment", "objective", "reason_code", "priority_rank", "operational_age_days", "weekly_trips",
+            "activation_window_trips", "inactivity_days", "value_tier", "productivity_band", "trend",
+            "target_metric", "baseline_metric", "export_to_control_loop",
+            "source_snapshot_date", "source_explorer_target_date", "source_version",
+        ]
+        values = [
+            (
+                r["generated_date"], r["driver_profile_id"], r["driver_id"], r["assigned_universe_v1"], r["assigned_program_v1"],
+                r["subsegment"], r["objective"], r["reason_code"], r["priority_rank"], r["operational_age_days"], r["weekly_trips"],
+                r["activation_window_trips"], r["inactivity_days"], r["value_tier"], r["productivity_band"], r["trend"],
+                r["target_metric"], r["baseline_metric"], r["export_to_control_loop"],
+                r["source_snapshot_date"], r["source_explorer_target_date"], r["source_version"],
             )
+            for r in rows
+        ]
+        col_list = ", ".join(columns)
+        set_clause = ", ".join(
+            f"{c} = EXCLUDED.{c}" for c in columns[2:]  # skip generated_date, driver_profile_id (PK)
+        ) + ", updated_at = now()"
+
+        execute_values(
+            cur2,
+            f"INSERT INTO {TABLE_OUT} ({col_list}) VALUES %s "
+            f"ON CONFLICT (generated_date, driver_profile_id) DO UPDATE SET {set_clause}",
+            values,
+            page_size=5000,
+        )
         cur2.close()
         conn.commit()
 
