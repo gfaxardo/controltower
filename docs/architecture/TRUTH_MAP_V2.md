@@ -8,6 +8,8 @@
 **Scope governance:** Before any implementation planning, read [ACTIVE_SCOPE_CONTRACT.md](ACTIVE_SCOPE_CONTRACT.md). This contract defines current in-scope work, out-of-scope engines/features, deferred backlog, and implementation gates. All implementation prompts must pass the Scope Escalation Test.
 **Production status:** Lima Growth Machine is **Closure Candidate Operable** with an active **Production Cutover Exception** for Exclusive Program Assignment V1. See `docs/lima_growth/LG_PROD_SCOPE_1A_PRODUCTION_CUTOVER_SCOPE_OVERRIDE.md`. Growth Machine is NOT CLOSED — weekly cycle evidence pending.
 **North Star:** Lima Growth Machine North Star is defined in `docs/lima_growth/LG_NORTH_STAR_EXCLUSIVE_LISTS_CONTRACT.md`. Future Growth Machine work must prioritize exclusive dynamic operational lists, Control Loop export, action tracking, and impact measurement.
+**MVP Certification:** Exclusive lists MVP reached **Production GO** (2026-06-13). 18,545 drivers classified into 9 exclusive universes. 6,109 exportable, 0 duplicates, fully explained and synced to Control Loop. See `docs/lima_growth/LG_PROD_GO_1A_LIMA_GROWTH_MVP_PRODUCTION_CERTIFICATION.md`.
+**New critical table:** `growth.yango_lima_exclusive_driver_worklist_daily` — serving fact for V1 exclusive universes. Writer: `refresh_exclusive_driver_worklist_daily()`. Freshness: chain + registry + audit (SLA 24h). Readers: CSV/API, Control Loop sync.
 
 ---
 
